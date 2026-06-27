@@ -389,3 +389,72 @@ class Notification(Base):
     message: Mapped[str] = mapped_column(Text, nullable=False)
     read: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+# --------------------------------------------------------------------------- #
+# v0.6 — Security posture & remediation (defensive: track & fix, never exploit)
+# --------------------------------------------------------------------------- #
+class FindingSeverity(str, enum.Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class FindingStatus(str, enum.Enum):
+    OPEN = "open"
+    REMEDIATING = "remediating"
+    RESOLVED = "resolved"
+    RISK_ACCEPTED = "risk_accepted"  # documented, accepted by the client
+
+
+class AssessmentStatus(str, enum.Enum):
+    PLANNED = "planned"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+
+
+class SecurityAssessment(Base):
+    """An authorized security review engagement. `authorized_by` records WHO at
+    the client gave written authorization — assessments without an authorizing
+    party are a compliance/ethics red flag, so the field is required by the API.
+    This is documentation of defensive work; it never executes anything."""
+    __tablename__ = "security_assessments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    scope: Mapped[str | None] = mapped_column(Text)            # systems/IPs in scope
+    authorized_by: Mapped[str] = mapped_column(String(200), nullable=False)  # client authoriser
+    status: Mapped[AssessmentStatus] = mapped_column(Enum(AssessmentStatus), default=AssessmentStatus.PLANNED, index=True)
+    summary: Mapped[str | None] = mapped_column(Text)
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    author_email: Mapped[str | None] = mapped_column(String(200))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class SecurityFinding(Base):
+    """A vulnerability / security finding to be tracked and remediated. May be
+    tied to a device and/or an assessment. High & critical findings raise an
+    alert through the existing engine so automation can act (e.g. open a ticket)."""
+    __tablename__ = "security_findings"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id"), index=True)
+    assessment_id: Mapped[int | None] = mapped_column(ForeignKey("security_assessments.id"), index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    category: Mapped[str | None] = mapped_column(String(80), index=True)  # e.g. patching, config, credential
+    severity: Mapped[FindingSeverity] = mapped_column(Enum(FindingSeverity), default=FindingSeverity.MEDIUM, index=True)
+    cve: Mapped[str | None] = mapped_column(String(40))
+    description: Mapped[str | None] = mapped_column(Text)
+    recommendation: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[FindingStatus] = mapped_column(Enum(FindingStatus), default=FindingStatus.OPEN, index=True)
+    source: Mapped[str] = mapped_column(String(40), default="manual")  # manual|assessment|import
+    client_visible: Mapped[bool] = mapped_column(Boolean, default=False)
+    alert_id: Mapped[int | None] = mapped_column(Integer)  # linked alert, if one was raised
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolved_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    author_email: Mapped[str | None] = mapped_column(String(200))

@@ -3,12 +3,13 @@
 Secure, cloud-hosted MSP command center, admin dashboard, and client portal for
 **BVTech LLC** — evolving toward a lightweight RMM-style platform.
 
-**Current version: v0.5.0** — a unified **RMM + PSA** platform: auth + RBAC +
+**Current version: v0.6.0** — a unified **RMM + PSA** platform: auth + RBAC +
 clients/devices/licenses + audit log + telemetry agent, a monitoring/alerting
 engine, billing (MRR & renewals) visibility, a **full SLA-tracked helpdesk**
 (threading, assignment, time tracking), an **IT documentation / knowledge base**,
-and a **server-side automation engine** (event→action rules + notifications)
-+ deployment scaffold.
+a **server-side automation engine** (event→action rules + notifications), and a
+**defensive security-posture module** (authorized assessments, vulnerability
+findings, per-client scorecard) + deployment scaffold.
 
 ---
 
@@ -101,6 +102,14 @@ python scripts/smoke_test.py     # runs the full enroll→checkin→audit flow
   - `POST /api/automation/run-checks` (scheduler tick: offline sweep + SLA-breach firing)
 - **In-app notifications**: `GET /api/notifications` (+ `?unread_only`),
   `POST /api/notifications/{id}/read` · `/read-all`. Tenant-scoped.
+
+**v0.6 — Security posture & remediation** (defensive only — track & fix, never exploit)
+- **Authorized assessments**: `/api/security/assessments` — engagements that
+  require an `authorized_by` party (consent on record).
+- **Vulnerability findings**: `/api/security/findings` — severity/CVE/remediation
+  workflow; high/critical findings raise an alert and feed the automation engine.
+- **Scorecard**: `/api/security/scorecard` — 0–100 posture score per client.
+  Clients see only `client_visible` findings + their own score.
 
 See `docs/` for deployment and security details, and `docs/ROADMAP.md` for what's
 next and the **exact prompt to paste**.

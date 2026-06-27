@@ -1,5 +1,43 @@
 # BVTech OpsPilot — Changelog
 
+## v0.6.0 — Security posture & remediation (June 2026)
+
+A **defensive** security module — it documents, tracks, and helps remediate
+weaknesses. It does not scan, exploit, or run anything on any system.
+
+### Added
+- **Authorized security assessments** (`/api/security/assessments`): engagement
+  records that **require** an `authorized_by` party at the client — there is
+  always a record of who consented to the review. Planned → in-progress →
+  completed lifecycle with timestamps and a summary.
+- **Vulnerability findings** (`/api/security/findings`): title, CVSS-style
+  severity (low/medium/high/critical), CVE, category, description,
+  recommendation, and a remediation workflow (open → remediating → resolved /
+  risk-accepted). Optionally tied to a device and/or an assessment.
+- **Alert + automation integration**: a high or critical finding raises an alert
+  through the existing engine (`kind=security_finding:<id>`), so it shows on the
+  dashboard and **automation rules can act on it** (e.g. critical finding → open
+  a ticket). Resolving the finding auto-resolves its linked alert.
+- **Security scorecard** (`/api/security/scorecard`): a 0–100 posture score per
+  client (100 minus weighted open findings) plus open-finding counts by severity.
+- **Client visibility**: findings are staff-managed; a client sees only findings
+  explicitly flagged `client_visible` and their own posture score — enforced at
+  the query layer.
+- **Dashboard**: new **Security** tab (per-client scorecard table, finding
+  creation, severity badges, remediate/resolve actions). **Client portal**: a
+  Security Score card + a shared-findings list.
+- New Alembic migration (`security_assessments`, `security_findings`) — verified
+  reversible.
+- Smoke test extended: authorization gate, finding→alert→scorecard, resolve→score
+  recovery + alert auto-resolve, client visibility + RBAC isolation.
+
+### Security / ethics
+- Assessments cannot be created without naming an authorizing party.
+- All finding/assessment writes are staff-only and audited; clients are
+  read-limited to shared findings and their own score.
+- This module is intentionally **defensive**: no scanning, no exploitation, no
+  command execution. The agent remains telemetry-only.
+
 ## v0.5.0 — Automation engine (June 2026)
 
 ### Added

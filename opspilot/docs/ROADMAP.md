@@ -59,22 +59,33 @@ SLA helpdesk, and notifications together so routine response happens without a
 human in the loop — while staying safe (no endpoint code execution) and fully
 audited.
 
+## ✅ v0.6 (this release) — Security posture & remediation
+- **Authorized assessments** (consent on record via required `authorized_by`).
+- **Vulnerability findings** with severity/CVE/remediation workflow; high/critical
+  findings raise alerts that feed the automation engine.
+- **Per-client security scorecard** (0–100), client-visible findings, full audit.
+- Defensive only — tracks and remediates; never scans or exploits.
+
 ---
 
-## v0.6 — Microsoft 365 (see docs/M365_PLAN.md)
+## v0.7 — Script library & deployment governance (NEXT)
+- Script library: **disabled by default**, versioned, risk-rated, categorized.
+- Deployment workflow: request → **approve** (separation of duties: approver ≠
+  requester, owner-gated) → agent pulls only the approved job → result reported.
+- Consent acknowledgement + reason recorded per deployment; full before/after
+  audit; reject/cancel paths.
+- Agent gains an **opt-in** (`--enable-remote-scripts`), consent-gated job runner
+  that executes ONLY server-approved jobs for its own enrolled device.
+- NO arbitrary remote code execution — only approved, logged, attributable jobs.
+
+## v0.8 — Microsoft 365 (see docs/M365_PLAN.md)
 - Multi-tenant Entra app, least-privilege read-only Graph scopes.
 - Per-client connect/consent, encrypted token storage, scheduled sync.
 - Auto-populate licenses from `subscribedSkus` (feeds the billing rollup);
   Secure Score + risky sign-ins surfaced as alerts via the existing engine
   (which automation rules can then act on automatically).
 
-## v0.7 — Remote support, safely
-- Quick Assist launcher + remote-support helper (agent side, opt-in).
-- Script library: **disabled by default**, per-script + per-device enable,
-  mandatory approval workflow, full before/after audit, rollback notes.
-- NO arbitrary remote code execution — only approved, logged, reversible actions.
-
-## v0.8 — Content workflow + richer dashboards + integrations
+## v0.9 — Content workflow + richer dashboards + integrations
 - Notification channels: email/Slack/Teams/webhook fan-out (a new `notify`
   channel behind the existing automation `notify` action + Notification model).
 - Scheduled offline sweep + digest reports (APScheduler/cron driving run-checks).
@@ -84,16 +95,14 @@ audited.
 
 ---
 
-## ⏭️ EXACT PROMPT TO PASTE NEXT (to build v0.6)
+## ⏭️ EXACT PROMPT TO PASTE NEXT (to build v0.8 — after v0.7 scripts lands)
 
-> Continue BVTech OpsPilot. v0.5 is in the repo at `opspilot/` (FastAPI +
-> SQLAlchemy + Jinja, Argon2/JWT/TOTP auth, 4-role RBAC, clients/devices/licenses,
-> append-only audit, telemetry agent, monitoring/alerting engine + policies,
-> billing MRR/renewals, SLA-tracked helpdesk with assignment + time tracking,
-> knowledge base, **a server-side automation engine (event→action rules + in-app
-> notifications)**, Docker/Caddy/Tunnel, Alembic). Pull the repo, run
-> `python scripts/smoke_test.py` (it should pass), then build **v0.6 — Microsoft
-> 365** per `docs/M365_PLAN.md`:
+> Continue BVTech OpsPilot. The repo at `opspilot/` is a unified RMM+PSA platform
+> (auth/RBAC, clients/devices/licenses, monitoring/alerting + policies, billing,
+> SLA helpdesk + time tracking, knowledge base, automation engine, security
+> posture module, and a script library with approval-gated deployment governance).
+> Pull the repo, run `python scripts/smoke_test.py` (it should pass), then build
+> **v0.8 — Microsoft 365** per `docs/M365_PLAN.md`:
 >
 > 1. Multi-tenant Entra app registration with least-privilege, read-only Graph
 >    scopes; per-client connect/consent flow with encrypted token storage (new
@@ -107,5 +116,5 @@ audited.
 >
 > Keep the security posture: least privilege, RBAC on every route, audit every
 > sensitive action, encrypted secrets at rest, no remote code execution in the
-> agent. Extend the smoke test (mock Graph), run it, update the roadmap +
-> changelog, package as v0.6, and give me the exact prompt for v0.7.
+> agent beyond the approval-gated job runner. Extend the smoke test (mock Graph),
+> run it, update the roadmap + changelog, and package as v0.8.

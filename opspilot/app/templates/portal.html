@@ -19,6 +19,8 @@
       <div class="stat sub" id="s-attn">—</div></div>
     <div class="card"><h3>Active Alerts</h3><div class="stat" id="s-alerts" style="color:var(--bad)">—</div>
       <div class="stat sub" id="s-alerts-sub">—</div></div>
+    <div class="card"><h3>Security Score</h3><div class="stat" id="s-score">—</div>
+      <div class="stat sub" id="s-score-sub">—</div></div>
     <div class="card"><h3>Your Licenses</h3><div class="stat" id="s-lic">—</div></div>
   </div>
   <div class="card hidden" id="c-alerts" style="margin-top:16px"><h3>Active Alerts</h3><table>
@@ -42,6 +44,9 @@
   <div class="card" style="margin-top:16px"><h3>Your Requests</h3><table>
     <thead><tr><th>#</th><th>Subject</th><th>Priority</th><th>Status</th><th>Opened</th></tr></thead>
     <tbody id="t-tickets"></tbody></table></div>
+  <div class="card hidden" id="sec-card" style="margin-top:16px"><h3>Security Findings</h3><table>
+    <thead><tr><th>Severity</th><th>Finding</th><th>Recommendation</th><th>Status</th></tr></thead>
+    <tbody id="t-findings"></tbody></table></div>
   <div class="card hidden" id="kb-view" style="margin-top:16px"></div>
   <div class="card hidden" id="kb-card" style="margin-top:16px"><h3>Documentation</h3><table>
     <thead><tr><th>Title</th><th>Category</th></tr></thead>
@@ -92,6 +97,18 @@ async function sendReply(id){
   await post(`/api/tickets/${id}/comments`,{body});
   openTicket(id);loadTickets();
 }
+async function loadSecurity(){
+  const sc=await api('/api/security/scorecard');if(!sc)return;
+  const color=sc.score>=85?'var(--ok)':(sc.score>=60?'var(--warn)':'var(--bad)');
+  const el=document.getElementById('s-score');el.textContent=sc.score;el.style.color=color;
+  document.getElementById('s-score-sub').textContent=sc.open_findings+' open finding(s)';
+  const fs=await api('/api/security/findings');
+  document.getElementById('sec-card').classList.toggle('hidden',!(fs&&fs.length));
+  document.getElementById('t-findings').innerHTML=(fs||[]).map(f=>
+    `<tr><td><span class="sev ${f.severity==='medium'?'warning':(f.severity==='low'?'info':'critical')}">${f.severity}</span></td>
+     <td>${esc(f.title)}</td><td style="color:var(--muted)">${esc(f.recommendation||'—')}</td>
+     <td><span class="badge ${f.status==='resolved'||f.status==='risk_accepted'?'ok':'warn'}">${esc(f.status)}</span></td></tr>`).join('');
+}
 async function loadKB(){
   const arts=await api('/api/kb');if(!arts)return;
   document.getElementById('kb-card').classList.toggle('hidden',arts.length===0);
@@ -135,6 +152,7 @@ async function load(){
   loadTickets();
   loadAlerts();
   loadKB();
+  loadSecurity();
 }
 load();
 </script>

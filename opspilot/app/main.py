@@ -15,7 +15,7 @@ from .core.db import Base, SessionLocal, engine
 from .core.security import hash_password
 from .models import Role, User
 from .api.routes import (
-    auth, resources, agent, ui, tickets, alerts, billing, kb, automation,
+    auth, resources, agent, ui, tickets, alerts, billing, kb, automation, security,
 )
 
 _s = get_settings()
@@ -79,6 +79,7 @@ app.include_router(billing.router)
 app.include_router(kb.router)
 app.include_router(automation.router)
 app.include_router(automation.notif_router)
+app.include_router(security.router)
 app.include_router(ui.router)
 
 

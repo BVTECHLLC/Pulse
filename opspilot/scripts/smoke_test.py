@@ -265,7 +265,43 @@ def main():
         assert ca_c.post("/api/automation/rules", json={"name":"x","trigger":"ticket.created","actions":[{"type":"notify"}]}).status_code==403
         print("automation RBAC isolation OK")
 
-    print("\n=== OpsPilot v0.5 SMOKE TEST PASSED ===")
+        # ===================== v0.6: Security posture =====================
+        # Assessment requires an authorizing party (ethics/consent gate).
+        assert c.post("/api/security/assessments", json={"client_id":cid,"title":"Q3 review","authorized_by":"  "}).status_code==400
+        aid=c.post("/api/security/assessments", json={"client_id":cid,"title":"Q3 review","scope":"HQ LAN","authorized_by":"Jane Client (CTO)"}).json()["id"]
+        assert c.patch(f"/api/security/assessments/{aid}", json={"status":"in_progress"}).json()["status"]=="in_progress"
+        print("security assessment + authorization gate OK")
+
+        # A CRITICAL finding raises an alert (and feeds automation); MEDIUM does not.
+        crit=c.post("/api/security/findings", json={"client_id":cid,"title":"Unpatched RDP (BlueKeep)",
+            "severity":"critical","cve":"CVE-2019-0708","assessment_id":aid,"recommendation":"Patch + disable RDP"}).json()
+        assert crit["alert_raised"] is True, crit
+        med=c.post("/api/security/findings", json={"client_id":cid,"title":"Weak TLS ciphers","severity":"medium"}).json()
+        assert med["alert_raised"] is False, med
+        assert any(a["kind"].startswith("security_finding:") for a in c.get("/api/alerts").json()), "no security alert"
+        sc=c.get(f"/api/security/scorecard?client_id={cid}").json()
+        assert sc["score"]==68 and sc["by_severity"]["critical"]==1 and sc["open_findings"]==2, sc
+        print("security findings + alert + scorecard OK (score=%d)" % sc["score"])
+
+        # Resolving the critical finding restores score and resolves its linked alert.
+        c.patch(f"/api/security/findings/{crit['id']}", json={"status":"resolved"})
+        assert c.get(f"/api/security/scorecard?client_id={cid}").json()["score"]==93
+        assert not any(a["kind"]==f"security_finding:{crit['id']}" for a in c.get("/api/alerts").json()), "linked alert not resolved"
+        print("finding resolve -> score recover + alert auto-resolve OK")
+
+        # Client visibility: clients see only findings flagged client_visible, scorecard is their own.
+        c.post("/api/security/findings", json={"client_id":cid,"title":"Shared doc public link","severity":"medium","client_visible":True})
+        c.post("/api/security/findings", json={"client_id":cid,"title":"Internal recon note","severity":"low","client_visible":False})
+        cv=ca_c.get("/api/security/findings").json()
+        assert cv and all(f["client_visible"] for f in cv), cv
+        assert not any(f["title"]=="Internal recon note" for f in cv), "client saw an internal finding!"
+        assert isinstance(ca_c.get("/api/security/scorecard").json(), dict), "client scorecard should be a single object"
+        # Clients cannot author security records or list assessments.
+        assert ca_c.post("/api/security/findings", json={"client_id":cid,"title":"x","severity":"low"}).status_code==403
+        assert ca_c.get("/api/security/assessments").status_code==403
+        print("security tenant isolation + RBAC OK")
+
+    print("\n=== OpsPilot v0.6 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

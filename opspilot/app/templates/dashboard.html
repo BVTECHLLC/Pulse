@@ -25,6 +25,7 @@
     <a data-tab="tickets" onclick="tab('tickets')">Tickets</a>
     <a data-tab="billing" onclick="tab('billing')">Billing</a>
     <a data-tab="automation" onclick="tab('automation')">Automation</a>
+    <a data-tab="security" onclick="tab('security')">Security</a>
     <a data-tab="kb" onclick="tab('kb')">Knowledge Base</a>
     <a data-tab="licenses" onclick="tab('licenses')">Licenses</a>
     <a data-tab="audit" onclick="tab('audit')">Audit Log</a>
@@ -135,6 +136,34 @@
           <thead><tr><th>Time</th><th>Rule</th><th>Summary</th><th>OK</th></tr></thead>
           <tbody id="t-runs"></tbody></table></div>
       </div>
+    </div>
+  </section>
+
+  <section id="security" class="hidden">
+    <div class="card" style="margin-bottom:16px"><h3>Security Posture by Client</h3><table>
+      <thead><tr><th>Client</th><th>Score</th><th>Open</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th></tr></thead>
+      <tbody id="t-scorecard"></tbody></table></div>
+    <div class="grid cols-2" style="align-items:start">
+      <div class="card">
+        <h3>New Finding</h3>
+        <input id="sf-title" placeholder="Title (e.g. Unpatched RDP)">
+        <div class="flex">
+          <div style="flex:1"><label>Client</label>
+            <select id="sf-client" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select></div>
+          <div><label>Severity</label>
+            <select id="sf-sev" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)">
+              <option value="critical">Critical</option><option value="high">High</option>
+              <option value="medium" selected>Medium</option><option value="low">Low</option></select></div>
+        </div>
+        <label>CVE (optional)</label><input id="sf-cve" placeholder="CVE-2019-0708">
+        <label>Recommendation</label><input id="sf-rec" placeholder="How to remediate">
+        <label class="flex" style="margin:8px 0"><input type="checkbox" id="sf-vis" style="width:auto"> visible to client</label>
+        <div class="err" id="sf-msg"></div>
+        <button class="btn" onclick="createFinding()">Add finding</button>
+      </div>
+      <div class="card"><h3>Findings</h3><table>
+        <thead><tr><th>Sev</th><th>Title</th><th>CVE</th><th>Status</th><th></th></tr></thead>
+        <tbody id="t-findings"></tbody></table></div>
     </div>
   </section>
 
@@ -362,6 +391,40 @@ async function loadNotifications(){
 async function readNotif(id){await post(`/api/notifications/${id}/read`);loadNotifications();}
 async function markAllRead(){await post('/api/notifications/read-all');loadNotifications();}
 
+// ---- Security posture ----
+function sevBadge(s){const m={critical:'bad',high:'bad',medium:'warn',low:'ok'};return `<span class="sev ${s==='medium'?'warning':(s==='low'?'info':'critical')}">${s}</span>`;}
+function scoreColor(v){return v>=85?'var(--ok)':(v>=60?'var(--warn)':'var(--bad)');}
+async function loadSecurity(){
+  const cards=await api('/api/security/scorecard');if(!cards)return;
+  const list=Array.isArray(cards)?cards:[cards];
+  document.getElementById('t-scorecard').innerHTML=list.map(s=>{
+    const b=s.by_severity||{};
+    return `<tr><td>${esc(CLIENTS[s.client_id]||s.client_id)}</td>
+     <td><b style="color:${scoreColor(s.score)}">${s.score}</b></td><td>${s.open_findings}</td>
+     <td>${b.critical||0}</td><td>${b.high||0}</td><td>${b.medium||0}</td><td>${b.low||0}</td></tr>`;}).join('')
+    ||'<tr><td colspan=7 class="muted">No clients yet.</td></tr>';
+  const findings=await api('/api/security/findings');
+  document.getElementById('t-findings').innerHTML=(findings||[]).map(f=>
+    `<tr><td>${sevBadge(f.severity)}</td><td>${esc(f.title)}</td><td class="muted">${esc(f.cve||'—')}</td>
+     <td><span class="badge ${f.status==='resolved'||f.status==='risk_accepted'?'ok':(f.status==='remediating'?'warn':'bad')}">${esc(f.status)}</span></td>
+     <td class="flex">${f.status==='open'||f.status==='remediating'?
+        `<button class="btn sm ghost" onclick="setFinding(${f.id},'remediating')">fixing</button>
+         <button class="btn sm" onclick="setFinding(${f.id},'resolved')">resolve</button>`:''}</td></tr>`).join('')
+    ||'<tr><td colspan=5 class="muted">No findings. A clean bill of health 🎉</td></tr>';
+}
+async function createFinding(){
+  const msg=document.getElementById('sf-msg');msg.textContent='';
+  const title=document.getElementById('sf-title').value.trim();
+  if(!title){msg.textContent='Title required.';return;}
+  const r=await post('/api/security/findings',{client_id:parseInt(document.getElementById('sf-client').value),
+    title,severity:document.getElementById('sf-sev').value,cve:document.getElementById('sf-cve').value||null,
+    recommendation:document.getElementById('sf-rec').value||null,client_visible:document.getElementById('sf-vis').checked});
+  if(r.ok){document.getElementById('sf-title').value='';document.getElementById('sf-cve').value='';
+    document.getElementById('sf-rec').value='';loadSecurity();refreshBadges();loadAlerts();msg.textContent='Finding added ✓';}
+  else{const d=await r.json().catch(()=>({detail:'Error'}));msg.textContent=d.detail||'Failed';}
+}
+async function setFinding(id,st){await patch(`/api/security/findings/${id}`,{status:st});loadSecurity();refreshBadges();loadAlerts();}
+
 // ---- Knowledge base ----
 async function loadKB(){
   const arts=await api('/api/kb');if(!arts)return;
@@ -436,6 +499,8 @@ async function load(){
   // Populate the KB "client" selector (blank = all clients).
   const kbSel=document.getElementById('kb-client');
   if(kbSel)kbSel.innerHTML='<option value="">All clients</option>'+clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const sfSel=document.getElementById('sf-client');
+  if(sfSel)sfSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   document.getElementById('s-clients').textContent=clients.length;
   document.getElementById('s-devices').textContent=devices.length;
   document.getElementById('s-attn').textContent=devices.filter(d=>(d.health_score??100)<70).length+' need attention';
@@ -468,7 +533,7 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity()]);
 }
 load();
 </script>
