@@ -458,3 +458,81 @@ class SecurityFinding(Base):
     resolved_by_user_id: Mapped[int | None] = mapped_column(Integer)
     created_by_user_id: Mapped[int | None] = mapped_column(Integer)
     author_email: Mapped[str | None] = mapped_column(String(200))
+
+
+# --------------------------------------------------------------------------- #
+# v0.7 — Script library & deployment governance
+#
+# SAFETY MODEL (read before touching this):
+#   * A script is INERT until an OWNER flips `enabled = True`.
+#   * Pushing a script to a device is a *request* that (by default) needs an
+#     OWNER approval, and the approver must NOT be the requester (separation of
+#     duties). Consent + a reason are recorded on every request.
+#   * The exact content+version is SNAPSHOTTED onto the deployment at request
+#     time, so editing the library later can't change what was approved/runs.
+#   * The agent PULLS only its own approved jobs and reports results; the server
+#     never pushes ad-hoc commands. The agent runner is itself opt-in.
+#   Result: no arbitrary remote code execution — only approved, logged,
+#   attributable, content-pinned jobs.
+# --------------------------------------------------------------------------- #
+SCRIPT_LANGUAGES = ("powershell", "bash", "python", "cmd")
+SCRIPT_RISK_LEVELS = ("low", "medium", "high")
+
+
+class DeploymentStatus(str, enum.Enum):
+    PENDING_APPROVAL = "pending_approval"
+    APPROVED = "approved"          # ready for the agent to pull
+    RUNNING = "running"            # agent has picked it up
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    REJECTED = "rejected"
+    CANCELED = "canceled"
+
+
+class Script(Base):
+    """A reusable script in the library. Disabled by default; only an OWNER may
+    enable it. Editing bumps `version` so deployment snapshots stay meaningful."""
+    __tablename__ = "scripts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    language: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str | None] = mapped_column(String(80), index=True)
+    risk_level: Mapped[str] = mapped_column(String(20), default="medium")
+    requires_approval: Mapped[bool] = mapped_column(Boolean, default=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    author_email: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class ScriptDeployment(Base):
+    """A request to run a specific script on a specific device. Content/version
+    are snapshotted so what is approved is exactly what runs."""
+    __tablename__ = "script_deployments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    script_id: Mapped[int | None] = mapped_column(ForeignKey("scripts.id"), index=True)
+    script_name: Mapped[str] = mapped_column(String(200))
+    script_version: Mapped[int] = mapped_column(Integer)
+    language: Mapped[str] = mapped_column(String(20))
+    content: Mapped[str] = mapped_column(Text)           # snapshot of what runs
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), index=True, nullable=False)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    status: Mapped[DeploymentStatus] = mapped_column(Enum(DeploymentStatus),
+                                                     default=DeploymentStatus.PENDING_APPROVAL, index=True)
+    reason: Mapped[str | None] = mapped_column(Text)
+    consent_ack: Mapped[bool] = mapped_column(Boolean, default=False)
+    requested_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    requested_by_email: Mapped[str | None] = mapped_column(String(200))
+    approved_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    approved_by_email: Mapped[str | None] = mapped_column(String(200))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str | None] = mapped_column(Text)  # rejection reason / notes
+    exit_code: Mapped[int | None] = mapped_column(Integer)
+    output: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)

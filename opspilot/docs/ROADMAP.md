@@ -68,13 +68,13 @@ audited.
 
 ---
 
-## v0.7 — Script library & deployment governance (NEXT)
+## ✅ v0.7 (this release) — Script library & deployment governance
 - Script library: **disabled by default**, versioned, risk-rated, categorized.
 - Deployment workflow: request → **approve** (separation of duties: approver ≠
   requester, owner-gated) → agent pulls only the approved job → result reported.
 - Consent acknowledgement + reason recorded per deployment; full before/after
-  audit; reject/cancel paths.
-- Agent gains an **opt-in** (`--enable-remote-scripts`), consent-gated job runner
+  audit; reject/cancel paths; content pinned at request time.
+- Agent gained an **opt-in** (`--enable-remote-scripts`), consent-gated job runner
   that executes ONLY server-approved jobs for its own enrolled device.
 - NO arbitrary remote code execution — only approved, logged, attributable jobs.
 

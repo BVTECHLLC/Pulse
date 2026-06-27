@@ -26,6 +26,7 @@
     <a data-tab="billing" onclick="tab('billing')">Billing</a>
     <a data-tab="automation" onclick="tab('automation')">Automation</a>
     <a data-tab="security" onclick="tab('security')">Security</a>
+    <a data-tab="scripts" onclick="tab('scripts')">Scripts</a>
     <a data-tab="kb" onclick="tab('kb')">Knowledge Base</a>
     <a data-tab="licenses" onclick="tab('licenses')">Licenses</a>
     <a data-tab="audit" onclick="tab('audit')">Audit Log</a>
@@ -167,6 +168,35 @@
     </div>
   </section>
 
+  <section id="scripts" class="hidden">
+    <p class="muted" style="margin:0 0 12px">Scripts are <b>disabled by default</b>. Deploying requires an owner's approval, a recorded reason, and consent — every run is audited. No ad-hoc remote commands.</p>
+    <div class="grid cols-2" style="align-items:start">
+      <div class="card">
+        <h3>New Script</h3>
+        <input id="scr-name" placeholder="Name (e.g. Restart print spooler)">
+        <div class="flex">
+          <div><label>Language</label>
+            <select id="scr-lang" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)">
+              <option value="powershell">PowerShell</option><option value="bash">Bash</option>
+              <option value="python">Python</option><option value="cmd">cmd</option></select></div>
+          <div><label>Risk</label>
+            <select id="scr-risk" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)">
+              <option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></div>
+        </div>
+        <label>Content</label>
+        <textarea id="scr-content" rows="6" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink);font-family:monospace" placeholder="Restart-Service Spooler"></textarea>
+        <div class="err" id="scr-msg"></div>
+        <button class="btn" style="margin-top:10px" onclick="createScript()">Save to library</button>
+      </div>
+      <div class="card"><h3>Library</h3><table>
+        <thead><tr><th>Name</th><th>Lang</th><th>Risk</th><th>Enabled</th><th></th></tr></thead>
+        <tbody id="t-scripts"></tbody></table></div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>Deployments</h3><table>
+      <thead><tr><th>#</th><th>Script</th><th>Device</th><th>By</th><th>Status</th><th>Exit</th><th></th></tr></thead>
+      <tbody id="t-deployments"></tbody></table></div>
+  </section>
+
   <section id="kb" class="hidden">
     <div class="grid cols-2" style="align-items:start">
       <div>
@@ -219,7 +249,7 @@ function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;'
 function ago(iso){if(!iso)return 'never';return new Date(iso).toLocaleString();}
 async function logout(){await fetch('/api/auth/logout',{method:'POST'});location.href='/';}
 
-let CLIENTS={};
+let CLIENTS={},DEVICES={};
 
 async function loadAlerts(){
   const showRes=document.getElementById('a-show-resolved').checked;
@@ -391,6 +421,61 @@ async function loadNotifications(){
 async function readNotif(id){await post(`/api/notifications/${id}/read`);loadNotifications();}
 async function markAllRead(){await post('/api/notifications/read-all');loadNotifications();}
 
+// ---- Scripts & deployments ----
+async function loadScripts(){
+  const scripts=await api('/api/scripts');if(!scripts)return;
+  document.getElementById('t-scripts').innerHTML=scripts.map(s=>
+    `<tr><td>${esc(s.name)}</td><td class="muted">${esc(s.language)}</td>
+     <td>${sevBadge(s.risk_level==='high'?'high':(s.risk_level==='low'?'low':'medium'))}</td>
+     <td><button class="btn sm ${s.enabled?'':'ghost'}" onclick="toggleScript(${s.id},${!s.enabled})">${s.enabled?'on':'off'}</button></td>
+     <td>${s.enabled?`<button class="btn sm" onclick="deployScript(${s.id},'${esc(s.name)}')">deploy</button>`:'<span class="muted">enable first</span>'}</td></tr>`).join('')
+    ||'<tr><td colspan=5 class="muted">Library is empty.</td></tr>';
+}
+async function createScript(){
+  const msg=document.getElementById('scr-msg');msg.textContent='';
+  const name=document.getElementById('scr-name').value.trim();
+  const content=document.getElementById('scr-content').value;
+  if(!name||!content.trim()){msg.textContent='Name and content required.';return;}
+  const r=await post('/api/scripts',{name,language:document.getElementById('scr-lang').value,
+    content,risk_level:document.getElementById('scr-risk').value});
+  if(r.ok){document.getElementById('scr-name').value='';document.getElementById('scr-content').value='';
+    loadScripts();msg.textContent='Saved (disabled until you enable it) ✓';}
+  else{const d=await r.json().catch(()=>({detail:'Error'}));msg.textContent=d.detail||'Failed';}
+}
+async function toggleScript(id,en){const r=await post(`/api/scripts/${id}/enable`,{enabled:en});
+  if(!r.ok){alert('Only an owner can enable/disable scripts.');}loadScripts();}
+async function deployScript(id,name){
+  const did=prompt(`Deploy "${name}" to which device ID?\n(see the Devices tab)`);
+  if(!did)return;
+  const reason=prompt('Reason for this deployment (recorded + audited):')||'';
+  if(!confirm('I confirm consent to run this approved script on the target device.'))return;
+  const r=await post(`/api/scripts/${id}/deploy`,{device_id:parseInt(did),reason,consent_ack:true});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){alert(`Deployment #${j.id} created (${j.status}). An owner must approve it.`);loadDeployments();}
+  else alert(j.detail||'Deploy failed');
+}
+async function loadDeployments(){
+  const deps=await api('/api/deployments');if(!deps)return;
+  document.getElementById('t-deployments').innerHTML=deps.map(d=>{
+    const sc={pending_approval:'warn',approved:'warn',running:'warn',succeeded:'ok',failed:'bad',rejected:'bad',canceled:''}[d.status]||'';
+    const act=d.status==='pending_approval'
+      ? `<button class="btn sm" onclick="decideDep(${d.id},'approve')">approve</button> <button class="btn sm ghost" onclick="decideDep(${d.id},'reject')">reject</button>`
+      : (d.status==='approved'?`<button class="btn sm ghost" onclick="decideDep(${d.id},'cancel')">cancel</button>`:'');
+    return `<tr><td>#${d.id}</td><td>${esc(d.script_name)} v${d.script_version}</td>
+     <td>${esc(DEVICES[d.device_id]||d.device_id)}</td><td class="muted">${esc(d.requested_by_email||'')}</td>
+     <td><span class="badge ${sc}">${esc(d.status)}</span></td><td>${d.exit_code==null?'—':d.exit_code}</td>
+     <td class="flex">${act}</td></tr>`;}).join('')
+    ||'<tr><td colspan=7 class="muted">No deployments yet.</td></tr>';
+}
+async function decideDep(id,action){
+  let body={};
+  if(action==='reject')body={note:prompt('Rejection note (optional):')||null};
+  const path=action==='cancel'?`/api/deployments/${id}/cancel`:`/api/deployments/${id}/${action}`;
+  const r=await post(path,body);
+  if(!r.ok){const j=await r.json().catch(()=>({}));alert(j.detail||'Action failed');}
+  loadDeployments();
+}
+
 // ---- Security posture ----
 function sevBadge(s){const m={critical:'bad',high:'bad',medium:'warn',low:'ok'};return `<span class="sev ${s==='medium'?'warning':(s==='low'?'info':'critical')}">${s}</span>`;}
 function scoreColor(v){return v>=85?'var(--ok)':(v>=60?'var(--warn)':'var(--bad)');}
@@ -511,8 +596,9 @@ async function load(){
      <td><span class="badge ${c.is_active?'ok':'bad'}">${c.is_active?'active':'inactive'}</span></td></tr>`).join('')
     ||'<tr><td colspan=4 class="muted">No clients yet. Add one via the API.</td></tr>';
 
+  devices.forEach(d=>DEVICES[d.id]=d.hostname);
   document.getElementById('t-devices').innerHTML=devices.map(d=>
-    `<tr><td>${esc(d.hostname)}</td><td>${esc(d.os)||'—'}</td><td>${d.cpu_pct??'—'}</td>
+    `<tr><td>${esc(d.hostname)} <span class="muted">#${d.id}</span></td><td>${esc(d.os)||'—'}</td><td>${d.cpu_pct??'—'}</td>
      <td>${d.disk_pct??'—'}</td><td>${esc(d.av_status)||'—'}</td><td>${badge(d.health_score,80,60)}</td>
      <td class="muted">${ago(d.last_checkin)}</td></tr>`).join('')
     ||'<tr><td colspan=7 class="muted">No devices enrolled yet.</td></tr>';
@@ -533,7 +619,7 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments()]);
 }
 load();
 </script>

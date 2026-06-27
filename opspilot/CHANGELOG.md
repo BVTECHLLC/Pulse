@@ -1,5 +1,41 @@
 # BVTech OpsPilot — Changelog
 
+## v0.7.0 — Script library & deployment governance (June 2026)
+
+Real "push a script to a device" capability — built so it can never become
+arbitrary remote code execution.
+
+### Added
+- **Script library** (`/api/scripts`): versioned, categorized, risk-rated
+  scripts (PowerShell/Bash/Python/cmd). **Disabled by default** — a script is
+  inert until an **OWNER** enables it (`POST /api/scripts/{id}/enable`). Editing
+  content bumps the version.
+- **Deployment workflow** (`/api/scripts/{id}/deploy` → `/api/deployments`):
+  - The deploy request **snapshots** the exact content+version, so later library
+    edits can't change what was approved/runs.
+  - Requires `consent_ack` and records a reason.
+  - Needs **OWNER approval**, and the approver may **not** be the requester
+    (separation of duties). Reject and cancel paths included.
+- **Agent job queue** (`GET /api/agent/jobs`, `POST /api/agent/jobs/{id}/result`):
+  the agent authenticates with its device key and pulls **only its own approved
+  jobs**, runs the pinned content, and reports exit code + output. The server
+  never pushes ad-hoc commands.
+- **Agent runner** (`opspilot_agent.py run --enable-remote-scripts`): an
+  **opt-in**, consent-bannered job runner. Off unless explicitly enabled; runs
+  only server-approved jobs for its own enrolled device, with a 10-minute cap.
+- **Dashboard**: new **Scripts** tab — library with owner enable toggle, deploy
+  (device + reason + consent), and a deployments table with approve/reject/cancel.
+- New Alembic migration (`scripts`, `script_deployments`) — verified reversible.
+- Smoke test extended: disabled-deploy block, consent gate, separation-of-duties
+  approval, agent pull→run→result, reject/cancel, and RBAC isolation.
+
+### Security
+- Enable, approve, reject are OWNER-gated; deploy requests are staff-only; clients
+  have no access to the library or deployments. Every transition is audited.
+- Content pinning + separation of duties + consent + owner-only enable mean there
+  is **no arbitrary remote code execution path** — only approved, logged,
+  attributable, content-locked jobs that the agent must opt in to run.
+
 ## v0.6.0 — Security posture & remediation (June 2026)
 
 A **defensive** security module — it documents, tracks, and helps remediate

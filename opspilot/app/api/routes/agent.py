@@ -22,7 +22,9 @@ from ...core.security import (
     hash_password, mint_enrollment_token, random_token, verify_enrollment_token,
     verify_password,
 )
-from ...models import Client, Device, DeviceCheckin, Role, User
+from ...models import (
+    Client, Device, DeviceCheckin, DeploymentStatus, Role, ScriptDeployment, User,
+)
 from ...services import audit, automation, monitoring
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
@@ -135,3 +137,61 @@ def checkin(body: CheckinIn, request: Request,
     for alert in new_alerts:
         automation.dispatch(db, "alert.opened", automation.build_alert_context(alert, dev))
     return {"ok": True, "interval_sec": 300}
+
+
+# --------------------------------------------------------------------------- #
+# Approved-job queue (v0.7). The agent PULLS only its own approved jobs and
+# reports results. The server never pushes ad-hoc commands; every job here was
+# individually approved (see routes/scripts.py) and its content is pinned.
+# --------------------------------------------------------------------------- #
+def _auth_device(db: Session, enroll_id: str, agent_key: str) -> Device:
+    dev = db.query(Device).filter(Device.enroll_id == enroll_id).first()
+    if not dev or not dev.agent_key_hash or not verify_password(agent_key, dev.agent_key_hash):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Agent not authorized")
+    return dev
+
+
+@router.get("/jobs")
+def pull_jobs(x_enroll_id: str = Header(...), x_agent_key: str = Header(...),
+              db: Session = Depends(get_db)):
+    """Return this device's APPROVED deployments and move them to RUNNING. The
+    agent only ever sees jobs explicitly approved for its own enrolled device."""
+    dev = _auth_device(db, x_enroll_id, x_agent_key)
+    jobs = (db.query(ScriptDeployment)
+            .filter(ScriptDeployment.device_id == dev.id,
+                    ScriptDeployment.status == DeploymentStatus.APPROVED)
+            .order_by(ScriptDeployment.created_at).all())
+    out = []
+    for j in jobs:
+        j.status = DeploymentStatus.RUNNING
+        j.started_at = datetime.now(timezone.utc)
+        out.append({"id": j.id, "language": j.language, "content": j.content})
+    if jobs:
+        db.commit()
+    return {"jobs": out}
+
+
+class JobResultIn(BaseModel):
+    exit_code: int
+    output: str | None = None
+
+
+@router.post("/jobs/{job_id}/result")
+def report_job_result(job_id: int, body: JobResultIn, request: Request,
+                      x_enroll_id: str = Header(...), x_agent_key: str = Header(...),
+                      db: Session = Depends(get_db)):
+    dev = _auth_device(db, x_enroll_id, x_agent_key)
+    j = db.get(ScriptDeployment, job_id)
+    if not j or j.device_id != dev.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Job not found")
+    if j.status != DeploymentStatus.RUNNING:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Job is {j.status.value}, not running")
+    j.exit_code = body.exit_code
+    j.output = (body.output or "")[:20000]  # cap stored output
+    j.status = DeploymentStatus.SUCCEEDED if body.exit_code == 0 else DeploymentStatus.FAILED
+    j.completed_at = datetime.now(timezone.utc)
+    db.commit()
+    audit.record(db, action="script.deploy_result", target_type="script_deployment",
+                 target_id=str(j.id), client_id=j.client_id, ip=_ip(request),
+                 detail=f"exit={body.exit_code} status={j.status.value}", success=(body.exit_code == 0))
+    return {"ok": True, "status": j.status.value}

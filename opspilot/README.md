@@ -3,13 +3,14 @@
 Secure, cloud-hosted MSP command center, admin dashboard, and client portal for
 **BVTech LLC** — evolving toward a lightweight RMM-style platform.
 
-**Current version: v0.6.0** — a unified **RMM + PSA** platform: auth + RBAC +
+**Current version: v0.7.0** — a unified **RMM + PSA** platform: auth + RBAC +
 clients/devices/licenses + audit log + telemetry agent, a monitoring/alerting
 engine, billing (MRR & renewals) visibility, a **full SLA-tracked helpdesk**
 (threading, assignment, time tracking), an **IT documentation / knowledge base**,
-a **server-side automation engine** (event→action rules + notifications), and a
-**defensive security-posture module** (authorized assessments, vulnerability
-findings, per-client scorecard) + deployment scaffold.
+a **server-side automation engine** (event→action rules + notifications), a
+**defensive security-posture module** (assessments, findings, scorecard), and a
+**governed script library** (approval-gated, consent + audited deployments)
++ deployment scaffold.
 
 ---
 
@@ -110,6 +111,15 @@ python scripts/smoke_test.py     # runs the full enroll→checkin→audit flow
   workflow; high/critical findings raise an alert and feed the automation engine.
 - **Scorecard**: `/api/security/scorecard` — 0–100 posture score per client.
   Clients see only `client_visible` findings + their own score.
+
+**v0.7 — Script library & deployment governance** (safe "scripts to push")
+- **Library**: `/api/scripts` — versioned, risk-rated; **disabled by default**,
+  owner-only enable.
+- **Governed deployment**: `/api/scripts/{id}/deploy` → `/api/deployments` —
+  content-pinned snapshot, consent + reason required, **owner approval with
+  separation of duties** (approver ≠ requester); reject/cancel paths.
+- **Agent job queue**: `GET /api/agent/jobs` + `POST /api/agent/jobs/{id}/result`
+  — the agent pulls only its own approved jobs (opt-in runner). No ad-hoc commands.
 
 See `docs/` for deployment and security details, and `docs/ROADMAP.md` for what's
 next and the **exact prompt to paste**.

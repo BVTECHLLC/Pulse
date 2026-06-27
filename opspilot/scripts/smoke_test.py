@@ -301,7 +301,53 @@ def main():
         assert ca_c.get("/api/security/assessments").status_code==403
         print("security tenant isolation + RBAC OK")
 
-    print("\n=== OpsPilot v0.6 SMOKE TEST PASSED ===")
+        # ===================== v0.7: Script library & deployment governance =====================
+        target_dev = ent2["device_id"]  # AUTO-PC, whose agent headers we hold (hdr2)
+        sc_id=c.post("/api/scripts", json={"name":"Clear temp","language":"bash",
+            "content":"echo cleaning","risk_level":"low"}).json()["id"]
+        assert any(s["id"]==sc_id and s["enabled"] is False for s in c.get("/api/scripts").json()), "script should start disabled"
+        # disabled scripts can't be deployed
+        assert c.post(f"/api/scripts/{sc_id}/deploy", json={"device_id":target_dev,"consent_ack":True}).status_code==409
+        assert c.post(f"/api/scripts/{sc_id}/enable", json={"enabled":True}).json()["enabled"] is True
+        # consent is mandatory
+        assert c.post(f"/api/scripts/{sc_id}/deploy", json={"device_id":target_dev,"consent_ack":False}).status_code==400
+        print("script library + enable gate + consent gate OK")
+
+        # a TECH requests; the OWNER approves (separation of duties enforced)
+        tech=User(email="tech@bvtech.org", password_hash=hash_password("TechPass123!"), role=Role.TECH, is_active=True)
+        _dbt=_SL(); _dbt.add(tech); _dbt.commit(); _dbt.close()
+        tc=TestClient(app); tc.cookies.clear()
+        assert tc.post("/api/auth/login", json={"email":"tech@bvtech.org","password":"TechPass123!"}).status_code==200
+        dep=tc.post(f"/api/scripts/{sc_id}/deploy", json={"device_id":target_dev,"reason":"cleanup","consent_ack":True}).json()
+        assert dep["status"]=="pending_approval", dep
+        # an owner may NOT approve a deployment they themselves requested
+        own_dep=c.post(f"/api/scripts/{sc_id}/deploy", json={"device_id":target_dev,"consent_ack":True}).json()["id"]
+        assert c.post(f"/api/deployments/{own_dep}/approve", json={}).status_code==403, "separation of duties bypassed!"
+        assert c.post(f"/api/deployments/{dep['id']}/approve", json={}).json()["status"]=="approved"
+        print("deploy request + separation-of-duties approval OK")
+
+        # the agent for AUTO-PC pulls ONLY its approved job, runs it, reports the result
+        jobs=ag.get("/api/agent/jobs", headers=hdr2).json()["jobs"]
+        assert any(j["id"]==dep["id"] and j["content"]=="echo cleaning" for j in jobs), "approved job not delivered to its device"
+        res=ag.post(f"/api/agent/jobs/{dep['id']}/result", headers=hdr2, json={"exit_code":0,"output":"cleaning\n"})
+        assert res.status_code==200 and res.json()["status"]=="succeeded", res.text
+        got=c.get(f"/api/deployments/{dep['id']}").json()
+        assert got["status"]=="succeeded" and got["exit_code"]==0, got
+        print("agent approved-job pull + result report OK")
+
+        # reject and cancel paths
+        rej=tc.post(f"/api/scripts/{sc_id}/deploy", json={"device_id":target_dev,"consent_ack":True}).json()["id"]
+        assert c.post(f"/api/deployments/{rej}/reject", json={"note":"too risky"}).json()["status"]=="rejected"
+        can=tc.post(f"/api/scripts/{sc_id}/deploy", json={"device_id":target_dev,"consent_ack":True}).json()["id"]
+        assert tc.post(f"/api/deployments/{can}/cancel").json()["status"]=="canceled"
+        print("deploy reject + cancel OK")
+
+        # clients can't see the script library or push anything
+        assert ca_c.get("/api/scripts").status_code==403
+        assert ca_c.post(f"/api/scripts/{sc_id}/deploy", json={"device_id":target_dev,"consent_ack":True}).status_code==403
+        print("scripts RBAC isolation OK")
+
+    print("\n=== OpsPilot v0.7 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
