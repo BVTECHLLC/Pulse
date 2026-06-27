@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ app_name }} — Sign in</title>
+<link rel="stylesheet" href="/static/css/pulse.css">
+</head>
+<body>
+<div class="login-shell">
+  <div class="login-card">
+    <div class="brand" style="margin-bottom:20px"><span class="dot"></span> BVTech OpsPilot</div>
+    <h1>Sign in</h1>
+    <p class="sub">Command center & client portal</p>
+
+    <label>Email</label>
+    <input id="email" type="email" autocomplete="username" placeholder="you@bvtech.org">
+    <label>Password</label>
+    <input id="password" type="password" autocomplete="current-password" placeholder="••••••••">
+    <div id="mfa-row" class="hidden">
+      <label>Authenticator code</label>
+      <input id="mfa" inputmode="numeric" autocomplete="one-time-code" placeholder="123456">
+    </div>
+    <div class="err" id="err"></div>
+    <button class="btn" style="width:100%;margin-top:18px" onclick="doLogin()">Sign in</button>
+    <div class="foot">v{{ version }} · Encrypted · MFA-ready · Audit-logged</div>
+  </div>
+</div>
+<script>
+async function doLogin(){
+  const err=document.getElementById('err');err.textContent='';
+  const body={
+    email:document.getElementById('email').value.trim(),
+    password:document.getElementById('password').value,
+    mfa_code:document.getElementById('mfa').value.trim()||null
+  };
+  const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r.ok){
+    const d=await r.json();
+    location.href = (d.role==='client_admin'||d.role==='client_viewer') ? '/portal' : '/dashboard';
+    return;
+  }
+  const d=await r.json().catch(()=>({detail:'Error'}));
+  if(d.detail==='MFA code required'){
+    document.getElementById('mfa-row').classList.remove('hidden');
+    err.textContent='Enter your authenticator code.';
+  }else{
+    err.textContent=d.detail||'Sign in failed';
+  }
+}
+document.addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+</script>
+</body>
+</html>

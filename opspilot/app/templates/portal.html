@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ app_name }} — Client Portal</title>
+<link rel="stylesheet" href="/static/css/pulse.css">
+</head>
+<body>
+<div class="topbar">
+  <div class="brand"><span class="dot"></span> BVTech OpsPilot <span class="pill">Client Portal</span></div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span class="pill" id="who">…</span>
+    <button class="btn ghost" onclick="logout()">Sign out</button>
+  </div>
+</div>
+<div class="wrap">
+  <div class="grid cols-2">
+    <div class="card"><h3>Your Devices</h3><div class="stat" id="s-devices">—</div>
+      <div class="stat sub" id="s-attn">—</div></div>
+    <div class="card"><h3>Your Licenses</h3><div class="stat" id="s-lic">—</div></div>
+  </div>
+  <div class="card" style="margin-top:16px"><h3>Devices</h3><table>
+    <thead><tr><th>Host</th><th>OS</th><th>Health</th><th>Last check-in</th></tr></thead>
+    <tbody id="t-devices"></tbody></table></div>
+  <div class="card" style="margin-top:16px"><h3>Request Support</h3>
+    <label>Subject</label><input id="t-subject" placeholder="Brief summary">
+    <label>Details</label><input id="t-body" placeholder="What's happening?">
+    <label>Priority</label>
+    <select id="t-prio" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)">
+      <option value="low">Low</option><option value="normal" selected>Normal</option>
+      <option value="high">High</option><option value="urgent">Urgent</option>
+    </select>
+    <div class="err" id="t-msg"></div>
+    <button class="btn" style="margin-top:14px" onclick="submitTicket()">Submit request</button>
+  </div>
+  <div class="card" style="margin-top:16px"><h3>Your Requests</h3><table>
+    <thead><tr><th>Subject</th><th>Priority</th><th>Status</th><th>Opened</th></tr></thead>
+    <tbody id="t-tickets"></tbody></table></div>
+</div>
+<script>
+async function api(p){const r=await fetch(p);if(r.status===401){location.href='/';return null;}return r.json();}
+async function logout(){await fetch('/api/auth/logout',{method:'POST'});location.href='/';}
+function badge(v){if(v==null)return '—';const c=v>=80?'ok':(v>=60?'warn':'bad');return `<span class="badge ${c}">${v}</span>`;}
+async function submitTicket(){
+  const msg=document.getElementById('t-msg');msg.textContent='';
+  const subject=document.getElementById('t-subject').value.trim();
+  if(!subject){msg.textContent='Subject is required.';return;}
+  const r=await fetch('/api/tickets',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({subject,body:document.getElementById('t-body').value,priority:document.getElementById('t-prio').value})});
+  if(r.ok){document.getElementById('t-subject').value='';document.getElementById('t-body').value='';loadTickets();msg.textContent='Request submitted ✓';}
+  else{const d=await r.json().catch(()=>({detail:'Error'}));msg.textContent=d.detail||'Failed';}
+}
+async function loadTickets(){
+  const tk=await api('/api/tickets'); if(!tk)return;
+  document.getElementById('t-tickets').innerHTML=tk.map(t=>
+    `<tr><td>${t.subject}</td><td>${t.priority}</td>
+     <td><span class="badge ${t.status==='resolved'||t.status==='closed'?'ok':(t.status==='in_progress'?'warn':'')}">${t.status}</span></td>
+     <td>${new Date(t.created_at).toLocaleDateString()}</td></tr>`).join('')
+    ||'<tr><td colspan=4 style="color:var(--muted)">No requests yet.</td></tr>';
+}
+async function load(){
+  const me=await api('/api/auth/me'); if(!me)return;
+  document.getElementById('who').textContent=me.email;
+  const [devices,licenses]=await Promise.all([api('/api/devices'),api('/api/licenses')]);
+  document.getElementById('s-devices').textContent=devices.length+' total';
+  document.getElementById('s-attn').textContent=devices.filter(d=>(d.health_score??100)<70).length+' need attention';
+  document.getElementById('s-lic').textContent=licenses.length+' tracked';
+  document.getElementById('t-devices').innerHTML=devices.map(d=>
+    `<tr><td>${d.hostname}</td><td>${d.os||'—'}</td><td>${badge(d.health_score)}</td>
+     <td>${d.last_checkin?new Date(d.last_checkin).toLocaleString():'never'}</td></tr>`).join('')
+    ||'<tr><td colspan=4 style="color:var(--muted)">No devices yet.</td></tr>';
+  document.getElementById('t-licenses').innerHTML=licenses.map(l=>
+    `<tr><td>${l.product}</td><td>${l.seats_used??'?'}/${l.seats??'?'}</td>
+     <td>${l.renewal_date?new Date(l.renewal_date).toLocaleDateString():'—'}</td></tr>`).join('')
+    ||'<tr><td colspan=3 style="color:var(--muted)">No licenses yet.</td></tr>';
+  loadTickets();
+}
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# Replace opspilot.bvtech.org with your subdomain.
+# If you use Cloudflare Tunnel instead of exposing 80/443, you can delete the
+# caddy service and point the tunnel at api:8000 directly.
+opspilot.bvtech.org {
+    encode gzip
+    reverse_proxy api:8000
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains"
+        -Server
+    }
+}

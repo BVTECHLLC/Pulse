@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ app_name }} — Dashboard</title>
+<link rel="stylesheet" href="/static/css/pulse.css">
+</head>
+<body>
+<div class="topbar">
+  <div class="brand"><span class="dot"></span> BVTech OpsPilot</div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span class="pill" id="who">…</span>
+    <span class="pill">v{{ version }}</span>
+    <button class="btn ghost" onclick="logout()">Sign out</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="nav">
+    <a class="active" data-tab="overview" onclick="tab('overview')">Overview</a>
+    <a data-tab="clients" onclick="tab('clients')">Clients</a>
+    <a data-tab="devices" onclick="tab('devices')">Devices</a>
+    <a data-tab="licenses" onclick="tab('licenses')">Licenses</a>
+    <a data-tab="audit" onclick="tab('audit')">Audit Log</a>
+  </div>
+
+  <section id="overview">
+    <div class="grid cols-4">
+      <div class="card"><h3>Clients</h3><div class="stat" id="s-clients">—</div></div>
+      <div class="card"><h3>Devices</h3><div class="stat" id="s-devices">—</div></div>
+      <div class="card"><h3>Need Attention</h3><div class="stat" id="s-attn" style="color:var(--warn)">—</div></div>
+      <div class="card"><h3>Active Licenses</h3><div class="stat" id="s-lic">—</div></div>
+    </div>
+  </section>
+
+  <section id="clients" class="hidden"><div class="card"><table>
+    <thead><tr><th>Name</th><th>Contact</th><th>Email</th><th>Status</th></tr></thead>
+    <tbody id="t-clients"></tbody></table></div></section>
+
+  <section id="devices" class="hidden"><div class="card"><table>
+    <thead><tr><th>Host</th><th>OS</th><th>CPU</th><th>Disk</th><th>AV</th><th>Health</th><th>Last seen</th></tr></thead>
+    <tbody id="t-devices"></tbody></table></div></section>
+
+  <section id="licenses" class="hidden"><div class="card"><table>
+    <thead><tr><th>Product</th><th>Vendor</th><th>Seats</th><th>$/mo</th><th>Renewal</th></tr></thead>
+    <tbody id="t-licenses"></tbody></table></div></section>
+
+  <section id="audit" class="hidden"><div class="card"><table>
+    <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th>IP</th><th>OK</th></tr></thead>
+    <tbody id="t-audit"></tbody></table></div></section>
+</div>
+
+<script>
+async function api(p){const r=await fetch(p);if(r.status===401){location.href='/';return null;}return r.json();}
+function tab(name){
+  document.querySelectorAll('.wrap section').forEach(s=>s.classList.add('hidden'));
+  document.getElementById(name).classList.remove('hidden');
+  document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('active',a.dataset.tab===name));
+}
+function badge(v,good,warn){if(v==null)return '<span class="badge">—</span>';
+  const c=v>=good?'ok':(v>=warn?'warn':'bad');return `<span class="badge ${c}">${v}</span>`;}
+async function logout(){await fetch('/api/auth/logout',{method:'POST'});location.href='/';}
+
+async function load(){
+  const me=await api('/api/auth/me'); if(!me)return;
+  document.getElementById('who').textContent=`${me.email} · ${me.role}`;
+  const [clients,devices,licenses,audit]=await Promise.all([
+    api('/api/clients'),api('/api/devices'),api('/api/licenses'),api('/api/audit?limit=100').catch(()=>[])
+  ]);
+  document.getElementById('s-clients').textContent=clients.length;
+  document.getElementById('s-devices').textContent=devices.length;
+  document.getElementById('s-attn').textContent=devices.filter(d=>(d.health_score??100)<70).length;
+  document.getElementById('s-lic').textContent=licenses.length;
+
+  document.getElementById('t-clients').innerHTML=clients.map(c=>
+    `<tr><td>${c.name}</td><td>${c.primary_contact||'—'}</td><td>${c.email||'—'}</td>
+     <td><span class="badge ${c.is_active?'ok':'bad'}">${c.is_active?'active':'inactive'}</span></td></tr>`).join('')
+    ||'<tr><td colspan=4 style="color:var(--muted)">No clients yet. Add one via the API.</td></tr>';
+
+  document.getElementById('t-devices').innerHTML=devices.map(d=>
+    `<tr><td>${d.hostname}</td><td>${d.os||'—'}</td><td>${d.cpu_pct??'—'}</td>
+     <td>${d.disk_pct??'—'}</td><td>${d.av_status||'—'}</td><td>${badge(d.health_score,80,60)}</td>
+     <td>${d.last_checkin?new Date(d.last_checkin).toLocaleString():'never'}</td></tr>`).join('')
+    ||'<tr><td colspan=7 style="color:var(--muted)">No devices enrolled yet.</td></tr>';
+
+  document.getElementById('t-licenses').innerHTML=licenses.map(l=>
+    `<tr><td>${l.product}</td><td>${l.vendor||'—'}</td><td>${l.seats_used??'?'}/${l.seats??'?'}</td>
+     <td>${l.monthly_cost!=null?'$'+l.monthly_cost:'—'}</td>
+     <td>${l.renewal_date?new Date(l.renewal_date).toLocaleDateString():'—'}</td></tr>`).join('')
+    ||'<tr><td colspan=5 style="color:var(--muted)">No licenses tracked yet.</td></tr>';
+
+  if(Array.isArray(audit)){
+    document.getElementById('t-audit').innerHTML=audit.map(a=>
+      `<tr><td>${new Date(a.ts).toLocaleString()}</td><td>${a.actor_email||'—'}</td>
+       <td>${a.action}</td><td>${a.target_type||''} ${a.target_id||''}</td><td>${a.ip||'—'}</td>
+       <td>${a.success?'✓':'✗'}</td></tr>`).join('');
+  }
+}
+load();
+</script>
+</body>
+</html>
