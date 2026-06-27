@@ -1,5 +1,45 @@
 # BVTech OpsPilot — Changelog
 
+## v0.4.0 — PSA depth: SLAs, assignment, time tracking & IT documentation (June 2026)
+
+### Added
+- **SLA engine** (`app/services/sla.py`): per-priority response/resolution
+  targets (built-in defaults, overridable per-client or globally). Due dates are
+  stamped on ticket creation and re-based when priority changes; the first public
+  staff reply satisfies the response SLA and resolving satisfies the resolution
+  SLA. Every ticket payload now carries live SLA state (breached / minutes-left).
+  - `GET /api/tickets/sla-summary` (breached + at-risk counts for the dashboard)
+  - `GET /api/tickets?breached=true` filter
+  - `GET/PUT /api/sla-policies` to view the effective matrix and set targets.
+- **Technician assignment & workload**: tickets can be assigned only to staff
+  users (validated); `GET /api/staff` returns the staff directory with each
+  tech's open-ticket load; `GET /api/tickets?mine=true` filters to the caller's
+  queue. Priority is now editable on a ticket.
+- **Ticket time tracking**: `POST/GET /api/tickets/{id}/time` (staff only) with
+  billable/non-billable minutes and notes; the ticket detail rolls up total and
+  billable time — the foundation for PSA invoicing.
+- **IT documentation / knowledge base** (`/api/kb`): staff author articles that
+  are internal (staff-only) or client-visible, and global or client-scoped.
+  Client portal users read only their permitted docs (enforced at the query
+  layer — internal/other-client docs 404 even by direct id). Owner-only delete.
+- **Dashboard**: Tickets tab gains SLA badges, "assigned to me" / "SLA breached"
+  filters, and a richer detail panel (status + priority + assignee dropdowns,
+  time logging, SLA countdown); new **Knowledge Base** tab to author/read docs;
+  overview shows SLA-breach counts. **Client portal** gains a Documentation
+  panel for client-visible articles.
+- New Alembic migration (4 SLA columns on `support_tickets`; `sla_policies`,
+  `time_entries`, `kb_articles` tables) — verified reversible.
+- Smoke test extended: SLA stamping/breach/satisfy, breached filter + summary,
+  staff-only assignment, time rollup, SLA-policy upsert, and full KB
+  visibility/RBAC isolation.
+
+### Security
+- Assignment, time logging, SLA-policy edits, and KB authoring/deletion are all
+  RBAC-guarded (staff/owner) and audited.
+- KB visibility is enforced in the query, not the UI: a client user can neither
+  list nor fetch internal or other-client documents.
+- The agent remains telemetry-only — no remote execution path.
+
 ## v0.3.0 — Monitoring, alerting, billing & helpdesk threading (June 2026)
 
 ### Added

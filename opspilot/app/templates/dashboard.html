@@ -23,6 +23,7 @@
     <a data-tab="alerts" onclick="tab('alerts')">Alerts</a>
     <a data-tab="tickets" onclick="tab('tickets')">Tickets</a>
     <a data-tab="billing" onclick="tab('billing')">Billing</a>
+    <a data-tab="kb" onclick="tab('kb')">Knowledge Base</a>
     <a data-tab="licenses" onclick="tab('licenses')">Licenses</a>
     <a data-tab="audit" onclick="tab('audit')">Audit Log</a>
   </div>
@@ -34,7 +35,8 @@
         <div class="stat sub" id="s-attn">—</div></div>
       <div class="card"><h3>Active Alerts</h3><div class="stat" id="s-alerts" style="color:var(--bad)">—</div>
         <div class="stat sub" id="s-alerts-sub">—</div></div>
-      <div class="card"><h3>Open Tickets</h3><div class="stat" id="s-tickets" style="color:var(--warn)">—</div></div>
+      <div class="card"><h3>Open Tickets</h3><div class="stat" id="s-tickets" style="color:var(--warn)">—</div>
+        <div class="stat sub" id="s-sla">—</div></div>
     </div>
     <div class="grid cols-4" style="margin-top:16px">
       <div class="card"><h3>Monthly Recurring</h3><div class="stat" id="s-mrr">—</div>
@@ -71,9 +73,15 @@
   </section>
 
   <section id="tickets" class="hidden">
+    <div class="flex" style="margin-bottom:10px">
+      <label class="flex" style="margin:0;font-size:13px;color:var(--muted)">
+        <input type="checkbox" id="tk-mine" style="width:auto" onchange="loadTickets()"> assigned to me</label>
+      <label class="flex" style="margin:0;font-size:13px;color:var(--muted)">
+        <input type="checkbox" id="tk-breached" style="width:auto" onchange="loadTickets()"> SLA breached</label>
+    </div>
     <div class="card hidden" id="ticket-detail" style="margin-bottom:16px"></div>
     <div class="card"><table>
-      <thead><tr><th>#</th><th>Subject</th><th>Client</th><th>Priority</th><th>Status</th><th>Opened</th></tr></thead>
+      <thead><tr><th>#</th><th>Subject</th><th>Client</th><th>Priority</th><th>Status</th><th>SLA</th><th>Opened</th></tr></thead>
       <tbody id="t-tickets"></tbody></table></div>
   </section>
 
@@ -89,6 +97,34 @@
     <div class="card" style="margin-top:16px"><h3>Upcoming Renewals</h3><table>
       <thead><tr><th>Product</th><th>Client</th><th>Vendor</th><th>$/mo</th><th>Renewal</th><th>In</th></tr></thead>
       <tbody id="t-renewals"></tbody></table></div>
+  </section>
+
+  <section id="kb" class="hidden">
+    <div class="grid cols-2" style="align-items:start">
+      <div>
+        <div class="card" style="margin-bottom:16px">
+          <h3>New Article</h3>
+          <input id="kb-title" placeholder="Title">
+          <label>Category</label><input id="kb-cat" placeholder="e.g. Onboarding, Networking">
+          <label>Visibility</label>
+          <select id="kb-vis" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)">
+            <option value="internal">Internal (staff only)</option>
+            <option value="client">Client-visible</option>
+          </select>
+          <label>Client (optional — blank = all clients)</label>
+          <select id="kb-client" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)"></select>
+          <label>Body</label><textarea id="kb-body" rows="6" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)" placeholder="Write the doc…"></textarea>
+          <div class="err" id="kb-msg"></div>
+          <button class="btn" style="margin-top:12px" onclick="createArticle()">Publish</button>
+        </div>
+      </div>
+      <div>
+        <div class="card hidden" id="kb-view" style="margin-bottom:16px"></div>
+        <div class="card"><h3>Articles</h3><table>
+          <thead><tr><th>Title</th><th>Category</th><th>Scope</th><th>Visibility</th></tr></thead>
+          <tbody id="t-kb"></tbody></table></div>
+      </div>
+    </div>
   </section>
 
   <section id="licenses" class="hidden"><div class="card"><table>
@@ -143,31 +179,57 @@ async function refreshBadges(){
   document.getElementById('s-alerts-sub').textContent=`${s.critical} critical · ${s.acknowledged} ack'd`;
 }
 
-let TICKETS=[];
+let TICKETS=[],STAFF=[];
+function slaBadge(s){
+  if(!s)return '<span class="badge">—</span>';
+  if(s.breached)return '<span class="badge bad">breached</span>';
+  const left=s.resolution_minutes_left;
+  if(left!=null&&left<=60)return `<span class="badge warn">due ${left}m</span>`;
+  return '<span class="badge ok">on track</span>';
+}
+function fmtMins(m){if(m==null)return '—';const h=Math.floor(m/60),mm=m%60;return (h?h+'h ':'')+mm+'m';}
 async function loadTickets(){
-  TICKETS=await api('/api/tickets')||[];
+  const params=[];
+  if(document.getElementById('tk-mine').checked)params.push('mine=true');
+  if(document.getElementById('tk-breached').checked)params.push('breached=true');
+  TICKETS=await api('/api/tickets'+(params.length?'?'+params.join('&'):''))||[];
   document.getElementById('t-tickets').innerHTML=TICKETS.map(t=>
     `<tr style="cursor:pointer" onclick="openTicket(${t.id})"><td>#${t.id}</td><td>${esc(t.subject)}</td>
      <td>${esc(CLIENTS[t.client_id]||t.client_id)}</td><td>${esc(t.priority)}</td>
      <td><span class="badge ${t.status==='resolved'||t.status==='closed'?'ok':(t.status==='in_progress'?'warn':'')}">${esc(t.status)}</span></td>
+     <td>${slaBadge(t.sla)}</td>
      <td class="muted">${new Date(t.created_at).toLocaleDateString()}</td></tr>`).join('')
-    ||'<tr><td colspan=6 class="muted">No tickets yet.</td></tr>';
-  document.getElementById('s-tickets').textContent=TICKETS.filter(t=>t.status==='open'||t.status==='in_progress').length;
+    ||'<tr><td colspan=7 class="muted">No tickets match.</td></tr>';
+  // Overview counters reflect the full (unfiltered) book, fetched separately.
 }
 async function openTicket(id){
-  const t=TICKETS.find(x=>x.id===id);const comments=await api(`/api/tickets/${id}/comments`)||[];
+  const [t,comments,time]=await Promise.all([
+    api(`/api/tickets/${id}`),api(`/api/tickets/${id}/comments`),api(`/api/tickets/${id}/time`).catch(()=>[])]);
+  if(!t)return;
   const d=document.getElementById('ticket-detail');d.classList.remove('hidden');
-  const opts=['open','in_progress','resolved','closed'].map(s=>
-    `<option value="${s}" ${t.status===s?'selected':''}>${s}</option>`).join('');
+  const sopts=['open','in_progress','resolved','closed'].map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${s}</option>`).join('');
+  const popts=['low','normal','high','urgent'].map(p=>`<option value="${p}" ${t.priority===p?'selected':''}>${p}</option>`).join('');
+  const aopts=['<option value="">— unassigned —</option>'].concat(STAFF.map(s=>
+    `<option value="${s.id}" ${t.assigned_to_user_id===s.id?'selected':''}>${esc(s.email)} (${s.open_tickets})</option>`)).join('');
+  const sla=t.sla||{};
+  const slaLine=sla.breached?`<span class="badge bad">SLA breached</span>`:
+    `<span class="badge ok">SLA on track</span>`+(sla.resolution_minutes_left!=null?` <span class="muted">· resolve in ${fmtMins(sla.resolution_minutes_left)}</span>`:'');
   d.innerHTML=`<div class="flex" style="justify-content:space-between">
       <h3 style="margin:0">#${t.id} · ${esc(t.subject)}</h3>
       <button class="btn sm ghost" onclick="document.getElementById('ticket-detail').classList.add('hidden')">Close</button></div>
-    <p class="muted" style="margin:6px 0">${esc(CLIENTS[t.client_id]||'')} · ${esc(t.priority)} priority</p>
+    <p class="muted" style="margin:6px 0">${esc(CLIENTS[t.client_id]||'')} · ${slaLine}</p>
     <p>${esc(t.body)||'<span class=muted>No description.</span>'}</p>
     <div class="flex" style="margin:10px 0">
-      <label style="margin:0">Status</label>
-      <select id="td-status" style="width:auto;padding:8px">${opts}</select>
+      <label style="margin:0">Status</label><select id="td-status" style="width:auto;padding:8px">${sopts}</select>
+      <label style="margin:0">Priority</label><select id="td-priority" style="width:auto;padding:8px">${popts}</select>
+      <label style="margin:0">Assignee</label><select id="td-assignee" style="width:auto;padding:8px">${aopts}</select>
       <button class="btn sm" onclick="saveTicket(${t.id})">Update</button></div>
+    <div class="flex" style="margin:6px 0">
+      <span class="muted">Time logged: <b>${fmtMins(t.time_logged_minutes||0)}</b> (${fmtMins(t.time_billable_minutes||0)} billable)</span>
+      <input id="td-mins" type="number" min="1" placeholder="min" style="width:80px;padding:8px">
+      <input id="td-tnote" placeholder="work note" style="flex:1;min-width:120px;padding:8px">
+      <label class="flex" style="margin:0"><input type="checkbox" id="td-bill" checked style="width:auto"> billable</label>
+      <button class="btn sm ghost" onclick="logTime(${t.id})">Log time</button></div>
     <h3 style="margin-top:14px">Conversation</h3>
     <div id="td-comments">${comments.map(renderComment).join('')||'<p class="muted">No replies yet.</p>'}</div>
     <label>Add reply</label><input id="td-reply" placeholder="Write a reply…">
@@ -179,11 +241,67 @@ function renderComment(c){
     <div class="meta">${esc(c.author_email)} · ${esc(c.author_role)} · ${ago(c.created_at)}${c.internal?' · INTERNAL':''}</div>
     ${esc(c.body)}</div>`;
 }
-async function saveTicket(id){await patch(`/api/tickets/${id}`,{status:document.getElementById('td-status').value});await loadTickets();openTicket(id);}
+async function saveTicket(id){
+  const a=document.getElementById('td-assignee').value;
+  await patch(`/api/tickets/${id}`,{status:document.getElementById('td-status').value,
+    priority:document.getElementById('td-priority').value,
+    assigned_to_user_id:a?parseInt(a):null});
+  await loadStaff();await loadTickets();refreshTicketStats();openTicket(id);
+}
+async function logTime(id){
+  const mins=parseInt(document.getElementById('td-mins').value);if(!mins)return;
+  await post(`/api/tickets/${id}/time`,{minutes:mins,note:document.getElementById('td-tnote').value,
+    billable:document.getElementById('td-bill').checked});
+  openTicket(id);
+}
 async function sendReply(id){
   const body=document.getElementById('td-reply').value.trim();if(!body)return;
   await post(`/api/tickets/${id}/comments`,{body,internal:document.getElementById('td-internal').checked});
-  openTicket(id);
+  refreshTicketStats();openTicket(id);
+}
+async function loadStaff(){STAFF=await api('/api/staff')||[];}
+async function refreshTicketStats(){
+  const [all,sla]=await Promise.all([api('/api/tickets'),api('/api/tickets/sla-summary').catch(()=>null)]);
+  if(all)document.getElementById('s-tickets').textContent=all.filter(t=>t.status==='open'||t.status==='in_progress').length;
+  if(sla)document.getElementById('s-sla').textContent=`${sla.response_breached+sla.resolution_breached} SLA breached · ${sla.at_risk} at risk`;
+}
+
+// ---- Knowledge base ----
+async function loadKB(){
+  const arts=await api('/api/kb');if(!arts)return;
+  document.getElementById('t-kb').innerHTML=arts.map(a=>
+    `<tr style="cursor:pointer" onclick="viewArticle(${a.id})"><td>${esc(a.title)}</td><td>${esc(a.category||'—')}</td>
+     <td>${a.client_id?esc(CLIENTS[a.client_id]||a.client_id):'<span class="muted">all</span>'}</td>
+     <td><span class="badge ${a.visibility==='client'?'ok':'warn'}">${a.visibility}</span></td></tr>`).join('')
+    ||'<tr><td colspan=4 class="muted">No articles yet.</td></tr>';
+}
+async function viewArticle(id){
+  const a=await api(`/api/kb/${id}`);if(!a)return;
+  const v=document.getElementById('kb-view');v.classList.remove('hidden');
+  v.innerHTML=`<div class="flex" style="justify-content:space-between">
+      <h3 style="margin:0">${esc(a.title)}</h3>
+      <button class="btn sm ghost" onclick="document.getElementById('kb-view').classList.add('hidden')">Close</button></div>
+    <p class="muted" style="margin:6px 0">${esc(a.category||'Uncategorized')} · ${esc(a.visibility)} · ${a.client_id?esc(CLIENTS[a.client_id]||a.client_id):'all clients'}</p>
+    <div style="white-space:pre-wrap">${esc(a.body)}</div>
+    <div class="flex" style="margin-top:12px"><button class="btn sm ghost" onclick="deleteArticle(${a.id})">Delete</button></div>`;
+}
+async function createArticle(){
+  const msg=document.getElementById('kb-msg');msg.textContent='';
+  const title=document.getElementById('kb-title').value.trim();
+  const bodyv=document.getElementById('kb-body').value.trim();
+  if(!title||!bodyv){msg.textContent='Title and body are required.';return;}
+  const cid=document.getElementById('kb-client').value;
+  const r=await post('/api/kb',{title,body:bodyv,category:document.getElementById('kb-cat').value||null,
+    visibility:document.getElementById('kb-vis').value,client_id:cid?parseInt(cid):null});
+  if(r.ok){document.getElementById('kb-title').value='';document.getElementById('kb-body').value='';
+    document.getElementById('kb-cat').value='';loadKB();msg.textContent='Published ✓';}
+  else{const d=await r.json().catch(()=>({detail:'Error'}));msg.textContent=d.detail||'Failed';}
+}
+async function deleteArticle(id){
+  if(!confirm('Delete this article?'))return;
+  const r=await fetch(`/api/kb/${id}`,{method:'DELETE'});
+  if(r.ok){document.getElementById('kb-view').classList.add('hidden');loadKB();}
+  else alert('Delete failed (owner only).');
 }
 
 async function loadBilling(){
@@ -219,6 +337,9 @@ async function load(){
     api('/api/clients'),api('/api/devices'),api('/api/licenses'),api('/api/audit?limit=100').catch(()=>[])
   ]);
   clients.forEach(c=>CLIENTS[c.id]=c.name);
+  // Populate the KB "client" selector (blank = all clients).
+  const kbSel=document.getElementById('kb-client');
+  if(kbSel)kbSel.innerHTML='<option value="">All clients</option>'+clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   document.getElementById('s-clients').textContent=clients.length;
   document.getElementById('s-devices').textContent=devices.length;
   document.getElementById('s-attn').textContent=devices.filter(d=>(d.health_score??100)<70).length+' need attention';
@@ -248,7 +369,8 @@ async function load(){
        <td>${a.success?'✓':'✗'}</td></tr>`).join('');
   }
 
-  await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),loadBilling()]);
+  await loadStaff();
+  await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),loadKB()]);
 }
 load();
 </script>

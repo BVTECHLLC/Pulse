@@ -42,6 +42,10 @@
   <div class="card" style="margin-top:16px"><h3>Your Requests</h3><table>
     <thead><tr><th>#</th><th>Subject</th><th>Priority</th><th>Status</th><th>Opened</th></tr></thead>
     <tbody id="t-tickets"></tbody></table></div>
+  <div class="card hidden" id="kb-view" style="margin-top:16px"></div>
+  <div class="card hidden" id="kb-card" style="margin-top:16px"><h3>Documentation</h3><table>
+    <thead><tr><th>Title</th><th>Category</th></tr></thead>
+    <tbody id="t-kb"></tbody></table></div>
 </div>
 <script>
 async function api(p){const r=await fetch(p);if(r.status===401){location.href='/';return null;}return r.json();}
@@ -88,6 +92,21 @@ async function sendReply(id){
   await post(`/api/tickets/${id}/comments`,{body});
   openTicket(id);loadTickets();
 }
+async function loadKB(){
+  const arts=await api('/api/kb');if(!arts)return;
+  document.getElementById('kb-card').classList.toggle('hidden',arts.length===0);
+  document.getElementById('t-kb').innerHTML=arts.map(a=>
+    `<tr style="cursor:pointer" onclick="viewArticle(${a.id})"><td>${esc(a.title)}</td><td>${esc(a.category||'—')}</td></tr>`).join('');
+}
+async function viewArticle(id){
+  const a=await api(`/api/kb/${id}`);if(!a)return;
+  const v=document.getElementById('kb-view');v.classList.remove('hidden');
+  v.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center">
+      <h3 style="margin:0">${esc(a.title)}</h3>
+      <button class="btn ghost" style="padding:5px 11px;font-size:12px" onclick="document.getElementById('kb-view').classList.add('hidden')">Close</button></div>
+    <p style="color:var(--muted);margin:6px 0">${esc(a.category||'Documentation')}</p>
+    <div style="white-space:pre-wrap">${esc(a.body)}</div>`;
+}
 async function loadAlerts(){
   const al=await api('/api/alerts');if(!al)return;
   document.getElementById('s-alerts').textContent=al.length;
@@ -115,6 +134,7 @@ async function load(){
     ||'<tr><td colspan=3 style="color:var(--muted)">No licenses yet.</td></tr>';
   loadTickets();
   loadAlerts();
+  loadKB();
 }
 load();
 </script>

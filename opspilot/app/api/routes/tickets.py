@@ -1,4 +1,5 @@
-"""v0.2 routes: support tickets, client-admin user invites, device check-in history."""
+"""Support tickets (with SLA tracking, assignment & time entries), client-admin
+user invites, and device check-in history."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -11,16 +12,28 @@ from ...core.db import get_db
 from ...core.deps import assert_client_access, current_user, is_staff, require_roles
 from ...core.security import hash_password, random_token
 from ...models import (
-    Client, Device, DeviceCheckin, Role, SupportTicket, TicketComment,
-    TicketStatus, User,
+    Client, Device, DeviceCheckin, PRIORITIES, Role, STAFF_ROLES, SupportTicket,
+    TicketComment, TicketStatus, TimeEntry, User,
 )
-from ...services import audit
+from ...services import audit, sla
 
-router = APIRouter(prefix="/api", tags=["v0.2"])
+router = APIRouter(prefix="/api", tags=["tickets"])
 
 
 def _ip(req: Request) -> str:
     return req.headers.get("cf-connecting-ip") or (req.client.host if req.client else "?")
+
+
+def _serialize_ticket(t: SupportTicket, now: datetime) -> dict:
+    return {
+        "id": t.id, "client_id": t.client_id, "subject": t.subject, "body": t.body,
+        "priority": t.priority, "status": t.status.value,
+        "assigned_to_user_id": t.assigned_to_user_id,
+        "created_at": t.created_at.isoformat(),
+        "updated_at": t.updated_at.isoformat(),
+        "resolved_at": t.resolved_at.isoformat() if t.resolved_at else None,
+        "sla": sla.evaluate(t, now),
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -47,11 +60,12 @@ def create_ticket(body: TicketIn, request: Request, db: Session = Depends(get_db
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "No client associated")
     assert_client_access(user, cid)
 
-    if body.priority not in ("low", "normal", "high", "urgent"):
+    if body.priority not in PRIORITIES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid priority")
 
     t = SupportTicket(client_id=cid, created_by_user_id=user.id, subject=body.subject,
-                      body=body.body, priority=body.priority)
+                      body=body.body, priority=body.priority, created_at=datetime.now(timezone.utc))
+    sla.stamp_due_dates(db, t)  # set response/resolution due targets from policy
     db.add(t)
     db.commit()
     audit.record(db, action="ticket.create", actor_user_id=user.id, actor_email=user.email,
@@ -61,20 +75,44 @@ def create_ticket(body: TicketIn, request: Request, db: Session = Depends(get_db
 
 
 @router.get("/tickets")
-def list_tickets(status_filter: str | None = None, db: Session = Depends(get_db),
+def list_tickets(status_filter: str | None = None, mine: bool = False,
+                 breached: bool = False, db: Session = Depends(get_db),
                  user: User = Depends(current_user)):
     q = db.query(SupportTicket)
     if not is_staff(user):
         q = q.filter(SupportTicket.client_id == user.client_id)
     if status_filter:
         q = q.filter(SupportTicket.status == status_filter)
+    if mine and is_staff(user):
+        q = q.filter(SupportTicket.assigned_to_user_id == user.id)
     rows = q.order_by(SupportTicket.created_at.desc()).limit(200).all()
-    return [
-        {"id": t.id, "client_id": t.client_id, "subject": t.subject, "body": t.body,
-         "priority": t.priority, "status": t.status.value,
-         "created_at": t.created_at.isoformat()}
-        for t in rows
-    ]
+    now = datetime.now(timezone.utc)
+    out = [_serialize_ticket(t, now) for t in rows]
+    if breached:
+        out = [t for t in out if t["sla"]["breached"]]
+    return out
+
+
+@router.get("/tickets/sla-summary")
+def sla_summary(db: Session = Depends(get_db),
+                user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Open-ticket SLA health for the staff dashboard: how many are breaching or
+    at risk (due within 60 min)."""
+    now = datetime.now(timezone.utc)
+    rows = (db.query(SupportTicket)
+            .filter(SupportTicket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS]))
+            .all())
+    out = {"open": len(rows), "response_breached": 0, "resolution_breached": 0, "at_risk": 0}
+    for t in rows:
+        s = sla.evaluate(t, now)
+        if s["response_breached"]:
+            out["response_breached"] += 1
+        if s["resolution_breached"]:
+            out["resolution_breached"] += 1
+        left = s["resolution_minutes_left"]
+        if not s["breached"] and left is not None and 0 <= left <= 60:
+            out["at_risk"] += 1
+    return out
 
 
 @router.get("/tickets/{ticket_id}")
@@ -84,15 +122,19 @@ def get_ticket(ticket_id: int, db: Session = Depends(get_db),
     if not t:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
     assert_client_access(user, t.client_id)
-    return {"id": t.id, "client_id": t.client_id, "subject": t.subject, "body": t.body,
-            "priority": t.priority, "status": t.status.value,
-            "assigned_to_user_id": t.assigned_to_user_id,
-            "created_at": t.created_at.isoformat(), "updated_at": t.updated_at.isoformat()}
+    data = _serialize_ticket(t, datetime.now(timezone.utc))
+    # Time rollup is staff-facing only.
+    if is_staff(user):
+        entries = db.query(TimeEntry).filter(TimeEntry.ticket_id == t.id).all()
+        data["time_logged_minutes"] = sum(e.minutes for e in entries)
+        data["time_billable_minutes"] = sum(e.minutes for e in entries if e.billable)
+    return data
 
 
 class TicketUpdate(BaseModel):
     status: TicketStatus | None = None
     assigned_to_user_id: int | None = None
+    priority: str | None = None
 
 
 @router.patch("/tickets/{ticket_id}")
@@ -102,10 +144,24 @@ def update_ticket(ticket_id: int, body: TicketUpdate, request: Request,
     t = db.get(SupportTicket, ticket_id)
     if not t:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+    if body.priority is not None:
+        if body.priority not in PRIORITIES:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid priority")
+        t.priority = body.priority
+        sla.stamp_due_dates(db, t)  # re-base SLA targets on the new priority
+    if body.assigned_to_user_id is not None:
+        # Only staff users may carry tickets.
+        assignee = db.get(User, body.assigned_to_user_id)
+        if not assignee or assignee.role not in STAFF_ROLES:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Assignee must be a staff user")
+        t.assigned_to_user_id = body.assigned_to_user_id
     if body.status is not None:
         t.status = body.status
-    if body.assigned_to_user_id is not None:
-        t.assigned_to_user_id = body.assigned_to_user_id
+        # Stamp resolution time once when the ticket first closes out.
+        if body.status in (TicketStatus.RESOLVED, TicketStatus.CLOSED) and not t.resolved_at:
+            t.resolved_at = datetime.now(timezone.utc)
+        if body.status in (TicketStatus.OPEN, TicketStatus.IN_PROGRESS):
+            t.resolved_at = None  # reopened
     db.commit()
     audit.record(db, action="ticket.update", actor_user_id=user.id, actor_email=user.email,
                  actor_role=user.role.value, target_type="ticket", target_id=str(t.id),
@@ -138,8 +194,12 @@ def add_comment(ticket_id: int, body: CommentIn, request: Request,
     c = TicketComment(ticket_id=t.id, author_user_id=user.id, author_email=user.email,
                       author_role=user.role.value, body=body.body.strip(), internal=internal)
     db.add(c)
+    now = datetime.now(timezone.utc)
+    # First public staff reply satisfies the response SLA.
+    if is_staff(user) and not internal and t.first_responded_at is None:
+        t.first_responded_at = now
     # Touch the ticket so list ordering reflects recent activity.
-    t.updated_at = datetime.now(timezone.utc)
+    t.updated_at = now
     db.commit()
     audit.record(db, action="ticket.comment", actor_user_id=user.id, actor_email=user.email,
                  actor_role=user.role.value, target_type="ticket", target_id=str(t.id),
@@ -166,6 +226,133 @@ def list_comments(ticket_id: int, db: Session = Depends(get_db),
          "body": c.body, "internal": c.internal, "created_at": c.created_at.isoformat()}
         for c in rows
     ]
+
+
+# --------------------------------------------------------------------------- #
+# Ticket time tracking (staff only — powers PSA time rollups & invoicing)
+# --------------------------------------------------------------------------- #
+class TimeEntryIn(BaseModel):
+    minutes: int
+    note: str | None = None
+    billable: bool = True
+
+
+@router.post("/tickets/{ticket_id}/time", status_code=201)
+def log_time(ticket_id: int, body: TimeEntryIn, request: Request,
+             db: Session = Depends(get_db),
+             user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    t = db.get(SupportTicket, ticket_id)
+    if not t:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+    if body.minutes <= 0 or body.minutes > 24 * 60:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "minutes must be 1..1440")
+
+    e = TimeEntry(ticket_id=t.id, client_id=t.client_id, user_id=user.id,
+                  user_email=user.email, minutes=body.minutes, note=body.note,
+                  billable=body.billable)
+    db.add(e)
+    db.commit()
+    audit.record(db, action="ticket.time_log", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="ticket", target_id=str(t.id),
+                 client_id=t.client_id, ip=_ip(request),
+                 detail=f"minutes={body.minutes} billable={body.billable}")
+    return {"id": e.id}
+
+
+@router.get("/tickets/{ticket_id}/time")
+def list_time(ticket_id: int, db: Session = Depends(get_db),
+              user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    t = db.get(SupportTicket, ticket_id)
+    if not t:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+    rows = (db.query(TimeEntry).filter(TimeEntry.ticket_id == ticket_id)
+            .order_by(TimeEntry.created_at.desc()).all())
+    return [
+        {"id": e.id, "user_email": e.user_email, "minutes": e.minutes,
+         "note": e.note, "billable": e.billable, "created_at": e.created_at.isoformat()}
+        for e in rows
+    ]
+
+
+# --------------------------------------------------------------------------- #
+# Staff directory (for assignment dropdowns) + workload
+# --------------------------------------------------------------------------- #
+@router.get("/staff")
+def list_staff(db: Session = Depends(get_db),
+               user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Active staff users with their current open-ticket load."""
+    staff = (db.query(User).filter(User.role.in_(list(STAFF_ROLES)), User.is_active.is_(True))
+             .order_by(User.email).all())
+    open_states = [TicketStatus.OPEN, TicketStatus.IN_PROGRESS]
+    out = []
+    for s in staff:
+        load = (db.query(SupportTicket)
+                .filter(SupportTicket.assigned_to_user_id == s.id,
+                        SupportTicket.status.in_(open_states)).count())
+        out.append({"id": s.id, "email": s.email, "full_name": s.full_name,
+                    "role": s.role.value, "open_tickets": load})
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# SLA policies (per-priority response/resolution targets) — staff only
+# --------------------------------------------------------------------------- #
+class SLAPolicyIn(BaseModel):
+    client_id: int | None = None  # None == global default
+    priority: str
+    response_minutes: int
+    resolution_minutes: int
+
+
+@router.get("/sla-policies")
+def list_sla_policies(db: Session = Depends(get_db),
+                      user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Configured rows plus the built-in defaults, so the UI can show the full
+    effective matrix."""
+    from ...models import SLAPolicy  # local import keeps the module header tidy
+    rows = db.query(SLAPolicy).order_by(SLAPolicy.client_id, SLAPolicy.priority).all()
+    return {
+        "defaults": {p: {"response_minutes": r, "resolution_minutes": res}
+                     for p, (r, res) in sla.DEFAULT_TARGETS.items()},
+        "policies": [
+            {"id": p.id, "client_id": p.client_id, "priority": p.priority,
+             "response_minutes": p.response_minutes, "resolution_minutes": p.resolution_minutes}
+            for p in rows
+        ],
+    }
+
+
+@router.put("/sla-policies")
+def upsert_sla_policy(body: SLAPolicyIn, request: Request, db: Session = Depends(get_db),
+                      user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    from ...models import SLAPolicy
+    if body.priority not in PRIORITIES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid priority")
+    if body.response_minutes < 1 or body.resolution_minutes < 1:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Minutes must be >= 1")
+    if body.response_minutes > body.resolution_minutes:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Response target cannot exceed resolution target")
+
+    q = db.query(SLAPolicy).filter(SLAPolicy.priority == body.priority)
+    q = q.filter(SLAPolicy.client_id == body.client_id) if body.client_id is not None \
+        else q.filter(SLAPolicy.client_id.is_(None))
+    p = q.first()
+    if not p:
+        p = SLAPolicy(client_id=body.client_id, priority=body.priority,
+                      response_minutes=body.response_minutes,
+                      resolution_minutes=body.resolution_minutes)
+        db.add(p)
+    else:
+        p.response_minutes = body.response_minutes
+        p.resolution_minutes = body.resolution_minutes
+    db.commit()
+    audit.record(db, action="sla_policy.upsert", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="sla_policy", target_id=str(p.id),
+                 client_id=body.client_id, ip=_ip(request),
+                 detail=f"priority={body.priority}")
+    return {"id": p.id, "priority": p.priority, "response_minutes": p.response_minutes,
+            "resolution_minutes": p.resolution_minutes}
 
 
 # --------------------------------------------------------------------------- #

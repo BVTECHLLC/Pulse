@@ -33,37 +33,51 @@ history + detail · Windows-service agent installer (NSSM) with consent screen.
 Pulled forward from the old v0.5 plan because monitoring + billing are the core
 of an "all-in-one" RMM/MSP tool. M365 and remote support shift down one number.
 
+## ✅ v0.4 (this release) — PSA depth + IT documentation
+- **SLA engine**: per-priority response/resolution targets with per-client/global
+  overrides; due dates stamped on create, breach + at-risk tracking on every
+  ticket, `sla-summary` for the dashboard.
+- **Assignment & workload**: staff-only assignee, staff directory with open-ticket
+  load, "my queue" filter, editable priority.
+- **Time tracking**: billable/non-billable minutes per ticket with rollups.
+- **Knowledge base / IT docs**: internal vs. client-visible, global vs.
+  client-scoped, with query-layer visibility enforcement.
+
+This makes Pulse a genuine unified **RMM + PSA** platform (the SuperOps niche):
+monitoring + assets on the RMM side, SLA helpdesk + time + docs on the PSA side.
+
 ---
 
-## v0.4 — Microsoft 365 (see docs/M365_PLAN.md)
+## v0.5 — Microsoft 365 (see docs/M365_PLAN.md)
 - Multi-tenant Entra app, least-privilege read-only Graph scopes.
 - Per-client connect/consent, encrypted token storage, scheduled sync.
 - Auto-populate licenses from `subscribedSkus` (feeds the billing rollup);
   Secure Score + risky sign-ins surfaced as alerts via the existing engine.
 
-## v0.5 — Remote support, safely
+## v0.6 — Remote support, safely
 - Quick Assist launcher + remote-support helper (agent side, opt-in).
 - Script library: **disabled by default**, per-script + per-device enable,
   mandatory approval workflow, full before/after audit, rollback notes.
 - NO arbitrary remote code execution — only approved, logged, reversible actions.
 
-## v0.6 — Content workflow + richer dashboards + integrations
+## v0.7 — Content workflow + richer dashboards + integrations
 - Notifications: email/Slack/Teams/webhook fan-out from the alerting engine.
 - Scheduled offline sweep + digest reports (APScheduler/cron).
-- Billing exports: Stripe/QuickBooks/Xero/SuperOps.
+- Billing exports + invoicing from time entries: Stripe/QuickBooks/Xero.
 - Website content workflow: draft → review → approved → Cloudflare Pages deploy,
   with version history and no direct prod overwrite.
 
 ---
 
-## ⏭️ EXACT PROMPT TO PASTE NEXT (to build v0.4)
+## ⏭️ EXACT PROMPT TO PASTE NEXT (to build v0.5)
 
-> Continue BVTech OpsPilot. v0.3 is in the repo at `opspilot/` (FastAPI +
+> Continue BVTech OpsPilot. v0.4 is in the repo at `opspilot/` (FastAPI +
 > SQLAlchemy + Jinja, Argon2/JWT/TOTP auth, 4-role RBAC, clients/devices/licenses,
-> append-only audit, telemetry agent, **monitoring/alerting engine + alert
-> policies, billing MRR/renewals, threaded helpdesk**, Docker/Caddy/Tunnel,
-> Alembic). Pull the repo, run `python scripts/smoke_test.py` (it should pass),
-> then build **v0.4 — Microsoft 365** per `docs/M365_PLAN.md`:
+> append-only audit, telemetry agent, monitoring/alerting engine + policies,
+> billing MRR/renewals, **SLA-tracked helpdesk with assignment + time tracking**,
+> **knowledge base**, Docker/Caddy/Tunnel, Alembic). Pull the repo, run
+> `python scripts/smoke_test.py` (it should pass), then build **v0.5 — Microsoft
+> 365** per `docs/M365_PLAN.md`:
 >
 > 1. Multi-tenant Entra app registration with least-privilege, read-only Graph
 >    scopes; per-client connect/consent flow with encrypted token storage (new
@@ -77,4 +91,4 @@ of an "all-in-one" RMM/MSP tool. M365 and remote support shift down one number.
 > Keep the security posture: least privilege, RBAC on every route, audit every
 > sensitive action, encrypted secrets at rest, no remote code execution in the
 > agent. Extend the smoke test (mock Graph), run it, update the roadmap +
-> changelog, package as v0.4, and give me the exact prompt for v0.5.
+> changelog, package as v0.5, and give me the exact prompt for v0.6.

@@ -3,9 +3,11 @@
 Secure, cloud-hosted MSP command center, admin dashboard, and client portal for
 **BVTech LLC** — evolving toward a lightweight RMM-style platform.
 
-**Current version: v0.3.0** — auth + RBAC + clients/devices/licenses + audit log
-+ telemetry-only endpoint agent, **a monitoring/alerting engine, billing (MRR &
-renewals) visibility, and a threaded helpdesk** + deployment scaffold.
+**Current version: v0.4.0** — a unified **RMM + PSA** platform: auth + RBAC +
+clients/devices/licenses + audit log + telemetry agent, a monitoring/alerting
+engine, billing (MRR & renewals) visibility, a **full SLA-tracked helpdesk**
+(threading, assignment, time tracking), and an **IT documentation / knowledge
+base** + deployment scaffold.
 
 ---
 
@@ -78,6 +80,16 @@ python scripts/smoke_test.py     # runs the full enroll→checkin→audit flow
   per-client breakdown) and `GET /api/billing/renewals` (renewal calendar).
 - **Threaded helpdesk**: `GET/POST /api/tickets/{id}/comments` with client-visible
   vs. internal (staff-only) notes; clients reply on their own tickets in the portal.
+
+**v0.4 — PSA depth + IT documentation**
+- **SLA engine**: per-priority response/resolution targets (per-client/global
+  overrides), breach + at-risk tracking on every ticket.
+  - `GET /api/tickets/sla-summary` · `?breached=true` · `GET/PUT /api/sla-policies`
+- **Assignment & workload**: staff-only assignee, `GET /api/staff` with open-ticket
+  load, `GET /api/tickets?mine=true`.
+- **Time tracking**: `POST/GET /api/tickets/{id}/time` (billable rollup).
+- **Knowledge base**: `/api/kb` CRUD — internal vs. client-visible, global vs.
+  client-scoped, query-layer visibility enforcement.
 
 See `docs/` for deployment and security details, and `docs/ROADMAP.md` for what's
 next and the **exact prompt to paste**.

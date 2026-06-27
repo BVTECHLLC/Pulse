@@ -159,6 +159,12 @@ class SupportTicket(Base):
     priority: Mapped[str] = mapped_column(String(20), default="normal")  # low|normal|high|urgent
     status: Mapped[TicketStatus] = mapped_column(Enum(TicketStatus), default=TicketStatus.OPEN, index=True)
     assigned_to_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    # SLA tracking (v0.4) — due targets stamped at creation from the SLA policy;
+    # first_responded_at/resolved_at recorded as the ticket progresses.
+    first_response_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolution_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    first_responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
@@ -256,3 +262,55 @@ class TicketComment(Base):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     internal: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+# --------------------------------------------------------------------------- #
+# v0.4 — PSA depth: SLAs, time tracking, IT documentation
+# --------------------------------------------------------------------------- #
+# Valid ticket priorities, ordered low -> urgent. Shared by SLA defaults & guards.
+PRIORITIES = ("low", "normal", "high", "urgent")
+
+
+class SLAPolicy(Base):
+    """Per-priority response/resolution targets (in minutes). One row per
+    (scope, priority) where scope is a client_id or NULL for the global default.
+    The engine resolves per-client first, then global, then built-in defaults."""
+    __tablename__ = "sla_policies"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)
+    priority: Mapped[str] = mapped_column(String(20), nullable=False)
+    response_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    resolution_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class TimeEntry(Base):
+    """Billable/non-billable work logged against a ticket by staff. Powers PSA
+    time rollups and (later) invoicing."""
+    __tablename__ = "time_entries"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("support_tickets.id"), index=True, nullable=False)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    user_id: Mapped[int | None] = mapped_column(Integer)
+    user_email: Mapped[str | None] = mapped_column(String(200))
+    minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+    billable: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+class KBArticle(Base):
+    """IT documentation / knowledge-base article. `client_id` NULL means it's a
+    global article applicable to every client. `visibility` of 'internal' keeps
+    it staff-only; 'client' exposes it to that client's portal users."""
+    __tablename__ = "kb_articles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    category: Mapped[str | None] = mapped_column(String(80), index=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    visibility: Mapped[str] = mapped_column(String(20), default="internal", index=True)  # internal|client
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    author_email: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)

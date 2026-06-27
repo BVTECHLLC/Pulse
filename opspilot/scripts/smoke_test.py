@@ -140,7 +140,72 @@ def main():
         assert all(b["client_id"]==cid for b in ca_c.get("/api/billing/summary").json()["by_client"])
         print("billing tenant isolation: OK")
 
-    print("\n=== OpsPilot v0.3 SMOKE TEST PASSED ===")
+        # ===================== v0.4: SLA, assignment, time, KB =====================
+        from app.models import SupportTicket as _ST
+        from datetime import datetime as _d3, timedelta as _t3, timezone as _z3
+        owner_id = c.get("/api/auth/me").json()["id"]
+        ca_id = ca_c.get("/api/auth/me").json()["id"]
+
+        # a fresh high-priority ticket gets SLA due dates stamped on create
+        stid = c.post("/api/tickets", json={"client_id":cid,"subject":"Server offline","priority":"high"}).json()["id"]
+        st = c.get(f"/api/tickets/{stid}").json()
+        assert st["sla"]["first_response_due_at"] and not st["sla"]["breached"], st["sla"]
+        print("SLA due dates stamped on create OK")
+
+        # backdate the due targets to force a breach, then verify detection + summary
+        _db=_SL(); _t=_db.get(_ST, stid)
+        _t.first_response_due_at=_d3.now(_z3.utc)-_t3(hours=1)
+        _t.resolution_due_at=_d3.now(_z3.utc)-_t3(hours=1)
+        _db.commit(); _db.close()
+        br=c.get(f"/api/tickets/{stid}").json()["sla"]
+        assert br["response_breached"] and br["resolution_breached"], br
+        assert any(t["id"]==stid for t in c.get("/api/tickets?breached=true").json()), "not in breached filter"
+        summ=c.get("/api/tickets/sla-summary").json()
+        assert summ["response_breached"]>=1 and summ["resolution_breached"]>=1, summ
+        print("SLA breach detection + summary OK:", {k:summ[k] for k in ("open","response_breached","resolution_breached")})
+
+        # a public staff reply satisfies the response SLA; resolving satisfies resolution
+        c.post(f"/api/tickets/{stid}/comments", json={"body":"On it now."})
+        assert c.get(f"/api/tickets/{stid}").json()["sla"]["response_breached"] is False
+        c.patch(f"/api/tickets/{stid}", json={"status":"resolved"})
+        rs=c.get(f"/api/tickets/{stid}").json()
+        assert rs["sla"]["resolution_breached"] is False and rs["resolved_at"], rs
+        print("SLA satisfied on response + resolve OK")
+
+        # assignment is staff-only; staff directory shows workload
+        assert c.patch(f"/api/tickets/{stid}", json={"assigned_to_user_id":owner_id}).status_code==200
+        assert c.patch(f"/api/tickets/{stid}", json={"assigned_to_user_id":ca_id}).status_code==400, "assigned a client user!"
+        assert any(s["id"]==owner_id for s in c.get("/api/staff").json())
+        print("assignment + staff directory OK")
+
+        # time tracking + billable rollup; clients cannot log time
+        c.post(f"/api/tickets/{stid}/time", json={"minutes":45,"note":"Diagnosis","billable":True})
+        c.post(f"/api/tickets/{stid}/time", json={"minutes":15,"billable":False})
+        det=c.get(f"/api/tickets/{stid}").json()
+        assert det["time_logged_minutes"]==60 and det["time_billable_minutes"]==45, det
+        assert ca_c.post(f"/api/tickets/{stid}/time", json={"minutes":10}).status_code==403
+        print("time tracking + rollup OK")
+
+        # SLA policy upsert is reflected in the effective matrix
+        c.put("/api/sla-policies", json={"priority":"low","response_minutes":120,"resolution_minutes":600})
+        pol=c.get("/api/sla-policies").json()
+        assert any(p["priority"]=="low" and p["response_minutes"]==120 for p in pol["policies"]), pol
+        print("SLA policy upsert OK")
+
+        # knowledge base: internal vs client-visible, global vs client-scoped
+        internal_id=c.post("/api/kb", json={"title":"Runbook: AD restore","body":"steps","visibility":"internal"}).json()["id"]
+        c.post("/api/kb", json={"title":"How to reset your password","body":"x","visibility":"client"})
+        c.post("/api/kb", json={"title":"Your VPN guide","body":"y","visibility":"client","client_id":cid})
+        assert len(c.get("/api/kb").json())>=3
+        titles={a["title"] for a in ca_c.get("/api/kb").json()}
+        assert {"How to reset your password","Your VPN guide"} <= titles, titles
+        assert "Runbook: AD restore" not in titles, "client saw an internal doc!"
+        assert ca_c.get(f"/api/kb/{internal_id}").status_code==404, "client fetched internal doc by id!"
+        assert ca_c.post("/api/kb", json={"title":"x","body":"y"}).status_code==403, "client authored a doc!"
+        assert c.delete(f"/api/kb/{internal_id}").status_code==200
+        print("knowledge base visibility + RBAC OK")
+
+    print("\n=== OpsPilot v0.4 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
