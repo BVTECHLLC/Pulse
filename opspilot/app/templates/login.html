@@ -3,14 +3,18 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{ app_name }} — Sign in</title>
+<link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/css/pulse.css">
 </head>
 <body>
 <div class="login-shell">
   <div class="login-card">
-    <div class="brand" style="margin-bottom:20px"><span class="dot"></span> BVTech OpsPilot</div>
+    <a class="lockup" href="/">
+      <img src="/static/img/mark.svg" alt="BVTech OpsPilot">
+      <span class="wm"><b>BVTech</b> OpsPilot<span>MSP Command Center</span></span>
+    </a>
     <h1>Sign in</h1>
-    <p class="sub">Command center & client portal</p>
+    <p class="sub">Command center &amp; client portal</p>
 
     <label>Email</label>
     <input id="email" type="email" autocomplete="username" placeholder="you@bvtech.org">
@@ -22,6 +26,7 @@
     </div>
     <div class="err" id="err"></div>
     <button class="btn" style="width:100%;margin-top:18px" onclick="doLogin()">Sign in</button>
+    <div class="auth-links">New here? <a href="/signup">Request access →</a></div>
     <div class="foot">v{{ version }} · Encrypted · MFA-ready · Audit-logged</div>
   </div>
 </div>

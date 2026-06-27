@@ -15,7 +15,7 @@ from ...models import (
     Client, Device, DeviceCheckin, PRIORITIES, Role, STAFF_ROLES, SupportTicket,
     TicketComment, TicketStatus, TimeEntry, User,
 )
-from ...services import audit, automation, sla
+from ...services import audit, automation, email, sla
 
 router = APIRouter(prefix="/api", tags=["tickets"])
 
@@ -401,8 +401,10 @@ def invite_client_user(body: InviteIn, request: Request, db: Session = Depends(g
     audit.record(db, action="client_user.invite", actor_user_id=user.id, actor_email=user.email,
                  actor_role=user.role.value, target_type="user", target_id=str(new_user.id),
                  client_id=target_client, ip=_ip(request), detail=f"role={body.role.value}")
-    # temp password returned once to the inviter to relay; never stored in plaintext.
-    return {"id": new_user.id, "email": new_user.email, "temp_password": temp_pw}
+    # Email the credentials (no-op if SMTP unconfigured); also returned once so the
+    # inviter can relay them if email isn't set up yet.
+    emailed = email.send_invite(new_user.email, new_user.full_name, temp_pw, body.role.value)
+    return {"id": new_user.id, "email": new_user.email, "temp_password": temp_pw, "emailed": emailed}
 
 
 @router.get("/client-users")

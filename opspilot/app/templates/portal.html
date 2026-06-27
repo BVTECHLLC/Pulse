@@ -3,11 +3,16 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{ app_name }} — Client Portal</title>
+<link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/css/pulse.css">
 </head>
 <body>
 <div class="topbar">
-  <div class="brand"><span class="dot"></span> BVTech OpsPilot <span class="pill">Client Portal</span></div>
+  <a class="lockup" href="/portal">
+    <img src="/static/img/mark.svg" alt="BVTech OpsPilot">
+    <span class="wm"><b>BVTech</b> OpsPilot</span>
+  </a>
+  <span class="pill">Client Portal</span>
   <div style="display:flex;align-items:center;gap:12px">
     <span class="pill" id="who">…</span>
     <button class="btn ghost" onclick="logout()">Sign out</button>
@@ -51,6 +56,10 @@
   <div class="card hidden" id="kb-card" style="margin-top:16px"><h3>Documentation</h3><table>
     <thead><tr><th>Title</th><th>Category</th></tr></thead>
     <tbody id="t-kb"></tbody></table></div>
+</div>
+<div class="brand-footer">
+  <span>© BVTech LLC · El Campo, TX</span>
+  <span class="scripture">"Whatever you do, work heartily." — Col 3:23</span>
 </div>
 <script>
 async function api(p){const r=await fetch(p);if(r.status===401){location.href='/';return null;}return r.json();}

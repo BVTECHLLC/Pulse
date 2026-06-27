@@ -3,7 +3,7 @@
 Secure, cloud-hosted MSP command center, admin dashboard, and client portal for
 **BVTech LLC** — evolving toward a lightweight RMM-style platform.
 
-**Current version: v0.7.0** — a unified **RMM + PSA** platform: auth + RBAC +
+**Current version: v0.8.0** — a unified **RMM + PSA** platform: auth + RBAC +
 clients/devices/licenses + audit log + telemetry agent, a monitoring/alerting
 engine, billing (MRR & renewals) visibility, a **full SLA-tracked helpdesk**
 (threading, assignment, time tracking), an **IT documentation / knowledge base**,
@@ -120,6 +120,16 @@ python scripts/smoke_test.py     # runs the full enroll→checkin→audit flow
   separation of duties** (approver ≠ requester); reject/cancel paths.
 - **Agent job queue**: `GET /api/agent/jobs` + `POST /api/agent/jobs/{id}/result`
   — the agent pulls only its own approved jobs (opt-in runner). No ad-hoc commands.
+
+**v0.8 — Branding, accounts & email**
+- **Brand system**: OpsPilot logo + favicon, refined dark theme, consistent
+  lockup/footer across login, signup, dashboard, portal (swap `static/img/mark.svg`).
+- **Public signup**: `/signup` + `POST /api/signup` → reviewable lead; staff
+  review via `/api/signup-requests`.
+- **Email**: `app/services/email.py` (SMTP via env; safe no-op + log when unset),
+  wired to signup confirmations/notices and invite credentials.
+- Owner bootstrap defaults to `help@bvtech.org`; `SUPPORT_EMAIL`/`PUBLIC_BASE_URL`/
+  `SMTP_*` configurable.
 
 See `docs/` for deployment and security details, and `docs/ROADMAP.md` for what's
 next and the **exact prompt to paste**.

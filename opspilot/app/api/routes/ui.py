@@ -25,6 +25,11 @@ def login_page(request: Request):
     return _templates.TemplateResponse("login.html", _ctx(request))
 
 
+@router.get("/signup", response_class=HTMLResponse)
+def signup_page(request: Request):
+    return _templates.TemplateResponse("signup.html", _ctx(request))
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):
     return _templates.TemplateResponse("dashboard.html", _ctx(request))

@@ -77,3 +77,50 @@ input:focus{outline:none;border-color:var(--peri)}
 .comment.internal{border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.05)}
 .comment .meta{font-size:11px;color:var(--muted);margin-bottom:4px}
 .flex{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+/* ===================================================================== */
+/*  Brand layer — BVTech OpsPilot dark theme polish                       */
+/* ===================================================================== */
+body{
+  background:
+    radial-gradient(900px 480px at 88% -8%, rgba(124,131,255,.20) 0%, transparent 60%),
+    radial-gradient(700px 420px at 0% 100%, rgba(124,131,255,.10) 0%, transparent 55%),
+    linear-gradient(180deg, #0d1430 0%, var(--navy) 60%);
+}
+/* Logo lockup used in top bars and the login screen */
+.lockup{display:flex;align-items:center;gap:11px;text-decoration:none}
+.lockup img{width:34px;height:34px;display:block;filter:drop-shadow(0 4px 12px rgba(124,131,255,.45))}
+.lockup .wm{font-weight:800;letter-spacing:.2px;font-size:17px;line-height:1;color:var(--ink)}
+.lockup .wm b{color:var(--peri-2)}
+.lockup .wm span{display:block;font-size:10px;font-weight:600;letter-spacing:2.4px;
+  text-transform:uppercase;color:var(--muted);margin-top:3px}
+.topbar{box-shadow:0 1px 0 rgba(124,131,255,.08)}
+/* Buttons get a subtle gradient + lift */
+.btn{background:linear-gradient(180deg,var(--peri-2),var(--peri));
+  box-shadow:0 6px 18px -8px rgba(124,131,255,.8);transition:transform .06s ease,box-shadow .2s ease}
+.btn:hover{transform:translateY(-1px);box-shadow:0 10px 24px -8px rgba(124,131,255,.9)}
+.btn:active{transform:translateY(0)}
+.btn.ghost{background:transparent;box-shadow:none}
+.btn.sm{box-shadow:none}
+/* Cards lift slightly on hover for a premium feel */
+.card{box-shadow:0 1px 0 rgba(255,255,255,.02) inset,0 12px 28px -22px rgba(0,0,0,.8);
+  transition:border-color .2s ease,transform .12s ease}
+.card:hover{border-color:#33407a}
+.stat{background:linear-gradient(180deg,var(--ink),#aab2e6);-webkit-background-clip:text;
+  background-clip:text;-webkit-text-fill-color:transparent}
+.stat.sub{-webkit-text-fill-color:initial;background:none;color:var(--muted)}
+.pill{background:rgba(124,131,255,.06)}
+/* Login / signup screens */
+.login-card{position:relative;box-shadow:0 30px 80px -30px rgba(0,0,0,.9);
+  background:linear-gradient(180deg,#141d40,#10172f)}
+.login-card .lockup{justify-content:center;margin-bottom:18px}
+.login-card .lockup img{width:46px;height:46px}
+.login-card h1{font-size:24px;text-align:center}
+.login-card p.sub{text-align:center}
+.auth-links{margin-top:16px;text-align:center;font-size:13px}
+.auth-links a{font-weight:600}
+.brand-footer{max-width:1180px;margin:28px auto 36px;padding:0 24px;color:var(--muted);
+  font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.scripture{color:var(--peri-2);opacity:.75;font-style:italic}
+textarea{font-family:inherit}
+textarea:focus,select:focus{outline:none;border-color:var(--peri)}

@@ -78,14 +78,25 @@ audited.
   that executes ONLY server-approved jobs for its own enrolled device.
 - NO arbitrary remote code execution — only approved, logged, attributable jobs.
 
-## v0.8 — Microsoft 365 (see docs/M365_PLAN.md)
+## ✅ v0.8 (this release) — Branding, accounts & email
+- BVTech OpsPilot brand system (logo/favicon, refined dark theme, consistent
+  lockup + footer across login/signup/dashboard/portal).
+- Public **/signup** "Request access" → reviewable lead + staff review queue.
+- SMTP email service (safe no-op + log when unconfigured), wired to signup
+  confirmations/notices and invite credentials.
+- Owner account defaults to `help@bvtech.org`; support email + public URL + SMTP
+  all env-configurable.
+
+---
+
+## v0.9 — Microsoft 365 (see docs/M365_PLAN.md) — needs live Graph credentials
 - Multi-tenant Entra app, least-privilege read-only Graph scopes.
 - Per-client connect/consent, encrypted token storage, scheduled sync.
 - Auto-populate licenses from `subscribedSkus` (feeds the billing rollup);
   Secure Score + risky sign-ins surfaced as alerts via the existing engine
   (which automation rules can then act on automatically).
 
-## v0.9 — Content workflow + richer dashboards + integrations
+## v0.10 — Content workflow + richer dashboards + integrations
 - Notification channels: email/Slack/Teams/webhook fan-out (a new `notify`
   channel behind the existing automation `notify` action + Notification model).
 - Scheduled offline sweep + digest reports (APScheduler/cron driving run-checks).
@@ -95,14 +106,15 @@ audited.
 
 ---
 
-## ⏭️ EXACT PROMPT TO PASTE NEXT (to build v0.8 — after v0.7 scripts lands)
+## ⏭️ EXACT PROMPT TO PASTE NEXT (to build v0.9 — Microsoft 365)
 
 > Continue BVTech OpsPilot. The repo at `opspilot/` is a unified RMM+PSA platform
 > (auth/RBAC, clients/devices/licenses, monitoring/alerting + policies, billing,
 > SLA helpdesk + time tracking, knowledge base, automation engine, security
-> posture module, and a script library with approval-gated deployment governance).
-> Pull the repo, run `python scripts/smoke_test.py` (it should pass), then build
-> **v0.8 — Microsoft 365** per `docs/M365_PLAN.md`:
+> posture module, a script library with approval-gated deployment governance, and
+> branding + public signup + SMTP email). Pull the repo, run
+> `python scripts/smoke_test.py` (it should pass), then build
+> **v0.9 — Microsoft 365** per `docs/M365_PLAN.md` (have Graph credentials ready):
 >
 > 1. Multi-tenant Entra app registration with least-privilege, read-only Graph
 >    scopes; per-client connect/consent flow with encrypted token storage (new

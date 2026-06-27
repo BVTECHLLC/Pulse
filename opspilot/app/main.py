@@ -16,7 +16,7 @@ from .core.security import hash_password
 from .models import Role, User
 from .api.routes import (
     auth, resources, agent, ui, tickets, alerts, billing, kb, automation, security,
-    scripts,
+    scripts, signup,
 )
 
 _s = get_settings()
@@ -52,19 +52,27 @@ async def security_headers(request: Request, call_next):
 _login_hits: dict[str, list[float]] = defaultdict(list)
 
 
+_RATE_LIMITED = {
+    "/api/auth/login": lambda: _s.RATE_LIMIT_LOGIN_PER_MIN,
+    "/api/signup": lambda: _s.RATE_LIMIT_SIGNUP_PER_MIN,
+}
+
+
 @app.middleware("http")
-async def login_rate_limit(request: Request, call_next):
-    if request.url.path == "/api/auth/login" and request.method == "POST":
+async def basic_rate_limit(request: Request, call_next):
+    limit_fn = _RATE_LIMITED.get(request.url.path)
+    if limit_fn and request.method == "POST":
         ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "?")
+        key = f"{request.url.path}:{ip}"
         now = time.time()
-        window = [t for t in _login_hits[ip] if now - t < 60]
-        if len(window) >= _s.RATE_LIMIT_LOGIN_PER_MIN:
+        window = [t for t in _login_hits[key] if now - t < 60]
+        if len(window) >= limit_fn():
             return JSONResponse(
                 {"detail": "Too many attempts. Wait a minute."},
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             )
         window.append(now)
-        _login_hits[ip] = window
+        _login_hits[key] = window
     return await call_next(request)
 
 
@@ -82,6 +90,7 @@ app.include_router(automation.router)
 app.include_router(automation.notif_router)
 app.include_router(security.router)
 app.include_router(scripts.router)
+app.include_router(signup.router)
 app.include_router(ui.router)
 
 

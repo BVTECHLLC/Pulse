@@ -1,5 +1,33 @@
 # BVTech OpsPilot — Changelog
 
+## v0.8.0 — Branding, accounts & email (June 2026)
+
+### Added
+- **Brand system**: a BVTech OpsPilot logo mark (SVG) + favicon, a refined
+  dark-mode theme (gradient backdrop, lifted cards, gradient buttons, gradient
+  stat numbers), and a consistent logo lockup + footer across the login, signup,
+  dashboard, and portal. Drop a real logo at `app/static/img/mark.svg` to
+  rebrand everything at once.
+- **Public signup / "Request access"** (`/signup` page, `POST /api/signup`):
+  collects name/email/company/message as a reviewable **lead** (not an
+  auto-provisioned account — open self-service into an MSP console would be
+  unsafe). Rate-limited. Staff review via `GET/PATCH /api/signup-requests` and an
+  **Access Requests** card on the dashboard.
+- **Outbound email** (`app/services/email.py`): SMTP-backed, configured via env
+  (`SMTP_HOST`, …). When unconfigured it safely **no-ops and logs** what it would
+  send, so every environment runs. Wired to: signup confirmation (to requester) +
+  notice (to `SUPPORT_EMAIL`), and client-user invites (credentials emailed; the
+  response now reports `emailed`).
+- **Owner account**: the bootstrap owner email now defaults to `help@bvtech.org`,
+  and `SUPPORT_EMAIL` / `PUBLIC_BASE_URL` are configurable.
+
+### Notes
+- `.env.example` documents the new SMTP / branding / support settings.
+- Smoke test extended: email no-op, public signup → staff review → RBAC, invite
+  `emailed` flag, and branded-page render checks.
+- Microsoft 365 (v0.8 on the old plan) moves out one slot; it needs live Graph
+  credentials — ping with keys and it's next.
+
 ## v0.7.0 — Script library & deployment governance (June 2026)
 
 Real "push a script to a device" capability — built so it can never become

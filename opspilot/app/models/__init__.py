@@ -536,3 +536,21 @@ class ScriptDeployment(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+# --------------------------------------------------------------------------- #
+# v0.8 — Public signup / access requests
+# --------------------------------------------------------------------------- #
+class SignupRequest(Base):
+    """A public 'request access' submission from the marketing/login page. It is
+    a lead, NOT an account — staff review and provision deliberately (open
+    self-provisioning into an MSP console would be a security hole)."""
+    __tablename__ = "signup_requests"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    email: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    company: Mapped[str | None] = mapped_column(String(200))
+    message: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="new", index=True)  # new|contacted|approved|rejected
+    ip: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)

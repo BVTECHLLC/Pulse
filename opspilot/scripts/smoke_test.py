@@ -347,7 +347,26 @@ def main():
         assert ca_c.post(f"/api/scripts/{sc_id}/deploy", json={"device_id":target_dev,"consent_ack":True}).status_code==403
         print("scripts RBAC isolation OK")
 
-    print("\n=== OpsPilot v0.7 SMOKE TEST PASSED ===")
+        # ===================== v0.8: public signup + email =====================
+        from app.services import email as _email
+        assert _email.send("nobody@example.com","Test","Body") is False, "email should no-op without SMTP"
+        # public signup (no auth) creates a reviewable lead
+        pub=TestClient(app); pub.cookies.clear()
+        sr=pub.post("/api/signup", json={"name":"Pat Lead","email":"pat@acme.com","company":"Acme","message":"Need RMM"})
+        assert sr.status_code==201 and sr.json()["ok"] is True, sr.text
+        reqs=c.get("/api/signup-requests").json()
+        sid=next(r["id"] for r in reqs if r["email"]=="pat@acme.com")
+        assert c.patch(f"/api/signup-requests/{sid}", json={"status":"approved"}).json()["status"]=="approved"
+        assert ca_c.get("/api/signup-requests").status_code==403, "client saw access requests!"
+        # invites now report whether the credential email was sent
+        inv2=ca_c.post("/api/client-users", json={"email":"viewer2@smoke.co","role":"client_viewer"})
+        assert inv2.status_code==201 and "emailed" in inv2.json(), inv2.text
+        # the signup + login pages render with branding
+        assert pub.get("/signup").status_code==200
+        assert "mark.svg" in pub.get("/").text, "login page missing brand logo"
+        print("signup flow + email no-op + invite emailed flag + branding OK")
+
+    print("\n=== OpsPilot v0.8 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
