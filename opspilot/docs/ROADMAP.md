@@ -89,12 +89,16 @@ audited.
 
 ---
 
-## v0.9 — Microsoft 365 (see docs/M365_PLAN.md) — needs live Graph credentials
-- Multi-tenant Entra app, least-privilege read-only Graph scopes.
-- Per-client connect/consent, encrypted token storage, scheduled sync.
-- Auto-populate licenses from `subscribedSkus` (feeds the billing rollup);
-  Secure Score + risky sign-ins surfaced as alerts via the existing engine
-  (which automation rules can then act on automatically).
+## ✅ v0.9 (this release) — Microsoft 365 (read-only, app-only, multi-tenant)
+- Per-client tenant connections; one Entra app (creds in env), encrypted tokens.
+- Sync auto-populates licenses from `subscribedSkus` (→ billing), stores Secure
+  Score, and raises risky-sign-in alerts that the automation engine can act on.
+- Mockable Graph client → fully tested without creds; live sync 503s until
+  `M365_CLIENT_ID`/`M365_CLIENT_SECRET` are configured.
+- **To activate**: register one Entra app with read-only Graph permissions
+  (`Organization.Read.All`, `Directory.Read.All`, `SecurityEvents.Read.All`,
+  `IdentityRiskyUser.Read.All`), set the two env vars, then connect each
+  customer tenant (admin consent) and hit Sync.
 
 ## v0.10 — Content workflow + richer dashboards + integrations
 - Notification channels: email/Slack/Teams/webhook fan-out (a new `notify`

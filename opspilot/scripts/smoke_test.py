@@ -366,7 +366,53 @@ def main():
         assert "mark.svg" in pub.get("/").text, "login page missing brand logo"
         print("signup flow + email no-op + invite emailed flag + branding OK")
 
-    print("\n=== OpsPilot v0.8 SMOKE TEST PASSED ===")
+        # ===================== v0.9: Microsoft 365 =====================
+        from app.services import m365 as _m365, crypto as _crypto
+        assert c.get("/api/m365/status").json()["configured"] is False  # no creds in CI
+        mc=c.post("/api/m365/connections", json={"client_id":cid,"tenant_id":"contoso.onmicrosoft.com","display_name":"Acme M365"})
+        assert mc.status_code==201, mc.text
+        conn_id=mc.json()["id"]
+        # one connection per client
+        assert c.post("/api/m365/connections", json={"client_id":cid,"tenant_id":"x"}).status_code==409
+        # live sync is unavailable until Graph creds are configured
+        assert c.post(f"/api/m365/connections/{conn_id}/sync").status_code==503
+
+        # exercise the sync engine with a FAKE Graph client (no creds/network)
+        class _FakeGraph:
+            last_token="faketoken"; last_expiry=None
+            def get_subscribed_skus(self): return [
+                {"sku":"O365_BUSINESS_PREMIUM","enabled":25,"consumed":20},
+                {"sku":"EXCHANGESTANDARD","enabled":10,"consumed":8}]
+            def get_secure_score(self): return {"current":62,"max":100}
+            def get_risky_signins(self): return [
+                {"upn":"ceo@acme.com","risk_level":"high"},
+                {"upn":"intern@acme.com","risk_level":"low"}]
+        from app.models import M365Connection as _MC
+        _dbm=_SL(); _conn=_dbm.get(_MC, conn_id)
+        res=_m365.sync_connection(_dbm, _conn, _FakeGraph())
+        assert res["skus"]==2 and res["secure_score"]==62 and res["risky_signins"]==2, res
+        assert len(res["new_alerts"])==1, "only the high-risk sign-in should alert"
+        # token cached encrypted at rest
+        assert _crypto.decrypt(_conn.access_token_enc)=="faketoken", "token not encrypted/roundtripped"
+        _dbm.close()
+
+        # licenses auto-populated -> visible to billing; connection reports score
+        m365_lics=[l for l in c.get(f"/api/licenses?client_id={cid}").json()
+                   if l["vendor"]=="Microsoft 365"]
+        assert any(l["product"]=="O365_BUSINESS_PREMIUM" and l["seats"]==25 for l in m365_lics), m365_lics
+        cinfo=c.get("/api/m365/connections").json()[0]
+        assert cinfo["status"]=="connected" and cinfo["secure_score"]==62 and cinfo["license_count"]==2
+        assert any(a["kind"]=="m365_risky_signin:ceo@acme.com" for a in c.get("/api/alerts").json()), "no M365 risk alert"
+        # re-sync is idempotent (no duplicate licenses or alerts)
+        _dbm2=_SL(); _m365.sync_connection(_dbm2, _dbm2.get(_MC, conn_id), _FakeGraph()); _dbm2.close()
+        assert len([l for l in c.get(f"/api/licenses?client_id={cid}").json() if l["vendor"]=="Microsoft 365"])==2
+        assert len([a for a in c.get("/api/alerts").json() if a["kind"].startswith("m365_risky_signin:")])==1
+        # RBAC + delete
+        assert ca_c.get("/api/m365/connections").status_code==403
+        assert c.request("DELETE", f"/api/m365/connections/{conn_id}").status_code==200
+        print("M365 connect + mock sync + license/score/alert + idempotency + RBAC OK")
+
+    print("\n=== OpsPilot v0.9 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

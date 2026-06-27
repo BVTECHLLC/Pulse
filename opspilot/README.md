@@ -3,7 +3,7 @@
 Secure, cloud-hosted MSP command center, admin dashboard, and client portal for
 **BVTech LLC** — evolving toward a lightweight RMM-style platform.
 
-**Current version: v0.8.0** — a unified **RMM + PSA** platform: auth + RBAC +
+**Current version: v0.9.0** — a unified **RMM + PSA** platform: auth + RBAC +
 clients/devices/licenses + audit log + telemetry agent, a monitoring/alerting
 engine, billing (MRR & renewals) visibility, a **full SLA-tracked helpdesk**
 (threading, assignment, time tracking), an **IT documentation / knowledge base**,
@@ -130,6 +130,12 @@ python scripts/smoke_test.py     # runs the full enroll→checkin→audit flow
   wired to signup confirmations/notices and invite credentials.
 - Owner bootstrap defaults to `help@bvtech.org`; `SUPPORT_EMAIL`/`PUBLIC_BASE_URL`/
   `SMTP_*` configurable.
+
+**v0.9 — Microsoft 365** (read-only, app-only, multi-tenant Graph)
+- **Connections**: `/api/m365/connections` (one per client) + `/api/m365/status`.
+- **Sync**: `POST /api/m365/connections/{id}/sync` — licenses from `subscribedSkus`
+  (→ billing), Secure Score, and risky sign-ins → alerts (→ automation). Tokens
+  **encrypted at rest**; 503 until `M365_CLIENT_ID`/`M365_CLIENT_SECRET` set.
 
 See `docs/` for deployment and security details, and `docs/ROADMAP.md` for what's
 next and the **exact prompt to paste**.

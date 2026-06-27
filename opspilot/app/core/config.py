@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # --- Identity ---
     APP_NAME: str = "BVTech OpsPilot"
-    APP_VERSION: str = "0.8.0"
+    APP_VERSION: str = "0.9.0"
     ENV: str = "development"  # development | production
 
     # --- Security ---
@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     SMTP_FROM: str | None = None       # defaults to SUPPORT_EMAIL when unset
     SMTP_STARTTLS: bool = True
 
+    # --- Microsoft 365 (Graph) — app-only, multi-tenant. Keys via env/secrets. ---
+    M365_CLIENT_ID: str | None = None
+    M365_CLIENT_SECRET: str | None = None
+    M365_LOGIN_BASE: str = "https://login.microsoftonline.com"
+    M365_GRAPH_BASE: str = "https://graph.microsoft.com/v1.0"
+
     # --- Rate limiting ---
     RATE_LIMIT_LOGIN_PER_MIN: int = 5
     RATE_LIMIT_SIGNUP_PER_MIN: int = 3
@@ -51,6 +57,10 @@ class Settings(BaseSettings):
     @property
     def email_enabled(self) -> bool:
         return bool(self.SMTP_HOST)
+
+    @property
+    def m365_enabled(self) -> bool:
+        return bool(self.M365_CLIENT_ID and self.M365_CLIENT_SECRET)
 
     @property
     def is_prod(self) -> bool:

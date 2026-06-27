@@ -110,6 +110,16 @@
     <div class="card" style="margin-top:16px"><h3>Upcoming Renewals</h3><table>
       <thead><tr><th>Product</th><th>Client</th><th>Vendor</th><th>$/mo</th><th>Renewal</th><th>In</th></tr></thead>
       <tbody id="t-renewals"></tbody></table></div>
+    <div class="card" style="margin-top:16px">
+      <h3>Microsoft 365 <span class="pill" id="m365-status">checking…</span></h3>
+      <div class="flex" style="margin:8px 0">
+        <select id="m365-client" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
+        <input id="m365-tenant" placeholder="customer-tenant.onmicrosoft.com" style="flex:1;min-width:200px">
+        <button class="btn sm" onclick="connectM365()">Connect tenant</button>
+      </div>
+      <table><thead><tr><th>Client</th><th>Tenant</th><th>Status</th><th>Secure score</th><th>Licenses</th><th>Risky</th><th></th></tr></thead>
+      <tbody id="t-m365"></tbody></table>
+    </div>
   </section>
 
   <section id="automation" class="hidden">
@@ -435,6 +445,39 @@ async function loadNotifications(){
 async function readNotif(id){await post(`/api/notifications/${id}/read`);loadNotifications();}
 async function markAllRead(){await post('/api/notifications/read-all');loadNotifications();}
 
+// ---- Microsoft 365 ----
+let M365_OK=false;
+async function loadM365(){
+  const st=await api('/api/m365/status');if(st){M365_OK=st.configured;
+    const p=document.getElementById('m365-status');
+    p.textContent=st.configured?'connected':'keys not set';
+    p.style.color=st.configured?'var(--ok)':'var(--muted)';}
+  const conns=await api('/api/m365/connections');if(!conns)return;
+  document.getElementById('t-m365').innerHTML=conns.map(c=>{
+    const score=c.secure_score!=null?`${c.secure_score}/${c.secure_score_max||100}`:'—';
+    return `<tr><td>${esc(CLIENTS[c.client_id]||c.client_id)}</td><td class="muted">${esc(c.tenant_id)}</td>
+     <td><span class="badge ${c.status==='connected'?'ok':(c.status==='error'?'bad':'warn')}">${esc(c.status)}</span></td>
+     <td>${score}</td><td>${c.license_count??'—'}</td><td>${c.risky_signin_count??'—'}</td>
+     <td class="flex"><button class="btn sm" onclick="syncM365(${c.id})">sync</button>
+       <button class="btn sm ghost" onclick="removeM365(${c.id})">✕</button></td></tr>`;}).join('')
+    ||'<tr><td colspan=7 class="muted">No tenants connected yet.</td></tr>';
+}
+async function connectM365(){
+  const cid=document.getElementById('m365-client').value, tenant=document.getElementById('m365-tenant').value.trim();
+  if(!tenant){alert('Enter the customer tenant (e.g. contoso.onmicrosoft.com).');return;}
+  const r=await post('/api/m365/connections',{client_id:parseInt(cid),tenant_id:tenant});
+  if(r.ok){document.getElementById('m365-tenant').value='';loadM365();}
+  else{const j=await r.json().catch(()=>({}));alert(j.detail||'Failed');}
+}
+async function syncM365(id){
+  const r=await post(`/api/m365/connections/${id}/sync`);const j=await r.json().catch(()=>({}));
+  if(r.ok){alert(`Synced: ${j.skus} licenses, secure score ${j.secure_score??'—'}, ${j.risky_signins} risky sign-ins.`);
+    loadM365();loadBilling();loadAlerts();refreshBadges();}
+  else alert(j.detail||(r.status===503?'Add M365_CLIENT_ID / M365_CLIENT_SECRET on the server first.':'Sync failed'));
+}
+async function removeM365(id){if(!confirm('Remove this M365 connection?'))return;
+  const r=await fetch(`/api/m365/connections/${id}`,{method:'DELETE'});if(r.ok)loadM365();else alert('Owner only.');}
+
 // ---- Access requests (signups) ----
 async function loadSignups(){
   const rows=await api('/api/signup-requests');if(!rows)return;
@@ -614,6 +657,8 @@ async function load(){
   if(kbSel)kbSel.innerHTML='<option value="">All clients</option>'+clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   const sfSel=document.getElementById('sf-client');
   if(sfSel)sfSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const mSel=document.getElementById('m365-client');
+  if(mSel)mSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   document.getElementById('s-clients').textContent=clients.length;
   document.getElementById('s-devices').textContent=devices.length;
   document.getElementById('s-attn').textContent=devices.filter(d=>(d.health_score??100)<70).length+' need attention';
@@ -647,7 +692,7 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365()]);
 }
 load();
 </script>

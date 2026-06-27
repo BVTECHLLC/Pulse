@@ -554,3 +554,29 @@ class SignupRequest(Base):
     status: Mapped[str] = mapped_column(String(20), default="new", index=True)  # new|contacted|approved|rejected
     ip: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+# --------------------------------------------------------------------------- #
+# v0.9 — Microsoft 365 (read-only Graph; app-only, multi-tenant)
+# --------------------------------------------------------------------------- #
+class M365Connection(Base):
+    """Per-client link to a customer's Microsoft 365 tenant. The MSP app (client
+    id/secret from env) gets app-only, read-only tokens for `tenant_id`. Cached
+    access tokens are stored ENCRYPTED at rest (see services/crypto.py)."""
+    __tablename__ = "m365_connections"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), unique=True, index=True, nullable=False)
+    tenant_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending|connected|error
+    access_token_enc: Mapped[str | None] = mapped_column(Text)   # encrypted cache
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    secure_score: Mapped[int | None] = mapped_column(Integer)
+    secure_score_max: Mapped[int | None] = mapped_column(Integer)
+    license_count: Mapped[int | None] = mapped_column(Integer)
+    risky_signin_count: Mapped[int | None] = mapped_column(Integer)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_sync_status: Mapped[str | None] = mapped_column(String(200))
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)

@@ -1,5 +1,40 @@
 # BVTech OpsPilot — Changelog
 
+## v0.9.0 — Microsoft 365 integration (June 2026)
+
+Read-only, app-only, multi-tenant Microsoft Graph integration. One Entra app
+(credentials in env); each customer tenant grants admin consent.
+
+### Added
+- **Per-client M365 connections** (`/api/m365/connections`): link a customer's
+  tenant to a client (one per client). `GET /api/m365/status` reports whether
+  Graph credentials are configured. Owner-only delete.
+- **Read-only sync** (`POST /api/m365/connections/{id}/sync`):
+  - **Licenses** auto-populated from `subscribedSkus` (vendor "Microsoft 365",
+    seats/used) — feeds the existing billing rollup. Idempotent (re-sync updates,
+    never duplicates).
+  - **Secure Score** stored on the connection.
+  - **Risky sign-ins** raise alerts (`kind=m365_risky_signin:<upn>`) through the
+    existing engine, so they appear on the dashboard **and the automation engine
+    can act on them** (e.g. high-risk sign-in → open a ticket). Deduped per user.
+  - Live sync returns **503** until `M365_CLIENT_ID` / `M365_CLIENT_SECRET` are set.
+- **Encrypted secrets at rest** (`app/services/crypto.py`, Fernet keyed off
+  `SECRET_KEY`): cached Graph tokens are stored encrypted.
+- **Mockable Graph client**: `m365.sync_connection(db, conn, graph)` accepts any
+  client implementing `get_subscribed_skus` / `get_secure_score` /
+  `get_risky_signins`, so the whole pipeline is tested without creds or network.
+- **Dashboard**: a Microsoft 365 panel on the Billing tab — connect a tenant,
+  see status / Secure Score / license & risky-sign-in counts, sync or remove.
+- New dependency `cryptography`; new Alembic migration (`m365_connections`) —
+  verified reversible. `.env.example` documents the required Graph permissions.
+- Smoke test exercises connect → (503 when unconfigured) → mock sync →
+  license/score/alert population → encrypted-token roundtrip → idempotency → RBAC.
+
+### Security
+- Connections/sync are staff-only; delete is owner-only; every action audited.
+- Graph scopes are **read-only**; credentials live only in env; tokens encrypted
+  at rest. The agent remains telemetry-only.
+
 ## v0.8.0 — Branding, accounts & email (June 2026)
 
 ### Added
