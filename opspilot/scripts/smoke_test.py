@@ -412,7 +412,43 @@ def main():
         assert c.request("DELETE", f"/api/m365/connections/{conn_id}").status_code==200
         print("M365 connect + mock sync + license/score/alert + idempotency + RBAC OK")
 
-    print("\n=== OpsPilot v0.9 SMOKE TEST PASSED ===")
+        # ===================== v0.10: Invoicing =====================
+        # generate from 45 min billable time @ $150/h (=112.50) + licenses (220+80=300), 8.25% tax
+        inv1=c.post("/api/invoices/generate", json={"client_id":cid,"include_time":True,
+            "include_licenses":True,"hourly_rate":150,"tax_rate":8.25}).json()
+        assert inv1["number"].startswith("INV-"), inv1
+        assert abs(inv1["total"]-446.53)<0.02, inv1   # 412.50 + 8.25% tax
+        det=c.get(f"/api/invoices/{inv1['id']}").json()
+        assert any(li["source"]=="time" for li in det["line_items"]), det
+        assert any(li["source"]=="license" for li in det["line_items"]), det
+        print("invoice generate from time + licenses OK (total $%.2f)" % inv1["total"])
+
+        # billable time can't be billed twice: a second run has no time line
+        inv2=c.post("/api/invoices/generate", json={"client_id":cid,"include_time":True,
+            "include_licenses":True,"tax_rate":0}).json()
+        d2=c.get(f"/api/invoices/{inv2['id']}").json()
+        assert not any(li["source"]=="time" for li in d2["line_items"]), "time double-billed!"
+        assert abs(d2["subtotal"]-300.0)<0.01, d2
+        # manual line item on a draft recomputes the total
+        c.post(f"/api/invoices/{inv2['id']}/line-items", json={"description":"Onboarding","quantity":2,"unit_price":50})
+        assert abs(c.get(f"/api/invoices/{inv2['id']}").json()["total"]-400.0)<0.01
+        print("no-double-bill + manual line item OK")
+
+        # lifecycle: send + mark paid; client sees non-draft invoices only
+        assert c.post(f"/api/invoices/{inv2['id']}/send").json()["status"]=="sent"
+        assert c.post(f"/api/invoices/{inv1['id']}/paid").json()["status"]=="paid"
+        client_inv=ca_c.get("/api/invoices").json()
+        assert client_inv and all(i["status"]!="draft" for i in client_inv), client_inv
+        assert any(i["id"]==inv2["id"] for i in client_inv), "client can't see their sent invoice"
+        # void an empty draft (owner)
+        inv3=c.post("/api/invoices/generate", json={"client_id":cid,"include_time":False,"include_licenses":False}).json()
+        assert c.post(f"/api/invoices/{inv3['id']}/void").json()["status"]=="void"
+        # RBAC: clients cannot generate or edit invoices
+        assert ca_c.post("/api/invoices/generate", json={"client_id":cid}).status_code==403
+        assert ca_c.post(f"/api/invoices/{inv2['id']}/line-items", json={"description":"x"}).status_code==403
+        print("invoice lifecycle + client visibility + RBAC OK")
+
+    print("\n=== OpsPilot v0.10 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

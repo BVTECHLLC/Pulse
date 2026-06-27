@@ -100,13 +100,20 @@ audited.
   `IdentityRiskyUser.Read.All`), set the two env vars, then connect each
   customer tenant (admin consent) and hit Sync.
 
-## v0.10 — Content workflow + richer dashboards + integrations
-- Notification channels: email/Slack/Teams/webhook fan-out (a new `notify`
-  channel behind the existing automation `notify` action + Notification model).
+## ✅ v0.10 (this release) — Invoicing
+- Generate invoices from unbilled billable time + license subscriptions + tax;
+  billed time flagged so it's never double-billed.
+- Manual line items; draft → sent → paid → void lifecycle; auto-numbered.
+- Printable, branded invoice page (`/invoice/{id}`); client portal invoice list.
+
+---
+
+## v0.11 — Notifications & integrations
+- Notification channels: email/Slack/Teams/webhook fan-out (a new delivery layer
+  behind the existing automation `notify` action + Notification model).
 - Scheduled offline sweep + digest reports (APScheduler/cron driving run-checks).
-- Billing exports + invoicing from time entries: Stripe/QuickBooks/Xero.
-- Website content workflow: draft → review → approved → Cloudflare Pages deploy,
-  with version history and no direct prod overwrite.
+- Payment + accounting exports from invoices: Stripe/QuickBooks/Xero.
+- Website content workflow: draft → review → approved → Cloudflare Pages deploy.
 
 ---
 

@@ -1,5 +1,32 @@
 # BVTech OpsPilot — Changelog
 
+## v0.10.0 — Invoicing (June 2026)
+
+Closes the PSA money loop: tracked billable time + licenses → invoices.
+
+### Added
+- **Invoice generation** (`POST /api/invoices/generate`): builds a draft for a
+  client from **unbilled billable time** (`hourly_rate` × hours) and/or **license
+  subscriptions** (`monthly_cost`), with optional tax. Billed time entries are
+  flagged `invoiced` so they're **never double-billed** (verified in the test).
+  Auto-numbered `INV-00001`.
+- **Line items & lifecycle**: add manual line items to a draft; `draft → sent →
+  paid` plus `void`; totals auto-recompute. `GET /api/invoices` (+ `/{id}` with
+  line items).
+- **Printable invoice** (`/invoice/{id}`): a clean, branded HTML invoice with a
+  "Print / Save PDF" button.
+- **Dashboard**: an Invoices section on the Billing tab (generate from time/subs +
+  tax, list, send/mark-paid, open the printable view). **Client portal**: an
+  Invoices card — clients see their own sent/paid invoices and can open/print them.
+- New Alembic migration (`invoices`, `invoice_line_items` + `invoiced`/`invoice_id`
+  on `time_entries`) — verified reversible.
+- Smoke test: generate from time + licenses + tax (exact total), no-double-bill,
+  manual line item recompute, send/paid/void lifecycle, client visibility, RBAC.
+
+### Security
+- Generation/edit/lifecycle are staff-only (void is owner-only); clients can view
+  only their own non-draft invoices. Every action audited.
+
 ## v0.9.0 — Microsoft 365 integration (June 2026)
 
 Read-only, app-only, multi-tenant Microsoft Graph integration. One Entra app

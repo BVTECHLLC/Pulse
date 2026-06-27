@@ -3,7 +3,7 @@
 Secure, cloud-hosted MSP command center, admin dashboard, and client portal for
 **BVTech LLC** — evolving toward a lightweight RMM-style platform.
 
-**Current version: v0.9.0** — a unified **RMM + PSA** platform: auth + RBAC +
+**Current version: v0.10.0** — a unified **RMM + PSA** platform: auth + RBAC +
 clients/devices/licenses + audit log + telemetry agent, a monitoring/alerting
 engine, billing (MRR & renewals) visibility, a **full SLA-tracked helpdesk**
 (threading, assignment, time tracking), an **IT documentation / knowledge base**,
@@ -136,6 +136,13 @@ python scripts/smoke_test.py     # runs the full enroll→checkin→audit flow
 - **Sync**: `POST /api/m365/connections/{id}/sync` — licenses from `subscribedSkus`
   (→ billing), Secure Score, and risky sign-ins → alerts (→ automation). Tokens
   **encrypted at rest**; 503 until `M365_CLIENT_ID`/`M365_CLIENT_SECRET` set.
+
+**v0.10 — Invoicing**
+- **Generate** `POST /api/invoices/generate` from unbilled billable time
+  (`hourly_rate`) + license subscriptions + tax; billed time is flagged so it's
+  never double-billed.
+- **Lifecycle**: manual line items, `draft → sent → paid`, `void`;
+  `GET /api/invoices`(+`/{id}`). Printable branded invoice at `/invoice/{id}`.
 
 See `docs/` for deployment and security details, and `docs/ROADMAP.md` for what's
 next and the **exact prompt to paste**.

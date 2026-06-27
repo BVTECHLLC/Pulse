@@ -38,3 +38,8 @@ def dashboard(request: Request):
 @router.get("/portal", response_class=HTMLResponse)
 def portal(request: Request):
     return _templates.TemplateResponse("portal.html", _ctx(request))
+
+
+@router.get("/invoice/{invoice_id}", response_class=HTMLResponse)
+def invoice_view(invoice_id: int, request: Request):
+    return _templates.TemplateResponse("invoice.html", _ctx(request, invoice_id=invoice_id))

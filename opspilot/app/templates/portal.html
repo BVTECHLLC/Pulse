@@ -49,6 +49,9 @@
   <div class="card" style="margin-top:16px"><h3>Your Requests</h3><table>
     <thead><tr><th>#</th><th>Subject</th><th>Priority</th><th>Status</th><th>Opened</th></tr></thead>
     <tbody id="t-tickets"></tbody></table></div>
+  <div class="card hidden" id="inv-card" style="margin-top:16px"><h3>Invoices</h3><table>
+    <thead><tr><th>#</th><th>Total</th><th>Status</th><th>Issued</th><th></th></tr></thead>
+    <tbody id="t-invoices"></tbody></table></div>
   <div class="card hidden" id="sec-card" style="margin-top:16px"><h3>Security Findings</h3><table>
     <thead><tr><th>Severity</th><th>Finding</th><th>Recommendation</th><th>Status</th></tr></thead>
     <tbody id="t-findings"></tbody></table></div>
@@ -106,6 +109,16 @@ async function sendReply(id){
   await post(`/api/tickets/${id}/comments`,{body});
   openTicket(id);loadTickets();
 }
+async function loadInvoices(){
+  const rows=await api('/api/invoices');if(!rows)return;
+  document.getElementById('inv-card').classList.toggle('hidden',rows.length===0);
+  const money=v=>'$'+(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('t-invoices').innerHTML=rows.map(i=>
+    `<tr><td>${esc(i.number||('#'+i.id))}</td><td>${money(i.total)}</td>
+     <td><span class="badge ${i.status==='paid'?'ok':(i.status==='void'?'bad':'warn')}">${esc(i.status)}</span></td>
+     <td>${i.issued_at?new Date(i.issued_at).toLocaleDateString():'—'}</td>
+     <td><a href="/invoice/${i.id}" target="_blank">view →</a></td></tr>`).join('');
+}
 async function loadSecurity(){
   const sc=await api('/api/security/scorecard');if(!sc)return;
   const color=sc.score>=85?'var(--ok)':(sc.score>=60?'var(--warn)':'var(--bad)');
@@ -162,6 +175,7 @@ async function load(){
   loadAlerts();
   loadKB();
   loadSecurity();
+  loadInvoices();
 }
 load();
 </script>

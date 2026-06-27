@@ -120,6 +120,19 @@
       <table><thead><tr><th>Client</th><th>Tenant</th><th>Status</th><th>Secure score</th><th>Licenses</th><th>Risky</th><th></th></tr></thead>
       <tbody id="t-m365"></tbody></table>
     </div>
+    <div class="card" style="margin-top:16px">
+      <h3>Invoices</h3>
+      <div class="flex" style="margin:8px 0">
+        <select id="inv-client" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
+        <label class="flex" style="margin:0;color:var(--muted)"><input type="checkbox" id="inv-time" checked style="width:auto"> billable time</label>
+        <input id="inv-rate" type="number" placeholder="$/hr" style="width:90px;padding:10px">
+        <label class="flex" style="margin:0;color:var(--muted)"><input type="checkbox" id="inv-lic" checked style="width:auto"> subscriptions</label>
+        <input id="inv-tax" type="number" placeholder="tax %" style="width:80px;padding:10px">
+        <button class="btn sm" onclick="generateInvoice()">Generate draft</button>
+      </div>
+      <table><thead><tr><th>#</th><th>Client</th><th>Total</th><th>Status</th><th>Issued</th><th></th></tr></thead>
+      <tbody id="t-invoices"></tbody></table>
+    </div>
   </section>
 
   <section id="automation" class="hidden">
@@ -445,6 +458,32 @@ async function loadNotifications(){
 async function readNotif(id){await post(`/api/notifications/${id}/read`);loadNotifications();}
 async function markAllRead(){await post('/api/notifications/read-all');loadNotifications();}
 
+// ---- Invoices ----
+async function loadInvoices(){
+  const rows=await api('/api/invoices');if(!rows)return;
+  const money=v=>'$'+(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('t-invoices').innerHTML=rows.map(i=>{
+    const sc={draft:'',sent:'warn',paid:'ok',void:'bad'}[i.status]||'';
+    const act=i.status==='draft'?`<button class="btn sm" onclick="invAction(${i.id},'send')">send</button>`:
+      (i.status==='sent'?`<button class="btn sm" onclick="invAction(${i.id},'paid')">mark paid</button>`:'');
+    return `<tr><td><a href="/invoice/${i.id}" target="_blank">${esc(i.number||('#'+i.id))}</a></td>
+     <td>${esc(CLIENTS[i.client_id]||i.client_id)}</td><td>${money(i.total)}</td>
+     <td><span class="badge ${sc}">${esc(i.status)}</span></td>
+     <td class="muted">${i.issued_at?new Date(i.issued_at).toLocaleDateString():'—'}</td>
+     <td class="flex">${act}</td></tr>`;}).join('')
+    ||'<tr><td colspan=6 class="muted">No invoices yet.</td></tr>';
+}
+async function generateInvoice(){
+  const rate=parseFloat(document.getElementById('inv-rate').value);
+  const r=await post('/api/invoices/generate',{client_id:parseInt(document.getElementById('inv-client').value),
+    include_time:document.getElementById('inv-time').checked,include_licenses:document.getElementById('inv-lic').checked,
+    hourly_rate:isNaN(rate)?null:rate,tax_rate:parseFloat(document.getElementById('inv-tax').value)||0});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){loadInvoices();window.open(`/invoice/${j.id}`,'_blank');}
+  else alert(j.detail||'Generate failed');
+}
+async function invAction(id,a){await post(`/api/invoices/${id}/${a}`);loadInvoices();loadBilling();}
+
 // ---- Microsoft 365 ----
 let M365_OK=false;
 async function loadM365(){
@@ -659,6 +698,8 @@ async function load(){
   if(sfSel)sfSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   const mSel=document.getElementById('m365-client');
   if(mSel)mSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const iSel=document.getElementById('inv-client');
+  if(iSel)iSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   document.getElementById('s-clients').textContent=clients.length;
   document.getElementById('s-devices').textContent=devices.length;
   document.getElementById('s-attn').textContent=devices.filter(d=>(d.health_score??100)<70).length+' need attention';
@@ -692,7 +733,7 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices()]);
 }
 load();
 </script>

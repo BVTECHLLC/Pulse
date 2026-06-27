@@ -299,6 +299,9 @@ class TimeEntry(Base):
     minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     note: Mapped[str | None] = mapped_column(Text)
     billable: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Set when this entry has been rolled into an invoice (v0.10).
+    invoiced: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    invoice_id: Mapped[int | None] = mapped_column(Integer, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
 
 
@@ -580,3 +583,48 @@ class M365Connection(Base):
     created_by_user_id: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+# --------------------------------------------------------------------------- #
+# v0.10 — Invoicing (turns billable time + licenses into invoices)
+# --------------------------------------------------------------------------- #
+class InvoiceStatus(str, enum.Enum):
+    DRAFT = "draft"
+    SENT = "sent"
+    PAID = "paid"
+    VOID = "void"
+
+
+class Invoice(Base):
+    __tablename__ = "invoices"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    number: Mapped[str | None] = mapped_column(String(40), index=True)   # e.g. INV-00001
+    status: Mapped[InvoiceStatus] = mapped_column(Enum(InvoiceStatus), default=InvoiceStatus.DRAFT, index=True)
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    subtotal: Mapped[float] = mapped_column(Float, default=0.0)
+    tax_rate: Mapped[float] = mapped_column(Float, default=0.0)     # percent
+    tax_amount: Mapped[float] = mapped_column(Float, default=0.0)
+    total: Mapped[float] = mapped_column(Float, default=0.0)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class InvoiceLineItem(Base):
+    __tablename__ = "invoice_line_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id"), index=True, nullable=False)
+    description: Mapped[str] = mapped_column(String(300), nullable=False)
+    quantity: Mapped[float] = mapped_column(Float, default=1.0)
+    unit_price: Mapped[float] = mapped_column(Float, default=0.0)
+    amount: Mapped[float] = mapped_column(Float, default=0.0)
+    source: Mapped[str] = mapped_column(String(20), default="manual")  # time|license|manual
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
