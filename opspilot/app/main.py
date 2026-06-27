@@ -14,7 +14,10 @@ from .core.config import get_settings
 from .core.db import Base, SessionLocal, engine
 from .core.security import hash_password
 from .models import Role, User
-from .api.routes import auth, resources, agent, ui, tickets
+from .api.routes import (
+    auth, resources, agent, ui, tickets, alerts, billing, kb, automation, security,
+    scripts, signup, m365, invoices,
+)
 
 _s = get_settings()
 app = FastAPI(title=_s.APP_NAME, version=_s.APP_VERSION, docs_url=None, redoc_url=None)
@@ -49,19 +52,27 @@ async def security_headers(request: Request, call_next):
 _login_hits: dict[str, list[float]] = defaultdict(list)
 
 
+_RATE_LIMITED = {
+    "/api/auth/login": lambda: _s.RATE_LIMIT_LOGIN_PER_MIN,
+    "/api/signup": lambda: _s.RATE_LIMIT_SIGNUP_PER_MIN,
+}
+
+
 @app.middleware("http")
-async def login_rate_limit(request: Request, call_next):
-    if request.url.path == "/api/auth/login" and request.method == "POST":
+async def basic_rate_limit(request: Request, call_next):
+    limit_fn = _RATE_LIMITED.get(request.url.path)
+    if limit_fn and request.method == "POST":
         ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "?")
+        key = f"{request.url.path}:{ip}"
         now = time.time()
-        window = [t for t in _login_hits[ip] if now - t < 60]
-        if len(window) >= _s.RATE_LIMIT_LOGIN_PER_MIN:
+        window = [t for t in _login_hits[key] if now - t < 60]
+        if len(window) >= limit_fn():
             return JSONResponse(
                 {"detail": "Too many attempts. Wait a minute."},
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             )
         window.append(now)
-        _login_hits[ip] = window
+        _login_hits[key] = window
     return await call_next(request)
 
 
@@ -72,6 +83,16 @@ app.include_router(auth.router)
 app.include_router(resources.router)
 app.include_router(agent.router)
 app.include_router(tickets.router)
+app.include_router(alerts.router)
+app.include_router(billing.router)
+app.include_router(kb.router)
+app.include_router(automation.router)
+app.include_router(automation.notif_router)
+app.include_router(security.router)
+app.include_router(scripts.router)
+app.include_router(signup.router)
+app.include_router(m365.router)
+app.include_router(invoices.router)
 app.include_router(ui.router)
 
 
@@ -91,11 +112,15 @@ def _startup():
 
     db = SessionLocal()
     try:
-        existing = db.query(User).filter(User.role == Role.OWNER).first()
+        # Idempotently ensure the CONFIGURED owner account exists. Keying on the
+        # email (not "any owner") means upgrading an existing deployment still
+        # provisions BOOTSTRAP_ADMIN_EMAIL so you can always sign in.
+        email = _s.BOOTSTRAP_ADMIN_EMAIL.lower()
+        existing = db.query(User).filter(User.email == email).first()
         if not existing:
             pw = _s.BOOTSTRAP_ADMIN_PASSWORD or secrets.token_urlsafe(16)
             owner = User(
-                email=_s.BOOTSTRAP_ADMIN_EMAIL.lower(),
+                email=email,
                 full_name="BVTech Owner",
                 password_hash=hash_password(pw),
                 role=Role.OWNER,
@@ -104,7 +129,7 @@ def _startup():
             db.add(owner)
             db.commit()
             print("=" * 60)
-            print(f"  BOOTSTRAP OWNER CREATED: {owner.email}")
+            print(f"  OWNER ACCOUNT READY: {owner.email}")
             if not _s.BOOTSTRAP_ADMIN_PASSWORD:
                 print(f"  TEMP PASSWORD (shown once): {pw}")
             print("  -> Log in, enable MFA, then rotate this password.")

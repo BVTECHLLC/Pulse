@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ app_name }} — Request access</title>
+<link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/css/pulse.css">
+</head>
+<body>
+<div class="login-shell">
+  <div class="login-card">
+    <a class="lockup" href="/">
+      <img src="/static/img/mark.svg" alt="BVTech OpsPilot">
+      <span class="wm"><b>BVTech</b> OpsPilot<span>MSP Command Center</span></span>
+    </a>
+    <h1>Request access</h1>
+    <p class="sub">Tell us a bit about you and we'll reach out.</p>
+
+    <div id="form">
+      <label>Full name</label>
+      <input id="name" placeholder="Jane Smith">
+      <label>Work email</label>
+      <input id="email" type="email" placeholder="you@company.com">
+      <label>Company</label>
+      <input id="company" placeholder="Company name">
+      <label>What do you need help with?</label>
+      <textarea id="message" rows="3" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)" placeholder="A short note (optional)"></textarea>
+      <div class="err" id="err"></div>
+      <button class="btn" style="width:100%;margin-top:16px" onclick="submitSignup()">Request access</button>
+    </div>
+    <div id="done" class="hidden" style="text-align:center;padding:14px 0">
+      <div style="font-size:40px">✅</div>
+      <p>Thanks! We received your request and will be in touch shortly.</p>
+    </div>
+
+    <div class="auth-links">Already have an account? <a href="/">Sign in →</a></div>
+    <div class="foot">Backed by BVTech LLC · El Campo, TX</div>
+  </div>
+</div>
+<script>
+async function submitSignup(){
+  const err=document.getElementById('err');err.textContent='';
+  const name=document.getElementById('name').value.trim();
+  const email=document.getElementById('email').value.trim();
+  if(!name||!email){err.textContent='Name and email are required.';return;}
+  const r=await fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name,email,company:document.getElementById('company').value.trim()||null,
+      message:document.getElementById('message').value.trim()||null})});
+  if(r.ok){document.getElementById('form').classList.add('hidden');
+    document.getElementById('done').classList.remove('hidden');}
+  else{const d=await r.json().catch(()=>({detail:'Error'}));
+    err.textContent=(r.status===429?'Too many requests — wait a minute.':(d.detail||'Something went wrong.'));}
+}
+document.addEventListener('keydown',e=>{if(e.key==='Enter')submitSignup();});
+</script>
+</body>
+</html>

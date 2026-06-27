@@ -1,5 +1,290 @@
 # BVTech OpsPilot — Changelog
 
+## v0.10.0 — Invoicing (June 2026)
+
+Closes the PSA money loop: tracked billable time + licenses → invoices.
+
+### Added
+- **Invoice generation** (`POST /api/invoices/generate`): builds a draft for a
+  client from **unbilled billable time** (`hourly_rate` × hours) and/or **license
+  subscriptions** (`monthly_cost`), with optional tax. Billed time entries are
+  flagged `invoiced` so they're **never double-billed** (verified in the test).
+  Auto-numbered `INV-00001`.
+- **Line items & lifecycle**: add manual line items to a draft; `draft → sent →
+  paid` plus `void`; totals auto-recompute. `GET /api/invoices` (+ `/{id}` with
+  line items).
+- **Printable invoice** (`/invoice/{id}`): a clean, branded HTML invoice with a
+  "Print / Save PDF" button.
+- **Dashboard**: an Invoices section on the Billing tab (generate from time/subs +
+  tax, list, send/mark-paid, open the printable view). **Client portal**: an
+  Invoices card — clients see their own sent/paid invoices and can open/print them.
+- New Alembic migration (`invoices`, `invoice_line_items` + `invoiced`/`invoice_id`
+  on `time_entries`) — verified reversible.
+- Smoke test: generate from time + licenses + tax (exact total), no-double-bill,
+  manual line item recompute, send/paid/void lifecycle, client visibility, RBAC.
+
+### Security
+- Generation/edit/lifecycle are staff-only (void is owner-only); clients can view
+  only their own non-draft invoices. Every action audited.
+
+## v0.9.0 — Microsoft 365 integration (June 2026)
+
+Read-only, app-only, multi-tenant Microsoft Graph integration. One Entra app
+(credentials in env); each customer tenant grants admin consent.
+
+### Added
+- **Per-client M365 connections** (`/api/m365/connections`): link a customer's
+  tenant to a client (one per client). `GET /api/m365/status` reports whether
+  Graph credentials are configured. Owner-only delete.
+- **Read-only sync** (`POST /api/m365/connections/{id}/sync`):
+  - **Licenses** auto-populated from `subscribedSkus` (vendor "Microsoft 365",
+    seats/used) — feeds the existing billing rollup. Idempotent (re-sync updates,
+    never duplicates).
+  - **Secure Score** stored on the connection.
+  - **Risky sign-ins** raise alerts (`kind=m365_risky_signin:<upn>`) through the
+    existing engine, so they appear on the dashboard **and the automation engine
+    can act on them** (e.g. high-risk sign-in → open a ticket). Deduped per user.
+  - Live sync returns **503** until `M365_CLIENT_ID` / `M365_CLIENT_SECRET` are set.
+- **Encrypted secrets at rest** (`app/services/crypto.py`, Fernet keyed off
+  `SECRET_KEY`): cached Graph tokens are stored encrypted.
+- **Mockable Graph client**: `m365.sync_connection(db, conn, graph)` accepts any
+  client implementing `get_subscribed_skus` / `get_secure_score` /
+  `get_risky_signins`, so the whole pipeline is tested without creds or network.
+- **Dashboard**: a Microsoft 365 panel on the Billing tab — connect a tenant,
+  see status / Secure Score / license & risky-sign-in counts, sync or remove.
+- New dependency `cryptography`; new Alembic migration (`m365_connections`) —
+  verified reversible. `.env.example` documents the required Graph permissions.
+- Smoke test exercises connect → (503 when unconfigured) → mock sync →
+  license/score/alert population → encrypted-token roundtrip → idempotency → RBAC.
+
+### Security
+- Connections/sync are staff-only; delete is owner-only; every action audited.
+- Graph scopes are **read-only**; credentials live only in env; tokens encrypted
+  at rest. The agent remains telemetry-only.
+
+## v0.8.0 — Branding, accounts & email (June 2026)
+
+### Added
+- **Brand system**: a BVTech OpsPilot logo mark (SVG) + favicon, a refined
+  dark-mode theme (gradient backdrop, lifted cards, gradient buttons, gradient
+  stat numbers), and a consistent logo lockup + footer across the login, signup,
+  dashboard, and portal. Drop a real logo at `app/static/img/mark.svg` to
+  rebrand everything at once.
+- **Public signup / "Request access"** (`/signup` page, `POST /api/signup`):
+  collects name/email/company/message as a reviewable **lead** (not an
+  auto-provisioned account — open self-service into an MSP console would be
+  unsafe). Rate-limited. Staff review via `GET/PATCH /api/signup-requests` and an
+  **Access Requests** card on the dashboard.
+- **Outbound email** (`app/services/email.py`): SMTP-backed, configured via env
+  (`SMTP_HOST`, …). When unconfigured it safely **no-ops and logs** what it would
+  send, so every environment runs. Wired to: signup confirmation (to requester) +
+  notice (to `SUPPORT_EMAIL`), and client-user invites (credentials emailed; the
+  response now reports `emailed`).
+- **Owner account**: the bootstrap owner email now defaults to `help@bvtech.org`,
+  and `SUPPORT_EMAIL` / `PUBLIC_BASE_URL` are configurable.
+
+### Notes
+- `.env.example` documents the new SMTP / branding / support settings.
+- Smoke test extended: email no-op, public signup → staff review → RBAC, invite
+  `emailed` flag, and branded-page render checks.
+- Microsoft 365 (v0.8 on the old plan) moves out one slot; it needs live Graph
+  credentials — ping with keys and it's next.
+
+## v0.7.0 — Script library & deployment governance (June 2026)
+
+Real "push a script to a device" capability — built so it can never become
+arbitrary remote code execution.
+
+### Added
+- **Script library** (`/api/scripts`): versioned, categorized, risk-rated
+  scripts (PowerShell/Bash/Python/cmd). **Disabled by default** — a script is
+  inert until an **OWNER** enables it (`POST /api/scripts/{id}/enable`). Editing
+  content bumps the version.
+- **Deployment workflow** (`/api/scripts/{id}/deploy` → `/api/deployments`):
+  - The deploy request **snapshots** the exact content+version, so later library
+    edits can't change what was approved/runs.
+  - Requires `consent_ack` and records a reason.
+  - Needs **OWNER approval**, and the approver may **not** be the requester
+    (separation of duties). Reject and cancel paths included.
+- **Agent job queue** (`GET /api/agent/jobs`, `POST /api/agent/jobs/{id}/result`):
+  the agent authenticates with its device key and pulls **only its own approved
+  jobs**, runs the pinned content, and reports exit code + output. The server
+  never pushes ad-hoc commands.
+- **Agent runner** (`opspilot_agent.py run --enable-remote-scripts`): an
+  **opt-in**, consent-bannered job runner. Off unless explicitly enabled; runs
+  only server-approved jobs for its own enrolled device, with a 10-minute cap.
+- **Dashboard**: new **Scripts** tab — library with owner enable toggle, deploy
+  (device + reason + consent), and a deployments table with approve/reject/cancel.
+- New Alembic migration (`scripts`, `script_deployments`) — verified reversible.
+- Smoke test extended: disabled-deploy block, consent gate, separation-of-duties
+  approval, agent pull→run→result, reject/cancel, and RBAC isolation.
+
+### Security
+- Enable, approve, reject are OWNER-gated; deploy requests are staff-only; clients
+  have no access to the library or deployments. Every transition is audited.
+- Content pinning + separation of duties + consent + owner-only enable mean there
+  is **no arbitrary remote code execution path** — only approved, logged,
+  attributable, content-locked jobs that the agent must opt in to run.
+
+## v0.6.0 — Security posture & remediation (June 2026)
+
+A **defensive** security module — it documents, tracks, and helps remediate
+weaknesses. It does not scan, exploit, or run anything on any system.
+
+### Added
+- **Authorized security assessments** (`/api/security/assessments`): engagement
+  records that **require** an `authorized_by` party at the client — there is
+  always a record of who consented to the review. Planned → in-progress →
+  completed lifecycle with timestamps and a summary.
+- **Vulnerability findings** (`/api/security/findings`): title, CVSS-style
+  severity (low/medium/high/critical), CVE, category, description,
+  recommendation, and a remediation workflow (open → remediating → resolved /
+  risk-accepted). Optionally tied to a device and/or an assessment.
+- **Alert + automation integration**: a high or critical finding raises an alert
+  through the existing engine (`kind=security_finding:<id>`), so it shows on the
+  dashboard and **automation rules can act on it** (e.g. critical finding → open
+  a ticket). Resolving the finding auto-resolves its linked alert.
+- **Security scorecard** (`/api/security/scorecard`): a 0–100 posture score per
+  client (100 minus weighted open findings) plus open-finding counts by severity.
+- **Client visibility**: findings are staff-managed; a client sees only findings
+  explicitly flagged `client_visible` and their own posture score — enforced at
+  the query layer.
+- **Dashboard**: new **Security** tab (per-client scorecard table, finding
+  creation, severity badges, remediate/resolve actions). **Client portal**: a
+  Security Score card + a shared-findings list.
+- New Alembic migration (`security_assessments`, `security_findings`) — verified
+  reversible.
+- Smoke test extended: authorization gate, finding→alert→scorecard, resolve→score
+  recovery + alert auto-resolve, client visibility + RBAC isolation.
+
+### Security / ethics
+- Assessments cannot be created without naming an authorizing party.
+- All finding/assessment writes are staff-only and audited; clients are
+  read-limited to shared findings and their own score.
+- This module is intentionally **defensive**: no scanning, no exploitation, no
+  command execution. The agent remains telemetry-only.
+
+## v0.5.0 — Automation engine (June 2026)
+
+### Added
+- **Server-side automation engine** (`app/services/automation.py`): rules react
+  to platform **events** and take safe, in-platform **actions**. No remote code
+  execution — actions only manipulate OpsPilot's own records.
+  - **Triggers**: `alert.opened`, `ticket.created`, `ticket.sla_breached`.
+  - **Conditions**: JSON match (e.g. `{"severity":"critical"}`, `{"priority":"urgent"}`),
+    optionally scoped to a single client.
+  - **Actions**: `create_ticket`, `ack_alert`, `notify`, `assign` (explicit or
+    auto least-loaded tech), `set_priority`, `add_note`. One bad action never
+    aborts the rest; everything is logged.
+- **Event wiring**: agent check-ins fire `alert.opened` for newly opened alerts;
+  ticket creation fires `ticket.created`; the offline sweep fires `alert.opened`
+  for newly-offline devices. Automation-created tickets do not re-trigger, so
+  there are no loops.
+- **Scheduler tick** — `POST /api/automation/run-checks`: sweeps offline devices
+  and fires `ticket.sla_breached` for newly breached open tickets, de-duplicated
+  via a per-ticket flag (reset on reopen). Built for cron; also on-demand.
+- **Rule management**: `GET/POST /api/automation/rules`, `PATCH` (enable/disable/
+  edit), owner-only `DELETE`; `GET /api/automation/runs` execution log.
+- **In-app notifications**: raised by the `notify` action;
+  `GET /api/notifications` (+ `?unread_only`), `POST /api/notifications/{id}/read`
+  and `/read-all`. Scoped — staff see broadcast + their own; clients see only
+  their own.
+- **Dashboard**: new **Automation** tab (rule builder with per-trigger examples,
+  rules list with enable toggle, run log, notifications panel + "run checks now")
+  and a 🔔 unread-notification indicator in the top bar.
+- New Alembic migration (`automation_rules`, `automation_runs`, `notifications`
+  + `sla_breach_alerted` on `support_tickets`) — verified reversible.
+- Smoke test extended: alert→ticket+notify, ticket→auto-assign+note, rule
+  disable, SLA-breach tick with dedup, notification read flow, and RBAC isolation.
+
+### Security
+- Rules, runs, and `run-checks` are staff-only; rule deletion is owner-only.
+  Every rule that fires writes an `automation.run` audit entry attributed to
+  `automation@system`, plus an `automation_runs` row.
+- Notifications are tenant-scoped at the query layer.
+- The engine performs only in-platform actions — the agent stays telemetry-only,
+  so there is still no remote code execution path anywhere in the product.
+
+## v0.4.0 — PSA depth: SLAs, assignment, time tracking & IT documentation (June 2026)
+
+### Added
+- **SLA engine** (`app/services/sla.py`): per-priority response/resolution
+  targets (built-in defaults, overridable per-client or globally). Due dates are
+  stamped on ticket creation and re-based when priority changes; the first public
+  staff reply satisfies the response SLA and resolving satisfies the resolution
+  SLA. Every ticket payload now carries live SLA state (breached / minutes-left).
+  - `GET /api/tickets/sla-summary` (breached + at-risk counts for the dashboard)
+  - `GET /api/tickets?breached=true` filter
+  - `GET/PUT /api/sla-policies` to view the effective matrix and set targets.
+- **Technician assignment & workload**: tickets can be assigned only to staff
+  users (validated); `GET /api/staff` returns the staff directory with each
+  tech's open-ticket load; `GET /api/tickets?mine=true` filters to the caller's
+  queue. Priority is now editable on a ticket.
+- **Ticket time tracking**: `POST/GET /api/tickets/{id}/time` (staff only) with
+  billable/non-billable minutes and notes; the ticket detail rolls up total and
+  billable time — the foundation for PSA invoicing.
+- **IT documentation / knowledge base** (`/api/kb`): staff author articles that
+  are internal (staff-only) or client-visible, and global or client-scoped.
+  Client portal users read only their permitted docs (enforced at the query
+  layer — internal/other-client docs 404 even by direct id). Owner-only delete.
+- **Dashboard**: Tickets tab gains SLA badges, "assigned to me" / "SLA breached"
+  filters, and a richer detail panel (status + priority + assignee dropdowns,
+  time logging, SLA countdown); new **Knowledge Base** tab to author/read docs;
+  overview shows SLA-breach counts. **Client portal** gains a Documentation
+  panel for client-visible articles.
+- New Alembic migration (4 SLA columns on `support_tickets`; `sla_policies`,
+  `time_entries`, `kb_articles` tables) — verified reversible.
+- Smoke test extended: SLA stamping/breach/satisfy, breached filter + summary,
+  staff-only assignment, time rollup, SLA-policy upsert, and full KB
+  visibility/RBAC isolation.
+
+### Security
+- Assignment, time logging, SLA-policy edits, and KB authoring/deletion are all
+  RBAC-guarded (staff/owner) and audited.
+- KB visibility is enforced in the query, not the UI: a client user can neither
+  list nor fetch internal or other-client documents.
+- The agent remains telemetry-only — no remote execution path.
+
+## v0.3.0 — Monitoring, alerting, billing & helpdesk threading (June 2026)
+
+### Added
+- **Monitoring & alerting engine** (`app/services/monitoring.py`): every agent
+  check-in is now evaluated against thresholds and raises/auto-resolves alerts
+  for disk-full, high CPU/RAM, antivirus-off, patching-behind, and low composite
+  health. The engine is idempotent — at most one non-resolved alert per
+  (device, kind) — so it never floods. Conditions clearing auto-resolves.
+- **Offline detection**: `POST /api/monitoring/sweep` flags devices that have
+  gone silent past their policy window (and never-checked-in devices). Built to
+  be driven by a scheduler in production; also callable on demand by staff.
+- **Alerts API**: `GET /api/alerts` (+ `/summary`), `POST /api/alerts/{id}/ack`,
+  `POST /api/alerts/{id}/resolve`. Tenant-scoped; mutation is staff-only; every
+  ack/resolve audited.
+- **Alert policies**: per-client or global threshold config via
+  `GET/PUT /api/alert-policies` (staff only) with sane built-in fallbacks.
+- **Billing visibility**: `GET /api/billing/summary` (MRR/ARR rollup, per-client
+  breakdown, seat utilization) and `GET /api/billing/renewals` (upcoming +
+  overdue renewal calendar). Reporting only — no charging. Clients see only
+  their own numbers. License create now accepts `renewal_date`.
+- **Helpdesk threading**: `GET /api/tickets/{id}`, `GET/POST
+  /api/tickets/{id}/comments`. Comments can be client-visible or **internal**
+  (staff-only notes). Clients can never read or create internal notes — a client
+  posting `internal=true` is silently downgraded.
+- **Dashboard**: new Alerts, Tickets (with conversation + status control), and
+  Billing tabs; overview gains active-alert, open-ticket, MRR, utilization, and
+  renewal stats. **Client portal**: active-alerts panel and a two-way ticket
+  conversation so clients can follow up on their own requests.
+- New Alembic migration (`alerts`, `alert_policies`, `ticket_comments`).
+- Smoke test extended to cover the full alert lifecycle, offline sweep, policy
+  upsert, ticket threading + internal-note isolation, and billing rollup/scope.
+
+### Security
+- All new mutating routes are RBAC-guarded; alert ack/resolve, policy edits, and
+  the sweep are staff-only and audited.
+- Internal ticket notes are filtered at the query layer for client users, not
+  just hidden in the UI.
+- Billing and alert listings enforce the same per-client tenant scope as the
+  rest of the app. The agent remains telemetry-only — no remote execution path.
+
 ## v0.2.0 — Portal writes, tickets, history (June 2026)
 
 ### Added

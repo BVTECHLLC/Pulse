@@ -52,6 +52,12 @@ def _post(path: str, body: dict, headers: dict | None = None) -> dict:
         return json.loads(r.read().decode())
 
 
+def _get(path: str, headers: dict | None = None) -> dict:
+    req = urlreq.Request(PULSE_URL.rstrip("/") + path, headers=headers or {}, method="GET")
+    with urlreq.urlopen(req, timeout=30) as r:
+        return json.loads(r.read().decode())
+
+
 def _load_conf() -> dict | None:
     if CONF_FILE.exists():
         return json.loads(CONF_FILE.read_text())
@@ -135,7 +141,59 @@ def _serial() -> str | None:
         return None
 
 
-def run_loop() -> None:
+# --------------------------------------------------------------------------- #
+# Approved-job runner (OPT-IN, Phase 2). OFF unless the operator passes
+# --enable-remote-scripts. When on, the agent pulls ONLY jobs an OpsPilot owner
+# already approved for THIS device, runs the pinned content, and reports the
+# result. There is no ad-hoc command channel — the server can only hand back
+# deployments that went through the request→approve workflow.
+# --------------------------------------------------------------------------- #
+_INTERPRETERS = {
+    "powershell": ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File"],
+    "bash": ["bash"],
+    "python": [sys.executable],
+    "cmd": ["cmd", "/c"],
+}
+_SUFFIX = {"powershell": ".ps1", "bash": ".sh", "python": ".py", "cmd": ".bat"}
+
+
+def _run_job(job: dict) -> tuple[int, str]:
+    import subprocess
+    import tempfile
+    lang = job.get("language")
+    interp = _INTERPRETERS.get(lang)
+    if not interp:
+        return 1, f"unsupported language: {lang}"
+    tf = tempfile.NamedTemporaryFile("w", suffix=_SUFFIX.get(lang, ".txt"), delete=False)
+    try:
+        tf.write(job.get("content", ""))
+        tf.close()
+        proc = subprocess.run(interp + [tf.name], capture_output=True, text=True, timeout=600)
+        out = (proc.stdout or "") + (("\n[stderr]\n" + proc.stderr) if proc.stderr else "")
+        return proc.returncode, out[:20000]
+    except subprocess.TimeoutExpired:
+        return 124, "job timed out after 600s"
+    except Exception as e:  # noqa: BLE001 — report any failure back to the server
+        return 1, f"runner error: {e}"
+    finally:
+        try:
+            os.unlink(tf.name)
+        except Exception:
+            pass
+
+
+def _process_jobs(headers: dict) -> None:
+    res = _get("/api/agent/jobs", headers)
+    for job in res.get("jobs", []):
+        print(f"  running approved job #{job['id']} ({job['language']})…")
+        code, out = _run_job(job)
+        try:
+            _post(f"/api/agent/jobs/{job['id']}/result", {"exit_code": code, "output": out}, headers)
+        except Exception as e:
+            print(f"  failed to report job #{job['id']}: {e}")
+
+
+def run_loop(enable_scripts: bool = False) -> None:
     conf = _load_conf()
     if not conf:
         print("Not enrolled. Run:  opspilot_agent.py enroll <TOKEN>")
@@ -143,12 +201,21 @@ def run_loop() -> None:
     headers = {"X-Enroll-Id": conf["enroll_id"], "X-Agent-Key": conf["agent_key"]}
     interval = CHECKIN_INTERVAL
     print(f"BVTech OpsPilot Agent running. Reporting to {PULSE_URL} every {interval}s.")
+    if enable_scripts:
+        print("=" * 64)
+        print("  REMOTE SCRIPT EXECUTION IS ENABLED for this agent.")
+        print("  It will run ONLY scripts an OpsPilot owner approved for THIS")
+        print("  device, and report the results. Disable by restarting without")
+        print("  --enable-remote-scripts.")
+        print("=" * 64)
     while True:
         try:
             res = _post("/api/agent/checkin", collect(), headers)
             interval = int(res.get("interval_sec", interval))
+            if enable_scripts:
+                _process_jobs(headers)
         except Exception as e:
-            print(f"check-in failed: {e}")
+            print(f"cycle failed: {e}")
         time.sleep(interval)
 
 
@@ -156,7 +223,8 @@ if __name__ == "__main__":
     if len(sys.argv) >= 2 and sys.argv[1] == "enroll" and len(sys.argv) == 3:
         enroll(sys.argv[2])
     elif len(sys.argv) >= 2 and sys.argv[1] == "run":
-        run_loop()
+        run_loop(enable_scripts="--enable-remote-scripts" in sys.argv)
     else:
         print(__doc__)
-        print("Usage:\n  opspilot_agent.py enroll <ENROLLMENT_TOKEN>\n  opspilot_agent.py run")
+        print("Usage:\n  opspilot_agent.py enroll <ENROLLMENT_TOKEN>\n"
+              "  opspilot_agent.py run [--enable-remote-scripts]")

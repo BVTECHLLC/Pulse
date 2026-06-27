@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # --- Identity ---
     APP_NAME: str = "BVTech OpsPilot"
-    APP_VERSION: str = "0.2.0"
+    APP_VERSION: str = "0.10.0"
     ENV: str = "development"  # development | production
 
     # --- Security ---
@@ -29,11 +29,38 @@ class Settings(BaseSettings):
     COOKIE_DOMAIN: str | None = None
 
     # --- Bootstrap admin (first run only; rotate after) ---
-    BOOTSTRAP_ADMIN_EMAIL: str = "admin@bvtech.org"
+    BOOTSTRAP_ADMIN_EMAIL: str = "help@bvtech.org"
     BOOTSTRAP_ADMIN_PASSWORD: str | None = None  # if unset, a random one is printed once
+
+    # --- Branding / public URLs ---
+    SUPPORT_EMAIL: str = "help@bvtech.org"          # signup notifications land here
+    PUBLIC_BASE_URL: str = "https://portal.bvtech.org"
+
+    # --- Outbound email (SMTP). If unset, email is logged, never sent (safe no-op). ---
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USER: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_FROM: str | None = None       # defaults to SUPPORT_EMAIL when unset
+    SMTP_STARTTLS: bool = True
+
+    # --- Microsoft 365 (Graph) — app-only, multi-tenant. Keys via env/secrets. ---
+    M365_CLIENT_ID: str | None = None
+    M365_CLIENT_SECRET: str | None = None
+    M365_LOGIN_BASE: str = "https://login.microsoftonline.com"
+    M365_GRAPH_BASE: str = "https://graph.microsoft.com/v1.0"
 
     # --- Rate limiting ---
     RATE_LIMIT_LOGIN_PER_MIN: int = 5
+    RATE_LIMIT_SIGNUP_PER_MIN: int = 3
+
+    @property
+    def email_enabled(self) -> bool:
+        return bool(self.SMTP_HOST)
+
+    @property
+    def m365_enabled(self) -> bool:
+        return bool(self.M365_CLIENT_ID and self.M365_CLIENT_SECRET)
 
     @property
     def is_prod(self) -> bool:

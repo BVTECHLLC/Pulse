@@ -3,8 +3,14 @@
 Secure, cloud-hosted MSP command center, admin dashboard, and client portal for
 **BVTech LLC** — evolving toward a lightweight RMM-style platform.
 
-**Current version: v0.1.0** — auth + RBAC + clients/devices/licenses + audit log
-+ telemetry-only endpoint agent + deployment scaffold.
+**Current version: v0.10.0** — a unified **RMM + PSA** platform: auth + RBAC +
+clients/devices/licenses + audit log + telemetry agent, a monitoring/alerting
+engine, billing (MRR & renewals) visibility, a **full SLA-tracked helpdesk**
+(threading, assignment, time tracking), an **IT documentation / knowledge base**,
+a **server-side automation engine** (event→action rules + notifications), a
+**defensive security-posture module** (assessments, findings, scorecard), and a
+**governed script library** (approval-gated, consent + audited deployments)
++ deployment scaffold.
 
 ---
 
@@ -58,18 +64,88 @@ python scripts/smoke_test.py     # runs the full enroll→checkin→audit flow
 
 ---
 
-## What's in v0.1
+## What's in the platform
 
+**Foundation (v0.1–v0.2)**
 - **Auth**: login, logout-everywhere, MFA setup/confirm, `/api/auth/me`
-- **Admin dashboard** (`/dashboard`): overview stats + clients/devices/licenses/audit tabs
-- **Client portal** (`/portal`): read-only, scoped to the signed-in client
+- **Admin dashboard** (`/dashboard`) and **client portal** (`/portal`), tenant-scoped
 - **APIs**: clients, devices, licenses, audit, agent enroll/checkin
+- **Support tickets** + client-admin user invites + device check-in history
 - **Endpoint agent** (`agent/opspilot_agent.py`): Phase-1 telemetry only, no remote exec
 - **Deploy**: Dockerfile, docker-compose (api+db+redis+caddy), Caddyfile, Alembic
-- **Docs**: deployment, security checklist, M365 plan, roadmap
 
-See `docs/` for deployment and security details, and `docs/ROADMAP.md` for
-v0.2 → v0.5 and the **exact prompt to paste next**.
+**v0.3 — RMM monitoring + MSP business layer**
+- **Monitoring/alerting engine**: thresholds → alerts (disk, CPU, RAM, AV,
+  patching, low health, offline), idempotent with auto-resolve on recovery.
+  - `GET /api/alerts` · `/api/alerts/summary` · ack/resolve · `POST /api/monitoring/sweep`
+  - per-client/global thresholds via `GET/PUT /api/alert-policies`
+- **Billing visibility**: `GET /api/billing/summary` (MRR/ARR, seat utilization,
+  per-client breakdown) and `GET /api/billing/renewals` (renewal calendar).
+- **Threaded helpdesk**: `GET/POST /api/tickets/{id}/comments` with client-visible
+  vs. internal (staff-only) notes; clients reply on their own tickets in the portal.
+
+**v0.4 — PSA depth + IT documentation**
+- **SLA engine**: per-priority response/resolution targets (per-client/global
+  overrides), breach + at-risk tracking on every ticket.
+  - `GET /api/tickets/sla-summary` · `?breached=true` · `GET/PUT /api/sla-policies`
+- **Assignment & workload**: staff-only assignee, `GET /api/staff` with open-ticket
+  load, `GET /api/tickets?mine=true`.
+- **Time tracking**: `POST/GET /api/tickets/{id}/time` (billable rollup).
+- **Knowledge base**: `/api/kb` CRUD — internal vs. client-visible, global vs.
+  client-scoped, query-layer visibility enforcement.
+
+**v0.5 — Automation engine**
+- **Event→action rules**: triggers (`alert.opened`, `ticket.created`,
+  `ticket.sla_breached`) + JSON conditions + safe in-platform actions
+  (`create_ticket`, `ack_alert`, `notify`, `assign` incl. auto least-loaded,
+  `set_priority`, `add_note`). No remote code execution.
+  - `GET/POST/PATCH/DELETE /api/automation/rules` · `GET /api/automation/runs`
+  - `POST /api/automation/run-checks` (scheduler tick: offline sweep + SLA-breach firing)
+- **In-app notifications**: `GET /api/notifications` (+ `?unread_only`),
+  `POST /api/notifications/{id}/read` · `/read-all`. Tenant-scoped.
+
+**v0.6 — Security posture & remediation** (defensive only — track & fix, never exploit)
+- **Authorized assessments**: `/api/security/assessments` — engagements that
+  require an `authorized_by` party (consent on record).
+- **Vulnerability findings**: `/api/security/findings` — severity/CVE/remediation
+  workflow; high/critical findings raise an alert and feed the automation engine.
+- **Scorecard**: `/api/security/scorecard` — 0–100 posture score per client.
+  Clients see only `client_visible` findings + their own score.
+
+**v0.7 — Script library & deployment governance** (safe "scripts to push")
+- **Library**: `/api/scripts` — versioned, risk-rated; **disabled by default**,
+  owner-only enable.
+- **Governed deployment**: `/api/scripts/{id}/deploy` → `/api/deployments` —
+  content-pinned snapshot, consent + reason required, **owner approval with
+  separation of duties** (approver ≠ requester); reject/cancel paths.
+- **Agent job queue**: `GET /api/agent/jobs` + `POST /api/agent/jobs/{id}/result`
+  — the agent pulls only its own approved jobs (opt-in runner). No ad-hoc commands.
+
+**v0.8 — Branding, accounts & email**
+- **Brand system**: OpsPilot logo + favicon, refined dark theme, consistent
+  lockup/footer across login, signup, dashboard, portal (swap `static/img/mark.svg`).
+- **Public signup**: `/signup` + `POST /api/signup` → reviewable lead; staff
+  review via `/api/signup-requests`.
+- **Email**: `app/services/email.py` (SMTP via env; safe no-op + log when unset),
+  wired to signup confirmations/notices and invite credentials.
+- Owner bootstrap defaults to `help@bvtech.org`; `SUPPORT_EMAIL`/`PUBLIC_BASE_URL`/
+  `SMTP_*` configurable.
+
+**v0.9 — Microsoft 365** (read-only, app-only, multi-tenant Graph)
+- **Connections**: `/api/m365/connections` (one per client) + `/api/m365/status`.
+- **Sync**: `POST /api/m365/connections/{id}/sync` — licenses from `subscribedSkus`
+  (→ billing), Secure Score, and risky sign-ins → alerts (→ automation). Tokens
+  **encrypted at rest**; 503 until `M365_CLIENT_ID`/`M365_CLIENT_SECRET` set.
+
+**v0.10 — Invoicing**
+- **Generate** `POST /api/invoices/generate` from unbilled billable time
+  (`hourly_rate`) + license subscriptions + tax; billed time is flagged so it's
+  never double-billed.
+- **Lifecycle**: manual line items, `draft → sent → paid`, `void`;
+  `GET /api/invoices`(+`/{id}`). Printable branded invoice at `/invoice/{id}`.
+
+See `docs/` for deployment and security details, and `docs/ROADMAP.md` for what's
+next and the **exact prompt to paste**.
 
 ## Built by
 Jordan Polasek · BVTech LLC · El Campo, TX · *"Whatever you do, work heartily." — Col 3:23*

@@ -1,6 +1,8 @@
 """Core resource routes: clients, devices, licenses, audit log."""
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -87,6 +89,7 @@ class LicenseIn(BaseModel):
     seats_used: int | None = None
     monthly_cost: float | None = None
     vendor: str | None = None
+    renewal_date: datetime | None = None
     notes: str | None = None
 
 

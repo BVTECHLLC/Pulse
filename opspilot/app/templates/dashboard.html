@@ -3,12 +3,17 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{ app_name }} — Dashboard</title>
+<link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/css/pulse.css">
 </head>
 <body>
 <div class="topbar">
-  <div class="brand"><span class="dot"></span> BVTech OpsPilot</div>
+  <a class="lockup" href="/dashboard">
+    <img src="/static/img/mark.svg" alt="BVTech OpsPilot">
+    <span class="wm"><b>BVTech</b> OpsPilot</span>
+  </a>
   <div style="display:flex;align-items:center;gap:12px">
+    <span class="pill" id="notif-pill" onclick="tab('automation')" style="cursor:pointer">🔔 <span id="notif-count">0</span></span>
     <span class="pill" id="who">…</span>
     <span class="pill">v{{ version }}</span>
     <button class="btn ghost" onclick="logout()">Sign out</button>
@@ -20,6 +25,13 @@
     <a class="active" data-tab="overview" onclick="tab('overview')">Overview</a>
     <a data-tab="clients" onclick="tab('clients')">Clients</a>
     <a data-tab="devices" onclick="tab('devices')">Devices</a>
+    <a data-tab="alerts" onclick="tab('alerts')">Alerts</a>
+    <a data-tab="tickets" onclick="tab('tickets')">Tickets</a>
+    <a data-tab="billing" onclick="tab('billing')">Billing</a>
+    <a data-tab="automation" onclick="tab('automation')">Automation</a>
+    <a data-tab="security" onclick="tab('security')">Security</a>
+    <a data-tab="scripts" onclick="tab('scripts')">Scripts</a>
+    <a data-tab="kb" onclick="tab('kb')">Knowledge Base</a>
     <a data-tab="licenses" onclick="tab('licenses')">Licenses</a>
     <a data-tab="audit" onclick="tab('audit')">Audit Log</a>
   </div>
@@ -27,9 +39,25 @@
   <section id="overview">
     <div class="grid cols-4">
       <div class="card"><h3>Clients</h3><div class="stat" id="s-clients">—</div></div>
-      <div class="card"><h3>Devices</h3><div class="stat" id="s-devices">—</div></div>
-      <div class="card"><h3>Need Attention</h3><div class="stat" id="s-attn" style="color:var(--warn)">—</div></div>
+      <div class="card"><h3>Devices</h3><div class="stat" id="s-devices">—</div>
+        <div class="stat sub" id="s-attn">—</div></div>
+      <div class="card"><h3>Active Alerts</h3><div class="stat" id="s-alerts" style="color:var(--bad)">—</div>
+        <div class="stat sub" id="s-alerts-sub">—</div></div>
+      <div class="card"><h3>Open Tickets</h3><div class="stat" id="s-tickets" style="color:var(--warn)">—</div>
+        <div class="stat sub" id="s-sla">—</div></div>
+    </div>
+    <div class="grid cols-4" style="margin-top:16px">
+      <div class="card"><h3>Monthly Recurring</h3><div class="stat" id="s-mrr">—</div>
+        <div class="stat sub" id="s-arr">—</div></div>
+      <div class="card"><h3>Seat Utilization</h3><div class="stat" id="s-util">—</div>
+        <div class="stat sub" id="s-seats">—</div></div>
       <div class="card"><h3>Active Licenses</h3><div class="stat" id="s-lic">—</div></div>
+      <div class="card"><h3>Renewals (60d)</h3><div class="stat" id="s-renew" style="color:var(--warn)">—</div></div>
+    </div>
+    <div class="card hidden" id="signups-card" style="margin-top:16px">
+      <h3>Access Requests</h3>
+      <table><thead><tr><th>When</th><th>Name</th><th>Email</th><th>Company</th><th>Status</th><th></th></tr></thead>
+      <tbody id="t-signups"></tbody></table>
     </div>
   </section>
 
@@ -41,6 +69,194 @@
     <thead><tr><th>Host</th><th>OS</th><th>CPU</th><th>Disk</th><th>AV</th><th>Health</th><th>Last seen</th></tr></thead>
     <tbody id="t-devices"></tbody></table></div></section>
 
+  <section id="alerts" class="hidden">
+    <div class="card">
+      <div class="flex" style="justify-content:space-between;margin-bottom:8px">
+        <h3 style="margin:0">Active Alerts</h3>
+        <div class="flex">
+          <label class="flex" style="margin:0;font-size:13px;color:var(--muted)">
+            <input type="checkbox" id="a-show-resolved" style="width:auto" onchange="loadAlerts()"> show resolved</label>
+          <button class="btn sm" onclick="runSweep()">Run offline sweep</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Severity</th><th>Device</th><th>Alert</th><th>Detail</th><th>Status</th><th>First seen</th><th></th></tr></thead>
+        <tbody id="t-alerts"></tbody></table>
+    </div>
+  </section>
+
+  <section id="tickets" class="hidden">
+    <div class="flex" style="margin-bottom:10px">
+      <label class="flex" style="margin:0;font-size:13px;color:var(--muted)">
+        <input type="checkbox" id="tk-mine" style="width:auto" onchange="loadTickets()"> assigned to me</label>
+      <label class="flex" style="margin:0;font-size:13px;color:var(--muted)">
+        <input type="checkbox" id="tk-breached" style="width:auto" onchange="loadTickets()"> SLA breached</label>
+    </div>
+    <div class="card hidden" id="ticket-detail" style="margin-bottom:16px"></div>
+    <div class="card"><table>
+      <thead><tr><th>#</th><th>Subject</th><th>Client</th><th>Priority</th><th>Status</th><th>SLA</th><th>Opened</th></tr></thead>
+      <tbody id="t-tickets"></tbody></table></div>
+  </section>
+
+  <section id="billing" class="hidden">
+    <div class="grid cols-3">
+      <div class="card"><h3>Total MRR</h3><div class="stat" id="b-mrr">—</div><div class="stat sub" id="b-arr">—</div></div>
+      <div class="card"><h3>Seat Utilization</h3><div class="stat" id="b-util">—</div><div class="stat sub" id="b-seats">—</div></div>
+      <div class="card"><h3>Licenses Tracked</h3><div class="stat" id="b-count">—</div></div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>MRR by Client</h3><table>
+      <thead><tr><th>Client</th><th>Licenses</th><th>Seats</th><th>MRR</th></tr></thead>
+      <tbody id="t-billing"></tbody></table></div>
+    <div class="card" style="margin-top:16px"><h3>Upcoming Renewals</h3><table>
+      <thead><tr><th>Product</th><th>Client</th><th>Vendor</th><th>$/mo</th><th>Renewal</th><th>In</th></tr></thead>
+      <tbody id="t-renewals"></tbody></table></div>
+    <div class="card" style="margin-top:16px">
+      <h3>Microsoft 365 <span class="pill" id="m365-status">checking…</span></h3>
+      <div class="flex" style="margin:8px 0">
+        <select id="m365-client" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
+        <input id="m365-tenant" placeholder="customer-tenant.onmicrosoft.com" style="flex:1;min-width:200px">
+        <button class="btn sm" onclick="connectM365()">Connect tenant</button>
+      </div>
+      <table><thead><tr><th>Client</th><th>Tenant</th><th>Status</th><th>Secure score</th><th>Licenses</th><th>Risky</th><th></th></tr></thead>
+      <tbody id="t-m365"></tbody></table>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h3>Invoices</h3>
+      <div class="flex" style="margin:8px 0">
+        <select id="inv-client" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
+        <label class="flex" style="margin:0;color:var(--muted)"><input type="checkbox" id="inv-time" checked style="width:auto"> billable time</label>
+        <input id="inv-rate" type="number" placeholder="$/hr" style="width:90px;padding:10px">
+        <label class="flex" style="margin:0;color:var(--muted)"><input type="checkbox" id="inv-lic" checked style="width:auto"> subscriptions</label>
+        <input id="inv-tax" type="number" placeholder="tax %" style="width:80px;padding:10px">
+        <button class="btn sm" onclick="generateInvoice()">Generate draft</button>
+      </div>
+      <table><thead><tr><th>#</th><th>Client</th><th>Total</th><th>Status</th><th>Issued</th><th></th></tr></thead>
+      <tbody id="t-invoices"></tbody></table>
+    </div>
+  </section>
+
+  <section id="automation" class="hidden">
+    <div class="card" style="margin-bottom:16px">
+      <h3>Notifications <button class="btn sm ghost" style="float:right" onclick="markAllRead()">Mark all read</button></h3>
+      <div id="t-notifs"></div>
+    </div>
+    <div class="grid cols-2" style="align-items:start">
+      <div class="card">
+        <h3>New Automation Rule</h3>
+        <input id="ar-name" placeholder="Rule name">
+        <label>When (trigger)</label>
+        <select id="ar-trigger" onchange="ruleExample()" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)">
+          <option value="alert.opened">An alert opens</option>
+          <option value="ticket.created">A ticket is created</option>
+          <option value="ticket.sla_breached">A ticket breaches SLA</option>
+        </select>
+        <label>Conditions (JSON — empty = always)</label>
+        <textarea id="ar-cond" rows="2" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)"></textarea>
+        <label>Actions (JSON array)</label>
+        <textarea id="ar-actions" rows="4" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)"></textarea>
+        <div class="err" id="ar-msg"></div>
+        <div class="flex" style="margin-top:12px">
+          <button class="btn" onclick="createRule()">Create rule</button>
+          <button class="btn sm ghost" onclick="ruleExample()">Load example</button>
+          <button class="btn sm ghost" onclick="runChecks()">Run checks now</button>
+        </div>
+      </div>
+      <div>
+        <div class="card" style="margin-bottom:16px"><h3>Rules</h3><table>
+          <thead><tr><th>Name</th><th>Trigger</th><th>Fired</th><th>On</th><th></th></tr></thead>
+          <tbody id="t-rules"></tbody></table></div>
+        <div class="card"><h3>Run Log</h3><table>
+          <thead><tr><th>Time</th><th>Rule</th><th>Summary</th><th>OK</th></tr></thead>
+          <tbody id="t-runs"></tbody></table></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="security" class="hidden">
+    <div class="card" style="margin-bottom:16px"><h3>Security Posture by Client</h3><table>
+      <thead><tr><th>Client</th><th>Score</th><th>Open</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th></tr></thead>
+      <tbody id="t-scorecard"></tbody></table></div>
+    <div class="grid cols-2" style="align-items:start">
+      <div class="card">
+        <h3>New Finding</h3>
+        <input id="sf-title" placeholder="Title (e.g. Unpatched RDP)">
+        <div class="flex">
+          <div style="flex:1"><label>Client</label>
+            <select id="sf-client" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select></div>
+          <div><label>Severity</label>
+            <select id="sf-sev" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)">
+              <option value="critical">Critical</option><option value="high">High</option>
+              <option value="medium" selected>Medium</option><option value="low">Low</option></select></div>
+        </div>
+        <label>CVE (optional)</label><input id="sf-cve" placeholder="CVE-2019-0708">
+        <label>Recommendation</label><input id="sf-rec" placeholder="How to remediate">
+        <label class="flex" style="margin:8px 0"><input type="checkbox" id="sf-vis" style="width:auto"> visible to client</label>
+        <div class="err" id="sf-msg"></div>
+        <button class="btn" onclick="createFinding()">Add finding</button>
+      </div>
+      <div class="card"><h3>Findings</h3><table>
+        <thead><tr><th>Sev</th><th>Title</th><th>CVE</th><th>Status</th><th></th></tr></thead>
+        <tbody id="t-findings"></tbody></table></div>
+    </div>
+  </section>
+
+  <section id="scripts" class="hidden">
+    <p class="muted" style="margin:0 0 12px">Scripts are <b>disabled by default</b>. Deploying requires an owner's approval, a recorded reason, and consent — every run is audited. No ad-hoc remote commands.</p>
+    <div class="grid cols-2" style="align-items:start">
+      <div class="card">
+        <h3>New Script</h3>
+        <input id="scr-name" placeholder="Name (e.g. Restart print spooler)">
+        <div class="flex">
+          <div><label>Language</label>
+            <select id="scr-lang" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)">
+              <option value="powershell">PowerShell</option><option value="bash">Bash</option>
+              <option value="python">Python</option><option value="cmd">cmd</option></select></div>
+          <div><label>Risk</label>
+            <select id="scr-risk" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)">
+              <option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></div>
+        </div>
+        <label>Content</label>
+        <textarea id="scr-content" rows="6" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink);font-family:monospace" placeholder="Restart-Service Spooler"></textarea>
+        <div class="err" id="scr-msg"></div>
+        <button class="btn" style="margin-top:10px" onclick="createScript()">Save to library</button>
+      </div>
+      <div class="card"><h3>Library</h3><table>
+        <thead><tr><th>Name</th><th>Lang</th><th>Risk</th><th>Enabled</th><th></th></tr></thead>
+        <tbody id="t-scripts"></tbody></table></div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>Deployments</h3><table>
+      <thead><tr><th>#</th><th>Script</th><th>Device</th><th>By</th><th>Status</th><th>Exit</th><th></th></tr></thead>
+      <tbody id="t-deployments"></tbody></table></div>
+  </section>
+
+  <section id="kb" class="hidden">
+    <div class="grid cols-2" style="align-items:start">
+      <div>
+        <div class="card" style="margin-bottom:16px">
+          <h3>New Article</h3>
+          <input id="kb-title" placeholder="Title">
+          <label>Category</label><input id="kb-cat" placeholder="e.g. Onboarding, Networking">
+          <label>Visibility</label>
+          <select id="kb-vis" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)">
+            <option value="internal">Internal (staff only)</option>
+            <option value="client">Client-visible</option>
+          </select>
+          <label>Client (optional — blank = all clients)</label>
+          <select id="kb-client" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)"></select>
+          <label>Body</label><textarea id="kb-body" rows="6" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)" placeholder="Write the doc…"></textarea>
+          <div class="err" id="kb-msg"></div>
+          <button class="btn" style="margin-top:12px" onclick="createArticle()">Publish</button>
+        </div>
+      </div>
+      <div>
+        <div class="card hidden" id="kb-view" style="margin-bottom:16px"></div>
+        <div class="card"><h3>Articles</h3><table>
+          <thead><tr><th>Title</th><th>Category</th><th>Scope</th><th>Visibility</th></tr></thead>
+          <tbody id="t-kb"></tbody></table></div>
+      </div>
+    </div>
+  </section>
+
   <section id="licenses" class="hidden"><div class="card"><table>
     <thead><tr><th>Product</th><th>Vendor</th><th>Seats</th><th>$/mo</th><th>Renewal</th></tr></thead>
     <tbody id="t-licenses"></tbody></table></div></section>
@@ -50,8 +266,15 @@
     <tbody id="t-audit"></tbody></table></div></section>
 </div>
 
+<div class="brand-footer">
+  <span>© BVTech LLC · El Campo, TX · OpsPilot v{{ version }}</span>
+  <span class="scripture">"Whatever you do, work heartily." — Col 3:23</span>
+</div>
+
 <script>
 async function api(p){const r=await fetch(p);if(r.status===401){location.href='/';return null;}return r.json();}
+async function post(p,b){return fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});}
+async function patch(p,b){return fetch(p,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});}
 function tab(name){
   document.querySelectorAll('.wrap section').forEach(s=>s.classList.add('hidden'));
   document.getElementById(name).classList.remove('hidden');
@@ -59,7 +282,407 @@ function tab(name){
 }
 function badge(v,good,warn){if(v==null)return '<span class="badge">—</span>';
   const c=v>=good?'ok':(v>=warn?'warn':'bad');return `<span class="badge ${c}">${v}</span>`;}
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));}
+function ago(iso){if(!iso)return 'never';return new Date(iso).toLocaleString();}
 async function logout(){await fetch('/api/auth/logout',{method:'POST'});location.href='/';}
+
+let CLIENTS={},DEVICES={};
+
+async function loadAlerts(){
+  const showRes=document.getElementById('a-show-resolved').checked;
+  const al=await api('/api/alerts'+(showRes?'?status_filter=resolved':''));
+  if(!al)return;
+  document.getElementById('t-alerts').innerHTML=al.map(a=>
+    `<tr><td><span class="sev ${a.severity}">${a.severity}</span></td>
+     <td>${esc(a.hostname||'—')}</td><td>${esc(a.kind)}</td>
+     <td class="muted">${esc(a.message)}</td>
+     <td><span class="badge ${a.status==='resolved'?'ok':(a.status==='acknowledged'?'warn':'bad')}">${a.status}</span></td>
+     <td class="muted">${ago(a.first_seen)}</td>
+     <td class="flex">${a.status==='resolved'?'':
+        `${a.status==='active'?`<button class="btn sm ghost" onclick="ackAlert(${a.id})">Ack</button>`:''}
+         <button class="btn sm" onclick="resolveAlert(${a.id})">Resolve</button>`}</td></tr>`).join('')
+    ||`<tr><td colspan=7 class="muted">No ${showRes?'resolved':'active'} alerts.</td></tr>`;
+}
+async function ackAlert(id){await post(`/api/alerts/${id}/ack`);loadAlerts();refreshBadges();}
+async function resolveAlert(id){await post(`/api/alerts/${id}/resolve`);loadAlerts();refreshBadges();}
+async function runSweep(){const r=await post('/api/monitoring/sweep');const j=await r.json();
+  alert(`Swept ${j.devices_checked} device(s); opened ${j.offline_opened} offline alert(s).`);loadAlerts();refreshBadges();}
+
+async function refreshBadges(){
+  const s=await api('/api/alerts/summary');if(!s)return;
+  document.getElementById('s-alerts').textContent=s.total;
+  document.getElementById('s-alerts-sub').textContent=`${s.critical} critical · ${s.acknowledged} ack'd`;
+}
+
+let TICKETS=[],STAFF=[];
+function slaBadge(s){
+  if(!s)return '<span class="badge">—</span>';
+  if(s.breached)return '<span class="badge bad">breached</span>';
+  const left=s.resolution_minutes_left;
+  if(left!=null&&left<=60)return `<span class="badge warn">due ${left}m</span>`;
+  return '<span class="badge ok">on track</span>';
+}
+function fmtMins(m){if(m==null)return '—';const h=Math.floor(m/60),mm=m%60;return (h?h+'h ':'')+mm+'m';}
+async function loadTickets(){
+  const params=[];
+  if(document.getElementById('tk-mine').checked)params.push('mine=true');
+  if(document.getElementById('tk-breached').checked)params.push('breached=true');
+  TICKETS=await api('/api/tickets'+(params.length?'?'+params.join('&'):''))||[];
+  document.getElementById('t-tickets').innerHTML=TICKETS.map(t=>
+    `<tr style="cursor:pointer" onclick="openTicket(${t.id})"><td>#${t.id}</td><td>${esc(t.subject)}</td>
+     <td>${esc(CLIENTS[t.client_id]||t.client_id)}</td><td>${esc(t.priority)}</td>
+     <td><span class="badge ${t.status==='resolved'||t.status==='closed'?'ok':(t.status==='in_progress'?'warn':'')}">${esc(t.status)}</span></td>
+     <td>${slaBadge(t.sla)}</td>
+     <td class="muted">${new Date(t.created_at).toLocaleDateString()}</td></tr>`).join('')
+    ||'<tr><td colspan=7 class="muted">No tickets match.</td></tr>';
+  // Overview counters reflect the full (unfiltered) book, fetched separately.
+}
+async function openTicket(id){
+  const [t,comments,time]=await Promise.all([
+    api(`/api/tickets/${id}`),api(`/api/tickets/${id}/comments`),api(`/api/tickets/${id}/time`).catch(()=>[])]);
+  if(!t)return;
+  const d=document.getElementById('ticket-detail');d.classList.remove('hidden');
+  const sopts=['open','in_progress','resolved','closed'].map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${s}</option>`).join('');
+  const popts=['low','normal','high','urgent'].map(p=>`<option value="${p}" ${t.priority===p?'selected':''}>${p}</option>`).join('');
+  const aopts=['<option value="">— unassigned —</option>'].concat(STAFF.map(s=>
+    `<option value="${s.id}" ${t.assigned_to_user_id===s.id?'selected':''}>${esc(s.email)} (${s.open_tickets})</option>`)).join('');
+  const sla=t.sla||{};
+  const slaLine=sla.breached?`<span class="badge bad">SLA breached</span>`:
+    `<span class="badge ok">SLA on track</span>`+(sla.resolution_minutes_left!=null?` <span class="muted">· resolve in ${fmtMins(sla.resolution_minutes_left)}</span>`:'');
+  d.innerHTML=`<div class="flex" style="justify-content:space-between">
+      <h3 style="margin:0">#${t.id} · ${esc(t.subject)}</h3>
+      <button class="btn sm ghost" onclick="document.getElementById('ticket-detail').classList.add('hidden')">Close</button></div>
+    <p class="muted" style="margin:6px 0">${esc(CLIENTS[t.client_id]||'')} · ${slaLine}</p>
+    <p>${esc(t.body)||'<span class=muted>No description.</span>'}</p>
+    <div class="flex" style="margin:10px 0">
+      <label style="margin:0">Status</label><select id="td-status" style="width:auto;padding:8px">${sopts}</select>
+      <label style="margin:0">Priority</label><select id="td-priority" style="width:auto;padding:8px">${popts}</select>
+      <label style="margin:0">Assignee</label><select id="td-assignee" style="width:auto;padding:8px">${aopts}</select>
+      <button class="btn sm" onclick="saveTicket(${t.id})">Update</button></div>
+    <div class="flex" style="margin:6px 0">
+      <span class="muted">Time logged: <b>${fmtMins(t.time_logged_minutes||0)}</b> (${fmtMins(t.time_billable_minutes||0)} billable)</span>
+      <input id="td-mins" type="number" min="1" placeholder="min" style="width:80px;padding:8px">
+      <input id="td-tnote" placeholder="work note" style="flex:1;min-width:120px;padding:8px">
+      <label class="flex" style="margin:0"><input type="checkbox" id="td-bill" checked style="width:auto"> billable</label>
+      <button class="btn sm ghost" onclick="logTime(${t.id})">Log time</button></div>
+    <h3 style="margin-top:14px">Conversation</h3>
+    <div id="td-comments">${comments.map(renderComment).join('')||'<p class="muted">No replies yet.</p>'}</div>
+    <label>Add reply</label><input id="td-reply" placeholder="Write a reply…">
+    <label class="flex" style="margin:8px 0"><input type="checkbox" id="td-internal" style="width:auto"> internal note (staff only)</label>
+    <button class="btn sm" onclick="sendReply(${t.id})">Send</button>`;
+}
+function renderComment(c){
+  return `<div class="comment ${c.internal?'internal':''}">
+    <div class="meta">${esc(c.author_email)} · ${esc(c.author_role)} · ${ago(c.created_at)}${c.internal?' · INTERNAL':''}</div>
+    ${esc(c.body)}</div>`;
+}
+async function saveTicket(id){
+  const a=document.getElementById('td-assignee').value;
+  await patch(`/api/tickets/${id}`,{status:document.getElementById('td-status').value,
+    priority:document.getElementById('td-priority').value,
+    assigned_to_user_id:a?parseInt(a):null});
+  await loadStaff();await loadTickets();refreshTicketStats();openTicket(id);
+}
+async function logTime(id){
+  const mins=parseInt(document.getElementById('td-mins').value);if(!mins)return;
+  await post(`/api/tickets/${id}/time`,{minutes:mins,note:document.getElementById('td-tnote').value,
+    billable:document.getElementById('td-bill').checked});
+  openTicket(id);
+}
+async function sendReply(id){
+  const body=document.getElementById('td-reply').value.trim();if(!body)return;
+  await post(`/api/tickets/${id}/comments`,{body,internal:document.getElementById('td-internal').checked});
+  refreshTicketStats();openTicket(id);
+}
+async function loadStaff(){STAFF=await api('/api/staff')||[];}
+async function refreshTicketStats(){
+  const [all,sla]=await Promise.all([api('/api/tickets'),api('/api/tickets/sla-summary').catch(()=>null)]);
+  if(all)document.getElementById('s-tickets').textContent=all.filter(t=>t.status==='open'||t.status==='in_progress').length;
+  if(sla)document.getElementById('s-sla').textContent=`${sla.response_breached+sla.resolution_breached} SLA breached · ${sla.at_risk} at risk`;
+}
+
+// ---- Automation & notifications ----
+const RULE_EXAMPLES={
+  'alert.opened':{cond:{"severity":"critical"},actions:[{type:"create_ticket",priority:"high"},{type:"notify"}]},
+  'ticket.created':{cond:{"priority":"urgent"},actions:[{type:"assign",auto:true},{type:"add_note",body:"Escalated by automation."}]},
+  'ticket.sla_breached':{cond:{},actions:[{type:"notify",message:"SLA breached — needs attention",severity:"warning"}]},
+};
+function ruleExample(){
+  const ex=RULE_EXAMPLES[document.getElementById('ar-trigger').value];
+  document.getElementById('ar-cond').value=JSON.stringify(ex.cond);
+  document.getElementById('ar-actions').value=JSON.stringify(ex.actions,null,2);
+}
+async function loadRules(){
+  const rules=await api('/api/automation/rules');if(!rules)return;
+  document.getElementById('t-rules').innerHTML=rules.map(r=>
+    `<tr><td>${esc(r.name)}</td><td>${esc(r.trigger)}</td><td>${r.trigger_count}</td>
+     <td><button class="btn sm ${r.enabled?'':'ghost'}" onclick="toggleRule(${r.id},${!r.enabled})">${r.enabled?'on':'off'}</button></td>
+     <td><button class="btn sm ghost" onclick="deleteRule(${r.id})">✕</button></td></tr>`).join('')
+    ||'<tr><td colspan=5 class="muted">No rules yet. Create one →</td></tr>';
+}
+async function loadRuns(){
+  const runs=await api('/api/automation/runs?limit=50');if(!runs)return;
+  document.getElementById('t-runs').innerHTML=runs.map(r=>
+    `<tr><td class="muted">${new Date(r.created_at).toLocaleString()}</td><td>${esc(r.rule_name)}</td>
+     <td class="muted">${esc(r.summary)}</td><td>${r.success?'✓':'✗'}</td></tr>`).join('')
+    ||'<tr><td colspan=4 class="muted">Nothing has fired yet.</td></tr>';
+}
+async function createRule(){
+  const msg=document.getElementById('ar-msg');msg.textContent='';
+  let cond,actions;
+  try{cond=JSON.parse(document.getElementById('ar-cond').value||'{}');
+      actions=JSON.parse(document.getElementById('ar-actions').value||'[]');}
+  catch(e){msg.textContent='Conditions/Actions must be valid JSON.';return;}
+  const r=await post('/api/automation/rules',{name:document.getElementById('ar-name').value||'Untitled rule',
+    trigger:document.getElementById('ar-trigger').value,conditions:cond,actions});
+  if(r.ok){document.getElementById('ar-name').value='';loadRules();msg.textContent='Rule created ✓';}
+  else{const d=await r.json().catch(()=>({detail:'Error'}));msg.textContent=d.detail||'Failed';}
+}
+async function toggleRule(id,en){await patch(`/api/automation/rules/${id}`,{enabled:en});loadRules();}
+async function deleteRule(id){if(!confirm('Delete this rule?'))return;
+  const r=await fetch(`/api/automation/rules/${id}`,{method:'DELETE'});
+  if(r.ok)loadRules();else alert('Delete failed (owner only).');}
+async function runChecks(){const r=await post('/api/automation/run-checks');const j=await r.json();
+  alert(`Ran checks — ${j.offline.offline_opened} new offline, ${j.sla_breaches_fired} SLA breach action(s).`);
+  loadRuns();loadAlerts();refreshBadges();loadNotifications();}
+async function loadNotifications(){
+  const ns=await api('/api/notifications?limit=30');if(!ns)return;
+  const unread=ns.filter(n=>!n.read).length;
+  document.getElementById('notif-count').textContent=unread;
+  document.getElementById('notif-pill').style.color=unread?'var(--warn)':'';
+  document.getElementById('t-notifs').innerHTML=ns.map(n=>
+    `<div class="comment ${n.read?'':'internal'}"><div class="meta">${esc(n.kind)} · ${esc(n.severity)} · ${ago(n.created_at)}${n.read?'':' · UNREAD'}</div>
+     ${esc(n.message)} ${n.read?'':`<button class="btn sm ghost" style="float:right" onclick="readNotif(${n.id})">mark read</button>`}</div>`).join('')
+    ||'<p class="muted">No notifications.</p>';
+}
+async function readNotif(id){await post(`/api/notifications/${id}/read`);loadNotifications();}
+async function markAllRead(){await post('/api/notifications/read-all');loadNotifications();}
+
+// ---- Invoices ----
+async function loadInvoices(){
+  const rows=await api('/api/invoices');if(!rows)return;
+  const money=v=>'$'+(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('t-invoices').innerHTML=rows.map(i=>{
+    const sc={draft:'',sent:'warn',paid:'ok',void:'bad'}[i.status]||'';
+    const act=i.status==='draft'?`<button class="btn sm" onclick="invAction(${i.id},'send')">send</button>`:
+      (i.status==='sent'?`<button class="btn sm" onclick="invAction(${i.id},'paid')">mark paid</button>`:'');
+    return `<tr><td><a href="/invoice/${i.id}" target="_blank">${esc(i.number||('#'+i.id))}</a></td>
+     <td>${esc(CLIENTS[i.client_id]||i.client_id)}</td><td>${money(i.total)}</td>
+     <td><span class="badge ${sc}">${esc(i.status)}</span></td>
+     <td class="muted">${i.issued_at?new Date(i.issued_at).toLocaleDateString():'—'}</td>
+     <td class="flex">${act}</td></tr>`;}).join('')
+    ||'<tr><td colspan=6 class="muted">No invoices yet.</td></tr>';
+}
+async function generateInvoice(){
+  const rate=parseFloat(document.getElementById('inv-rate').value);
+  const r=await post('/api/invoices/generate',{client_id:parseInt(document.getElementById('inv-client').value),
+    include_time:document.getElementById('inv-time').checked,include_licenses:document.getElementById('inv-lic').checked,
+    hourly_rate:isNaN(rate)?null:rate,tax_rate:parseFloat(document.getElementById('inv-tax').value)||0});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){loadInvoices();window.open(`/invoice/${j.id}`,'_blank');}
+  else alert(j.detail||'Generate failed');
+}
+async function invAction(id,a){await post(`/api/invoices/${id}/${a}`);loadInvoices();loadBilling();}
+
+// ---- Microsoft 365 ----
+let M365_OK=false;
+async function loadM365(){
+  const st=await api('/api/m365/status');if(st){M365_OK=st.configured;
+    const p=document.getElementById('m365-status');
+    p.textContent=st.configured?'connected':'keys not set';
+    p.style.color=st.configured?'var(--ok)':'var(--muted)';}
+  const conns=await api('/api/m365/connections');if(!conns)return;
+  document.getElementById('t-m365').innerHTML=conns.map(c=>{
+    const score=c.secure_score!=null?`${c.secure_score}/${c.secure_score_max||100}`:'—';
+    return `<tr><td>${esc(CLIENTS[c.client_id]||c.client_id)}</td><td class="muted">${esc(c.tenant_id)}</td>
+     <td><span class="badge ${c.status==='connected'?'ok':(c.status==='error'?'bad':'warn')}">${esc(c.status)}</span></td>
+     <td>${score}</td><td>${c.license_count??'—'}</td><td>${c.risky_signin_count??'—'}</td>
+     <td class="flex"><button class="btn sm" onclick="syncM365(${c.id})">sync</button>
+       <button class="btn sm ghost" onclick="removeM365(${c.id})">✕</button></td></tr>`;}).join('')
+    ||'<tr><td colspan=7 class="muted">No tenants connected yet.</td></tr>';
+}
+async function connectM365(){
+  const cid=document.getElementById('m365-client').value, tenant=document.getElementById('m365-tenant').value.trim();
+  if(!tenant){alert('Enter the customer tenant (e.g. contoso.onmicrosoft.com).');return;}
+  const r=await post('/api/m365/connections',{client_id:parseInt(cid),tenant_id:tenant});
+  if(r.ok){document.getElementById('m365-tenant').value='';loadM365();}
+  else{const j=await r.json().catch(()=>({}));alert(j.detail||'Failed');}
+}
+async function syncM365(id){
+  const r=await post(`/api/m365/connections/${id}/sync`);const j=await r.json().catch(()=>({}));
+  if(r.ok){alert(`Synced: ${j.skus} licenses, secure score ${j.secure_score??'—'}, ${j.risky_signins} risky sign-ins.`);
+    loadM365();loadBilling();loadAlerts();refreshBadges();}
+  else alert(j.detail||(r.status===503?'Add M365_CLIENT_ID / M365_CLIENT_SECRET on the server first.':'Sync failed'));
+}
+async function removeM365(id){if(!confirm('Remove this M365 connection?'))return;
+  const r=await fetch(`/api/m365/connections/${id}`,{method:'DELETE'});if(r.ok)loadM365();else alert('Owner only.');}
+
+// ---- Access requests (signups) ----
+async function loadSignups(){
+  const rows=await api('/api/signup-requests');if(!rows)return;
+  document.getElementById('signups-card').classList.toggle('hidden',rows.length===0);
+  document.getElementById('t-signups').innerHTML=rows.map(r=>
+    `<tr><td class="muted">${new Date(r.created_at).toLocaleDateString()}</td><td>${esc(r.name)}</td>
+     <td>${esc(r.email)}</td><td>${esc(r.company||'—')}</td>
+     <td><span class="badge ${r.status==='approved'?'ok':(r.status==='rejected'?'bad':'warn')}">${esc(r.status)}</span></td>
+     <td class="flex">${r.status==='new'||r.status==='contacted'?
+        `<button class="btn sm" onclick="setSignup(${r.id},'approved')">approve</button>
+         <button class="btn sm ghost" onclick="setSignup(${r.id},'rejected')">reject</button>`:''}</td></tr>`).join('');
+}
+async function setSignup(id,st){await patch(`/api/signup-requests/${id}`,{status:st});loadSignups();}
+
+// ---- Scripts & deployments ----
+async function loadScripts(){
+  const scripts=await api('/api/scripts');if(!scripts)return;
+  document.getElementById('t-scripts').innerHTML=scripts.map(s=>
+    `<tr><td>${esc(s.name)}</td><td class="muted">${esc(s.language)}</td>
+     <td>${sevBadge(s.risk_level==='high'?'high':(s.risk_level==='low'?'low':'medium'))}</td>
+     <td><button class="btn sm ${s.enabled?'':'ghost'}" onclick="toggleScript(${s.id},${!s.enabled})">${s.enabled?'on':'off'}</button></td>
+     <td>${s.enabled?`<button class="btn sm" onclick="deployScript(${s.id},'${esc(s.name)}')">deploy</button>`:'<span class="muted">enable first</span>'}</td></tr>`).join('')
+    ||'<tr><td colspan=5 class="muted">Library is empty.</td></tr>';
+}
+async function createScript(){
+  const msg=document.getElementById('scr-msg');msg.textContent='';
+  const name=document.getElementById('scr-name').value.trim();
+  const content=document.getElementById('scr-content').value;
+  if(!name||!content.trim()){msg.textContent='Name and content required.';return;}
+  const r=await post('/api/scripts',{name,language:document.getElementById('scr-lang').value,
+    content,risk_level:document.getElementById('scr-risk').value});
+  if(r.ok){document.getElementById('scr-name').value='';document.getElementById('scr-content').value='';
+    loadScripts();msg.textContent='Saved (disabled until you enable it) ✓';}
+  else{const d=await r.json().catch(()=>({detail:'Error'}));msg.textContent=d.detail||'Failed';}
+}
+async function toggleScript(id,en){const r=await post(`/api/scripts/${id}/enable`,{enabled:en});
+  if(!r.ok){alert('Only an owner can enable/disable scripts.');}loadScripts();}
+async function deployScript(id,name){
+  const did=prompt(`Deploy "${name}" to which device ID?\n(see the Devices tab)`);
+  if(!did)return;
+  const reason=prompt('Reason for this deployment (recorded + audited):')||'';
+  if(!confirm('I confirm consent to run this approved script on the target device.'))return;
+  const r=await post(`/api/scripts/${id}/deploy`,{device_id:parseInt(did),reason,consent_ack:true});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){alert(`Deployment #${j.id} created (${j.status}). An owner must approve it.`);loadDeployments();}
+  else alert(j.detail||'Deploy failed');
+}
+async function loadDeployments(){
+  const deps=await api('/api/deployments');if(!deps)return;
+  document.getElementById('t-deployments').innerHTML=deps.map(d=>{
+    const sc={pending_approval:'warn',approved:'warn',running:'warn',succeeded:'ok',failed:'bad',rejected:'bad',canceled:''}[d.status]||'';
+    const act=d.status==='pending_approval'
+      ? `<button class="btn sm" onclick="decideDep(${d.id},'approve')">approve</button> <button class="btn sm ghost" onclick="decideDep(${d.id},'reject')">reject</button>`
+      : (d.status==='approved'?`<button class="btn sm ghost" onclick="decideDep(${d.id},'cancel')">cancel</button>`:'');
+    return `<tr><td>#${d.id}</td><td>${esc(d.script_name)} v${d.script_version}</td>
+     <td>${esc(DEVICES[d.device_id]||d.device_id)}</td><td class="muted">${esc(d.requested_by_email||'')}</td>
+     <td><span class="badge ${sc}">${esc(d.status)}</span></td><td>${d.exit_code==null?'—':d.exit_code}</td>
+     <td class="flex">${act}</td></tr>`;}).join('')
+    ||'<tr><td colspan=7 class="muted">No deployments yet.</td></tr>';
+}
+async function decideDep(id,action){
+  let body={};
+  if(action==='reject')body={note:prompt('Rejection note (optional):')||null};
+  const path=action==='cancel'?`/api/deployments/${id}/cancel`:`/api/deployments/${id}/${action}`;
+  const r=await post(path,body);
+  if(!r.ok){const j=await r.json().catch(()=>({}));alert(j.detail||'Action failed');}
+  loadDeployments();
+}
+
+// ---- Security posture ----
+function sevBadge(s){const m={critical:'bad',high:'bad',medium:'warn',low:'ok'};return `<span class="sev ${s==='medium'?'warning':(s==='low'?'info':'critical')}">${s}</span>`;}
+function scoreColor(v){return v>=85?'var(--ok)':(v>=60?'var(--warn)':'var(--bad)');}
+async function loadSecurity(){
+  const cards=await api('/api/security/scorecard');if(!cards)return;
+  const list=Array.isArray(cards)?cards:[cards];
+  document.getElementById('t-scorecard').innerHTML=list.map(s=>{
+    const b=s.by_severity||{};
+    return `<tr><td>${esc(CLIENTS[s.client_id]||s.client_id)}</td>
+     <td><b style="color:${scoreColor(s.score)}">${s.score}</b></td><td>${s.open_findings}</td>
+     <td>${b.critical||0}</td><td>${b.high||0}</td><td>${b.medium||0}</td><td>${b.low||0}</td></tr>`;}).join('')
+    ||'<tr><td colspan=7 class="muted">No clients yet.</td></tr>';
+  const findings=await api('/api/security/findings');
+  document.getElementById('t-findings').innerHTML=(findings||[]).map(f=>
+    `<tr><td>${sevBadge(f.severity)}</td><td>${esc(f.title)}</td><td class="muted">${esc(f.cve||'—')}</td>
+     <td><span class="badge ${f.status==='resolved'||f.status==='risk_accepted'?'ok':(f.status==='remediating'?'warn':'bad')}">${esc(f.status)}</span></td>
+     <td class="flex">${f.status==='open'||f.status==='remediating'?
+        `<button class="btn sm ghost" onclick="setFinding(${f.id},'remediating')">fixing</button>
+         <button class="btn sm" onclick="setFinding(${f.id},'resolved')">resolve</button>`:''}</td></tr>`).join('')
+    ||'<tr><td colspan=5 class="muted">No findings. A clean bill of health 🎉</td></tr>';
+}
+async function createFinding(){
+  const msg=document.getElementById('sf-msg');msg.textContent='';
+  const title=document.getElementById('sf-title').value.trim();
+  if(!title){msg.textContent='Title required.';return;}
+  const r=await post('/api/security/findings',{client_id:parseInt(document.getElementById('sf-client').value),
+    title,severity:document.getElementById('sf-sev').value,cve:document.getElementById('sf-cve').value||null,
+    recommendation:document.getElementById('sf-rec').value||null,client_visible:document.getElementById('sf-vis').checked});
+  if(r.ok){document.getElementById('sf-title').value='';document.getElementById('sf-cve').value='';
+    document.getElementById('sf-rec').value='';loadSecurity();refreshBadges();loadAlerts();msg.textContent='Finding added ✓';}
+  else{const d=await r.json().catch(()=>({detail:'Error'}));msg.textContent=d.detail||'Failed';}
+}
+async function setFinding(id,st){await patch(`/api/security/findings/${id}`,{status:st});loadSecurity();refreshBadges();loadAlerts();}
+
+// ---- Knowledge base ----
+async function loadKB(){
+  const arts=await api('/api/kb');if(!arts)return;
+  document.getElementById('t-kb').innerHTML=arts.map(a=>
+    `<tr style="cursor:pointer" onclick="viewArticle(${a.id})"><td>${esc(a.title)}</td><td>${esc(a.category||'—')}</td>
+     <td>${a.client_id?esc(CLIENTS[a.client_id]||a.client_id):'<span class="muted">all</span>'}</td>
+     <td><span class="badge ${a.visibility==='client'?'ok':'warn'}">${a.visibility}</span></td></tr>`).join('')
+    ||'<tr><td colspan=4 class="muted">No articles yet.</td></tr>';
+}
+async function viewArticle(id){
+  const a=await api(`/api/kb/${id}`);if(!a)return;
+  const v=document.getElementById('kb-view');v.classList.remove('hidden');
+  v.innerHTML=`<div class="flex" style="justify-content:space-between">
+      <h3 style="margin:0">${esc(a.title)}</h3>
+      <button class="btn sm ghost" onclick="document.getElementById('kb-view').classList.add('hidden')">Close</button></div>
+    <p class="muted" style="margin:6px 0">${esc(a.category||'Uncategorized')} · ${esc(a.visibility)} · ${a.client_id?esc(CLIENTS[a.client_id]||a.client_id):'all clients'}</p>
+    <div style="white-space:pre-wrap">${esc(a.body)}</div>
+    <div class="flex" style="margin-top:12px"><button class="btn sm ghost" onclick="deleteArticle(${a.id})">Delete</button></div>`;
+}
+async function createArticle(){
+  const msg=document.getElementById('kb-msg');msg.textContent='';
+  const title=document.getElementById('kb-title').value.trim();
+  const bodyv=document.getElementById('kb-body').value.trim();
+  if(!title||!bodyv){msg.textContent='Title and body are required.';return;}
+  const cid=document.getElementById('kb-client').value;
+  const r=await post('/api/kb',{title,body:bodyv,category:document.getElementById('kb-cat').value||null,
+    visibility:document.getElementById('kb-vis').value,client_id:cid?parseInt(cid):null});
+  if(r.ok){document.getElementById('kb-title').value='';document.getElementById('kb-body').value='';
+    document.getElementById('kb-cat').value='';loadKB();msg.textContent='Published ✓';}
+  else{const d=await r.json().catch(()=>({detail:'Error'}));msg.textContent=d.detail||'Failed';}
+}
+async function deleteArticle(id){
+  if(!confirm('Delete this article?'))return;
+  const r=await fetch(`/api/kb/${id}`,{method:'DELETE'});
+  if(r.ok){document.getElementById('kb-view').classList.add('hidden');loadKB();}
+  else alert('Delete failed (owner only).');
+}
+
+async function loadBilling(){
+  const [sum,ren]=await Promise.all([api('/api/billing/summary'),api('/api/billing/renewals?days=60')]);
+  if(!sum)return;
+  const money=v=>'$'+(v||0).toLocaleString(undefined,{maximumFractionDigits:0});
+  document.getElementById('s-mrr').textContent=money(sum.total_mrr);
+  document.getElementById('s-arr').textContent=money(sum.total_arr)+' / yr';
+  document.getElementById('s-util').textContent=sum.seat_utilization_pct!=null?sum.seat_utilization_pct+'%':'—';
+  document.getElementById('s-seats').textContent=`${sum.seats_used}/${sum.seats_total} seats`;
+  document.getElementById('s-renew').textContent=ren.length;
+  document.getElementById('b-mrr').textContent=money(sum.total_mrr);
+  document.getElementById('b-arr').textContent=money(sum.total_arr)+' annual';
+  document.getElementById('b-util').textContent=sum.seat_utilization_pct!=null?sum.seat_utilization_pct+'%':'—';
+  document.getElementById('b-seats').textContent=`${sum.seats_used}/${sum.seats_total} seats`;
+  document.getElementById('b-count').textContent=sum.license_count;
+  document.getElementById('t-billing').innerHTML=sum.by_client.map(b=>
+    `<tr><td>${esc(b.client_name||b.client_id)}</td><td>${b.license_count}</td>
+     <td>${b.seats_used}/${b.seats}</td><td>${money(b.mrr)}</td></tr>`).join('')
+    ||'<tr><td colspan=4 class="muted">No billable licenses yet.</td></tr>';
+  document.getElementById('t-renewals').innerHTML=ren.map(r=>
+    `<tr><td>${esc(r.product)}</td><td>${esc(r.client_name||r.client_id)}</td><td>${esc(r.vendor||'—')}</td>
+     <td>${r.monthly_cost!=null?money(r.monthly_cost):'—'}</td>
+     <td>${new Date(r.renewal_date).toLocaleDateString()}</td>
+     <td><span class="badge ${r.overdue?'bad':(r.days_until<=14?'warn':'')}">${r.overdue?'overdue':r.days_until+'d'}</span></td></tr>`).join('')
+    ||'<tr><td colspan=6 class="muted">Nothing renewing in this window.</td></tr>';
+}
 
 async function load(){
   const me=await api('/api/auth/me'); if(!me)return;
@@ -67,34 +690,50 @@ async function load(){
   const [clients,devices,licenses,audit]=await Promise.all([
     api('/api/clients'),api('/api/devices'),api('/api/licenses'),api('/api/audit?limit=100').catch(()=>[])
   ]);
+  clients.forEach(c=>CLIENTS[c.id]=c.name);
+  // Populate the KB "client" selector (blank = all clients).
+  const kbSel=document.getElementById('kb-client');
+  if(kbSel)kbSel.innerHTML='<option value="">All clients</option>'+clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const sfSel=document.getElementById('sf-client');
+  if(sfSel)sfSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const mSel=document.getElementById('m365-client');
+  if(mSel)mSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const iSel=document.getElementById('inv-client');
+  if(iSel)iSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   document.getElementById('s-clients').textContent=clients.length;
   document.getElementById('s-devices').textContent=devices.length;
-  document.getElementById('s-attn').textContent=devices.filter(d=>(d.health_score??100)<70).length;
+  document.getElementById('s-attn').textContent=devices.filter(d=>(d.health_score??100)<70).length+' need attention';
   document.getElementById('s-lic').textContent=licenses.length;
 
   document.getElementById('t-clients').innerHTML=clients.map(c=>
-    `<tr><td>${c.name}</td><td>${c.primary_contact||'—'}</td><td>${c.email||'—'}</td>
+    `<tr><td>${esc(c.name)}</td><td>${esc(c.primary_contact)||'—'}</td><td>${esc(c.email)||'—'}</td>
      <td><span class="badge ${c.is_active?'ok':'bad'}">${c.is_active?'active':'inactive'}</span></td></tr>`).join('')
-    ||'<tr><td colspan=4 style="color:var(--muted)">No clients yet. Add one via the API.</td></tr>';
+    ||'<tr><td colspan=4 class="muted">No clients yet. Add one via the API.</td></tr>';
 
+  devices.forEach(d=>DEVICES[d.id]=d.hostname);
   document.getElementById('t-devices').innerHTML=devices.map(d=>
-    `<tr><td>${d.hostname}</td><td>${d.os||'—'}</td><td>${d.cpu_pct??'—'}</td>
-     <td>${d.disk_pct??'—'}</td><td>${d.av_status||'—'}</td><td>${badge(d.health_score,80,60)}</td>
-     <td>${d.last_checkin?new Date(d.last_checkin).toLocaleString():'never'}</td></tr>`).join('')
-    ||'<tr><td colspan=7 style="color:var(--muted)">No devices enrolled yet.</td></tr>';
+    `<tr><td>${esc(d.hostname)} <span class="muted">#${d.id}</span></td><td>${esc(d.os)||'—'}</td><td>${d.cpu_pct??'—'}</td>
+     <td>${d.disk_pct??'—'}</td><td>${esc(d.av_status)||'—'}</td><td>${badge(d.health_score,80,60)}</td>
+     <td class="muted">${ago(d.last_checkin)}</td></tr>`).join('')
+    ||'<tr><td colspan=7 class="muted">No devices enrolled yet.</td></tr>';
 
   document.getElementById('t-licenses').innerHTML=licenses.map(l=>
-    `<tr><td>${l.product}</td><td>${l.vendor||'—'}</td><td>${l.seats_used??'?'}/${l.seats??'?'}</td>
+    `<tr><td>${esc(l.product)}</td><td>${esc(l.vendor)||'—'}</td><td>${l.seats_used??'?'}/${l.seats??'?'}</td>
      <td>${l.monthly_cost!=null?'$'+l.monthly_cost:'—'}</td>
      <td>${l.renewal_date?new Date(l.renewal_date).toLocaleDateString():'—'}</td></tr>`).join('')
-    ||'<tr><td colspan=5 style="color:var(--muted)">No licenses tracked yet.</td></tr>';
+    ||'<tr><td colspan=5 class="muted">No licenses tracked yet.</td></tr>';
 
   if(Array.isArray(audit)){
     document.getElementById('t-audit').innerHTML=audit.map(a=>
-      `<tr><td>${new Date(a.ts).toLocaleString()}</td><td>${a.actor_email||'—'}</td>
-       <td>${a.action}</td><td>${a.target_type||''} ${a.target_id||''}</td><td>${a.ip||'—'}</td>
+      `<tr><td class="muted">${new Date(a.ts).toLocaleString()}</td><td>${esc(a.actor_email)||'—'}</td>
+       <td>${esc(a.action)}</td><td>${esc(a.target_type)||''} ${esc(a.target_id)||''}</td><td>${esc(a.ip)||'—'}</td>
        <td>${a.success?'✓':'✗'}</td></tr>`).join('');
   }
+
+  await loadStaff();
+  ruleExample();
+  await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices()]);
 }
 load();
 </script>

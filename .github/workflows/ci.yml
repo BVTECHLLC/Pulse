@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# One run per ref; a new push cancels an in-flight run for the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Smoke test + migrations
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: opspilot
+    env:
+      ENV: development
+      # CI-only throwaway secrets — never used for a real deployment.
+      SECRET_KEY: ci_secret_key_not_for_production_use_aaaaaaaaaaaaaaaaaaaaaaaa
+      AGENT_ENROLL_SECRET: ci_agent_enroll_secret_not_for_production_bbbbbbbbbbbb
+      COOKIE_SECURE: "false"
+      BOOTSTRAP_ADMIN_EMAIL: admin@bvtech.org
+      BOOTSTRAP_ADMIN_PASSWORD: ChooseOne123!
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: opspilot/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt httpx
+
+      - name: Validate Alembic migrations (build from scratch, then up/down/up)
+        env:
+          DATABASE_URL: sqlite:///./ci_migrations.db
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+
+      - name: Run end-to-end smoke test
+        env:
+          DATABASE_URL: sqlite:///./ci_smoke.db
+        run: python scripts/smoke_test.py

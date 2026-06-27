@@ -10,7 +10,7 @@ import enum
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, Float, func
+    Boolean, DateTime, Enum, ForeignKey, Integer, JSON, String, Text, Float, func
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -159,6 +159,15 @@ class SupportTicket(Base):
     priority: Mapped[str] = mapped_column(String(20), default="normal")  # low|normal|high|urgent
     status: Mapped[TicketStatus] = mapped_column(Enum(TicketStatus), default=TicketStatus.OPEN, index=True)
     assigned_to_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    # SLA tracking (v0.4) — due targets stamped at creation from the SLA policy;
+    # first_responded_at/resolved_at recorded as the ticket progresses.
+    first_response_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolution_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    first_responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set once the automation engine has fired a breach event for this ticket, so
+    # the recurring run-checks tick doesn't re-fire every cycle. Reset on reopen.
+    sla_breach_alerted: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
@@ -176,3 +185,446 @@ class DeviceCheckin(Base):
     health_score: Mapped[int | None] = mapped_column(Integer)
     av_status: Mapped[str | None] = mapped_column(String(120))
     patch_status: Mapped[str | None] = mapped_column(String(120))
+
+
+# --------------------------------------------------------------------------- #
+# v0.3 — Monitoring & alerting
+# --------------------------------------------------------------------------- #
+class AlertStatus(str, enum.Enum):
+    ACTIVE = "active"
+    ACKNOWLEDGED = "acknowledged"
+    RESOLVED = "resolved"
+
+
+class AlertSeverity(str, enum.Enum):
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+# Stable machine-readable alert kinds. The monitoring engine opens at most one
+# non-resolved alert per (device, kind), so these double as dedup keys.
+ALERT_OFFLINE = "device_offline"
+ALERT_DISK_FULL = "disk_full"
+ALERT_HIGH_CPU = "high_cpu"
+ALERT_HIGH_RAM = "high_ram"
+ALERT_AV_OFF = "antivirus_off"
+ALERT_PATCH_BEHIND = "patch_behind"
+ALERT_LOW_HEALTH = "low_health"
+
+
+class Alert(Base):
+    """A monitoring alert raised by the engine against a device. Lifecycle:
+    active -> acknowledged (optional) -> resolved. The engine auto-resolves an
+    alert when its triggering condition clears, so the table stays a faithful
+    record of incidents rather than stale noise."""
+    __tablename__ = "alerts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    severity: Mapped[AlertSeverity] = mapped_column(Enum(AlertSeverity), default=AlertSeverity.WARNING)
+    status: Mapped[AlertStatus] = mapped_column(Enum(AlertStatus), default=AlertStatus.ACTIVE, index=True)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    metric_value: Mapped[float | None] = mapped_column(Float)  # the reading that tripped it
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    acknowledged_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    auto_resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class AlertPolicy(Base):
+    """Threshold configuration for the monitoring engine. A row with
+    client_id=NULL is the global default; a per-client row overrides it for that
+    client. The engine falls back to built-in defaults if no row exists."""
+    __tablename__ = "alert_policies"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), unique=True)
+    disk_pct_max: Mapped[float] = mapped_column(Float, default=90.0)
+    cpu_pct_max: Mapped[float] = mapped_column(Float, default=95.0)
+    ram_pct_max: Mapped[float] = mapped_column(Float, default=95.0)
+    health_min: Mapped[int] = mapped_column(Integer, default=60)
+    offline_minutes: Mapped[int] = mapped_column(Integer, default=30)
+    alert_on_av_off: Mapped[bool] = mapped_column(Boolean, default=True)
+    alert_on_patch_behind: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class TicketComment(Base):
+    """A threaded reply on a support ticket. `internal=True` comments are staff
+    notes never shown to client users; client-visible comments form the
+    conversation the client sees in the portal."""
+    __tablename__ = "ticket_comments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("support_tickets.id"), index=True, nullable=False)
+    author_user_id: Mapped[int | None] = mapped_column(Integer)
+    author_email: Mapped[str | None] = mapped_column(String(200))
+    author_role: Mapped[str | None] = mapped_column(String(40))
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    internal: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+# --------------------------------------------------------------------------- #
+# v0.4 — PSA depth: SLAs, time tracking, IT documentation
+# --------------------------------------------------------------------------- #
+# Valid ticket priorities, ordered low -> urgent. Shared by SLA defaults & guards.
+PRIORITIES = ("low", "normal", "high", "urgent")
+
+
+class SLAPolicy(Base):
+    """Per-priority response/resolution targets (in minutes). One row per
+    (scope, priority) where scope is a client_id or NULL for the global default.
+    The engine resolves per-client first, then global, then built-in defaults."""
+    __tablename__ = "sla_policies"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)
+    priority: Mapped[str] = mapped_column(String(20), nullable=False)
+    response_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    resolution_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class TimeEntry(Base):
+    """Billable/non-billable work logged against a ticket by staff. Powers PSA
+    time rollups and (later) invoicing."""
+    __tablename__ = "time_entries"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("support_tickets.id"), index=True, nullable=False)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    user_id: Mapped[int | None] = mapped_column(Integer)
+    user_email: Mapped[str | None] = mapped_column(String(200))
+    minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+    billable: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Set when this entry has been rolled into an invoice (v0.10).
+    invoiced: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    invoice_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+class KBArticle(Base):
+    """IT documentation / knowledge-base article. `client_id` NULL means it's a
+    global article applicable to every client. `visibility` of 'internal' keeps
+    it staff-only; 'client' exposes it to that client's portal users."""
+    __tablename__ = "kb_articles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    category: Mapped[str | None] = mapped_column(String(80), index=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    visibility: Mapped[str] = mapped_column(String(20), default="internal", index=True)  # internal|client
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    author_email: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+# --------------------------------------------------------------------------- #
+# v0.5 — Automation engine (server-side, safe & logged; no remote code exec)
+# --------------------------------------------------------------------------- #
+# Triggers the engine reacts to. Events are emitted by the platform itself.
+TRIGGER_ALERT_OPENED = "alert.opened"
+TRIGGER_TICKET_CREATED = "ticket.created"
+TRIGGER_SLA_BREACHED = "ticket.sla_breached"
+AUTOMATION_TRIGGERS = (TRIGGER_ALERT_OPENED, TRIGGER_TICKET_CREATED, TRIGGER_SLA_BREACHED)
+
+# Safe, in-platform actions. NOTHING here touches an endpoint or runs code on a
+# device — actions only manipulate OpsPilot's own records.
+ACTION_CREATE_TICKET = "create_ticket"   # alert -> open a ticket
+ACTION_ACK_ALERT = "ack_alert"           # auto-acknowledge the alert
+ACTION_NOTIFY = "notify"                  # raise an in-app notification
+ACTION_ASSIGN = "assign"                  # assign ticket (explicit user or auto least-loaded)
+ACTION_SET_PRIORITY = "set_priority"      # bump/lower ticket priority
+ACTION_ADD_NOTE = "add_note"              # internal note on the ticket
+AUTOMATION_ACTIONS = (
+    ACTION_CREATE_TICKET, ACTION_ACK_ALERT, ACTION_NOTIFY,
+    ACTION_ASSIGN, ACTION_SET_PRIORITY, ACTION_ADD_NOTE,
+)
+
+
+class AutomationRule(Base):
+    """A trigger + match conditions + ordered actions. Disabled rules are inert.
+    `client_id` NULL applies the rule to every client; otherwise it's scoped."""
+    __tablename__ = "automation_rules"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    trigger: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)
+    # e.g. {"severity": "critical"} or {"priority": "urgent"} — all keys must match.
+    conditions: Mapped[dict] = mapped_column(JSON, default=dict)
+    # e.g. [{"type": "create_ticket", "priority": "high"}, {"type": "notify"}]
+    actions: Mapped[list] = mapped_column(JSON, default=list)
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    author_email: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+    last_triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    trigger_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class AutomationRun(Base):
+    """Execution-log row: one per rule that matched and ran. The audit trail for
+    'why did the system do that?'."""
+    __tablename__ = "automation_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rule_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    rule_name: Mapped[str | None] = mapped_column(String(200))
+    trigger: Mapped[str] = mapped_column(String(40), index=True)
+    client_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    success: Mapped[bool] = mapped_column(Boolean, default=True)
+    summary: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+class Notification(Base):
+    """An in-app notification. `target_user_id` NULL means 'all staff'. Raised by
+    automation actions and (later) other subsystems."""
+    __tablename__ = "notifications"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    target_user_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    kind: Mapped[str] = mapped_column(String(40), default="info")
+    severity: Mapped[str] = mapped_column(String(20), default="info")
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    read: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+# --------------------------------------------------------------------------- #
+# v0.6 — Security posture & remediation (defensive: track & fix, never exploit)
+# --------------------------------------------------------------------------- #
+class FindingSeverity(str, enum.Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class FindingStatus(str, enum.Enum):
+    OPEN = "open"
+    REMEDIATING = "remediating"
+    RESOLVED = "resolved"
+    RISK_ACCEPTED = "risk_accepted"  # documented, accepted by the client
+
+
+class AssessmentStatus(str, enum.Enum):
+    PLANNED = "planned"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+
+
+class SecurityAssessment(Base):
+    """An authorized security review engagement. `authorized_by` records WHO at
+    the client gave written authorization — assessments without an authorizing
+    party are a compliance/ethics red flag, so the field is required by the API.
+    This is documentation of defensive work; it never executes anything."""
+    __tablename__ = "security_assessments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    scope: Mapped[str | None] = mapped_column(Text)            # systems/IPs in scope
+    authorized_by: Mapped[str] = mapped_column(String(200), nullable=False)  # client authoriser
+    status: Mapped[AssessmentStatus] = mapped_column(Enum(AssessmentStatus), default=AssessmentStatus.PLANNED, index=True)
+    summary: Mapped[str | None] = mapped_column(Text)
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    author_email: Mapped[str | None] = mapped_column(String(200))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class SecurityFinding(Base):
+    """A vulnerability / security finding to be tracked and remediated. May be
+    tied to a device and/or an assessment. High & critical findings raise an
+    alert through the existing engine so automation can act (e.g. open a ticket)."""
+    __tablename__ = "security_findings"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id"), index=True)
+    assessment_id: Mapped[int | None] = mapped_column(ForeignKey("security_assessments.id"), index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    category: Mapped[str | None] = mapped_column(String(80), index=True)  # e.g. patching, config, credential
+    severity: Mapped[FindingSeverity] = mapped_column(Enum(FindingSeverity), default=FindingSeverity.MEDIUM, index=True)
+    cve: Mapped[str | None] = mapped_column(String(40))
+    description: Mapped[str | None] = mapped_column(Text)
+    recommendation: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[FindingStatus] = mapped_column(Enum(FindingStatus), default=FindingStatus.OPEN, index=True)
+    source: Mapped[str] = mapped_column(String(40), default="manual")  # manual|assessment|import
+    client_visible: Mapped[bool] = mapped_column(Boolean, default=False)
+    alert_id: Mapped[int | None] = mapped_column(Integer)  # linked alert, if one was raised
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolved_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    author_email: Mapped[str | None] = mapped_column(String(200))
+
+
+# --------------------------------------------------------------------------- #
+# v0.7 — Script library & deployment governance
+#
+# SAFETY MODEL (read before touching this):
+#   * A script is INERT until an OWNER flips `enabled = True`.
+#   * Pushing a script to a device is a *request* that (by default) needs an
+#     OWNER approval, and the approver must NOT be the requester (separation of
+#     duties). Consent + a reason are recorded on every request.
+#   * The exact content+version is SNAPSHOTTED onto the deployment at request
+#     time, so editing the library later can't change what was approved/runs.
+#   * The agent PULLS only its own approved jobs and reports results; the server
+#     never pushes ad-hoc commands. The agent runner is itself opt-in.
+#   Result: no arbitrary remote code execution — only approved, logged,
+#   attributable, content-pinned jobs.
+# --------------------------------------------------------------------------- #
+SCRIPT_LANGUAGES = ("powershell", "bash", "python", "cmd")
+SCRIPT_RISK_LEVELS = ("low", "medium", "high")
+
+
+class DeploymentStatus(str, enum.Enum):
+    PENDING_APPROVAL = "pending_approval"
+    APPROVED = "approved"          # ready for the agent to pull
+    RUNNING = "running"            # agent has picked it up
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    REJECTED = "rejected"
+    CANCELED = "canceled"
+
+
+class Script(Base):
+    """A reusable script in the library. Disabled by default; only an OWNER may
+    enable it. Editing bumps `version` so deployment snapshots stay meaningful."""
+    __tablename__ = "scripts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    language: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str | None] = mapped_column(String(80), index=True)
+    risk_level: Mapped[str] = mapped_column(String(20), default="medium")
+    requires_approval: Mapped[bool] = mapped_column(Boolean, default=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    author_email: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class ScriptDeployment(Base):
+    """A request to run a specific script on a specific device. Content/version
+    are snapshotted so what is approved is exactly what runs."""
+    __tablename__ = "script_deployments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    script_id: Mapped[int | None] = mapped_column(ForeignKey("scripts.id"), index=True)
+    script_name: Mapped[str] = mapped_column(String(200))
+    script_version: Mapped[int] = mapped_column(Integer)
+    language: Mapped[str] = mapped_column(String(20))
+    content: Mapped[str] = mapped_column(Text)           # snapshot of what runs
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), index=True, nullable=False)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    status: Mapped[DeploymentStatus] = mapped_column(Enum(DeploymentStatus),
+                                                     default=DeploymentStatus.PENDING_APPROVAL, index=True)
+    reason: Mapped[str | None] = mapped_column(Text)
+    consent_ack: Mapped[bool] = mapped_column(Boolean, default=False)
+    requested_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    requested_by_email: Mapped[str | None] = mapped_column(String(200))
+    approved_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    approved_by_email: Mapped[str | None] = mapped_column(String(200))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str | None] = mapped_column(Text)  # rejection reason / notes
+    exit_code: Mapped[int | None] = mapped_column(Integer)
+    output: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+# --------------------------------------------------------------------------- #
+# v0.8 — Public signup / access requests
+# --------------------------------------------------------------------------- #
+class SignupRequest(Base):
+    """A public 'request access' submission from the marketing/login page. It is
+    a lead, NOT an account — staff review and provision deliberately (open
+    self-provisioning into an MSP console would be a security hole)."""
+    __tablename__ = "signup_requests"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    email: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    company: Mapped[str | None] = mapped_column(String(200))
+    message: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="new", index=True)  # new|contacted|approved|rejected
+    ip: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+# --------------------------------------------------------------------------- #
+# v0.9 — Microsoft 365 (read-only Graph; app-only, multi-tenant)
+# --------------------------------------------------------------------------- #
+class M365Connection(Base):
+    """Per-client link to a customer's Microsoft 365 tenant. The MSP app (client
+    id/secret from env) gets app-only, read-only tokens for `tenant_id`. Cached
+    access tokens are stored ENCRYPTED at rest (see services/crypto.py)."""
+    __tablename__ = "m365_connections"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), unique=True, index=True, nullable=False)
+    tenant_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending|connected|error
+    access_token_enc: Mapped[str | None] = mapped_column(Text)   # encrypted cache
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    secure_score: Mapped[int | None] = mapped_column(Integer)
+    secure_score_max: Mapped[int | None] = mapped_column(Integer)
+    license_count: Mapped[int | None] = mapped_column(Integer)
+    risky_signin_count: Mapped[int | None] = mapped_column(Integer)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_sync_status: Mapped[str | None] = mapped_column(String(200))
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+# --------------------------------------------------------------------------- #
+# v0.10 — Invoicing (turns billable time + licenses into invoices)
+# --------------------------------------------------------------------------- #
+class InvoiceStatus(str, enum.Enum):
+    DRAFT = "draft"
+    SENT = "sent"
+    PAID = "paid"
+    VOID = "void"
+
+
+class Invoice(Base):
+    __tablename__ = "invoices"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    number: Mapped[str | None] = mapped_column(String(40), index=True)   # e.g. INV-00001
+    status: Mapped[InvoiceStatus] = mapped_column(Enum(InvoiceStatus), default=InvoiceStatus.DRAFT, index=True)
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    subtotal: Mapped[float] = mapped_column(Float, default=0.0)
+    tax_rate: Mapped[float] = mapped_column(Float, default=0.0)     # percent
+    tax_amount: Mapped[float] = mapped_column(Float, default=0.0)
+    total: Mapped[float] = mapped_column(Float, default=0.0)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class InvoiceLineItem(Base):
+    __tablename__ = "invoice_line_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id"), index=True, nullable=False)
+    description: Mapped[str] = mapped_column(String(300), nullable=False)
+    quantity: Mapped[float] = mapped_column(Float, default=1.0)
+    unit_price: Mapped[float] = mapped_column(Float, default=0.0)
+    amount: Mapped[float] = mapped_column(Float, default=0.0)
+    source: Mapped[str] = mapped_column(String(20), default="manual")  # time|license|manual
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
