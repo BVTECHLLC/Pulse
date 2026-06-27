@@ -1,5 +1,45 @@
 # BVTech OpsPilot — Changelog
 
+## v0.3.0 — Monitoring, alerting, billing & helpdesk threading (June 2026)
+
+### Added
+- **Monitoring & alerting engine** (`app/services/monitoring.py`): every agent
+  check-in is now evaluated against thresholds and raises/auto-resolves alerts
+  for disk-full, high CPU/RAM, antivirus-off, patching-behind, and low composite
+  health. The engine is idempotent — at most one non-resolved alert per
+  (device, kind) — so it never floods. Conditions clearing auto-resolves.
+- **Offline detection**: `POST /api/monitoring/sweep` flags devices that have
+  gone silent past their policy window (and never-checked-in devices). Built to
+  be driven by a scheduler in production; also callable on demand by staff.
+- **Alerts API**: `GET /api/alerts` (+ `/summary`), `POST /api/alerts/{id}/ack`,
+  `POST /api/alerts/{id}/resolve`. Tenant-scoped; mutation is staff-only; every
+  ack/resolve audited.
+- **Alert policies**: per-client or global threshold config via
+  `GET/PUT /api/alert-policies` (staff only) with sane built-in fallbacks.
+- **Billing visibility**: `GET /api/billing/summary` (MRR/ARR rollup, per-client
+  breakdown, seat utilization) and `GET /api/billing/renewals` (upcoming +
+  overdue renewal calendar). Reporting only — no charging. Clients see only
+  their own numbers. License create now accepts `renewal_date`.
+- **Helpdesk threading**: `GET /api/tickets/{id}`, `GET/POST
+  /api/tickets/{id}/comments`. Comments can be client-visible or **internal**
+  (staff-only notes). Clients can never read or create internal notes — a client
+  posting `internal=true` is silently downgraded.
+- **Dashboard**: new Alerts, Tickets (with conversation + status control), and
+  Billing tabs; overview gains active-alert, open-ticket, MRR, utilization, and
+  renewal stats. **Client portal**: active-alerts panel and a two-way ticket
+  conversation so clients can follow up on their own requests.
+- New Alembic migration (`alerts`, `alert_policies`, `ticket_comments`).
+- Smoke test extended to cover the full alert lifecycle, offline sweep, policy
+  upsert, ticket threading + internal-note isolation, and billing rollup/scope.
+
+### Security
+- All new mutating routes are RBAC-guarded; alert ack/resolve, policy edits, and
+  the sweep are staff-only and audited.
+- Internal ticket notes are filtered at the query layer for client users, not
+  just hidden in the UI.
+- Billing and alert listings enforce the same per-client tenant scope as the
+  rest of the app. The agent remains telemetry-only — no remote execution path.
+
 ## v0.2.0 — Portal writes, tickets, history (June 2026)
 
 ### Added

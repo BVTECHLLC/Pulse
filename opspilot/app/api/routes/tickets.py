@@ -1,6 +1,8 @@
 """v0.2 routes: support tickets, client-admin user invites, device check-in history."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
@@ -9,7 +11,8 @@ from ...core.db import get_db
 from ...core.deps import assert_client_access, current_user, is_staff, require_roles
 from ...core.security import hash_password, random_token
 from ...models import (
-    Client, Device, DeviceCheckin, Role, SupportTicket, TicketStatus, User,
+    Client, Device, DeviceCheckin, Role, SupportTicket, TicketComment,
+    TicketStatus, User,
 )
 from ...services import audit
 
@@ -74,6 +77,19 @@ def list_tickets(status_filter: str | None = None, db: Session = Depends(get_db)
     ]
 
 
+@router.get("/tickets/{ticket_id}")
+def get_ticket(ticket_id: int, db: Session = Depends(get_db),
+               user: User = Depends(current_user)):
+    t = db.get(SupportTicket, ticket_id)
+    if not t:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+    assert_client_access(user, t.client_id)
+    return {"id": t.id, "client_id": t.client_id, "subject": t.subject, "body": t.body,
+            "priority": t.priority, "status": t.status.value,
+            "assigned_to_user_id": t.assigned_to_user_id,
+            "created_at": t.created_at.isoformat(), "updated_at": t.updated_at.isoformat()}
+
+
 class TicketUpdate(BaseModel):
     status: TicketStatus | None = None
     assigned_to_user_id: int | None = None
@@ -96,6 +112,60 @@ def update_ticket(ticket_id: int, body: TicketUpdate, request: Request,
                  client_id=t.client_id, ip=_ip(request),
                  detail=f"status={t.status.value}")
     return {"ok": True, "status": t.status.value}
+
+
+# --------------------------------------------------------------------------- #
+# Ticket comments (threaded conversation)
+# --------------------------------------------------------------------------- #
+class CommentIn(BaseModel):
+    body: str
+    internal: bool = False  # staff-only note; never shown to client users
+
+
+@router.post("/tickets/{ticket_id}/comments", status_code=201)
+def add_comment(ticket_id: int, body: CommentIn, request: Request,
+                db: Session = Depends(get_db), user: User = Depends(current_user)):
+    t = db.get(SupportTicket, ticket_id)
+    if not t:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+    assert_client_access(user, t.client_id)
+
+    if not body.body.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Comment body required")
+    # Only staff may post internal notes; clients can never create or read them.
+    internal = bool(body.internal) and is_staff(user)
+
+    c = TicketComment(ticket_id=t.id, author_user_id=user.id, author_email=user.email,
+                      author_role=user.role.value, body=body.body.strip(), internal=internal)
+    db.add(c)
+    # Touch the ticket so list ordering reflects recent activity.
+    t.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    audit.record(db, action="ticket.comment", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="ticket", target_id=str(t.id),
+                 client_id=t.client_id, ip=_ip(request),
+                 detail=f"internal={internal}")
+    return {"id": c.id, "internal": internal}
+
+
+@router.get("/tickets/{ticket_id}/comments")
+def list_comments(ticket_id: int, db: Session = Depends(get_db),
+                  user: User = Depends(current_user)):
+    t = db.get(SupportTicket, ticket_id)
+    if not t:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+    assert_client_access(user, t.client_id)
+
+    q = db.query(TicketComment).filter(TicketComment.ticket_id == ticket_id)
+    if not is_staff(user):
+        # Client users never see internal staff notes.
+        q = q.filter(TicketComment.internal.is_(False))
+    rows = q.order_by(TicketComment.created_at.asc()).all()
+    return [
+        {"id": c.id, "author_email": c.author_email, "author_role": c.author_role,
+         "body": c.body, "internal": c.internal, "created_at": c.created_at.isoformat()}
+        for c in rows
+    ]
 
 
 # --------------------------------------------------------------------------- #

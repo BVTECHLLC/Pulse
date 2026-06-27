@@ -23,7 +23,7 @@ from ...core.security import (
     verify_password,
 )
 from ...models import Client, Device, DeviceCheckin, Role, User
-from ...services import audit
+from ...services import audit, monitoring
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 
@@ -127,5 +127,8 @@ def checkin(body: CheckinIn, request: Request,
         disk_pct=body.disk_pct, health_score=dev.health_score,
         av_status=body.av_status, patch_status=body.patch_status,
     ))
+    # Run the monitoring engine against this fresh telemetry (opens/auto-resolves
+    # alerts). Staged in this same transaction; committed below.
+    monitoring.evaluate_device(db, dev)
     db.commit()
     return {"ok": True, "interval_sec": 300}

@@ -176,3 +176,83 @@ class DeviceCheckin(Base):
     health_score: Mapped[int | None] = mapped_column(Integer)
     av_status: Mapped[str | None] = mapped_column(String(120))
     patch_status: Mapped[str | None] = mapped_column(String(120))
+
+
+# --------------------------------------------------------------------------- #
+# v0.3 — Monitoring & alerting
+# --------------------------------------------------------------------------- #
+class AlertStatus(str, enum.Enum):
+    ACTIVE = "active"
+    ACKNOWLEDGED = "acknowledged"
+    RESOLVED = "resolved"
+
+
+class AlertSeverity(str, enum.Enum):
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+# Stable machine-readable alert kinds. The monitoring engine opens at most one
+# non-resolved alert per (device, kind), so these double as dedup keys.
+ALERT_OFFLINE = "device_offline"
+ALERT_DISK_FULL = "disk_full"
+ALERT_HIGH_CPU = "high_cpu"
+ALERT_HIGH_RAM = "high_ram"
+ALERT_AV_OFF = "antivirus_off"
+ALERT_PATCH_BEHIND = "patch_behind"
+ALERT_LOW_HEALTH = "low_health"
+
+
+class Alert(Base):
+    """A monitoring alert raised by the engine against a device. Lifecycle:
+    active -> acknowledged (optional) -> resolved. The engine auto-resolves an
+    alert when its triggering condition clears, so the table stays a faithful
+    record of incidents rather than stale noise."""
+    __tablename__ = "alerts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    severity: Mapped[AlertSeverity] = mapped_column(Enum(AlertSeverity), default=AlertSeverity.WARNING)
+    status: Mapped[AlertStatus] = mapped_column(Enum(AlertStatus), default=AlertStatus.ACTIVE, index=True)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    metric_value: Mapped[float | None] = mapped_column(Float)  # the reading that tripped it
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    acknowledged_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    auto_resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class AlertPolicy(Base):
+    """Threshold configuration for the monitoring engine. A row with
+    client_id=NULL is the global default; a per-client row overrides it for that
+    client. The engine falls back to built-in defaults if no row exists."""
+    __tablename__ = "alert_policies"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), unique=True)
+    disk_pct_max: Mapped[float] = mapped_column(Float, default=90.0)
+    cpu_pct_max: Mapped[float] = mapped_column(Float, default=95.0)
+    ram_pct_max: Mapped[float] = mapped_column(Float, default=95.0)
+    health_min: Mapped[int] = mapped_column(Integer, default=60)
+    offline_minutes: Mapped[int] = mapped_column(Integer, default=30)
+    alert_on_av_off: Mapped[bool] = mapped_column(Boolean, default=True)
+    alert_on_patch_behind: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class TicketComment(Base):
+    """A threaded reply on a support ticket. `internal=True` comments are staff
+    notes never shown to client users; client-visible comments form the
+    conversation the client sees in the portal."""
+    __tablename__ = "ticket_comments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("support_tickets.id"), index=True, nullable=False)
+    author_user_id: Mapped[int | None] = mapped_column(Integer)
+    author_email: Mapped[str | None] = mapped_column(String(200))
+    author_role: Mapped[str | None] = mapped_column(String(40))
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    internal: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

@@ -3,8 +3,9 @@
 Secure, cloud-hosted MSP command center, admin dashboard, and client portal for
 **BVTech LLC** — evolving toward a lightweight RMM-style platform.
 
-**Current version: v0.1.0** — auth + RBAC + clients/devices/licenses + audit log
-+ telemetry-only endpoint agent + deployment scaffold.
+**Current version: v0.3.0** — auth + RBAC + clients/devices/licenses + audit log
++ telemetry-only endpoint agent, **a monitoring/alerting engine, billing (MRR &
+renewals) visibility, and a threaded helpdesk** + deployment scaffold.
 
 ---
 
@@ -58,18 +59,28 @@ python scripts/smoke_test.py     # runs the full enroll→checkin→audit flow
 
 ---
 
-## What's in v0.1
+## What's in the platform
 
+**Foundation (v0.1–v0.2)**
 - **Auth**: login, logout-everywhere, MFA setup/confirm, `/api/auth/me`
-- **Admin dashboard** (`/dashboard`): overview stats + clients/devices/licenses/audit tabs
-- **Client portal** (`/portal`): read-only, scoped to the signed-in client
+- **Admin dashboard** (`/dashboard`) and **client portal** (`/portal`), tenant-scoped
 - **APIs**: clients, devices, licenses, audit, agent enroll/checkin
+- **Support tickets** + client-admin user invites + device check-in history
 - **Endpoint agent** (`agent/opspilot_agent.py`): Phase-1 telemetry only, no remote exec
 - **Deploy**: Dockerfile, docker-compose (api+db+redis+caddy), Caddyfile, Alembic
-- **Docs**: deployment, security checklist, M365 plan, roadmap
 
-See `docs/` for deployment and security details, and `docs/ROADMAP.md` for
-v0.2 → v0.5 and the **exact prompt to paste next**.
+**v0.3 — RMM monitoring + MSP business layer**
+- **Monitoring/alerting engine**: thresholds → alerts (disk, CPU, RAM, AV,
+  patching, low health, offline), idempotent with auto-resolve on recovery.
+  - `GET /api/alerts` · `/api/alerts/summary` · ack/resolve · `POST /api/monitoring/sweep`
+  - per-client/global thresholds via `GET/PUT /api/alert-policies`
+- **Billing visibility**: `GET /api/billing/summary` (MRR/ARR, seat utilization,
+  per-client breakdown) and `GET /api/billing/renewals` (renewal calendar).
+- **Threaded helpdesk**: `GET/POST /api/tickets/{id}/comments` with client-visible
+  vs. internal (staff-only) notes; clients reply on their own tickets in the portal.
+
+See `docs/` for deployment and security details, and `docs/ROADMAP.md` for what's
+next and the **exact prompt to paste**.
 
 ## Built by
 Jordan Polasek · BVTech LLC · El Campo, TX · *"Whatever you do, work heartily." — Col 3:23*

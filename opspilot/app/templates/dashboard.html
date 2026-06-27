@@ -20,6 +20,9 @@
     <a class="active" data-tab="overview" onclick="tab('overview')">Overview</a>
     <a data-tab="clients" onclick="tab('clients')">Clients</a>
     <a data-tab="devices" onclick="tab('devices')">Devices</a>
+    <a data-tab="alerts" onclick="tab('alerts')">Alerts</a>
+    <a data-tab="tickets" onclick="tab('tickets')">Tickets</a>
+    <a data-tab="billing" onclick="tab('billing')">Billing</a>
     <a data-tab="licenses" onclick="tab('licenses')">Licenses</a>
     <a data-tab="audit" onclick="tab('audit')">Audit Log</a>
   </div>
@@ -27,9 +30,19 @@
   <section id="overview">
     <div class="grid cols-4">
       <div class="card"><h3>Clients</h3><div class="stat" id="s-clients">—</div></div>
-      <div class="card"><h3>Devices</h3><div class="stat" id="s-devices">—</div></div>
-      <div class="card"><h3>Need Attention</h3><div class="stat" id="s-attn" style="color:var(--warn)">—</div></div>
+      <div class="card"><h3>Devices</h3><div class="stat" id="s-devices">—</div>
+        <div class="stat sub" id="s-attn">—</div></div>
+      <div class="card"><h3>Active Alerts</h3><div class="stat" id="s-alerts" style="color:var(--bad)">—</div>
+        <div class="stat sub" id="s-alerts-sub">—</div></div>
+      <div class="card"><h3>Open Tickets</h3><div class="stat" id="s-tickets" style="color:var(--warn)">—</div></div>
+    </div>
+    <div class="grid cols-4" style="margin-top:16px">
+      <div class="card"><h3>Monthly Recurring</h3><div class="stat" id="s-mrr">—</div>
+        <div class="stat sub" id="s-arr">—</div></div>
+      <div class="card"><h3>Seat Utilization</h3><div class="stat" id="s-util">—</div>
+        <div class="stat sub" id="s-seats">—</div></div>
       <div class="card"><h3>Active Licenses</h3><div class="stat" id="s-lic">—</div></div>
+      <div class="card"><h3>Renewals (60d)</h3><div class="stat" id="s-renew" style="color:var(--warn)">—</div></div>
     </div>
   </section>
 
@@ -40,6 +53,43 @@
   <section id="devices" class="hidden"><div class="card"><table>
     <thead><tr><th>Host</th><th>OS</th><th>CPU</th><th>Disk</th><th>AV</th><th>Health</th><th>Last seen</th></tr></thead>
     <tbody id="t-devices"></tbody></table></div></section>
+
+  <section id="alerts" class="hidden">
+    <div class="card">
+      <div class="flex" style="justify-content:space-between;margin-bottom:8px">
+        <h3 style="margin:0">Active Alerts</h3>
+        <div class="flex">
+          <label class="flex" style="margin:0;font-size:13px;color:var(--muted)">
+            <input type="checkbox" id="a-show-resolved" style="width:auto" onchange="loadAlerts()"> show resolved</label>
+          <button class="btn sm" onclick="runSweep()">Run offline sweep</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Severity</th><th>Device</th><th>Alert</th><th>Detail</th><th>Status</th><th>First seen</th><th></th></tr></thead>
+        <tbody id="t-alerts"></tbody></table>
+    </div>
+  </section>
+
+  <section id="tickets" class="hidden">
+    <div class="card hidden" id="ticket-detail" style="margin-bottom:16px"></div>
+    <div class="card"><table>
+      <thead><tr><th>#</th><th>Subject</th><th>Client</th><th>Priority</th><th>Status</th><th>Opened</th></tr></thead>
+      <tbody id="t-tickets"></tbody></table></div>
+  </section>
+
+  <section id="billing" class="hidden">
+    <div class="grid cols-3">
+      <div class="card"><h3>Total MRR</h3><div class="stat" id="b-mrr">—</div><div class="stat sub" id="b-arr">—</div></div>
+      <div class="card"><h3>Seat Utilization</h3><div class="stat" id="b-util">—</div><div class="stat sub" id="b-seats">—</div></div>
+      <div class="card"><h3>Licenses Tracked</h3><div class="stat" id="b-count">—</div></div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>MRR by Client</h3><table>
+      <thead><tr><th>Client</th><th>Licenses</th><th>Seats</th><th>MRR</th></tr></thead>
+      <tbody id="t-billing"></tbody></table></div>
+    <div class="card" style="margin-top:16px"><h3>Upcoming Renewals</h3><table>
+      <thead><tr><th>Product</th><th>Client</th><th>Vendor</th><th>$/mo</th><th>Renewal</th><th>In</th></tr></thead>
+      <tbody id="t-renewals"></tbody></table></div>
+  </section>
 
   <section id="licenses" class="hidden"><div class="card"><table>
     <thead><tr><th>Product</th><th>Vendor</th><th>Seats</th><th>$/mo</th><th>Renewal</th></tr></thead>
@@ -52,6 +102,8 @@
 
 <script>
 async function api(p){const r=await fetch(p);if(r.status===401){location.href='/';return null;}return r.json();}
+async function post(p,b){return fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});}
+async function patch(p,b){return fetch(p,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});}
 function tab(name){
   document.querySelectorAll('.wrap section').forEach(s=>s.classList.add('hidden'));
   document.getElementById(name).classList.remove('hidden');
@@ -59,7 +111,106 @@ function tab(name){
 }
 function badge(v,good,warn){if(v==null)return '<span class="badge">—</span>';
   const c=v>=good?'ok':(v>=warn?'warn':'bad');return `<span class="badge ${c}">${v}</span>`;}
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));}
+function ago(iso){if(!iso)return 'never';return new Date(iso).toLocaleString();}
 async function logout(){await fetch('/api/auth/logout',{method:'POST'});location.href='/';}
+
+let CLIENTS={};
+
+async function loadAlerts(){
+  const showRes=document.getElementById('a-show-resolved').checked;
+  const al=await api('/api/alerts'+(showRes?'?status_filter=resolved':''));
+  if(!al)return;
+  document.getElementById('t-alerts').innerHTML=al.map(a=>
+    `<tr><td><span class="sev ${a.severity}">${a.severity}</span></td>
+     <td>${esc(a.hostname||'—')}</td><td>${esc(a.kind)}</td>
+     <td class="muted">${esc(a.message)}</td>
+     <td><span class="badge ${a.status==='resolved'?'ok':(a.status==='acknowledged'?'warn':'bad')}">${a.status}</span></td>
+     <td class="muted">${ago(a.first_seen)}</td>
+     <td class="flex">${a.status==='resolved'?'':
+        `${a.status==='active'?`<button class="btn sm ghost" onclick="ackAlert(${a.id})">Ack</button>`:''}
+         <button class="btn sm" onclick="resolveAlert(${a.id})">Resolve</button>`}</td></tr>`).join('')
+    ||`<tr><td colspan=7 class="muted">No ${showRes?'resolved':'active'} alerts.</td></tr>`;
+}
+async function ackAlert(id){await post(`/api/alerts/${id}/ack`);loadAlerts();refreshBadges();}
+async function resolveAlert(id){await post(`/api/alerts/${id}/resolve`);loadAlerts();refreshBadges();}
+async function runSweep(){const r=await post('/api/monitoring/sweep');const j=await r.json();
+  alert(`Swept ${j.devices_checked} device(s); opened ${j.offline_opened} offline alert(s).`);loadAlerts();refreshBadges();}
+
+async function refreshBadges(){
+  const s=await api('/api/alerts/summary');if(!s)return;
+  document.getElementById('s-alerts').textContent=s.total;
+  document.getElementById('s-alerts-sub').textContent=`${s.critical} critical · ${s.acknowledged} ack'd`;
+}
+
+let TICKETS=[];
+async function loadTickets(){
+  TICKETS=await api('/api/tickets')||[];
+  document.getElementById('t-tickets').innerHTML=TICKETS.map(t=>
+    `<tr style="cursor:pointer" onclick="openTicket(${t.id})"><td>#${t.id}</td><td>${esc(t.subject)}</td>
+     <td>${esc(CLIENTS[t.client_id]||t.client_id)}</td><td>${esc(t.priority)}</td>
+     <td><span class="badge ${t.status==='resolved'||t.status==='closed'?'ok':(t.status==='in_progress'?'warn':'')}">${esc(t.status)}</span></td>
+     <td class="muted">${new Date(t.created_at).toLocaleDateString()}</td></tr>`).join('')
+    ||'<tr><td colspan=6 class="muted">No tickets yet.</td></tr>';
+  document.getElementById('s-tickets').textContent=TICKETS.filter(t=>t.status==='open'||t.status==='in_progress').length;
+}
+async function openTicket(id){
+  const t=TICKETS.find(x=>x.id===id);const comments=await api(`/api/tickets/${id}/comments`)||[];
+  const d=document.getElementById('ticket-detail');d.classList.remove('hidden');
+  const opts=['open','in_progress','resolved','closed'].map(s=>
+    `<option value="${s}" ${t.status===s?'selected':''}>${s}</option>`).join('');
+  d.innerHTML=`<div class="flex" style="justify-content:space-between">
+      <h3 style="margin:0">#${t.id} · ${esc(t.subject)}</h3>
+      <button class="btn sm ghost" onclick="document.getElementById('ticket-detail').classList.add('hidden')">Close</button></div>
+    <p class="muted" style="margin:6px 0">${esc(CLIENTS[t.client_id]||'')} · ${esc(t.priority)} priority</p>
+    <p>${esc(t.body)||'<span class=muted>No description.</span>'}</p>
+    <div class="flex" style="margin:10px 0">
+      <label style="margin:0">Status</label>
+      <select id="td-status" style="width:auto;padding:8px">${opts}</select>
+      <button class="btn sm" onclick="saveTicket(${t.id})">Update</button></div>
+    <h3 style="margin-top:14px">Conversation</h3>
+    <div id="td-comments">${comments.map(renderComment).join('')||'<p class="muted">No replies yet.</p>'}</div>
+    <label>Add reply</label><input id="td-reply" placeholder="Write a reply…">
+    <label class="flex" style="margin:8px 0"><input type="checkbox" id="td-internal" style="width:auto"> internal note (staff only)</label>
+    <button class="btn sm" onclick="sendReply(${t.id})">Send</button>`;
+}
+function renderComment(c){
+  return `<div class="comment ${c.internal?'internal':''}">
+    <div class="meta">${esc(c.author_email)} · ${esc(c.author_role)} · ${ago(c.created_at)}${c.internal?' · INTERNAL':''}</div>
+    ${esc(c.body)}</div>`;
+}
+async function saveTicket(id){await patch(`/api/tickets/${id}`,{status:document.getElementById('td-status').value});await loadTickets();openTicket(id);}
+async function sendReply(id){
+  const body=document.getElementById('td-reply').value.trim();if(!body)return;
+  await post(`/api/tickets/${id}/comments`,{body,internal:document.getElementById('td-internal').checked});
+  openTicket(id);
+}
+
+async function loadBilling(){
+  const [sum,ren]=await Promise.all([api('/api/billing/summary'),api('/api/billing/renewals?days=60')]);
+  if(!sum)return;
+  const money=v=>'$'+(v||0).toLocaleString(undefined,{maximumFractionDigits:0});
+  document.getElementById('s-mrr').textContent=money(sum.total_mrr);
+  document.getElementById('s-arr').textContent=money(sum.total_arr)+' / yr';
+  document.getElementById('s-util').textContent=sum.seat_utilization_pct!=null?sum.seat_utilization_pct+'%':'—';
+  document.getElementById('s-seats').textContent=`${sum.seats_used}/${sum.seats_total} seats`;
+  document.getElementById('s-renew').textContent=ren.length;
+  document.getElementById('b-mrr').textContent=money(sum.total_mrr);
+  document.getElementById('b-arr').textContent=money(sum.total_arr)+' annual';
+  document.getElementById('b-util').textContent=sum.seat_utilization_pct!=null?sum.seat_utilization_pct+'%':'—';
+  document.getElementById('b-seats').textContent=`${sum.seats_used}/${sum.seats_total} seats`;
+  document.getElementById('b-count').textContent=sum.license_count;
+  document.getElementById('t-billing').innerHTML=sum.by_client.map(b=>
+    `<tr><td>${esc(b.client_name||b.client_id)}</td><td>${b.license_count}</td>
+     <td>${b.seats_used}/${b.seats}</td><td>${money(b.mrr)}</td></tr>`).join('')
+    ||'<tr><td colspan=4 class="muted">No billable licenses yet.</td></tr>';
+  document.getElementById('t-renewals').innerHTML=ren.map(r=>
+    `<tr><td>${esc(r.product)}</td><td>${esc(r.client_name||r.client_id)}</td><td>${esc(r.vendor||'—')}</td>
+     <td>${r.monthly_cost!=null?money(r.monthly_cost):'—'}</td>
+     <td>${new Date(r.renewal_date).toLocaleDateString()}</td>
+     <td><span class="badge ${r.overdue?'bad':(r.days_until<=14?'warn':'')}">${r.overdue?'overdue':r.days_until+'d'}</span></td></tr>`).join('')
+    ||'<tr><td colspan=6 class="muted">Nothing renewing in this window.</td></tr>';
+}
 
 async function load(){
   const me=await api('/api/auth/me'); if(!me)return;
@@ -67,34 +218,37 @@ async function load(){
   const [clients,devices,licenses,audit]=await Promise.all([
     api('/api/clients'),api('/api/devices'),api('/api/licenses'),api('/api/audit?limit=100').catch(()=>[])
   ]);
+  clients.forEach(c=>CLIENTS[c.id]=c.name);
   document.getElementById('s-clients').textContent=clients.length;
   document.getElementById('s-devices').textContent=devices.length;
-  document.getElementById('s-attn').textContent=devices.filter(d=>(d.health_score??100)<70).length;
+  document.getElementById('s-attn').textContent=devices.filter(d=>(d.health_score??100)<70).length+' need attention';
   document.getElementById('s-lic').textContent=licenses.length;
 
   document.getElementById('t-clients').innerHTML=clients.map(c=>
-    `<tr><td>${c.name}</td><td>${c.primary_contact||'—'}</td><td>${c.email||'—'}</td>
+    `<tr><td>${esc(c.name)}</td><td>${esc(c.primary_contact)||'—'}</td><td>${esc(c.email)||'—'}</td>
      <td><span class="badge ${c.is_active?'ok':'bad'}">${c.is_active?'active':'inactive'}</span></td></tr>`).join('')
-    ||'<tr><td colspan=4 style="color:var(--muted)">No clients yet. Add one via the API.</td></tr>';
+    ||'<tr><td colspan=4 class="muted">No clients yet. Add one via the API.</td></tr>';
 
   document.getElementById('t-devices').innerHTML=devices.map(d=>
-    `<tr><td>${d.hostname}</td><td>${d.os||'—'}</td><td>${d.cpu_pct??'—'}</td>
-     <td>${d.disk_pct??'—'}</td><td>${d.av_status||'—'}</td><td>${badge(d.health_score,80,60)}</td>
-     <td>${d.last_checkin?new Date(d.last_checkin).toLocaleString():'never'}</td></tr>`).join('')
-    ||'<tr><td colspan=7 style="color:var(--muted)">No devices enrolled yet.</td></tr>';
+    `<tr><td>${esc(d.hostname)}</td><td>${esc(d.os)||'—'}</td><td>${d.cpu_pct??'—'}</td>
+     <td>${d.disk_pct??'—'}</td><td>${esc(d.av_status)||'—'}</td><td>${badge(d.health_score,80,60)}</td>
+     <td class="muted">${ago(d.last_checkin)}</td></tr>`).join('')
+    ||'<tr><td colspan=7 class="muted">No devices enrolled yet.</td></tr>';
 
   document.getElementById('t-licenses').innerHTML=licenses.map(l=>
-    `<tr><td>${l.product}</td><td>${l.vendor||'—'}</td><td>${l.seats_used??'?'}/${l.seats??'?'}</td>
+    `<tr><td>${esc(l.product)}</td><td>${esc(l.vendor)||'—'}</td><td>${l.seats_used??'?'}/${l.seats??'?'}</td>
      <td>${l.monthly_cost!=null?'$'+l.monthly_cost:'—'}</td>
      <td>${l.renewal_date?new Date(l.renewal_date).toLocaleDateString():'—'}</td></tr>`).join('')
-    ||'<tr><td colspan=5 style="color:var(--muted)">No licenses tracked yet.</td></tr>';
+    ||'<tr><td colspan=5 class="muted">No licenses tracked yet.</td></tr>';
 
   if(Array.isArray(audit)){
     document.getElementById('t-audit').innerHTML=audit.map(a=>
-      `<tr><td>${new Date(a.ts).toLocaleString()}</td><td>${a.actor_email||'—'}</td>
-       <td>${a.action}</td><td>${a.target_type||''} ${a.target_id||''}</td><td>${a.ip||'—'}</td>
+      `<tr><td class="muted">${new Date(a.ts).toLocaleString()}</td><td>${esc(a.actor_email)||'—'}</td>
+       <td>${esc(a.action)}</td><td>${esc(a.target_type)||''} ${esc(a.target_id)||''}</td><td>${esc(a.ip)||'—'}</td>
        <td>${a.success?'✓':'✗'}</td></tr>`).join('');
   }
+
+  await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),loadBilling()]);
 }
 load();
 </script>

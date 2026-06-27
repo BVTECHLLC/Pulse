@@ -14,11 +14,16 @@
   </div>
 </div>
 <div class="wrap">
-  <div class="grid cols-2">
+  <div class="grid cols-3">
     <div class="card"><h3>Your Devices</h3><div class="stat" id="s-devices">—</div>
       <div class="stat sub" id="s-attn">—</div></div>
+    <div class="card"><h3>Active Alerts</h3><div class="stat" id="s-alerts" style="color:var(--bad)">—</div>
+      <div class="stat sub" id="s-alerts-sub">—</div></div>
     <div class="card"><h3>Your Licenses</h3><div class="stat" id="s-lic">—</div></div>
   </div>
+  <div class="card hidden" id="c-alerts" style="margin-top:16px"><h3>Active Alerts</h3><table>
+    <thead><tr><th>Severity</th><th>Device</th><th>Issue</th><th>Detail</th><th>Since</th></tr></thead>
+    <tbody id="t-alerts"></tbody></table></div>
   <div class="card" style="margin-top:16px"><h3>Devices</h3><table>
     <thead><tr><th>Host</th><th>OS</th><th>Health</th><th>Last check-in</th></tr></thead>
     <tbody id="t-devices"></tbody></table></div>
@@ -33,14 +38,18 @@
     <div class="err" id="t-msg"></div>
     <button class="btn" style="margin-top:14px" onclick="submitTicket()">Submit request</button>
   </div>
+  <div class="card hidden" id="ticket-detail" style="margin-top:16px"></div>
   <div class="card" style="margin-top:16px"><h3>Your Requests</h3><table>
-    <thead><tr><th>Subject</th><th>Priority</th><th>Status</th><th>Opened</th></tr></thead>
+    <thead><tr><th>#</th><th>Subject</th><th>Priority</th><th>Status</th><th>Opened</th></tr></thead>
     <tbody id="t-tickets"></tbody></table></div>
 </div>
 <script>
 async function api(p){const r=await fetch(p);if(r.status===401){location.href='/';return null;}return r.json();}
+async function post(p,b){return fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});}
 async function logout(){await fetch('/api/auth/logout',{method:'POST'});location.href='/';}
 function badge(v){if(v==null)return '—';const c=v>=80?'ok':(v>=60?'warn':'bad');return `<span class="badge ${c}">${v}</span>`;}
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));}
+function ago(iso){if(!iso)return '';return new Date(iso).toLocaleString();}
 async function submitTicket(){
   const msg=document.getElementById('t-msg');msg.textContent='';
   const subject=document.getElementById('t-subject').value.trim();
@@ -50,13 +59,44 @@ async function submitTicket(){
   if(r.ok){document.getElementById('t-subject').value='';document.getElementById('t-body').value='';loadTickets();msg.textContent='Request submitted ✓';}
   else{const d=await r.json().catch(()=>({detail:'Error'}));msg.textContent=d.detail||'Failed';}
 }
+let TICKETS=[];
 async function loadTickets(){
-  const tk=await api('/api/tickets'); if(!tk)return;
-  document.getElementById('t-tickets').innerHTML=tk.map(t=>
-    `<tr><td>${t.subject}</td><td>${t.priority}</td>
-     <td><span class="badge ${t.status==='resolved'||t.status==='closed'?'ok':(t.status==='in_progress'?'warn':'')}">${t.status}</span></td>
+  TICKETS=await api('/api/tickets')||[];
+  document.getElementById('t-tickets').innerHTML=TICKETS.map(t=>
+    `<tr style="cursor:pointer" onclick="openTicket(${t.id})"><td>#${t.id}</td><td>${esc(t.subject)}</td><td>${esc(t.priority)}</td>
+     <td><span class="badge ${t.status==='resolved'||t.status==='closed'?'ok':(t.status==='in_progress'?'warn':'')}">${esc(t.status)}</span></td>
      <td>${new Date(t.created_at).toLocaleDateString()}</td></tr>`).join('')
-    ||'<tr><td colspan=4 style="color:var(--muted)">No requests yet.</td></tr>';
+    ||'<tr><td colspan=5 style="color:var(--muted)">No requests yet.</td></tr>';
+}
+async function openTicket(id){
+  const t=TICKETS.find(x=>x.id===id);const comments=await api(`/api/tickets/${id}/comments`)||[];
+  const d=document.getElementById('ticket-detail');d.classList.remove('hidden');
+  d.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center">
+      <h3 style="margin:0">#${t.id} · ${esc(t.subject)}</h3>
+      <button class="btn ghost" style="padding:5px 11px;font-size:12px" onclick="document.getElementById('ticket-detail').classList.add('hidden')">Close</button></div>
+    <p style="color:var(--muted);margin:6px 0">${esc(t.priority)} priority · ${esc(t.status)}</p>
+    <p>${esc(t.body)||'<span style=color:var(--muted)>No description.</span>'}</p>
+    <h3 style="margin-top:14px">Conversation</h3>
+    <div id="td-comments">${comments.map(c=>
+      `<div class="comment"><div class="meta">${esc(c.author_email)} · ${ago(c.created_at)}</div>${esc(c.body)}</div>`).join('')
+      ||'<p style="color:var(--muted)">No replies yet — we\\'ll respond here.</p>'}</div>
+    <label>Add a reply</label><input id="td-reply" placeholder="Add more detail or a follow-up…">
+    <button class="btn" style="margin-top:10px" onclick="sendReply(${t.id})">Send reply</button>`;
+}
+async function sendReply(id){
+  const body=document.getElementById('td-reply').value.trim();if(!body)return;
+  await post(`/api/tickets/${id}/comments`,{body});
+  openTicket(id);loadTickets();
+}
+async function loadAlerts(){
+  const al=await api('/api/alerts');if(!al)return;
+  document.getElementById('s-alerts').textContent=al.length;
+  document.getElementById('s-alerts-sub').textContent=al.filter(a=>a.severity==='critical').length+' critical';
+  document.getElementById('c-alerts').classList.toggle('hidden',al.length===0);
+  document.getElementById('t-alerts').innerHTML=al.map(a=>
+    `<tr><td><span class="sev ${a.severity}">${a.severity}</span></td><td>${esc(a.hostname||'—')}</td>
+     <td>${esc(a.kind)}</td><td style="color:var(--muted)">${esc(a.message)}</td>
+     <td style="color:var(--muted)">${ago(a.first_seen)}</td></tr>`).join('');
 }
 async function load(){
   const me=await api('/api/auth/me'); if(!me)return;
@@ -74,6 +114,7 @@ async function load(){
      <td>${l.renewal_date?new Date(l.renewal_date).toLocaleDateString():'—'}</td></tr>`).join('')
     ||'<tr><td colspan=3 style="color:var(--muted)">No licenses yet.</td></tr>';
   loadTickets();
+  loadAlerts();
 }
 load();
 </script>
