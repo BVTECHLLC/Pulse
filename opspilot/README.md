@@ -3,11 +3,12 @@
 Secure, cloud-hosted MSP command center, admin dashboard, and client portal for
 **BVTech LLC** — evolving toward a lightweight RMM-style platform.
 
-**Current version: v0.4.0** — a unified **RMM + PSA** platform: auth + RBAC +
+**Current version: v0.5.0** — a unified **RMM + PSA** platform: auth + RBAC +
 clients/devices/licenses + audit log + telemetry agent, a monitoring/alerting
 engine, billing (MRR & renewals) visibility, a **full SLA-tracked helpdesk**
-(threading, assignment, time tracking), and an **IT documentation / knowledge
-base** + deployment scaffold.
+(threading, assignment, time tracking), an **IT documentation / knowledge base**,
+and a **server-side automation engine** (event→action rules + notifications)
++ deployment scaffold.
 
 ---
 
@@ -90,6 +91,16 @@ python scripts/smoke_test.py     # runs the full enroll→checkin→audit flow
 - **Time tracking**: `POST/GET /api/tickets/{id}/time` (billable rollup).
 - **Knowledge base**: `/api/kb` CRUD — internal vs. client-visible, global vs.
   client-scoped, query-layer visibility enforcement.
+
+**v0.5 — Automation engine**
+- **Event→action rules**: triggers (`alert.opened`, `ticket.created`,
+  `ticket.sla_breached`) + JSON conditions + safe in-platform actions
+  (`create_ticket`, `ack_alert`, `notify`, `assign` incl. auto least-loaded,
+  `set_priority`, `add_note`). No remote code execution.
+  - `GET/POST/PATCH/DELETE /api/automation/rules` · `GET /api/automation/runs`
+  - `POST /api/automation/run-checks` (scheduler tick: offline sweep + SLA-breach firing)
+- **In-app notifications**: `GET /api/notifications` (+ `?unread_only`),
+  `POST /api/notifications/{id}/read` · `/read-all`. Tenant-scoped.
 
 See `docs/` for deployment and security details, and `docs/ROADMAP.md` for what's
 next and the **exact prompt to paste**.

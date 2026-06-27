@@ -10,7 +10,7 @@ import enum
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, Float, func
+    Boolean, DateTime, Enum, ForeignKey, Integer, JSON, String, Text, Float, func
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -165,6 +165,9 @@ class SupportTicket(Base):
     resolution_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     first_responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set once the automation engine has fired a breach event for this ticket, so
+    # the recurring run-checks tick doesn't re-fire every cycle. Reset on reopen.
+    sla_breach_alerted: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
@@ -314,3 +317,75 @@ class KBArticle(Base):
     author_email: Mapped[str | None] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+# --------------------------------------------------------------------------- #
+# v0.5 — Automation engine (server-side, safe & logged; no remote code exec)
+# --------------------------------------------------------------------------- #
+# Triggers the engine reacts to. Events are emitted by the platform itself.
+TRIGGER_ALERT_OPENED = "alert.opened"
+TRIGGER_TICKET_CREATED = "ticket.created"
+TRIGGER_SLA_BREACHED = "ticket.sla_breached"
+AUTOMATION_TRIGGERS = (TRIGGER_ALERT_OPENED, TRIGGER_TICKET_CREATED, TRIGGER_SLA_BREACHED)
+
+# Safe, in-platform actions. NOTHING here touches an endpoint or runs code on a
+# device — actions only manipulate OpsPilot's own records.
+ACTION_CREATE_TICKET = "create_ticket"   # alert -> open a ticket
+ACTION_ACK_ALERT = "ack_alert"           # auto-acknowledge the alert
+ACTION_NOTIFY = "notify"                  # raise an in-app notification
+ACTION_ASSIGN = "assign"                  # assign ticket (explicit user or auto least-loaded)
+ACTION_SET_PRIORITY = "set_priority"      # bump/lower ticket priority
+ACTION_ADD_NOTE = "add_note"              # internal note on the ticket
+AUTOMATION_ACTIONS = (
+    ACTION_CREATE_TICKET, ACTION_ACK_ALERT, ACTION_NOTIFY,
+    ACTION_ASSIGN, ACTION_SET_PRIORITY, ACTION_ADD_NOTE,
+)
+
+
+class AutomationRule(Base):
+    """A trigger + match conditions + ordered actions. Disabled rules are inert.
+    `client_id` NULL applies the rule to every client; otherwise it's scoped."""
+    __tablename__ = "automation_rules"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    trigger: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)
+    # e.g. {"severity": "critical"} or {"priority": "urgent"} — all keys must match.
+    conditions: Mapped[dict] = mapped_column(JSON, default=dict)
+    # e.g. [{"type": "create_ticket", "priority": "high"}, {"type": "notify"}]
+    actions: Mapped[list] = mapped_column(JSON, default=list)
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    author_email: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+    last_triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    trigger_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class AutomationRun(Base):
+    """Execution-log row: one per rule that matched and ran. The audit trail for
+    'why did the system do that?'."""
+    __tablename__ = "automation_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rule_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    rule_name: Mapped[str | None] = mapped_column(String(200))
+    trigger: Mapped[str] = mapped_column(String(40), index=True)
+    client_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    success: Mapped[bool] = mapped_column(Boolean, default=True)
+    summary: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+class Notification(Base):
+    """An in-app notification. `target_user_id` NULL means 'all staff'. Raised by
+    automation actions and (later) other subsystems."""
+    __tablename__ = "notifications"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    target_user_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    kind: Mapped[str] = mapped_column(String(40), default="info")
+    severity: Mapped[str] = mapped_column(String(20), default="info")
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    read: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)

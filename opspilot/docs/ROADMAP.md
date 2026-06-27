@@ -46,37 +46,53 @@ of an "all-in-one" RMM/MSP tool. M365 and remote support shift down one number.
 This makes Pulse a genuine unified **RMM + PSA** platform (the SuperOps niche):
 monitoring + assets on the RMM side, SLA helpdesk + time + docs on the PSA side.
 
+## ✅ v0.5 (this release) — Automation engine
+- **Event→action rules**: triggers (alert opened, ticket created, SLA breached) +
+  JSON conditions + safe in-platform actions (open/assign/prioritize/note tickets,
+  acknowledge alerts, notify). Per-client or global scope; enable/disable; full
+  run log + audit. No remote code execution — actions only touch OpsPilot records.
+- **Scheduler tick** (`run-checks`): offline sweep + SLA-breach firing (deduped).
+- **In-app notifications** with unread tracking, raised by the `notify` action.
+
+The automation engine is the RMM/PSA force-multiplier: it ties monitoring, the
+SLA helpdesk, and notifications together so routine response happens without a
+human in the loop — while staying safe (no endpoint code execution) and fully
+audited.
+
 ---
 
-## v0.5 — Microsoft 365 (see docs/M365_PLAN.md)
+## v0.6 — Microsoft 365 (see docs/M365_PLAN.md)
 - Multi-tenant Entra app, least-privilege read-only Graph scopes.
 - Per-client connect/consent, encrypted token storage, scheduled sync.
 - Auto-populate licenses from `subscribedSkus` (feeds the billing rollup);
-  Secure Score + risky sign-ins surfaced as alerts via the existing engine.
+  Secure Score + risky sign-ins surfaced as alerts via the existing engine
+  (which automation rules can then act on automatically).
 
-## v0.6 — Remote support, safely
+## v0.7 — Remote support, safely
 - Quick Assist launcher + remote-support helper (agent side, opt-in).
 - Script library: **disabled by default**, per-script + per-device enable,
   mandatory approval workflow, full before/after audit, rollback notes.
 - NO arbitrary remote code execution — only approved, logged, reversible actions.
 
-## v0.7 — Content workflow + richer dashboards + integrations
-- Notifications: email/Slack/Teams/webhook fan-out from the alerting engine.
-- Scheduled offline sweep + digest reports (APScheduler/cron).
+## v0.8 — Content workflow + richer dashboards + integrations
+- Notification channels: email/Slack/Teams/webhook fan-out (a new `notify`
+  channel behind the existing automation `notify` action + Notification model).
+- Scheduled offline sweep + digest reports (APScheduler/cron driving run-checks).
 - Billing exports + invoicing from time entries: Stripe/QuickBooks/Xero.
 - Website content workflow: draft → review → approved → Cloudflare Pages deploy,
   with version history and no direct prod overwrite.
 
 ---
 
-## ⏭️ EXACT PROMPT TO PASTE NEXT (to build v0.5)
+## ⏭️ EXACT PROMPT TO PASTE NEXT (to build v0.6)
 
-> Continue BVTech OpsPilot. v0.4 is in the repo at `opspilot/` (FastAPI +
+> Continue BVTech OpsPilot. v0.5 is in the repo at `opspilot/` (FastAPI +
 > SQLAlchemy + Jinja, Argon2/JWT/TOTP auth, 4-role RBAC, clients/devices/licenses,
 > append-only audit, telemetry agent, monitoring/alerting engine + policies,
-> billing MRR/renewals, **SLA-tracked helpdesk with assignment + time tracking**,
-> **knowledge base**, Docker/Caddy/Tunnel, Alembic). Pull the repo, run
-> `python scripts/smoke_test.py` (it should pass), then build **v0.5 — Microsoft
+> billing MRR/renewals, SLA-tracked helpdesk with assignment + time tracking,
+> knowledge base, **a server-side automation engine (event→action rules + in-app
+> notifications)**, Docker/Caddy/Tunnel, Alembic). Pull the repo, run
+> `python scripts/smoke_test.py` (it should pass), then build **v0.6 — Microsoft
 > 365** per `docs/M365_PLAN.md`:
 >
 > 1. Multi-tenant Entra app registration with least-privilege, read-only Graph
@@ -86,9 +102,10 @@ monitoring + assets on the RMM side, SLA helpdesk + time + docs on the PSA side.
 >    billing rollup reflects real M365 seats), pull Secure Score and risky
 >    sign-ins.
 > 3. Surface M365 risks as alerts through the EXISTING monitoring engine (new
->    alert kinds), so they show on the dashboard alongside device alerts.
+>    alert kinds) so the dashboard shows them alongside device alerts — and the
+>    automation engine can act on them (e.g. risky-sign-in → open a ticket).
 >
 > Keep the security posture: least privilege, RBAC on every route, audit every
 > sensitive action, encrypted secrets at rest, no remote code execution in the
 > agent. Extend the smoke test (mock Graph), run it, update the roadmap +
-> changelog, package as v0.5, and give me the exact prompt for v0.6.
+> changelog, package as v0.6, and give me the exact prompt for v0.7.

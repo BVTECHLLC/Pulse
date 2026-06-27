@@ -23,7 +23,7 @@ from ...core.security import (
     verify_password,
 )
 from ...models import Client, Device, DeviceCheckin, Role, User
-from ...services import audit, monitoring
+from ...services import audit, automation, monitoring
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 
@@ -129,6 +129,9 @@ def checkin(body: CheckinIn, request: Request,
     ))
     # Run the monitoring engine against this fresh telemetry (opens/auto-resolves
     # alerts). Staged in this same transaction; committed below.
-    monitoring.evaluate_device(db, dev)
+    new_alerts = monitoring.evaluate_device(db, dev)
     db.commit()
+    # Fire automation for each newly-opened alert (after commit so ids exist).
+    for alert in new_alerts:
+        automation.dispatch(db, "alert.opened", automation.build_alert_context(alert, dev))
     return {"ok": True, "interval_sec": 300}

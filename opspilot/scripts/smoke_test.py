@@ -205,7 +205,67 @@ def main():
         assert c.delete(f"/api/kb/{internal_id}").status_code==200
         print("knowledge base visibility + RBAC OK")
 
-    print("\n=== OpsPilot v0.4 SMOKE TEST PASSED ===")
+        # ===================== v0.5: Automation engine =====================
+        # Rule 1: a CRITICAL alert auto-opens a ticket and notifies staff.
+        c.post("/api/automation/rules", json={
+            "name":"Critical alert -> ticket","trigger":"alert.opened",
+            "conditions":{"severity":"critical"},
+            "actions":[{"type":"create_ticket","priority":"high"},{"type":"notify"}]})
+        tok2=c.post(f"/api/agent/enroll-token/{cid}").json()["enroll_token"]
+        ag=TestClient(app); ag.cookies.clear()
+        ent2=ag.post("/api/agent/enroll", json={"enroll_token":tok2,"hostname":"AUTO-PC","os":"Windows 11"}).json()
+        hdr2={"X-Enroll-Id":ent2["enroll_id"],"X-Agent-Key":ent2["agent_key"]}
+        ag.post("/api/agent/checkin", headers=hdr2, json={"cpu_pct":5,"disk_pct":97,"av_status":"on"})
+        auto_tickets=[t for t in c.get("/api/tickets").json() if t["subject"].startswith("[Auto]")]
+        assert auto_tickets, "automation did not open a ticket from the critical alert"
+        assert any(r["trigger"]=="alert.opened" and r["success"] for r in c.get("/api/automation/runs").json())
+        assert any("alert" in n["message"].lower() for n in c.get("/api/notifications").json()), "no notification"
+        print("automation alert->ticket+notify OK (auto ticket #%s)" % auto_tickets[0]["id"])
+
+        # Rule 2: an URGENT ticket is auto-assigned (least-loaded) + gets an internal note.
+        rid2=c.post("/api/automation/rules", json={
+            "name":"Urgent -> assign + note","trigger":"ticket.created",
+            "conditions":{"priority":"urgent"},
+            "actions":[{"type":"assign","auto":True},{"type":"add_note","body":"Escalated by automation."}]}).json()["id"]
+        utid=c.post("/api/tickets", json={"client_id":cid,"subject":"Everything down","priority":"urgent"}).json()["id"]
+        assert c.get(f"/api/tickets/{utid}").json()["assigned_to_user_id"], "urgent ticket not auto-assigned"
+        ucs=c.get(f"/api/tickets/{utid}/comments").json()
+        assert any(cm["internal"] and "automation" in (cm["author_email"] or "") for cm in ucs), ucs
+        print("automation ticket.created auto-assign+note OK")
+
+        # Disabling a rule makes it inert.
+        c.patch(f"/api/automation/rules/{rid2}", json={"enabled":False})
+        ntid=c.post("/api/tickets", json={"client_id":cid,"subject":"Quiet one","priority":"urgent"}).json()["id"]
+        assert not c.get(f"/api/tickets/{ntid}").json()["assigned_to_user_id"], "disabled rule still fired"
+        print("rule disable OK")
+
+        # run-checks tick: an SLA breach fires automation, de-duplicated across ticks.
+        c.post("/api/automation/rules", json={
+            "name":"SLA breach -> notify","trigger":"ticket.sla_breached","conditions":{},
+            "actions":[{"type":"notify","message":"SLA breached!","severity":"warning"}]})
+        _db2=_SL(); _bt=_db2.get(_ST, ntid)
+        _bt.first_response_due_at=_d3.now(_z3.utc)-_t3(hours=2)
+        _bt.resolution_due_at=_d3.now(_z3.utc)-_t3(hours=2)
+        _bt.sla_breach_alerted=False; _db2.commit(); _db2.close()
+        rc=c.post("/api/automation/run-checks").json()
+        assert rc["sla_breaches_fired"]>=1, rc
+        assert any("SLA breached" in n["message"] for n in c.get("/api/notifications").json())
+        assert c.post("/api/automation/run-checks").json()["sla_breaches_fired"]==0, "breach re-fired (no dedup)"
+        print("run-checks SLA breach + dedup OK:", rc)
+
+        # Notifications: unread filter + mark read.
+        unread=c.get("/api/notifications?unread_only=true").json()
+        assert unread, "expected unread notifications"
+        assert c.post(f"/api/notifications/{unread[0]['id']}/read").status_code==200
+        assert all(n["id"]!=unread[0]["id"] for n in c.get("/api/notifications?unread_only=true").json())
+        print("notifications unread + mark-read OK")
+
+        # RBAC: client admins cannot view or manage automation rules.
+        assert ca_c.get("/api/automation/rules").status_code==403
+        assert ca_c.post("/api/automation/rules", json={"name":"x","trigger":"ticket.created","actions":[{"type":"notify"}]}).status_code==403
+        print("automation RBAC isolation OK")
+
+    print("\n=== OpsPilot v0.5 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

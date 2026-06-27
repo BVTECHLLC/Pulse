@@ -1,5 +1,46 @@
 # BVTech OpsPilot — Changelog
 
+## v0.5.0 — Automation engine (June 2026)
+
+### Added
+- **Server-side automation engine** (`app/services/automation.py`): rules react
+  to platform **events** and take safe, in-platform **actions**. No remote code
+  execution — actions only manipulate OpsPilot's own records.
+  - **Triggers**: `alert.opened`, `ticket.created`, `ticket.sla_breached`.
+  - **Conditions**: JSON match (e.g. `{"severity":"critical"}`, `{"priority":"urgent"}`),
+    optionally scoped to a single client.
+  - **Actions**: `create_ticket`, `ack_alert`, `notify`, `assign` (explicit or
+    auto least-loaded tech), `set_priority`, `add_note`. One bad action never
+    aborts the rest; everything is logged.
+- **Event wiring**: agent check-ins fire `alert.opened` for newly opened alerts;
+  ticket creation fires `ticket.created`; the offline sweep fires `alert.opened`
+  for newly-offline devices. Automation-created tickets do not re-trigger, so
+  there are no loops.
+- **Scheduler tick** — `POST /api/automation/run-checks`: sweeps offline devices
+  and fires `ticket.sla_breached` for newly breached open tickets, de-duplicated
+  via a per-ticket flag (reset on reopen). Built for cron; also on-demand.
+- **Rule management**: `GET/POST /api/automation/rules`, `PATCH` (enable/disable/
+  edit), owner-only `DELETE`; `GET /api/automation/runs` execution log.
+- **In-app notifications**: raised by the `notify` action;
+  `GET /api/notifications` (+ `?unread_only`), `POST /api/notifications/{id}/read`
+  and `/read-all`. Scoped — staff see broadcast + their own; clients see only
+  their own.
+- **Dashboard**: new **Automation** tab (rule builder with per-trigger examples,
+  rules list with enable toggle, run log, notifications panel + "run checks now")
+  and a 🔔 unread-notification indicator in the top bar.
+- New Alembic migration (`automation_rules`, `automation_runs`, `notifications`
+  + `sla_breach_alerted` on `support_tickets`) — verified reversible.
+- Smoke test extended: alert→ticket+notify, ticket→auto-assign+note, rule
+  disable, SLA-breach tick with dedup, notification read flow, and RBAC isolation.
+
+### Security
+- Rules, runs, and `run-checks` are staff-only; rule deletion is owner-only.
+  Every rule that fires writes an `automation.run` audit entry attributed to
+  `automation@system`, plus an `automation_runs` row.
+- Notifications are tenant-scoped at the query layer.
+- The engine performs only in-platform actions — the agent stays telemetry-only,
+  so there is still no remote code execution path anywhere in the product.
+
 ## v0.4.0 — PSA depth: SLAs, assignment, time tracking & IT documentation (June 2026)
 
 ### Added

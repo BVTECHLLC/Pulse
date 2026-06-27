@@ -14,7 +14,9 @@ from .core.config import get_settings
 from .core.db import Base, SessionLocal, engine
 from .core.security import hash_password
 from .models import Role, User
-from .api.routes import auth, resources, agent, ui, tickets, alerts, billing, kb
+from .api.routes import (
+    auth, resources, agent, ui, tickets, alerts, billing, kb, automation,
+)
 
 _s = get_settings()
 app = FastAPI(title=_s.APP_NAME, version=_s.APP_VERSION, docs_url=None, redoc_url=None)
@@ -75,6 +77,8 @@ app.include_router(tickets.router)
 app.include_router(alerts.router)
 app.include_router(billing.router)
 app.include_router(kb.router)
+app.include_router(automation.router)
+app.include_router(automation.notif_router)
 app.include_router(ui.router)
 
 

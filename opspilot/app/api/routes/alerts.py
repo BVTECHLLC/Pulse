@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from ...core.db import get_db
 from ...core.deps import assert_client_access, current_user, is_staff, require_roles
 from ...models import Alert, AlertPolicy, AlertSeverity, AlertStatus, Device, Role, User
-from ...services import audit, monitoring
+from ...services import audit, automation, monitoring
 
 router = APIRouter(prefix="/api", tags=["monitoring"])
 
@@ -136,11 +136,15 @@ def run_sweep(client_id: int | None = None, request: Request = None,
     """Scan for devices that have gone silent and raise offline alerts. In
     production this is wired to a scheduler (cron / APScheduler); exposing it as
     an endpoint also lets staff force a refresh on demand."""
-    result = monitoring.sweep_offline(db, client_id=client_id)
+    result, new_alerts = monitoring.sweep_offline(db, client_id=client_id)
     audit.record(db, action="monitoring.sweep", actor_user_id=user.id, actor_email=user.email,
                  actor_role=user.role.value, target_type="monitoring",
                  ip=_ip(request) if request else None,
                  detail=f"checked={result['devices_checked']} opened={result['offline_opened']}")
+    # Newly offline devices are alerts too — let automation react.
+    for alert in new_alerts:
+        dev = db.get(Device, alert.device_id)
+        automation.dispatch(db, "alert.opened", automation.build_alert_context(alert, dev))
     return result
 
 

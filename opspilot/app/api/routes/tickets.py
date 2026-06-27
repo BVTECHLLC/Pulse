@@ -15,7 +15,7 @@ from ...models import (
     Client, Device, DeviceCheckin, PRIORITIES, Role, STAFF_ROLES, SupportTicket,
     TicketComment, TicketStatus, TimeEntry, User,
 )
-from ...services import audit, sla
+from ...services import audit, automation, sla
 
 router = APIRouter(prefix="/api", tags=["tickets"])
 
@@ -71,6 +71,8 @@ def create_ticket(body: TicketIn, request: Request, db: Session = Depends(get_db
     audit.record(db, action="ticket.create", actor_user_id=user.id, actor_email=user.email,
                  actor_role=user.role.value, target_type="ticket", target_id=str(t.id),
                  client_id=cid, ip=_ip(request), detail=f"subject={body.subject[:60]}")
+    # Let automation react (auto-assign, set priority, internal note, notify…).
+    automation.dispatch(db, "ticket.created", automation.build_ticket_context(t))
     return {"id": t.id}
 
 
@@ -162,6 +164,7 @@ def update_ticket(ticket_id: int, body: TicketUpdate, request: Request,
             t.resolved_at = datetime.now(timezone.utc)
         if body.status in (TicketStatus.OPEN, TicketStatus.IN_PROGRESS):
             t.resolved_at = None  # reopened
+            t.sla_breach_alerted = False  # allow the engine to re-flag if it breaches again
     db.commit()
     audit.record(db, action="ticket.update", actor_user_id=user.id, actor_email=user.email,
                  actor_role=user.role.value, target_type="ticket", target_id=str(t.id),

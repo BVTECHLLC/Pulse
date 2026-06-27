@@ -9,6 +9,7 @@
 <div class="topbar">
   <div class="brand"><span class="dot"></span> BVTech OpsPilot</div>
   <div style="display:flex;align-items:center;gap:12px">
+    <span class="pill" id="notif-pill" onclick="tab('automation')" style="cursor:pointer">🔔 <span id="notif-count">0</span></span>
     <span class="pill" id="who">…</span>
     <span class="pill">v{{ version }}</span>
     <button class="btn ghost" onclick="logout()">Sign out</button>
@@ -23,6 +24,7 @@
     <a data-tab="alerts" onclick="tab('alerts')">Alerts</a>
     <a data-tab="tickets" onclick="tab('tickets')">Tickets</a>
     <a data-tab="billing" onclick="tab('billing')">Billing</a>
+    <a data-tab="automation" onclick="tab('automation')">Automation</a>
     <a data-tab="kb" onclick="tab('kb')">Knowledge Base</a>
     <a data-tab="licenses" onclick="tab('licenses')">Licenses</a>
     <a data-tab="audit" onclick="tab('audit')">Audit Log</a>
@@ -97,6 +99,43 @@
     <div class="card" style="margin-top:16px"><h3>Upcoming Renewals</h3><table>
       <thead><tr><th>Product</th><th>Client</th><th>Vendor</th><th>$/mo</th><th>Renewal</th><th>In</th></tr></thead>
       <tbody id="t-renewals"></tbody></table></div>
+  </section>
+
+  <section id="automation" class="hidden">
+    <div class="card" style="margin-bottom:16px">
+      <h3>Notifications <button class="btn sm ghost" style="float:right" onclick="markAllRead()">Mark all read</button></h3>
+      <div id="t-notifs"></div>
+    </div>
+    <div class="grid cols-2" style="align-items:start">
+      <div class="card">
+        <h3>New Automation Rule</h3>
+        <input id="ar-name" placeholder="Rule name">
+        <label>When (trigger)</label>
+        <select id="ar-trigger" onchange="ruleExample()" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)">
+          <option value="alert.opened">An alert opens</option>
+          <option value="ticket.created">A ticket is created</option>
+          <option value="ticket.sla_breached">A ticket breaches SLA</option>
+        </select>
+        <label>Conditions (JSON — empty = always)</label>
+        <textarea id="ar-cond" rows="2" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)"></textarea>
+        <label>Actions (JSON array)</label>
+        <textarea id="ar-actions" rows="4" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)"></textarea>
+        <div class="err" id="ar-msg"></div>
+        <div class="flex" style="margin-top:12px">
+          <button class="btn" onclick="createRule()">Create rule</button>
+          <button class="btn sm ghost" onclick="ruleExample()">Load example</button>
+          <button class="btn sm ghost" onclick="runChecks()">Run checks now</button>
+        </div>
+      </div>
+      <div>
+        <div class="card" style="margin-bottom:16px"><h3>Rules</h3><table>
+          <thead><tr><th>Name</th><th>Trigger</th><th>Fired</th><th>On</th><th></th></tr></thead>
+          <tbody id="t-rules"></tbody></table></div>
+        <div class="card"><h3>Run Log</h3><table>
+          <thead><tr><th>Time</th><th>Rule</th><th>Summary</th><th>OK</th></tr></thead>
+          <tbody id="t-runs"></tbody></table></div>
+      </div>
+    </div>
   </section>
 
   <section id="kb" class="hidden">
@@ -266,6 +305,63 @@ async function refreshTicketStats(){
   if(sla)document.getElementById('s-sla').textContent=`${sla.response_breached+sla.resolution_breached} SLA breached · ${sla.at_risk} at risk`;
 }
 
+// ---- Automation & notifications ----
+const RULE_EXAMPLES={
+  'alert.opened':{cond:{"severity":"critical"},actions:[{type:"create_ticket",priority:"high"},{type:"notify"}]},
+  'ticket.created':{cond:{"priority":"urgent"},actions:[{type:"assign",auto:true},{type:"add_note",body:"Escalated by automation."}]},
+  'ticket.sla_breached':{cond:{},actions:[{type:"notify",message:"SLA breached — needs attention",severity:"warning"}]},
+};
+function ruleExample(){
+  const ex=RULE_EXAMPLES[document.getElementById('ar-trigger').value];
+  document.getElementById('ar-cond').value=JSON.stringify(ex.cond);
+  document.getElementById('ar-actions').value=JSON.stringify(ex.actions,null,2);
+}
+async function loadRules(){
+  const rules=await api('/api/automation/rules');if(!rules)return;
+  document.getElementById('t-rules').innerHTML=rules.map(r=>
+    `<tr><td>${esc(r.name)}</td><td>${esc(r.trigger)}</td><td>${r.trigger_count}</td>
+     <td><button class="btn sm ${r.enabled?'':'ghost'}" onclick="toggleRule(${r.id},${!r.enabled})">${r.enabled?'on':'off'}</button></td>
+     <td><button class="btn sm ghost" onclick="deleteRule(${r.id})">✕</button></td></tr>`).join('')
+    ||'<tr><td colspan=5 class="muted">No rules yet. Create one →</td></tr>';
+}
+async function loadRuns(){
+  const runs=await api('/api/automation/runs?limit=50');if(!runs)return;
+  document.getElementById('t-runs').innerHTML=runs.map(r=>
+    `<tr><td class="muted">${new Date(r.created_at).toLocaleString()}</td><td>${esc(r.rule_name)}</td>
+     <td class="muted">${esc(r.summary)}</td><td>${r.success?'✓':'✗'}</td></tr>`).join('')
+    ||'<tr><td colspan=4 class="muted">Nothing has fired yet.</td></tr>';
+}
+async function createRule(){
+  const msg=document.getElementById('ar-msg');msg.textContent='';
+  let cond,actions;
+  try{cond=JSON.parse(document.getElementById('ar-cond').value||'{}');
+      actions=JSON.parse(document.getElementById('ar-actions').value||'[]');}
+  catch(e){msg.textContent='Conditions/Actions must be valid JSON.';return;}
+  const r=await post('/api/automation/rules',{name:document.getElementById('ar-name').value||'Untitled rule',
+    trigger:document.getElementById('ar-trigger').value,conditions:cond,actions});
+  if(r.ok){document.getElementById('ar-name').value='';loadRules();msg.textContent='Rule created ✓';}
+  else{const d=await r.json().catch(()=>({detail:'Error'}));msg.textContent=d.detail||'Failed';}
+}
+async function toggleRule(id,en){await patch(`/api/automation/rules/${id}`,{enabled:en});loadRules();}
+async function deleteRule(id){if(!confirm('Delete this rule?'))return;
+  const r=await fetch(`/api/automation/rules/${id}`,{method:'DELETE'});
+  if(r.ok)loadRules();else alert('Delete failed (owner only).');}
+async function runChecks(){const r=await post('/api/automation/run-checks');const j=await r.json();
+  alert(`Ran checks — ${j.offline.offline_opened} new offline, ${j.sla_breaches_fired} SLA breach action(s).`);
+  loadRuns();loadAlerts();refreshBadges();loadNotifications();}
+async function loadNotifications(){
+  const ns=await api('/api/notifications?limit=30');if(!ns)return;
+  const unread=ns.filter(n=>!n.read).length;
+  document.getElementById('notif-count').textContent=unread;
+  document.getElementById('notif-pill').style.color=unread?'var(--warn)':'';
+  document.getElementById('t-notifs').innerHTML=ns.map(n=>
+    `<div class="comment ${n.read?'':'internal'}"><div class="meta">${esc(n.kind)} · ${esc(n.severity)} · ${ago(n.created_at)}${n.read?'':' · UNREAD'}</div>
+     ${esc(n.message)} ${n.read?'':`<button class="btn sm ghost" style="float:right" onclick="readNotif(${n.id})">mark read</button>`}</div>`).join('')
+    ||'<p class="muted">No notifications.</p>';
+}
+async function readNotif(id){await post(`/api/notifications/${id}/read`);loadNotifications();}
+async function markAllRead(){await post('/api/notifications/read-all');loadNotifications();}
+
 // ---- Knowledge base ----
 async function loadKB(){
   const arts=await api('/api/kb');if(!arts)return;
@@ -370,7 +466,9 @@ async function load(){
   }
 
   await loadStaff();
-  await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),loadKB()]);
+  ruleExample();
+  await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
+    loadKB(),loadRules(),loadRuns(),loadNotifications()]);
 }
 load();
 </script>

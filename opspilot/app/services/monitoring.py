@@ -60,7 +60,9 @@ def _active_alert(db: Session, device_id: int, kind: str) -> Alert | None:
 
 
 def _open(db: Session, device: Device, kind: str, severity: AlertSeverity,
-          message: str, metric_value: float | None = None) -> None:
+          message: str, metric_value: float | None = None) -> Alert | None:
+    """Open a new alert, or refresh an existing one. Returns the Alert only when
+    it is *newly* opened (so callers can fire automation exactly once)."""
     existing = _active_alert(db, device.id, kind)
     now = _utcnow()
     if existing:
@@ -69,12 +71,14 @@ def _open(db: Session, device: Device, kind: str, severity: AlertSeverity,
         existing.last_seen = now
         existing.message = message
         existing.metric_value = metric_value
-        return
-    db.add(Alert(
+        return None
+    a = Alert(
         client_id=device.client_id, device_id=device.id, kind=kind,
         severity=severity, status=AlertStatus.ACTIVE, message=message,
         metric_value=metric_value, first_seen=now, last_seen=now,
-    ))
+    )
+    db.add(a)
+    return a
 
 
 def _resolve(db: Session, device_id: int, kind: str) -> None:
@@ -88,71 +92,80 @@ def _resolve(db: Session, device_id: int, kind: str) -> None:
 # --------------------------------------------------------------------------- #
 # Resource evaluation — run on each check-in
 # --------------------------------------------------------------------------- #
-def evaluate_device(db: Session, device: Device) -> None:
-    """Open/resolve resource alerts from the device's current telemetry.
-    Does NOT commit — the caller's check-in transaction owns the commit."""
+def evaluate_device(db: Session, device: Device) -> list[Alert]:
+    """Open/resolve resource alerts from the device's current telemetry. Returns
+    the list of *newly opened* alerts so the caller can fire automation. Does NOT
+    commit — the caller's check-in transaction owns the commit."""
     pol = get_policy(db, device.client_id)
+    opened: list[Alert] = []
+
+    def _maybe(a: Alert | None) -> None:
+        if a is not None:
+            opened.append(a)
 
     # A check-in means the device is online: clear any standing offline alert.
     _resolve(db, device.id, ALERT_OFFLINE)
 
     # Disk
     if device.disk_pct is not None and device.disk_pct >= pol.disk_pct_max:
-        _open(db, device, ALERT_DISK_FULL, AlertSeverity.CRITICAL,
-              f"Disk usage {device.disk_pct:.0f}% (>= {pol.disk_pct_max:.0f}%)",
-              device.disk_pct)
+        _maybe(_open(db, device, ALERT_DISK_FULL, AlertSeverity.CRITICAL,
+                     f"Disk usage {device.disk_pct:.0f}% (>= {pol.disk_pct_max:.0f}%)",
+                     device.disk_pct))
     else:
         _resolve(db, device.id, ALERT_DISK_FULL)
 
     # CPU
     if device.cpu_pct is not None and device.cpu_pct >= pol.cpu_pct_max:
-        _open(db, device, ALERT_HIGH_CPU, AlertSeverity.WARNING,
-              f"CPU {device.cpu_pct:.0f}% (>= {pol.cpu_pct_max:.0f}%)", device.cpu_pct)
+        _maybe(_open(db, device, ALERT_HIGH_CPU, AlertSeverity.WARNING,
+                     f"CPU {device.cpu_pct:.0f}% (>= {pol.cpu_pct_max:.0f}%)", device.cpu_pct))
     else:
         _resolve(db, device.id, ALERT_HIGH_CPU)
 
     # RAM
     if device.ram_pct is not None and device.ram_pct >= pol.ram_pct_max:
-        _open(db, device, ALERT_HIGH_RAM, AlertSeverity.WARNING,
-              f"Memory {device.ram_pct:.0f}% (>= {pol.ram_pct_max:.0f}%)", device.ram_pct)
+        _maybe(_open(db, device, ALERT_HIGH_RAM, AlertSeverity.WARNING,
+                     f"Memory {device.ram_pct:.0f}% (>= {pol.ram_pct_max:.0f}%)", device.ram_pct))
     else:
         _resolve(db, device.id, ALERT_HIGH_RAM)
 
     # Antivirus
     if pol.alert_on_av_off and device.av_status and "off" in device.av_status.lower():
-        _open(db, device, ALERT_AV_OFF, AlertSeverity.CRITICAL,
-              "Antivirus is reported OFF")
+        _maybe(_open(db, device, ALERT_AV_OFF, AlertSeverity.CRITICAL,
+                     "Antivirus is reported OFF"))
     else:
         _resolve(db, device.id, ALERT_AV_OFF)
 
     # Patch
     if pol.alert_on_patch_behind and device.patch_status and "behind" in device.patch_status.lower():
-        _open(db, device, ALERT_PATCH_BEHIND, AlertSeverity.WARNING,
-              "Patching is behind")
+        _maybe(_open(db, device, ALERT_PATCH_BEHIND, AlertSeverity.WARNING,
+                     "Patching is behind"))
     else:
         _resolve(db, device.id, ALERT_PATCH_BEHIND)
 
     # Composite health score
     if device.health_score is not None and device.health_score < pol.health_min:
-        _open(db, device, ALERT_LOW_HEALTH, AlertSeverity.WARNING,
-              f"Health score {device.health_score} (< {pol.health_min})",
-              float(device.health_score))
+        _maybe(_open(db, device, ALERT_LOW_HEALTH, AlertSeverity.WARNING,
+                     f"Health score {device.health_score} (< {pol.health_min})",
+                     float(device.health_score)))
     else:
         _resolve(db, device.id, ALERT_LOW_HEALTH)
+
+    return opened
 
 
 # --------------------------------------------------------------------------- #
 # Offline detection — run on a schedule or on demand
 # --------------------------------------------------------------------------- #
-def sweep_offline(db: Session, client_id: int | None = None) -> dict:
+def sweep_offline(db: Session, client_id: int | None = None) -> tuple[dict, list[Alert]]:
     """Open offline alerts for devices that haven't checked in within their
     policy window; resolve them once a device reports again (handled in
-    evaluate_device). Commits its own transaction. Returns a small summary."""
+    evaluate_device). Commits its own transaction. Returns (summary, new_alerts)
+    where new_alerts are the freshly opened offline alerts (for automation)."""
     q = db.query(Device)
     if client_id is not None:
         q = q.filter(Device.client_id == client_id)
 
-    opened = 0
+    new_alerts: list[Alert] = []
     checked = 0
     now = _utcnow()
     for dev in q.all():
@@ -166,12 +179,12 @@ def sweep_offline(db: Session, client_id: int | None = None) -> dict:
         # Treat a never-seen device as offline too (it enrolled but never reported).
         is_offline = last is None or last < cutoff
         if is_offline:
-            if not _active_alert(db, dev.id, ALERT_OFFLINE):
-                opened += 1
             mins = int((now - last).total_seconds() // 60) if last else None
             msg = (f"No check-in for {mins} min (threshold {pol.offline_minutes} min)"
                    if mins is not None else "Device has never checked in")
-            _open(db, dev, ALERT_OFFLINE, AlertSeverity.CRITICAL, msg,
-                  float(mins) if mins is not None else None)
+            a = _open(db, dev, ALERT_OFFLINE, AlertSeverity.CRITICAL, msg,
+                      float(mins) if mins is not None else None)
+            if a is not None:
+                new_alerts.append(a)
     db.commit()
-    return {"devices_checked": checked, "offline_opened": opened}
+    return {"devices_checked": checked, "offline_opened": len(new_alerts)}, new_alerts
