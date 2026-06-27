@@ -112,11 +112,15 @@ def _startup():
 
     db = SessionLocal()
     try:
-        existing = db.query(User).filter(User.role == Role.OWNER).first()
+        # Idempotently ensure the CONFIGURED owner account exists. Keying on the
+        # email (not "any owner") means upgrading an existing deployment still
+        # provisions BOOTSTRAP_ADMIN_EMAIL so you can always sign in.
+        email = _s.BOOTSTRAP_ADMIN_EMAIL.lower()
+        existing = db.query(User).filter(User.email == email).first()
         if not existing:
             pw = _s.BOOTSTRAP_ADMIN_PASSWORD or secrets.token_urlsafe(16)
             owner = User(
-                email=_s.BOOTSTRAP_ADMIN_EMAIL.lower(),
+                email=email,
                 full_name="BVTech Owner",
                 password_hash=hash_password(pw),
                 role=Role.OWNER,
@@ -125,7 +129,7 @@ def _startup():
             db.add(owner)
             db.commit()
             print("=" * 60)
-            print(f"  BOOTSTRAP OWNER CREATED: {owner.email}")
+            print(f"  OWNER ACCOUNT READY: {owner.email}")
             if not _s.BOOTSTRAP_ADMIN_PASSWORD:
                 print(f"  TEMP PASSWORD (shown once): {pw}")
             print("  -> Log in, enable MFA, then rotate this password.")
