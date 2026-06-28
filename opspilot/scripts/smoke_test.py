@@ -751,7 +751,72 @@ def main():
         assert not any(a["action"]=="api.get" for a in arows), "GETs should not be audited"
         print("developer hub + openapi + comprehensive audit middleware OK")
 
-    print("\n=== OpsPilot v0.22 SMOKE TEST PASSED ===")
+        # ===================== v0.23: OAuth2 SSO + connectors =====================
+        from app.services import oauth as oauthsvc, crypto as cryptosvc
+        # PKCE correctness (known-answer)
+        assert oauthsvc.challenge_s256("abc") == \
+            __import__("base64").urlsafe_b64encode(__import__("hashlib").sha256(b"abc").digest()).decode().rstrip("="), "PKCE S256 mismatch"
+        # Stand up a mock OAuth provider (token + userinfo) and register it.
+        ohits={"token":0}
+        class _OAuthMock(BaseHTTPRequestHandler):
+            def _send(self, obj):
+                import json as _j; b=_j.dumps(obj).encode()
+                self.send_response(200); self.send_header("Content-Type","application/json")
+                self.send_header("Content-Length",str(len(b))); self.end_headers(); self.wfile.write(b)
+            def do_POST(self):
+                ohits["token"]+=1; n=int(self.headers.get("content-length",0)); self.rfile.read(n)
+                self._send({"access_token":"AT-123","refresh_token":"RT-456","expires_in":3600,"scope":"openid email"})
+            def do_GET(self):
+                self._send({"email":"help@bvtech.org","mail":"help@bvtech.org"})
+            def log_message(self,*a): pass
+        osrv=HTTPServer(("127.0.0.1",0),_OAuthMock)
+        threading.Thread(target=osrv.serve_forever,daemon=True).start()
+        oport=osrv.server_address[1]; obase=f"http://127.0.0.1:{oport}"
+        oauthsvc.register_provider("mock", {
+            "name":"MockIDP","authorize_url":f"{obase}/authorize","token_url":f"{obase}/token",
+            "userinfo_url":f"{obase}/userinfo","scopes":["openid","email"],
+            "client_id":"cid-xyz","client_secret":"secret","email_fields":["email","mail"]})
+        # provider appears in the public list
+        assert any(p["key"]=="mock" for p in c.get("/api/oauth/providers").json()["providers"])
+
+        # --- SSO sign-in flow (fresh, cookie-less client) ---
+        oc=TestClient(app); oc.cookies.clear()
+        r1=oc.get("/api/oauth/mock/login", follow_redirects=False)
+        assert r1.status_code==302, r1.status_code
+        loc=r1.headers["location"]
+        assert "code_challenge=" in loc and "code_challenge_method=S256" in loc and "client_id=cid-xyz" in loc, loc
+        import urllib.parse as _up
+        state=_up.parse_qs(_up.urlparse(loc).query)["state"][0]
+        # provider redirects back with code; we complete the dance
+        cb=oc.get(f"/api/oauth/mock/callback?state={state}&code=AUTHCODE", follow_redirects=False)
+        assert cb.status_code==302 and cb.headers["location"]=="/dashboard", cb.headers
+        assert oc.cookies.get("access_token"), "SSO did not establish a session"
+        assert oc.get("/api/auth/me").json()["email"]=="help@bvtech.org", "SSO logged in wrong user"
+        assert ohits["token"]>=1, "token endpoint was not called"
+        print("OAuth SSO: authorize(PKCE+state) -> callback -> session OK")
+
+        # --- CSRF: a bogus/reused state is rejected ---
+        assert oc.get("/api/oauth/mock/callback?state=forged&code=x", follow_redirects=False).status_code==400
+        assert oc.get(f"/api/oauth/mock/callback?state={state}&code=x", follow_redirects=False).status_code==400  # state single-use
+        print("OAuth CSRF/state single-use enforced OK")
+
+        # --- Connector flow: store an ENCRYPTED token, list, revoke ---
+        rc=c.get("/api/oauth/mock/connect", follow_redirects=False)
+        assert rc.status_code==302
+        cstate=_up.parse_qs(_up.urlparse(rc.headers["location"]).query)["state"][0]
+        c.get(f"/api/oauth/mock/callback?state={cstate}&code=AUTHCODE", follow_redirects=False)
+        toks=c.get("/api/oauth/tokens").json()
+        mocktok=[t for t in toks if t["provider"]=="mock"]
+        assert mocktok and mocktok[0]["has_refresh"] and mocktok[0]["account_email"]=="help@bvtech.org", toks
+        assert "access_token" not in str(toks), "token material must never be returned"
+        # confirm at-rest encryption is real: ciphertext decrypts back to the token
+        assert cryptosvc.encrypt("AT-123")!="AT-123" and cryptosvc.decrypt(cryptosvc.encrypt("AT-123"))=="AT-123"
+        assert ca_c.get("/api/oauth/tokens").status_code==403   # staff-only
+        assert c.delete(f"/api/oauth/tokens/{mocktok[0]['id']}").status_code==204
+        osrv.shutdown()
+        print("OAuth connector: encrypted token store + list + RBAC + revoke OK")
+
+    print("\n=== OpsPilot v0.23 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

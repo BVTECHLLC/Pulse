@@ -306,6 +306,38 @@ class IntegrationConnection(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+class OAuthState(Base):
+    """Short-lived, single-use CSRF/PKCE state for an in-flight OAuth2 dance.
+    The verifier never leaves the server; we hand the provider only its S256
+    challenge. Deleted on callback (or expired by age)."""
+    __tablename__ = "oauth_states"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)   # the `state` param
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(20), default="sso")  # sso|connect
+    code_verifier: Mapped[str] = mapped_column(String(128), nullable=False)
+    redirect_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    next_url: Mapped[str | None] = mapped_column(Text)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class OAuthToken(Base):
+    """An access/refresh token obtained for a connected provider account. Tokens
+    are encrypted at rest (Fernet, keyed off SECRET_KEY)."""
+    __tablename__ = "oauth_tokens"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)
+    account_email: Mapped[str | None] = mapped_column(String(200))
+    access_token_enc: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token_enc: Mapped[str | None] = mapped_column(Text)
+    scope: Mapped[str | None] = mapped_column(Text)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
 # --------------------------------------------------------------------------- #
 # v0.3 — Monitoring & alerting
 # --------------------------------------------------------------------------- #

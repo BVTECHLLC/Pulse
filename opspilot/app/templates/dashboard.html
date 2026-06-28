@@ -483,6 +483,15 @@
       <tbody id="t-inbound"></tbody></table>
     </div>
 
+    <div class="card" style="margin-bottom:16px">
+      <h3>OAuth Connections <span class="pill">Microsoft · Google · SSO</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Securely connect provider accounts with OAuth2 (PKCE); tokens are encrypted at rest. Configured providers also enable single sign-on at the login page.</p>
+      <div id="oauth-providers" class="flex"></div>
+      <table style="margin-top:10px"><thead><tr><th>Provider</th><th>Account</th><th>Refresh</th><th>Expires</th><th></th></tr></thead>
+      <tbody id="t-oauth"></tbody></table>
+      <p class="muted" id="oauth-empty" style="font-size:12px"></p>
+    </div>
+
     <div class="card">
       <h3>Integration Catalog <span class="pill">connect anything</span></h3>
       <p class="muted" style="margin:4px 0 10px">Connect the tools your business already uses. Each saved connection stores its config (API keys/URLs) for that product.</p>
@@ -1039,10 +1048,27 @@ document.addEventListener('click',e=>{if(!e.target.closest('#gsearch')&&!e.targe
 
 // ---- Integrations ----
 async function loadIntegrations(){
-  await Promise.all([loadApiKeys(),loadWebhooks(),loadInbound(),loadCatalog(),loadConnections()]);
+  await Promise.all([loadApiKeys(),loadWebhooks(),loadInbound(),loadCatalog(),loadConnections(),loadOAuth()]);
   const sel=document.getElementById('in-client');
   if(sel)sel.innerHTML=Object.entries(CLIENTS||{}).map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('');
 }
+async function loadOAuth(){
+  const prov=await api('/api/oauth/providers');
+  const box=document.getElementById('oauth-providers'), empty=document.getElementById('oauth-empty');
+  if(prov && (prov.providers||[]).length){
+    box.innerHTML=(prov.providers||[]).map(p=>
+      `<a class="btn sm" style="text-decoration:none" href="/api/oauth/${p.key}/connect">Connect ${esc(p.name)}</a>`).join('');
+    empty.textContent='';
+  }else{box.innerHTML='';empty.textContent='No OAuth providers configured yet. Set Microsoft (M365_CLIENT_ID/SECRET) or Google (GOOGLE_CLIENT_ID/SECRET) credentials on the server to enable Microsoft/Google sign-in + connectors.';}
+  const rows=await api('/api/oauth/tokens');if(!rows)return;
+  document.getElementById('t-oauth').innerHTML=rows.map(t=>
+    `<tr><td>${esc(t.provider)}</td><td class="muted">${esc(t.account_email)||'—'}</td>
+     <td>${t.has_refresh?'yes':'no'}</td><td class="muted">${t.expires_at?new Date(t.expires_at).toLocaleString():'—'}</td>
+     <td><button class="btn sm ghost" onclick="revokeOAuth(${t.id})">disconnect</button></td></tr>`).join('')
+    ||'<tr><td colspan=5 class="muted">No accounts connected yet.</td></tr>';
+}
+async function revokeOAuth(id){if(!confirm('Disconnect this account?'))return;
+  const r=await fetch(`/api/oauth/tokens/${id}`,{method:'DELETE'});if(r.ok)loadOAuth();else alert('Owner/Tech only.');}
 async function loadApiKeys(){
   const rows=await api('/api/integrations/api-keys');if(!rows)return;
   document.getElementById('t-apikeys').innerHTML=rows.map(k=>

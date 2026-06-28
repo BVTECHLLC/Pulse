@@ -26,11 +26,31 @@
     </div>
     <div class="err" id="err"></div>
     <button class="btn" style="width:100%;margin-top:18px" onclick="doLogin()">Sign in</button>
+    <div id="sso" class="hidden" style="margin-top:14px">
+      <div style="display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;margin:6px 0">
+        <span style="flex:1;height:1px;background:var(--line)"></span>or<span style="flex:1;height:1px;background:var(--line)"></span></div>
+      <div id="sso-btns" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
     <div class="auth-links">New here? <a href="/signup">Request access →</a></div>
     <div class="foot">v{{ version }} · Encrypted · MFA-ready · Audit-logged</div>
   </div>
 </div>
 <script>
+// Single sign-on buttons appear only for configured providers.
+(function(){
+  const params=new URLSearchParams(location.search);
+  if(params.get('oauth_error')){
+    const m={no_account:'No Pulse account matches that sign-in.',sso_disabled:'SSO is disabled.',
+      exchange_failed:'Sign-in failed — please try again.',no_token:'Sign-in failed — please try again.'};
+    setTimeout(()=>{const e=document.getElementById('err');if(e)e.textContent=m[params.get('oauth_error')]||'Sign-in failed.';},50);
+  }
+  fetch('/api/oauth/providers').then(r=>r.ok?r.json():{providers:[]}).then(j=>{
+    if(!j.sso_allowed||!(j.providers||[]).length)return;
+    document.getElementById('sso').classList.remove('hidden');
+    document.getElementById('sso-btns').innerHTML=(j.providers||[]).map(p=>
+      `<a class="btn ghost" style="width:100%;text-align:center;text-decoration:none" href="/api/oauth/${p.key}/login">Sign in with ${p.name}</a>`).join('');
+  }).catch(()=>{});
+})();
 async function doLogin(){
   const err=document.getElementById('err');err.textContent='';
   const body={
