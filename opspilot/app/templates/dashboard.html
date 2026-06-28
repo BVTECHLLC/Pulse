@@ -13,6 +13,12 @@
     <span class="wm"><b>BVTech</b> OpsPilot</span>
   </a>
   <div style="display:flex;align-items:center;gap:12px">
+    <div style="position:relative">
+      <input id="gsearch" placeholder="Search everything…  (press /)" autocomplete="off"
+        oninput="globalSearch(this.value)" onkeydown="if(event.key==='Escape')closeSearch()"
+        style="width:260px;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:9px 12px;color:var(--ink);font-size:13px">
+      <div id="gsearch-results" class="hidden" style="position:absolute;right:0;top:42px;width:380px;max-height:60vh;overflow:auto;background:#0c1430;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.5);z-index:50;padding:6px"></div>
+    </div>
     <span class="pill" id="notif-pill" onclick="tab('automation')" style="cursor:pointer">🔔 <span id="notif-count">0</span></span>
     <span class="pill" id="who">…</span>
     <span class="pill">v{{ version }}</span>
@@ -34,6 +40,7 @@
     <a data-tab="network" onclick="tab('network')">Network</a>
     <a data-tab="kb" onclick="tab('kb')">Knowledge Base</a>
     <a data-tab="licenses" onclick="tab('licenses')">Licenses</a>
+    <a data-tab="integrations" onclick="tab('integrations')">Integrations</a>
     <a data-tab="audit" onclick="tab('audit')">Audit Log</a>
   </div>
 
@@ -423,6 +430,66 @@
   <section id="licenses" class="hidden"><div class="card"><table>
     <thead><tr><th>Product</th><th>Vendor</th><th>Seats</th><th>$/mo</th><th>Renewal</th></tr></thead>
     <tbody id="t-licenses"></tbody></table></div></section>
+
+  <section id="integrations" class="hidden">
+    <div class="card" style="margin-bottom:16px">
+      <h3>API Keys <span class="pill">programmatic access</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Give any external tool secure access to the Pulse API. Send the key as the <code>X-API-Key</code> header. A key acts with your role and client scope.</p>
+      <div class="flex">
+        <input id="ak-label" placeholder="e.g. Zapier, n8n, internal script" style="flex:1;min-width:200px">
+        <button class="btn sm" onclick="createApiKey()">Create key</button>
+      </div>
+      <div id="ak-new" class="hidden" style="margin-top:8px">
+        <label>Copy this now — shown only once</label>
+        <input id="ak-new-val" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
+      </div>
+      <table style="margin-top:10px"><thead><tr><th>Label</th><th>Prefix</th><th>Last used</th><th>Status</th><th></th></tr></thead>
+      <tbody id="t-apikeys"></tbody></table>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h3>Outbound Webhooks <span class="pill">event bus</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Push Pulse events to any URL in real time (HMAC-signed). Leave events empty to receive all.</p>
+      <div class="flex">
+        <input id="wh-url" placeholder="https://your-tool.example/hooks/pulse" style="flex:1;min-width:220px">
+        <input id="wh-events" placeholder="events (comma sep, blank = all)" style="flex:1;min-width:180px">
+        <button class="btn sm" onclick="createWebhook()">Add</button>
+      </div>
+      <div class="err" id="wh-msg"></div>
+      <p class="muted" id="wh-catalog" style="font-size:12px;margin-top:6px"></p>
+      <table style="margin-top:10px"><thead><tr><th>URL</th><th>Events</th><th>Last status</th><th>On</th><th></th></tr></thead>
+      <tbody id="t-webhooks"></tbody></table>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h3>Inbound Ingest <span class="pill">any tool → ticket/alert</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Generate a URL that any external system can POST JSON to. We create a ticket or alert for the chosen client. Recognized fields: <code>subject/title</code>, <code>body/message</code>, <code>severity</code>, <code>priority</code>.</p>
+      <div class="flex">
+        <input id="in-name" placeholder="Source name (e.g. UptimeRobot)" style="min-width:160px">
+        <select id="in-client" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
+        <select id="in-action" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)">
+          <option value="ticket">→ Ticket</option><option value="alert">→ Alert</option></select>
+        <button class="btn sm" onclick="createInbound()">Create endpoint</button>
+      </div>
+      <div id="in-new" class="hidden" style="margin-top:8px">
+        <label>POST your events here</label>
+        <input id="in-new-val" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
+      </div>
+      <table style="margin-top:10px"><thead><tr><th>Name</th><th>Endpoint</th><th>Action</th><th>Received</th><th>On</th><th></th></tr></thead>
+      <tbody id="t-inbound"></tbody></table>
+    </div>
+
+    <div class="card">
+      <h3>Integration Catalog <span class="pill">connect anything</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Connect the tools your business already uses. Each saved connection stores its config (API keys/URLs) for that product.</p>
+      <div class="flex">
+        <select id="ic-provider" style="flex:1;min-width:200px;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
+        <button class="btn sm" onclick="connectIntegration()">Connect</button>
+      </div>
+      <table style="margin-top:10px"><thead><tr><th>Provider</th><th>Category</th><th>Config</th><th>On</th><th></th></tr></thead>
+      <tbody id="t-connections"></tbody></table>
+    </div>
+  </section>
 
   <section id="audit" class="hidden"><div class="card"><table>
     <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th>IP</th><th>OK</th></tr></thead>
@@ -935,6 +1002,128 @@ async function showMetrics(devId, host){
     +row('Disk','disk_pct','#fdcb6e')+row('Health','health_score','#0984e3');
 }
 
+// ---- Global search ----
+let _gsTimer=null;
+function globalSearch(q){
+  clearTimeout(_gsTimer);
+  const box=document.getElementById('gsearch-results');
+  if(!q||q.trim().length<2){box.classList.add('hidden');box.innerHTML='';return;}
+  _gsTimer=setTimeout(async()=>{
+    const r=await fetch('/api/search?q='+encodeURIComponent(q.trim()));
+    const j=await r.json().catch(()=>({results:[]}));
+    const rows=j.results||[];
+    box.classList.remove('hidden');
+    box.innerHTML=rows.length?rows.map(x=>
+      `<div onclick="gsJump('${x.tab}','${x.type}',${x.id})" style="padding:8px 10px;border-radius:8px;cursor:pointer"
+         onmouseover="this.style.background='rgba(108,92,231,.15)'" onmouseout="this.style.background=''">
+         <span class="pill" style="font-size:10px">${esc(x.type)}</span>
+         <b style="margin-left:6px">${esc(x.label)}</b>
+         <div class="muted" style="font-size:12px">${esc(x.sub)||''}</div></div>`).join('')
+      :'<div class="muted" style="padding:10px">No matches.</div>';
+  },180);
+}
+function gsJump(tabName,type,id){closeSearch();document.getElementById('gsearch').value='';tab(tabName);}
+function closeSearch(){const b=document.getElementById('gsearch-results');if(b){b.classList.add('hidden');b.innerHTML='';}}
+document.addEventListener('keydown',e=>{
+  if(e.key==='/'&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'){
+    e.preventDefault();document.getElementById('gsearch').focus();}});
+document.addEventListener('click',e=>{if(!e.target.closest('#gsearch')&&!e.target.closest('#gsearch-results'))closeSearch();});
+
+// ---- Integrations ----
+async function loadIntegrations(){
+  await Promise.all([loadApiKeys(),loadWebhooks(),loadInbound(),loadCatalog(),loadConnections()]);
+  const sel=document.getElementById('in-client');
+  if(sel)sel.innerHTML=Object.entries(CLIENTS||{}).map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('');
+}
+async function loadApiKeys(){
+  const rows=await api('/api/integrations/api-keys');if(!rows)return;
+  document.getElementById('t-apikeys').innerHTML=rows.map(k=>
+    `<tr><td>${esc(k.label)}</td><td class="muted">${esc(k.prefix)}…</td>
+     <td class="muted">${k.last_used_at?new Date(k.last_used_at).toLocaleString():'never'}</td>
+     <td>${k.revoked?'<span style="color:var(--bad)">revoked</span>':'<span style="color:var(--ok)">active</span>'}</td>
+     <td>${k.revoked?'':`<button class="btn sm ghost" onclick="revokeApiKey(${k.id})">revoke</button>`}</td></tr>`).join('')
+    ||'<tr><td colspan=5 class="muted">No API keys yet.</td></tr>';
+}
+async function createApiKey(){
+  const label=document.getElementById('ak-label').value.trim()||'API key';
+  const r=await post('/api/integrations/api-keys',{label});const j=await r.json().catch(()=>({}));
+  if(r.ok){document.getElementById('ak-new').classList.remove('hidden');
+    document.getElementById('ak-new-val').value=j.api_key;document.getElementById('ak-label').value='';loadApiKeys();}
+  else alert(j.detail||'Failed');
+}
+async function revokeApiKey(id){if(!confirm('Revoke this key? Tools using it will stop working.'))return;
+  const r=await fetch(`/api/integrations/api-keys/${id}`,{method:'DELETE'});if(r.ok)loadApiKeys();else alert('Owner/Tech only.');}
+async function loadWebhooks(){
+  const ev=await api('/api/integrations/events');
+  if(ev)document.getElementById('wh-catalog').textContent='Available events: '+(ev.events||[]).join(', ');
+  const rows=await api('/api/integrations/webhooks');if(!rows)return;
+  document.getElementById('t-webhooks').innerHTML=rows.map(w=>
+    `<tr><td class="muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis">${esc(w.url)}</td>
+     <td>${(w.events&&w.events.length)?esc(w.events.join(', ')):'all'}</td>
+     <td>${w.last_status??'—'}</td>
+     <td><button class="btn sm ${w.enabled?'':'ghost'}" onclick="toggleWebhook(${w.id})">${w.enabled?'on':'off'}</button></td>
+     <td class="flex"><button class="btn sm ghost" onclick="testWebhook(${w.id})">test</button>
+       <button class="btn sm ghost" onclick="delWebhook(${w.id})">✕</button></td></tr>`).join('')
+    ||'<tr><td colspan=5 class="muted">No webhooks yet.</td></tr>';
+}
+async function createWebhook(){
+  const msg=document.getElementById('wh-msg');msg.textContent='';
+  const url=document.getElementById('wh-url').value.trim();
+  if(!url){msg.textContent='URL is required.';return;}
+  const evs=document.getElementById('wh-events').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const r=await post('/api/integrations/webhooks',{url,events:evs});const j=await r.json().catch(()=>({}));
+  if(r.ok){document.getElementById('wh-url').value='';document.getElementById('wh-events').value='';
+    alert('Webhook added. Signing secret: '+j.secret+'\n(verify X-OpsPilot-Signature)');loadWebhooks();}
+  else msg.textContent=j.detail||'Failed';
+}
+async function testWebhook(id){const r=await post(`/api/integrations/webhooks/${id}/test`);const j=await r.json().catch(()=>({}));
+  alert(j.ok?'Delivered ✅ (status '+j.status+')':'No 2xx (status '+(j.status??'n/a')+')');loadWebhooks();}
+async function toggleWebhook(id){await post(`/api/integrations/webhooks/${id}/toggle`);loadWebhooks();}
+async function delWebhook(id){if(!confirm('Delete this webhook?'))return;
+  const r=await fetch(`/api/integrations/webhooks/${id}`,{method:'DELETE'});if(r.ok)loadWebhooks();}
+async function loadInbound(){
+  const rows=await api('/api/integrations/inbound');if(!rows)return;
+  document.getElementById('t-inbound').innerHTML=rows.map(s=>
+    `<tr><td>${esc(s.name)}</td><td class="muted" style="max-width:240px;overflow:hidden;text-overflow:ellipsis">${esc(s.url)}</td>
+     <td>${esc(s.action)}</td><td>${s.received_count}</td>
+     <td><button class="btn sm ${s.enabled?'':'ghost'}" onclick="toggleInbound(${s.id})">${s.enabled?'on':'off'}</button></td>
+     <td><button class="btn sm ghost" onclick="delInbound(${s.id})">✕</button></td></tr>`).join('')
+    ||'<tr><td colspan=6 class="muted">No inbound endpoints yet.</td></tr>';
+}
+async function createInbound(){
+  const name=document.getElementById('in-name').value.trim()||'Inbound';
+  const client_id=+document.getElementById('in-client').value, action=document.getElementById('in-action').value;
+  const r=await post('/api/integrations/inbound',{name,client_id,action});const j=await r.json().catch(()=>({}));
+  if(r.ok){document.getElementById('in-new').classList.remove('hidden');
+    document.getElementById('in-new-val').value=j.url;document.getElementById('in-name').value='';loadInbound();}
+  else alert(j.detail||'Failed (add a client first)');
+}
+async function toggleInbound(id){await post(`/api/integrations/inbound/${id}/toggle`);loadInbound();}
+async function delInbound(id){if(!confirm('Delete this endpoint?'))return;
+  const r=await fetch(`/api/integrations/inbound/${id}`,{method:'DELETE'});if(r.ok)loadInbound();}
+let CATALOG=[];
+async function loadCatalog(){
+  const j=await api('/api/integrations/catalog');if(!j)return;CATALOG=j.catalog||[];
+  document.getElementById('ic-provider').innerHTML=CATALOG.map(c=>`<option value="${c.key}">${esc(c.name)} — ${esc(c.category)}</option>`).join('');
+}
+async function connectIntegration(){
+  const provider=document.getElementById('ic-provider').value;
+  const r=await post('/api/integrations/connections',{provider,config:{}});
+  if(r.ok)loadConnections();else alert('Failed');
+}
+async function loadConnections(){
+  const rows=await api('/api/integrations/connections');if(!rows)return;
+  document.getElementById('t-connections').innerHTML=rows.map(c=>
+    `<tr><td>${esc(c.name)}</td><td class="muted">${esc(c.category)||'—'}</td>
+     <td class="muted">${(c.config_keys&&c.config_keys.length)?esc(c.config_keys.join(', ')):'—'}</td>
+     <td><button class="btn sm ${c.enabled?'':'ghost'}" onclick="toggleConnection(${c.id})">${c.enabled?'on':'off'}</button></td>
+     <td><button class="btn sm ghost" onclick="delConnection(${c.id})">✕</button></td></tr>`).join('')
+    ||'<tr><td colspan=5 class="muted">No connections yet — pick a product above.</td></tr>';
+}
+async function toggleConnection(id){await post(`/api/integrations/connections/${id}/toggle`);loadConnections();}
+async function delConnection(id){if(!confirm('Remove this connection?'))return;
+  const r=await fetch(`/api/integrations/connections/${id}`,{method:'DELETE'});if(r.ok)loadConnections();}
+
 // ---- Networking / IPAM ----
 let CURNET=null;
 async function subnetCalc(){
@@ -1146,7 +1335,7 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations()]);
 }
 load();
 </script>

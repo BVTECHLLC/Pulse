@@ -6,29 +6,53 @@ enforce_client_scope-> client users can only touch their own client_id
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import Cookie, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from .db import get_db
-from .security import decode_token
-from ..models import AuthSession, Role, User, STAFF_ROLES
+from .security import decode_token, hash_api_key
+from ..models import APIKey, AuthSession, Role, User, STAFF_ROLES
 
 
-def _extract_token(
-    access_token: str | None = Cookie(default=None),
-    authorization: str | None = Header(default=None),
-) -> str:
-    if access_token:
-        return access_token
-    if authorization and authorization.lower().startswith("bearer "):
-        return authorization.split(" ", 1)[1]
-    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+def _resolve_api_key(db: Session, key: str) -> User | None:
+    """Resolve an X-API-Key value to its owning user. The key authenticates as
+    that user (inheriting role + client scope). Updates last_used_at."""
+    row = (db.query(APIKey)
+           .filter(APIKey.key_hash == hash_api_key(key), APIKey.revoked.is_(False))
+           .first())
+    if not row:
+        return None
+    user = db.get(User, row.user_id)
+    if not user or not user.is_active:
+        return None
+    row.last_used_at = datetime.now(timezone.utc)
+    db.commit()
+    return user
 
 
 def current_user(
-    token: str = Depends(_extract_token),
     db: Session = Depends(get_db),
+    access_token: str | None = Cookie(default=None),
+    authorization: str | None = Header(default=None),
+    x_api_key: str | None = Header(default=None),
 ) -> User:
+    # 1) Programmatic access via an API key (for external tools / integrations).
+    if x_api_key:
+        user = _resolve_api_key(db, x_api_key)
+        if not user:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid API key")
+        return user
+
+    # 2) Session token (cookie or Bearer).
+    if access_token:
+        token = access_token
+    elif authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+    else:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+
     try:
         payload = decode_token(token)
     except Exception:

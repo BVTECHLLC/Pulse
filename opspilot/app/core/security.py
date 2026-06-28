@@ -128,3 +128,22 @@ def verify_enrollment_token(token: str) -> dict:
 
 def random_token(nbytes: int = 32) -> str:
     return secrets.token_urlsafe(nbytes)
+
+
+# --- API keys & webhook signing (v0.21 integrations) ------------------------ #
+import hashlib  # noqa: E402  (kept local to this feature block)
+
+
+def hash_api_key(key: str) -> str:
+    """Fast, indexable hash for API keys. The key itself is high-entropy, so a
+    single SHA-256 is appropriate (and lets us look up by hash on every call)."""
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+def sign_hmac(secret: str, body: bytes) -> str:
+    """HMAC-SHA256 signature for outbound webhook payloads (hex)."""
+    return hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+
+
+def constant_time_eq(a: str, b: str) -> bool:
+    return hmac.compare_digest(a, b)

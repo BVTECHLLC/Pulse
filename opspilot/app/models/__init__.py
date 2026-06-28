@@ -234,6 +234,79 @@ class ReportSchedule(Base):
 
 
 # --------------------------------------------------------------------------- #
+# v0.21 — Integrations & command center: API keys, outbound/inbound webhooks,
+# and an integration catalog so Pulse can interoperate with anything.
+# --------------------------------------------------------------------------- #
+class APIKey(Base):
+    """Programmatic access key. Authenticates AS the user that owns it (so it
+    inherits that user's role + client scope). We store only a SHA-256 hash; the
+    plaintext is shown exactly once at creation."""
+    __tablename__ = "api_keys"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    label: Mapped[str] = mapped_column(String(120), nullable=False)
+    prefix: Mapped[str] = mapped_column(String(16), index=True)   # shown for identification
+    key_hash: Mapped[str] = mapped_column(String(80), index=True, nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+# Canonical internal events external systems can subscribe to.
+WEBHOOK_EVENTS = [
+    "ticket.created", "ticket.updated", "ticket.sla_breached",
+    "alert.opened", "alert.resolved", "device.enrolled", "device.offline",
+    "invoice.created", "client.created", "signup.received",
+]
+
+
+class WebhookSubscription(Base):
+    """Outbound event delivery: when an internal event fires, POST a signed JSON
+    payload to this URL. Lets any external tool react to Pulse in real time."""
+    __tablename__ = "webhook_subscriptions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    events: Mapped[list] = mapped_column(JSON, default=list)   # subset of WEBHOOK_EVENTS; [] = all
+    secret: Mapped[str | None] = mapped_column(String(120))    # HMAC-SHA256 signing secret
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    last_status: Mapped[int | None] = mapped_column(Integer)   # last HTTP status seen
+    last_fired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class InboundSource(Base):
+    """Inbound ingest endpoint. Any external tool can POST JSON to
+    /api/ingest/{token}; we create a ticket or alert for the bound client.
+    The token is the shared secret (kept server-side, shown once)."""
+    __tablename__ = "inbound_sources"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    token: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    action: Mapped[str] = mapped_column(String(20), default="ticket")  # ticket|alert
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    last_received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    received_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class IntegrationConnection(Base):
+    """A configured connection to an external product (PSA/RMM/docs/comms/etc.).
+    Config is free-form JSON (keys, base URLs, etc.). This is the command-center
+    hub — what's connected, and how."""
+    __tablename__ = "integration_connections"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(String(80), nullable=False, index=True)  # catalog key
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    category: Mapped[str | None] = mapped_column(String(60))
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+# --------------------------------------------------------------------------- #
 # v0.3 — Monitoring & alerting
 # --------------------------------------------------------------------------- #
 class AlertStatus(str, enum.Enum):
