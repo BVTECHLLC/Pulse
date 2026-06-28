@@ -32,7 +32,8 @@ import time
 from pathlib import Path
 from urllib import request as urlreq
 
-PULSE_URL = os.environ.get("PULSE_URL", "https://opspilot.bvtech.org")
+AGENT_VERSION = "1.0.0"
+PULSE_URL = os.environ.get("PULSE_URL", "https://portal.bvtech.org")
 CHECKIN_INTERVAL = 300  # seconds; server can override
 
 if os.name == "nt":
@@ -40,6 +41,26 @@ if os.name == "nt":
 else:
     CONF_DIR = Path.home() / ".bvtech-pulse"
 CONF_FILE = CONF_DIR / "agent.json"
+LOG_FILE = CONF_DIR / "agent.log"
+
+_BANNER = r"""
+  ╔══════════════════════════════════════════════════════════╗
+  ║   B V T E C H   O p s P i l o t   ·   Endpoint Agent      ║
+  ║   Secure RMM telemetry   ·   bvtech.org · El Campo, TX    ║
+  ╚══════════════════════════════════════════════════════════╝
+"""
+
+
+def _log(msg: str) -> None:
+    """Print and append to the local log so installs aren't a black box."""
+    line = f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {msg}"
+    print(line, flush=True)
+    try:
+        CONF_DIR.mkdir(parents=True, exist_ok=True)
+        with open(LOG_FILE, "a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except Exception:
+        pass
 
 
 # --------------------------------------------------------------------------- #
@@ -120,12 +141,23 @@ def enroll(token: str) -> dict:
         "os": f"{platform.system()} {platform.release()}",
         "serial": _serial(),
     }
-    res = _post("/api/agent/enroll", body)
-    conf = {"enroll_id": res["enroll_id"], "agent_key": res["agent_key"],
-            "device_id": res["device_id"]}
-    _save_conf(conf)
-    print(f"Enrolled. device_id={res['device_id']}. Config saved to {CONF_FILE}")
-    return conf
+    # Retry with backoff so a flaky first connection doesn't fail the install.
+    last_err = None
+    for attempt, delay in enumerate((0, 2, 5, 10), start=1):
+        if delay:
+            time.sleep(delay)
+        try:
+            res = _post("/api/agent/enroll", body)
+            conf = {"enroll_id": res["enroll_id"], "agent_key": res["agent_key"],
+                    "device_id": res["device_id"]}
+            _save_conf(conf)
+            _log(f"Enrolled OK. device_id={res['device_id']} -> {PULSE_URL}")
+            return conf
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+            _log(f"Enroll attempt {attempt} failed: {e}")
+    _log(f"Enrollment failed after retries: {last_err}")
+    raise SystemExit(1)
 
 
 def _serial() -> str | None:
@@ -259,7 +291,8 @@ def run_loop(enable_scripts: bool = False) -> None:
         sys.exit(1)
     headers = {"X-Enroll-Id": conf["enroll_id"], "X-Agent-Key": conf["agent_key"]}
     interval = CHECKIN_INTERVAL
-    print(f"BVTech OpsPilot Agent running. Reporting to {PULSE_URL} every {interval}s.")
+    print(_BANNER)
+    _log(f"Agent v{AGENT_VERSION} running. Reporting to {PULSE_URL} every {interval}s.")
     if enable_scripts:
         print("=" * 64)
         print("  REMOTE SCRIPT EXECUTION IS ENABLED for this agent.")
@@ -280,12 +313,25 @@ def run_loop(enable_scripts: bool = False) -> None:
         time.sleep(interval)
 
 
+def _take_url_flag() -> None:
+    """Allow `--url https://portal.bvtech.org` to override PULSE_URL."""
+    global PULSE_URL
+    if "--url" in sys.argv:
+        i = sys.argv.index("--url")
+        if i + 1 < len(sys.argv):
+            PULSE_URL = sys.argv[i + 1].rstrip("/")
+            del sys.argv[i:i + 2]
+
+
 if __name__ == "__main__":
-    if len(sys.argv) >= 2 and sys.argv[1] == "enroll" and len(sys.argv) == 3:
-        enroll(sys.argv[2])
-    elif len(sys.argv) >= 2 and sys.argv[1] == "run":
+    _take_url_flag()
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if args and args[0] == "enroll" and len(args) == 2:
+        enroll(args[1])
+    elif args and args[0] == "run":
         run_loop(enable_scripts="--enable-remote-scripts" in sys.argv)
     else:
-        print(__doc__)
-        print("Usage:\n  opspilot_agent.py enroll <ENROLLMENT_TOKEN>\n"
-              "  opspilot_agent.py run [--enable-remote-scripts]")
+        print(_BANNER)
+        print(f"  v{AGENT_VERSION} · reporting to {PULSE_URL}\n")
+        print("Usage:\n  opspilot_agent.py enroll <ENROLLMENT_TOKEN> [--url https://portal.bvtech.org]\n"
+              "  opspilot_agent.py run [--enable-remote-scripts] [--url https://portal.bvtech.org]")

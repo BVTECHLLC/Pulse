@@ -66,7 +66,23 @@
     <thead><tr><th>Name</th><th>Contact</th><th>Email</th><th>Status</th></tr></thead>
     <tbody id="t-clients"></tbody></table></div></section>
 
-  <section id="devices" class="hidden"><div class="card"><table>
+  <section id="devices" class="hidden">
+    <div class="card" style="margin-bottom:16px">
+      <h3>Deploy Agent <span class="pill">onboard a device</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Pick a client, generate a one-click installer, and run it on the endpoint. The agent reports back here automatically.</p>
+      <div class="flex">
+        <select id="ag-client" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
+        <button class="btn sm" onclick="genAgent()">Generate installer</button>
+      </div>
+      <div id="ag-out" class="hidden" style="margin-top:12px">
+        <label>Windows (PowerShell, as Administrator)</label>
+        <input id="ag-win" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
+        <label style="margin-top:8px">Linux / macOS</label>
+        <input id="ag-nix" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
+        <p class="muted" style="margin-top:8px">Token valid 72h · <a id="ag-dl" href="/download/agent">download the raw agent</a></p>
+      </div>
+    </div>
+    <div class="card"><table>
     <thead><tr><th>Host</th><th>OS</th><th>CPU</th><th>Disk</th><th>AV</th><th>Health</th><th>Last seen</th></tr></thead>
     <tbody id="t-devices"></tbody></table></div></section>
 
@@ -690,6 +706,18 @@ async function createFinding(){
 }
 async function setFinding(id,st){await patch(`/api/security/findings/${id}`,{status:st});loadSecurity();refreshBadges();loadAlerts();}
 
+// ---- Agent deployment ----
+async function genAgent(){
+  const cid=document.getElementById('ag-client').value;
+  const r=await post(`/api/agent/enroll-token/${cid}`);
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){alert(j.detail||'Failed to generate token');return;}
+  const base=location.origin, tok=encodeURIComponent(j.enroll_token);
+  document.getElementById('ag-win').value=`powershell -ExecutionPolicy Bypass -c "irm '${base}/download/install.ps1?token=${tok}' | iex"`;
+  document.getElementById('ag-nix').value=`curl -fsSL "${base}/download/install.sh?token=${tok}" | bash`;
+  document.getElementById('ag-out').classList.remove('hidden');
+}
+
 // ---- Networking / IPAM ----
 let CURNET=null;
 async function subnetCalc(){
@@ -870,6 +898,8 @@ async function load(){
   devices.forEach(d=>DEVICES[d.id]=d.hostname);
   const dgSel=document.getElementById('dg-device');
   if(dgSel)dgSel.innerHTML=devices.map(d=>`<option value="${d.id}">${esc(d.hostname)}</option>`).join('')||'<option>no devices</option>';
+  const agSel=document.getElementById('ag-client');
+  if(agSel)agSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   document.getElementById('t-devices').innerHTML=devices.map(d=>
     `<tr><td>${esc(d.hostname)} <span class="muted">#${d.id}</span></td><td>${esc(d.os)||'—'}</td><td>${d.cpu_pct??'—'}</td>
      <td>${d.disk_pct??'—'}</td><td>${esc(d.av_status)||'—'}</td><td>${badge(d.health_score,80,60)}</td>

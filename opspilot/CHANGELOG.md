@@ -1,5 +1,31 @@
 # BVTech OpsPilot — Changelog
 
+## v0.13.0 — Production agent + one-click deploy (June 2026)
+
+Makes the on-site agent real and turnkey — download, install, and it reports to
+the portal with zero manual config.
+
+### Added
+- **Agent download & installers** (`/download/agent`, `/download/install.sh`,
+  `/download/install.ps1`): the install scripts **auto-target the host that
+  served them** (honoring the Cloudflare/Caddy proxy headers), embed the
+  enrollment token, fetch the agent, install `psutil`, enroll, and start it
+  (Scheduled Task on Windows / background on Linux/macOS).
+- **Deploy Agent** card on the Devices tab: pick a client → generate a 72h
+  installer → copy the Windows PowerShell or Linux/macOS one-liner.
+- **Agent hardening** (`agent/opspilot_agent.py` → v1.0.0): branded banner,
+  `--url` flag, enrollment **retry/backoff**, local logging (`agent.log`),
+  default server now `portal.bvtech.org`. Verified end-to-end (enroll → check-in)
+  against a live instance.
+- Dockerfile now ships the agent in the image so the server can serve it.
+
+### Notes
+- Install scripts/agent are public by design; security is the signed,
+  time-limited, client-scoped enrollment token (unchanged).
+- Windows endpoints need Python 3 (the installer detects it and prints the
+  one-line winget command if missing). A standalone signed `.exe` is the next
+  hardening step.
+
 ## v0.12.0 — Network diagnostics & discovery (June 2026)
 
 Diagnose client network issues live from the portal — two complementary layers.
