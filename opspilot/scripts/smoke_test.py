@@ -480,7 +480,27 @@ def main():
         assert ca_c.post("/api/net/networks", json={"client_id":cid,"name":"x","cidr":"10.1.0.0/24"}).status_code==403
         print("networking RBAC (client read-only) OK")
 
-    print("\n=== OpsPilot v0.11 SMOKE TEST PASSED ===")
+        # ===================== v0.12: Network diagnostics =====================
+        # Looking glass SSRF guard — private/loopback/metadata targets are refused.
+        for blocked in ("127.0.0.1","10.0.0.5","169.254.169.254","192.168.1.1"):
+            assert c.post("/api/netdiag/dns", json={"host":blocked}).status_code==400, f"{blocked} not blocked!"
+        assert ca_c.post("/api/netdiag/dns", json={"host":"example.com"}).status_code==403, "client used looking glass!"
+        print("looking-glass SSRF guard + RBAC OK")
+
+        # Agent diagnostics pipeline (queued -> agent pulls -> reports -> staff reads)
+        assert c.post("/api/netdiag/diagnostics", json={"device_id":target_dev,"kind":"bogus","target":"x"}).status_code==400
+        assert c.post("/api/netdiag/diagnostics", json={"device_id":target_dev,"kind":"ping"}).status_code==400  # needs target
+        did=c.post("/api/netdiag/diagnostics", json={"device_id":target_dev,"kind":"ping","target":"8.8.8.8"}).json()["id"]
+        pulled=ag.get("/api/agent/diagnostics", headers=hdr2).json()["diagnostics"]
+        assert any(p["id"]==did and p["kind"]=="ping" for p in pulled), pulled
+        assert ag.post(f"/api/agent/diagnostics/{did}/result", headers=hdr2,
+                       json={"ok":True,"result":"4 packets transmitted, 4 received, 0% loss"}).status_code==200
+        done=c.get(f"/api/netdiag/diagnostics/{did}").json()
+        assert done["status"]=="done" and "0% loss" in done["result"], done
+        assert ca_c.post("/api/netdiag/diagnostics", json={"device_id":target_dev,"kind":"ping","target":"8.8.8.8"}).status_code==403
+        print("agent diagnostics queue + run + report + RBAC OK")
+
+    print("\n=== OpsPilot v0.12 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -1,5 +1,33 @@
 # BVTech OpsPilot — Changelog
 
+## v0.12.0 — Network diagnostics & discovery (June 2026)
+
+Diagnose client network issues live from the portal — two complementary layers.
+
+### Added
+- **Looking glass** (server-side, `/api/netdiag/{dns,reachability,port,http}`):
+  run DNS / TCP reachability+latency / port / HTTP checks from the portal toward
+  a client's **public** endpoints (site, mail, DNS). **SSRF-guarded** — every
+  target is resolved and any private / loopback / link-local (incl. cloud
+  metadata) / reserved address is refused. ICMP-free (TCP connect), so it works
+  inside the container without privileges. Staff-only.
+- **Agent diagnostics** (`/api/netdiag/diagnostics` + agent pull/report): queue
+  **read-only** probes — `ping`, `traceroute`, `dns`, `port_check`,
+  `subnet_discovery` (LAN ping-sweep) — for an on-site agent to run against the
+  client's **internal** network and report back. Non-destructive by design.
+- **Agent** gained diagnostic handlers and now processes the diagnostics queue
+  each cycle (read-only; runs regardless of the script opt-in).
+- **Dashboard Network tab**: a "Live Diagnostics (looking glass)" panel and a
+  "Run on a device" panel with results.
+- New Alembic migration (`diagnostic_requests`) — verified reversible.
+- Smoke test: SSRF guard rejects private/loopback/metadata, RBAC, and the full
+  agent queue → pull → report → read flow.
+
+### Security
+- Looking glass is staff-only and cannot reach internal/metadata ranges.
+- Agent diagnostics are read-only (no config changes) and per-device scoped;
+  every request is audited.
+
 ## v0.11.0 — Networking & IPAM (June 2026)
 
 ### Added

@@ -193,6 +193,65 @@ def _process_jobs(headers: dict) -> None:
             print(f"  failed to report job #{job['id']}: {e}")
 
 
+# --------------------------------------------------------------------------- #
+# Network diagnostics (v0.12) — READ-ONLY local probes the agent runs on the
+# client's LAN and reports. No system changes; safe to run by default.
+# --------------------------------------------------------------------------- #
+def _diag_run(kind: str, target: str | None, params: dict) -> tuple[bool, str]:
+    import subprocess, socket, ipaddress
+    try:
+        if kind == "dns":
+            infos = socket.getaddrinfo(target, None)
+            return True, target + " -> " + ", ".join(sorted({i[4][0] for i in infos}))
+        if kind == "port_check":
+            port = int(params.get("port", 443))
+            s = socket.socket(); s.settimeout(4)
+            try:
+                s.connect((target, port)); return True, f"{target}:{port} OPEN"
+            except OSError:
+                return True, f"{target}:{port} closed/filtered"
+            finally:
+                s.close()
+        if kind == "ping":
+            n = "-n" if os.name == "nt" else "-c"
+            out = subprocess.run(["ping", n, "4", target], capture_output=True, text=True, timeout=30)
+            return out.returncode == 0, (out.stdout + out.stderr)[:8000]
+        if kind == "traceroute":
+            cmd = ["tracert", "-d", target] if os.name == "nt" else ["traceroute", "-n", target]
+            out = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+            return out.returncode == 0, (out.stdout + out.stderr)[:8000]
+        if kind == "subnet_discovery":
+            # Ping-sweep the agent's local /24 (read-only host discovery).
+            base = params.get("cidr")
+            if not base:
+                ipaddr = socket.gethostbyname(socket.gethostname())
+                base = str(ipaddress.ip_network(ipaddr + "/24", strict=False))
+            net = ipaddress.ip_network(base, strict=False)
+            alive = []
+            n = "-n" if os.name == "nt" else "-c"
+            wait = ["-w", "400"] if os.name == "nt" else ["-W", "1"]
+            for host in list(net.hosts())[:254]:
+                r = subprocess.run(["ping", n, "1", *wait, str(host)],
+                                   capture_output=True, text=True, timeout=5)
+                if r.returncode == 0:
+                    alive.append(str(host))
+            return True, f"{base}: {len(alive)} hosts up\n" + "\n".join(alive)
+        return False, f"unknown diagnostic kind: {kind}"
+    except Exception as e:  # noqa: BLE001
+        return False, f"diagnostic error: {e}"
+
+
+def _process_diagnostics(headers: dict) -> None:
+    res = _get("/api/agent/diagnostics", headers)
+    for d in res.get("diagnostics", []):
+        print(f"  running diagnostic #{d['id']} ({d['kind']} {d.get('target') or ''})…")
+        ok, result = _diag_run(d["kind"], d.get("target"), d.get("params") or {})
+        try:
+            _post(f"/api/agent/diagnostics/{d['id']}/result", {"ok": ok, "result": result}, headers)
+        except Exception as e:
+            print(f"  failed to report diagnostic #{d['id']}: {e}")
+
+
 def run_loop(enable_scripts: bool = False) -> None:
     conf = _load_conf()
     if not conf:
@@ -208,10 +267,12 @@ def run_loop(enable_scripts: bool = False) -> None:
         print("  device, and report the results. Disable by restarting without")
         print("  --enable-remote-scripts.")
         print("=" * 64)
+    print("  Network diagnostics: ON (read-only probes; ping/dns/port/traceroute/discovery).")
     while True:
         try:
             res = _post("/api/agent/checkin", collect(), headers)
             interval = int(res.get("interval_sec", interval))
+            _process_diagnostics(headers)  # read-only; always processed
             if enable_scripts:
                 _process_jobs(headers)
         except Exception as e:

@@ -675,3 +675,28 @@ class IPAddress(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     __table_args__ = (UniqueConstraint("network_id", "address", name="uq_ip_per_network"),)
+
+
+# --------------------------------------------------------------------------- #
+# v0.12 — Network diagnostics (agent-run, read-only probes on a client's LAN)
+# --------------------------------------------------------------------------- #
+DIAG_KINDS = ("ping", "traceroute", "dns", "port_check", "subnet_discovery")
+
+
+class DiagnosticRequest(Base):
+    """A read-only network probe queued for an on-site agent to run and report.
+    Non-destructive by design (no config changes) — the agent only inspects."""
+    __tablename__ = "diagnostic_requests"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), index=True, nullable=False)
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    target: Mapped[str | None] = mapped_column(String(200))
+    params: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending|running|done|failed
+    result: Mapped[str | None] = mapped_column(Text)
+    requested_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    requested_by_email: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

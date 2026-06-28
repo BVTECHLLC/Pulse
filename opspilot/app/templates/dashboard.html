@@ -267,6 +267,36 @@
       <table><thead><tr><th>Address</th><th>Hostname</th><th>Status</th><th></th></tr></thead>
       <tbody id="t-ips"></tbody></table>
     </div>
+    <div class="grid cols-2" style="align-items:start;margin-top:16px">
+      <div class="card">
+        <h3>Live Diagnostics <span class="pill">looking glass</span></h3>
+        <p class="muted" style="margin:4px 0 10px">Run from our server toward a <b>public</b> host (their website, mail, DNS). Private/internal targets are blocked.</p>
+        <div class="flex"><input id="lg-host" placeholder="example.com or 1.1.1.1" style="flex:1"></div>
+        <div class="flex" style="margin-top:8px">
+          <button class="btn sm" onclick="lg('dns')">DNS</button>
+          <button class="btn sm" onclick="lg('reachability')">Reachability</button>
+          <button class="btn sm" onclick="lg('http')">HTTP</button>
+          <input id="lg-port" type="number" placeholder="port" style="width:80px">
+          <button class="btn sm ghost" onclick="lg('port')">Port</button>
+        </div>
+        <div id="lg-out" class="muted" style="margin-top:10px;white-space:pre-wrap;font-family:monospace;font-size:12px"></div>
+      </div>
+      <div class="card">
+        <h3>Run On a Device <span class="pill">on-site agent</span></h3>
+        <p class="muted" style="margin:4px 0 10px">Queue a read-only probe for an enrolled agent to run on the client's <b>internal</b> LAN.</p>
+        <div class="flex">
+          <select id="dg-device" style="flex:1;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
+          <select id="dg-kind" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)">
+            <option value="ping">ping</option><option value="traceroute">traceroute</option>
+            <option value="dns">dns</option><option value="port_check">port check</option>
+            <option value="subnet_discovery">subnet discovery</option></select>
+        </div>
+        <input id="dg-target" placeholder="target (host/IP; blank for subnet discovery)" style="margin-top:8px">
+        <button class="btn" style="margin-top:10px" onclick="runDiag()">Queue diagnostic</button>
+        <table style="margin-top:12px"><thead><tr><th>Kind</th><th>Target</th><th>Status</th><th></th></tr></thead>
+        <tbody id="t-diag"></tbody></table>
+      </div>
+    </div>
   </section>
 
   <section id="kb" class="hidden">
@@ -713,6 +743,37 @@ async function allocateIp(){
   else msg.textContent=j.detail||'Failed';
 }
 async function releaseIp(id){await fetch(`/api/net/ips/${id}`,{method:'DELETE'});openNet(CURNET,document.getElementById('ipam-title').textContent.split('· ')[1]||'');loadNetworks();}
+// looking glass
+async function lg(kind){
+  const out=document.getElementById('lg-out');out.style.color='var(--muted)';out.textContent='Running…';
+  const host=document.getElementById('lg-host').value.trim();
+  let path='/api/netdiag/'+kind, body={host};
+  if(kind==='http'){body={url:host};}
+  if(kind==='port'){body={host,port:parseInt(document.getElementById('lg-port').value)||443};}
+  const r=await post(path,body);const j=await r.json().catch(()=>({}));
+  out.style.color=r.ok?'var(--ink)':'var(--bad)';
+  out.textContent=r.ok?JSON.stringify(j,null,2):(j.detail||'Failed');
+}
+// agent diagnostics
+async function loadDiag(){
+  const rows=await api('/api/netdiag/diagnostics');if(!rows)return;
+  document.getElementById('t-diag').innerHTML=rows.slice(0,12).map(d=>
+    `<tr style="cursor:pointer" onclick="viewDiag(${d.id})"><td>${esc(d.kind)}</td><td class="muted">${esc(d.target||'—')}</td>
+     <td><span class="badge ${d.status==='done'?'ok':(d.status==='failed'?'bad':'warn')}">${esc(d.status)}</span></td>
+     <td>${d.status==='done'||d.status==='failed'?'view':''}</td></tr>`).join('')
+    ||'<tr><td colspan=4 class="muted">No diagnostics yet.</td></tr>';
+}
+async function runDiag(){
+  const r=await post('/api/netdiag/diagnostics',{device_id:parseInt(document.getElementById('dg-device').value),
+    kind:document.getElementById('dg-kind').value,target:document.getElementById('dg-target').value.trim()||null});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){alert('Queued. The agent runs it on its next check-in (≤5 min), then results appear below.');loadDiag();}
+  else alert(j.detail||'Failed');
+}
+async function viewDiag(id){
+  const d=await api(`/api/netdiag/diagnostics/${id}`);if(!d)return;
+  alert(`${d.kind} ${d.target||''} [${d.status}]\n\n${d.result||'(no result)'}`);
+}
 
 // ---- Knowledge base ----
 async function loadKB(){
@@ -807,6 +868,8 @@ async function load(){
     ||'<tr><td colspan=4 class="muted">No clients yet. Add one via the API.</td></tr>';
 
   devices.forEach(d=>DEVICES[d.id]=d.hostname);
+  const dgSel=document.getElementById('dg-device');
+  if(dgSel)dgSel.innerHTML=devices.map(d=>`<option value="${d.id}">${esc(d.hostname)}</option>`).join('')||'<option>no devices</option>';
   document.getElementById('t-devices').innerHTML=devices.map(d=>
     `<tr><td>${esc(d.hostname)} <span class="muted">#${d.id}</span></td><td>${esc(d.os)||'—'}</td><td>${d.cpu_pct??'—'}</td>
      <td>${d.disk_pct??'—'}</td><td>${esc(d.av_status)||'—'}</td><td>${badge(d.health_score,80,60)}</td>
@@ -829,7 +892,7 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag()]);
 }
 load();
 </script>
