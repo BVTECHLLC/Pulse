@@ -1,5 +1,30 @@
 # BVTech OpsPilot — Changelog
 
+## v0.22.0 — Comprehensive audit log + developer hub (June 2026)
+
+### Added — log everything, not just logins
+- A middleware now records **every mutating API call** (POST/PUT/PATCH/DELETE
+  under `/api/`) to the audit trail — who (resolved from session cookie, Bearer
+  token, or API key), what (method + path), outcome (HTTP status), and source IP.
+  High-frequency machine telemetry (agent check-ins, job/diag polls, inventory/
+  patch reports) is skipped so the log stays human-meaningful. Routes that
+  already write rich targeted entries keep doing so; this guarantees nothing
+  slips through. Verified: client create / API-key delete are logged, GETs are
+  not.
+
+### Added — developer hub
+- **`/developers`**: a branded developer hub documenting API-key auth, the event
+  catalog, webhook signature verification, and inbound ingest.
+- **`/api/openapi.json`**: the complete machine-readable API schema (129
+  endpoints) so any tool — Postman, Zapier, Make, a code generator — can import
+  the entire Pulse API. Integrations tab links to the hub.
+
+### Fixed / hardened
+- **Add Client** flow made resilient: a failure in any unrelated dashboard loader
+  can no longer hide a successful creation or block the UI, and a 401 now shows a
+  clear "session expired" message instead of failing silently. (The create path
+  itself was already correct — verified end-to-end in a headless browser.)
+
 ## v0.21.0 — Integrations & command center (June 2026)
 
 ### Added — interoperate with anything
