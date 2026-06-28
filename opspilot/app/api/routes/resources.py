@@ -8,8 +8,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ...core.db import get_db
+from sqlalchemy import func
+
 from ...core.deps import assert_client_access, current_user, is_staff, require_roles
-from ...models import Client, Device, License, AuditLog, Role, User
+from ...models import Client, Device, DeviceSoftware, License, AuditLog, Role, User
 from ...services import audit
 
 router = APIRouter(prefix="/api", tags=["resources"])
@@ -77,6 +79,48 @@ def list_devices(client_id: int | None = None, db: Session = Depends(get_db),
             "last_checkin": d.last_checkin.isoformat() if d.last_checkin else None,
         })
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Software inventory (v0.19) — reported by the agent, read here with tenant RBAC
+# --------------------------------------------------------------------------- #
+@router.get("/devices/{device_id}/software")
+def device_software(device_id: int, db: Session = Depends(get_db),
+                    user: User = Depends(current_user)):
+    dev = db.get(Device, device_id)
+    if not dev:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    assert_client_access(user, dev.client_id)   # staff-any or own-client only
+    rows = (db.query(DeviceSoftware)
+            .filter(DeviceSoftware.device_id == device_id)
+            .order_by(DeviceSoftware.name).all())
+    return {
+        "device_id": device_id, "hostname": dev.hostname, "count": len(rows),
+        "software": [{"name": r.name, "version": r.version, "publisher": r.publisher,
+                      "reported_at": r.reported_at.isoformat() if r.reported_at else None}
+                     for r in rows],
+    }
+
+
+@router.get("/software/search")
+def software_search(q: str = "", client_id: int | None = None,
+                    db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Fleet-wide 'who has this app?' — aggregates install counts by name+version
+    across devices the caller may see. Powers license reconciliation and
+    vulnerability response ('which machines run OpenSSL 3.0.1?')."""
+    query = (db.query(DeviceSoftware.name, DeviceSoftware.version,
+                      func.count(func.distinct(DeviceSoftware.device_id)).label("devices"))
+             .group_by(DeviceSoftware.name, DeviceSoftware.version))
+    if is_staff(user):
+        if client_id:
+            query = query.filter(DeviceSoftware.client_id == client_id)
+    else:
+        query = query.filter(DeviceSoftware.client_id == user.client_id)
+    if q.strip():
+        query = query.filter(DeviceSoftware.name.ilike(f"%{q.strip()}%"))
+    rows = query.order_by(func.count(func.distinct(DeviceSoftware.device_id)).desc(),
+                          DeviceSoftware.name).limit(200).all()
+    return [{"name": n, "version": v, "devices": d} for (n, v, d) in rows]
 
 
 # --------------------------------------------------------------------------- #

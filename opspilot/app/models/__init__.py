@@ -188,6 +188,23 @@ class DeviceCheckin(Base):
     patch_status: Mapped[str | None] = mapped_column(String(120))
 
 
+class DeviceSoftware(Base):
+    """Installed-software inventory reported by the agent (v0.19). One row per
+    (device, app); the agent replaces a device's full set on each inventory
+    report. Powers license tracking and 'who has package X?' vulnerability
+    response across the fleet."""
+    __tablename__ = "device_software"
+    __table_args__ = (UniqueConstraint("device_id", "name", "version",
+                                       name="uq_device_software"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), index=True, nullable=False)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(300), nullable=False, index=True)
+    version: Mapped[str | None] = mapped_column(String(120))
+    publisher: Mapped[str | None] = mapped_column(String(200))
+    reported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
 # --------------------------------------------------------------------------- #
 # v0.3 — Monitoring & alerting
 # --------------------------------------------------------------------------- #
