@@ -32,7 +32,7 @@ import time
 from pathlib import Path
 from urllib import request as urlreq
 
-AGENT_VERSION = "1.2.0"
+AGENT_VERSION = "1.3.0"
 PULSE_URL = os.environ.get("PULSE_URL", "https://portal.bvtech.org")
 CHECKIN_INTERVAL = 300  # seconds; server can override
 INVENTORY_INTERVAL = 6 * 3600  # software inventory cadence (seconds)
@@ -335,7 +335,7 @@ def enroll(token: str) -> dict:
         try:
             res = _post("/api/agent/enroll", body)
             conf = {"enroll_id": res["enroll_id"], "agent_key": res["agent_key"],
-                    "device_id": res["device_id"]}
+                    "device_id": res["device_id"], "url": PULSE_URL}  # remember where we enrolled
             _save_conf(conf)
             _log(f"Enrolled OK. device_id={res['device_id']} -> {PULSE_URL}")
             return conf
@@ -512,25 +512,91 @@ def run_loop(enable_scripts: bool = False) -> None:
         time.sleep(interval)
 
 
+_URL_OVERRIDDEN = False
+
+
 def _take_url_flag() -> None:
     """Allow `--url https://portal.bvtech.org` to override PULSE_URL."""
-    global PULSE_URL
+    global PULSE_URL, _URL_OVERRIDDEN
     if "--url" in sys.argv:
         i = sys.argv.index("--url")
         if i + 1 < len(sys.argv):
             PULSE_URL = sys.argv[i + 1].rstrip("/")
+            _URL_OVERRIDDEN = True
             del sys.argv[i:i + 2]
+
+
+def _apply_saved_url() -> None:
+    """If we enrolled against a specific portal, keep using it on later runs
+    (e.g. the boot Scheduled Task) unless --url overrides."""
+    global PULSE_URL
+    if _URL_OVERRIDDEN:
+        return
+    conf = _load_conf()
+    if conf and conf.get("url"):
+        PULSE_URL = conf["url"].rstrip("/")
+
+
+def _interactive_onboard() -> bool:
+    """First-run, double-clicked experience: ask for the portal + enrollment
+    token, then enroll. Returns True if enrollment succeeded."""
+    global PULSE_URL
+    print(_BANNER)
+    print(f"  Agent v{AGENT_VERSION}\n")
+    print("Let's connect this computer to your Pulse portal.")
+    print("(Get an enrollment token from your portal: Devices -> Deploy Agent -> Generate installer.)\n")
+    try:
+        u = input(f"Portal URL [{PULSE_URL}]: ").strip()
+    except EOFError:
+        u = ""
+    if u:
+        PULSE_URL = u.rstrip("/")
+    token = ""
+    while not token:
+        try:
+            token = input("Paste your enrollment token: ").strip()
+        except EOFError:
+            print("No token entered — nothing to do.")
+            return False
+    try:
+        enroll(token)   # saves config (incl. URL); raises SystemExit on failure
+        return True
+    except SystemExit:
+        print("\nEnrollment failed. Double-check the token (they expire after 72h) and the URL, then try again.")
+        return False
 
 
 if __name__ == "__main__":
     _take_url_flag()
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    enable_scripts = "--enable-remote-scripts" in sys.argv
+
     if args and args[0] == "enroll" and len(args) == 2:
+        # Enroll, then keep running so the device starts reporting immediately
+        # (unless the caller explicitly only wants to enroll).
         enroll(args[1])
+        if "--no-run" not in sys.argv:
+            _apply_saved_url()
+            run_loop(enable_scripts=enable_scripts)
     elif args and args[0] == "run":
-        run_loop(enable_scripts="--enable-remote-scripts" in sys.argv)
+        _apply_saved_url()
+        run_loop(enable_scripts=enable_scripts)
+    elif _load_conf():
+        # Already enrolled (e.g. double-clicked again, or boot task) -> just run.
+        _apply_saved_url()
+        run_loop(enable_scripts=enable_scripts)
+    elif sys.stdin and sys.stdin.isatty():
+        # Fresh double-click in a console: walk the user through onboarding.
+        if _interactive_onboard():
+            run_loop(enable_scripts=enable_scripts)
+        else:
+            try:
+                input("\nPress Enter to close...")
+            except EOFError:
+                pass
     else:
         print(_BANNER)
         print(f"  v{AGENT_VERSION} · reporting to {PULSE_URL}\n")
-        print("Usage:\n  opspilot_agent.py enroll <ENROLLMENT_TOKEN> [--url https://portal.bvtech.org]\n"
-              "  opspilot_agent.py run [--enable-remote-scripts] [--url https://portal.bvtech.org]")
+        print("Usage:\n  opspilot-agent enroll <ENROLLMENT_TOKEN> [--url https://portal.bvtech.org]\n"
+              "  opspilot-agent run [--enable-remote-scripts] [--url https://portal.bvtech.org]\n\n"
+              "Tip: just double-click the agent and paste your enrollment token when prompted.")
