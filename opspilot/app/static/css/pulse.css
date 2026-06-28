@@ -1,20 +1,22 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
+/* BVTech brand tokens — pulled from bvtech.org CSS */
 :root{
-  --navy:#0f1733;
-  --navy-2:#16224a;
-  --peri:#7c83ff;
-  --peri-2:#a6abff;
-  --ink:#e8ecff;
-  --muted:#9aa3c7;
-  --line:#26305c;
-  --ok:#34d399;
-  --warn:#fbbf24;
+  --navy:#0E0D2C;       /* deep navy/indigo base */
+  --navy-2:#1A1950;     /* gradient highlight */
+  --peri:#4440DB;       /* primary purple (CTAs) */
+  --peri-2:#5B57E8;     /* light purple accent */
+  --ink:#EEF0FF;
+  --muted:#9AA0C7;
+  --line:#2A2A63;
+  --ok:#26C485;         /* mint green */
+  --warn:#F5BE58;       /* gold */
   --bad:#f87171;
-  --card:#131c3d;
+  --card:#13123A;
 }
 *{box-sizing:border-box}
 body{
-  margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-  background:radial-gradient(1200px 600px at 80% -10%,#1c2a5e 0%,var(--navy) 55%);
+  margin:0;font-family:'Poppins',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  background:radial-gradient(1200px 600px at 80% -10%,#2a2596 0%,var(--navy) 55%);
   color:var(--ink);min-height:100vh;
 }
 a{color:var(--peri-2);text-decoration:none}
@@ -39,7 +41,7 @@ a{color:var(--peri-2);text-decoration:none}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
 th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.5px}
-tr:hover td{background:rgba(124,131,255,.05)}
+tr:hover td{background:rgba(91,87,232,.06)}
 .badge{font-size:11px;padding:3px 8px;border-radius:999px;font-weight:600}
 .badge.ok{background:rgba(52,211,153,.15);color:var(--ok)}
 .badge.warn{background:rgba(251,191,36,.15);color:var(--warn)}
@@ -71,7 +73,7 @@ input:focus{outline:none;border-color:var(--peri)}
 .sev{font-size:11px;padding:3px 8px;border-radius:999px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
 .sev.critical{background:rgba(248,113,113,.16);color:var(--bad)}
 .sev.warning{background:rgba(251,191,36,.16);color:var(--warn)}
-.sev.info{background:rgba(124,131,255,.16);color:var(--peri-2)}
+.sev.info{background:rgba(91,87,232,.18);color:var(--peri-2)}
 .muted{color:var(--muted)}
 .comment{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:14px}
 .comment.internal{border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.05)}
@@ -83,33 +85,33 @@ input:focus{outline:none;border-color:var(--peri)}
 /* ===================================================================== */
 body{
   background:
-    radial-gradient(900px 480px at 88% -8%, rgba(124,131,255,.20) 0%, transparent 60%),
-    radial-gradient(700px 420px at 0% 100%, rgba(124,131,255,.10) 0%, transparent 55%),
-    linear-gradient(180deg, #0d1430 0%, var(--navy) 60%);
+    radial-gradient(900px 480px at 88% -8%, rgba(68,64,219,.28) 0%, transparent 60%),
+    radial-gradient(700px 420px at 0% 100%, rgba(91,87,232,.14) 0%, transparent 55%),
+    linear-gradient(180deg, #13123A 0%, var(--navy) 60%);
 }
 /* Logo lockup used in top bars and the login screen */
 .lockup{display:flex;align-items:center;gap:11px;text-decoration:none}
-.lockup img{width:34px;height:34px;display:block;filter:drop-shadow(0 4px 12px rgba(124,131,255,.45))}
+.lockup img{width:34px;height:34px;display:block;filter:drop-shadow(0 4px 12px rgba(68,64,219,.55))}
 .lockup .wm{font-weight:800;letter-spacing:.2px;font-size:17px;line-height:1;color:var(--ink)}
 .lockup .wm b{color:var(--peri-2)}
 .lockup .wm span{display:block;font-size:10px;font-weight:600;letter-spacing:2.4px;
   text-transform:uppercase;color:var(--muted);margin-top:3px}
-.topbar{box-shadow:0 1px 0 rgba(124,131,255,.08)}
+.topbar{box-shadow:0 1px 0 rgba(68,64,219,.10)}
 /* Buttons get a subtle gradient + lift */
 .btn{background:linear-gradient(180deg,var(--peri-2),var(--peri));
-  box-shadow:0 6px 18px -8px rgba(124,131,255,.8);transition:transform .06s ease,box-shadow .2s ease}
-.btn:hover{transform:translateY(-1px);box-shadow:0 10px 24px -8px rgba(124,131,255,.9)}
+  box-shadow:0 6px 18px -8px rgba(68,64,219,.85);transition:transform .06s ease,box-shadow .2s ease}
+.btn:hover{transform:translateY(-1px);box-shadow:0 10px 24px -8px rgba(68,64,219,.95)}
 .btn:active{transform:translateY(0)}
 .btn.ghost{background:transparent;box-shadow:none}
 .btn.sm{box-shadow:none}
 /* Cards lift slightly on hover for a premium feel */
 .card{box-shadow:0 1px 0 rgba(255,255,255,.02) inset,0 12px 28px -22px rgba(0,0,0,.8);
   transition:border-color .2s ease,transform .12s ease}
-.card:hover{border-color:#33407a}
-.stat{background:linear-gradient(180deg,var(--ink),#aab2e6);-webkit-background-clip:text;
+.card:hover{border-color:#3a3a86}
+.stat{background:linear-gradient(180deg,var(--ink),#b9b6f5);-webkit-background-clip:text;
   background-clip:text;-webkit-text-fill-color:transparent}
 .stat.sub{-webkit-text-fill-color:initial;background:none;color:var(--muted)}
-.pill{background:rgba(124,131,255,.06)}
+.pill{background:rgba(68,64,219,.08)}
 /* Login / signup screens */
 .login-card{position:relative;box-shadow:0 30px 80px -30px rgba(0,0,0,.9);
   background:linear-gradient(180deg,#141d40,#10172f)}
