@@ -741,7 +741,17 @@ def main():
         assert all(r.get("type")!="integration" for r in cs["results"])        # integrations are staff-only
         print("global search across entities + scope OK")
 
-    print("\n=== OpsPilot v0.21 SMOKE TEST PASSED ===")
+        # ===================== v0.22: dev hub + comprehensive audit =====================
+        assert c.get("/developers").status_code==200 and "Developer Hub" in c.get("/developers").text
+        oa=c.get("/api/openapi.json"); assert oa.status_code==200 and len(oa.json()["paths"])>50
+        # the audit middleware logs EVERY mutating API call (not just logins)
+        c.post("/api/clients", json={"name":"Audit MW Co"})
+        arows=c.get("/api/audit?limit=1000").json()
+        assert any(a["action"]=="api.post" and a.get("target_id")=="/api/clients" for a in arows), "mutation not audited"
+        assert not any(a["action"]=="api.get" for a in arows), "GETs should not be audited"
+        print("developer hub + openapi + comprehensive audit middleware OK")
+
+    print("\n=== OpsPilot v0.22 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -60,3 +60,18 @@ def invoice_view(invoice_id: int, request: Request):
 @router.get("/report/{client_id}", response_class=HTMLResponse)
 def report_view(client_id: int, request: Request):
     return _page("report.html", request, client_id=client_id)
+
+
+@router.get("/developers", response_class=HTMLResponse)
+def developers(request: Request):
+    """Branded developer hub: how to authenticate, the event catalog, webhook
+    signature verification, inbound ingest, and a link to the live OpenAPI."""
+    return _page("developers.html", request)
+
+
+@router.get("/api/openapi.json")
+def openapi_schema(request: Request):
+    """The full machine-readable API schema, so any tool (Postman, Zapier, Make,
+    a code generator) can import the entire Pulse API. Public by design — it
+    describes the surface, never data; every endpoint still enforces auth."""
+    return request.app.openapi()

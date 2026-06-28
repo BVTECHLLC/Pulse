@@ -432,6 +432,10 @@
     <tbody id="t-licenses"></tbody></table></div></section>
 
   <section id="integrations" class="hidden">
+    <div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+      <div><b>Build on Pulse.</b> <span class="muted">API keys, webhooks, and inbound ingest let you connect anything.</span></div>
+      <a class="btn sm" href="/developers" target="_blank">Open Developer Hub →</a>
+    </div>
     <div class="card" style="margin-bottom:16px">
       <h3>API Keys <span class="pill">programmatic access</span></h3>
       <p class="muted" style="margin:4px 0 10px">Give any external tool secure access to the Pulse API. Send the key as the <code>X-API-Key</code> header. A key acts with your role and client scope.</p>
@@ -932,8 +936,12 @@ async function createClient(){
     email:document.getElementById('cl-email').value.trim()||null,phone:document.getElementById('cl-phone').value.trim()||null});
   if(r.ok){document.getElementById('cl-name').value='';document.getElementById('cl-contact').value='';
     document.getElementById('cl-email').value='';document.getElementById('cl-phone').value='';
-    msg.style.color='var(--ok)';msg.textContent='Client added ✓';load();}
-  else{const d=await r.json().catch(()=>({}));msg.style.color='var(--bad)';msg.textContent=d.detail||'Failed';}
+    msg.style.color='var(--ok)';msg.textContent='Client added ✓';
+    // Refresh resiliently: a failure in any unrelated loader must never hide the
+    // fact the client was created or block the rest of the UI.
+    try{await load();}catch(e){console.warn('post-add refresh failed',e);}}
+  else{const d=await r.json().catch(()=>({}));msg.style.color='var(--bad)';
+    msg.textContent=(r.status===401?'Your session expired — please sign in again.':(d.detail||('Failed ('+r.status+')')));}
 }
 
 // ---- Agent deployment ----

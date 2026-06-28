@@ -28,6 +28,14 @@ app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
 
 # --------------------------------------------------------------------------- #
+# Comprehensive audit trail — record every mutating API call (v0.22).
+# Registered before security_headers so it wraps the full request lifecycle.
+# --------------------------------------------------------------------------- #
+from .services.audit_mw import audit_mutations  # noqa: E402
+app.middleware("http")(audit_mutations)
+
+
+# --------------------------------------------------------------------------- #
 # Security headers
 # --------------------------------------------------------------------------- #
 @app.middleware("http")

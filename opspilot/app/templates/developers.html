@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ app_name }} — Developer Hub</title>
+<link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/css/pulse.css">
+<style>
+  .dev-wrap{max-width:900px;margin:0 auto;padding:28px 20px 80px}
+  .dev-wrap h2{margin-top:34px}
+  pre{background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:14px;overflow:auto;font-size:12.5px;line-height:1.5}
+  code{background:#0c1430;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:12.5px}
+  pre code{background:none;border:none;padding:0}
+  table.api{width:100%;border-collapse:collapse;margin-top:8px}
+  table.api td,table.api th{border-bottom:1px solid var(--line);padding:7px 8px;text-align:left;font-size:13px}
+  .meth{font-family:monospace;font-weight:700;color:var(--brand,#6c5ce7)}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <a class="lockup" href="/dashboard">
+    <img src="/static/img/mark.svg" alt="BVTech OpsPilot">
+    <span class="wm"><b>BVTech</b> OpsPilot</span>
+  </a>
+  <div style="display:flex;align-items:center;gap:12px">
+    <a class="pill" href="/api/openapi.json">OpenAPI JSON</a>
+    <a class="pill" href="/dashboard">← Dashboard</a>
+    <span class="pill">v{{ version }}</span>
+  </div>
+</div>
+
+<div class="dev-wrap">
+  <h1>Developer Hub</h1>
+  <p class="sub">Pulse is a platform — drive it from anything. Authenticate with an
+  API key, subscribe to events, or push events in. The full machine-readable
+  spec lives at <a href="/api/openapi.json"><code>/api/openapi.json</code></a>
+  (import it into Postman, Zapier, Make, or a code generator).</p>
+
+  <h2>1 · Authentication — API keys</h2>
+  <p>Create a key in the dashboard under <b>Integrations → API Keys</b>. Send it on
+  every request as the <code>X-API-Key</code> header. A key acts with the role and
+  client scope of the user who created it.</p>
+  <pre><code>curl https://portal.bvtech.org/api/clients \
+  -H "X-API-Key: pulse_xxxxxxxxxxxxxxxxxxxxxxxx"</code></pre>
+  <p class="muted">Session cookies and <code>Authorization: Bearer &lt;token&gt;</code> also work for
+  interactive use; API keys are the right choice for tools and automation.</p>
+
+  <h2>2 · Outbound webhooks — react to Pulse</h2>
+  <p>Subscribe any URL under <b>Integrations → Outbound Webhooks</b>. We POST a JSON
+  body for each event; verify authenticity with the HMAC signature header.</p>
+  <pre><code>POST your-url
+X-OpsPilot-Event: ticket.created
+X-OpsPilot-Signature: sha256=&lt;hmac&gt;
+Content-Type: application/json
+
+{ "event": "ticket.created", "data": { ... }, "ts": "..." }</code></pre>
+  <p>Verify in Python:</p>
+  <pre><code>import hmac, hashlib
+def verify(secret, body_bytes, header):
+    expected = "sha256=" + hmac.new(secret.encode(), body_bytes,
+                                    hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, header)</code></pre>
+  <p>Events: <code id="ev-list">loading…</code></p>
+
+  <h2>3 · Inbound ingest — push into Pulse</h2>
+  <p>Create an endpoint under <b>Integrations → Inbound Ingest</b>; we mint a URL any
+  tool can POST JSON to. We create a ticket or alert for the bound client.</p>
+  <pre><code>curl -X POST https://portal.bvtech.org/api/ingest/&lt;token&gt; \
+  -H "Content-Type: application/json" \
+  -d '{"subject":"Disk full on web-01","body":"95% used","priority":"high"}'</code></pre>
+  <p class="muted">Recognized fields: <code>subject</code>/<code>title</code>,
+  <code>body</code>/<code>message</code>, <code>severity</code> (alerts),
+  <code>priority</code> (tickets). The token is the credential — no other auth needed.</p>
+
+  <h2>4 · Core REST endpoints</h2>
+  <table class="api">
+    <thead><tr><th>Method</th><th>Path</th><th>What</th></tr></thead>
+    <tbody>
+      <tr><td class="meth">GET</td><td>/api/clients</td><td>List clients</td></tr>
+      <tr><td class="meth">POST</td><td>/api/clients</td><td>Create a client</td></tr>
+      <tr><td class="meth">GET</td><td>/api/devices</td><td>List devices + health/patch status</td></tr>
+      <tr><td class="meth">GET</td><td>/api/devices/{id}/software</td><td>Software inventory</td></tr>
+      <tr><td class="meth">GET</td><td>/api/devices/{id}/patches</td><td>Pending patches</td></tr>
+      <tr><td class="meth">GET</td><td>/api/devices/{id}/metrics</td><td>Metric history</td></tr>
+      <tr><td class="meth">GET / POST</td><td>/api/tickets</td><td>Helpdesk tickets</td></tr>
+      <tr><td class="meth">GET / POST</td><td>/api/invoices</td><td>Billing</td></tr>
+      <tr><td class="meth">GET</td><td>/api/search?q=</td><td>Global search</td></tr>
+      <tr><td class="meth">GET</td><td>/api/openapi.json</td><td>The complete spec</td></tr>
+    </tbody>
+  </table>
+
+  <div class="foot" style="margin-top:40px">© BVTech LLC · El Campo, TX · OpsPilot v{{ version }} — built to connect with everything.</div>
+</div>
+<script>
+fetch('/api/integrations/events').then(r=>r.ok?r.json():{events:[]}).then(j=>{
+  const el=document.getElementById('ev-list');
+  el.textContent=(j.events||[]).join(', ')||'sign in to view';
+}).catch(()=>{document.getElementById('ev-list').textContent='sign in to view';});
+</script>
+</body>
+</html>
