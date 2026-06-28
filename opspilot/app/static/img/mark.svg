@@ -1,8 +1,8 @@
 <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="BVTech OpsPilot">
   <defs>
     <linearGradient id="bv" x1="0" y1="0" x2="44" y2="44" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#7c83ff"/>
-      <stop offset="1" stop-color="#9aa0ff"/>
+      <stop stop-color="#4440DB"/>
+      <stop offset="1" stop-color="#5B57E8"/>
     </linearGradient>
     <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
       <feGaussianBlur stdDeviation="1.2" result="b"/>
@@ -11,7 +11,7 @@
   </defs>
   <rect x="2" y="2" width="40" height="40" rx="12" fill="url(#bv)"/>
   <rect x="2.5" y="2.5" width="39" height="39" rx="11.5" stroke="#ffffff" stroke-opacity="0.18"/>
-  <path d="M8 24 H15 L18 16 L23 31 L27 22 L29 24 H36" stroke="#0d1330" stroke-width="2.6"
+  <path d="M8 24 H15 L18 16 L23 31 L27 22 L29 24 H36" stroke="#0E0D2C" stroke-width="2.6"
         stroke-linecap="round" stroke-linejoin="round" opacity="0.35"/>
   <path d="M8 23 H15 L18 15 L23 30 L27 21 L29 23 H36" stroke="#ffffff" stroke-width="2.6"
         stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>

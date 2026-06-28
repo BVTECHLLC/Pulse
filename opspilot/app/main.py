@@ -37,8 +37,9 @@ async def security_headers(request: Request, call_next):
     resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     resp.headers["Content-Security-Policy"] = (
         "default-src 'self'; img-src 'self' data:; "
-        "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
-        "frame-ancestors 'none'"
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'"
     )
     if _s.is_prod:
         resp.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
