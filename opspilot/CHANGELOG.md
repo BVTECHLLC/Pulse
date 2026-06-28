@@ -1,5 +1,32 @@
 # BVTech OpsPilot — Changelog
 
+## v0.20.0 — Patch management, metric history, scheduled reports (June 2026)
+
+### Added — patch management
+- **Agent (v1.2.0) reports pending OS/software updates** (read-only check, never
+  installs): Windows via the Update Agent COM API (native PowerShell, no
+  modules), Linux via `apt-get -s upgrade` / `dnf check-update`, macOS via
+  `softwareupdate -l`. Reported on first check-in then ~every 6h.
+- **`POST /api/agent/patches`** replaces the device's pending set and stores a
+  `patches_pending` count for fast list views.
+- **`GET /api/devices/{id}/patches`** (tenant-scoped). Devices tab shows an
+  up-to-date / N-pending column and a per-device **Patches** drill-down.
+
+### Added — live metric history
+- **`GET /api/devices/{id}/metrics`** returns recent check-in trend (CPU / RAM /
+  disk / health). New per-device **Metrics** drill-down renders dependency-free
+  inline SVG sparklines (CSP-safe — no external chart libs).
+
+### Added — scheduled client reports
+- **`/api/report-schedules`** (staff CRUD + toggle + delete + run-now): email a
+  branded service snapshot to a client contact on a **weekly / monthly /
+  quarterly** cadence. The recurring **run-checks** tick delivers due reports
+  (safe no-op/logged until SMTP is configured). Automation tab gains a
+  **Scheduled Reports** panel.
+- New `device_patches` + `report_schedules` tables and `devices.patches_pending`
+  (migration `b4c5d6e7f8a9`); verified up/down/up and single-head. Agent patch
+  collection verified live on Linux.
+
 ## v0.19.0 — Software inventory (RMM) (June 2026)
 
 ### Added — installed-software inventory across the fleet

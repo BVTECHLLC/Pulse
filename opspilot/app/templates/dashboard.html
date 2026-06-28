@@ -100,12 +100,22 @@
       </div>
     </div>
     <div class="card"><table>
-    <thead><tr><th>Host</th><th>OS</th><th>CPU</th><th>Disk</th><th>AV</th><th>Health</th><th>Last seen</th><th>Software</th></tr></thead>
+    <thead><tr><th>Host</th><th>OS</th><th>CPU</th><th>Disk</th><th>AV</th><th>Patches</th><th>Health</th><th>Last seen</th><th>Details</th></tr></thead>
     <tbody id="t-devices"></tbody></table></div>
     <div id="dev-sw" class="card hidden" style="margin-top:12px">
       <div class="flex" style="justify-content:space-between"><h3 id="dev-sw-title" style="margin:0">Installed software</h3>
         <button class="btn sm" onclick="document.getElementById('dev-sw').classList.add('hidden')">Close</button></div>
       <table><thead><tr><th>Name</th><th>Version</th><th>Publisher</th></tr></thead><tbody id="t-dev-sw"></tbody></table>
+    </div>
+    <div id="dev-pa" class="card hidden" style="margin-top:12px">
+      <div class="flex" style="justify-content:space-between"><h3 id="dev-pa-title" style="margin:0">Pending patches</h3>
+        <button class="btn sm" onclick="document.getElementById('dev-pa').classList.add('hidden')">Close</button></div>
+      <table><thead><tr><th>Update</th><th>KB</th><th>Severity</th></tr></thead><tbody id="t-dev-pa"></tbody></table>
+    </div>
+    <div id="dev-mx" class="card hidden" style="margin-top:12px">
+      <div class="flex" style="justify-content:space-between"><h3 id="dev-mx-title" style="margin:0">Metric history</h3>
+        <button class="btn sm" onclick="document.getElementById('dev-mx').classList.add('hidden')">Close</button></div>
+      <div id="dev-mx-body" class="muted">Loading…</div>
     </div></section>
 
   <section id="alerts" class="hidden">
@@ -208,6 +218,21 @@
       <div class="err" id="nc-msg"></div>
       <table style="margin-top:10px"><thead><tr><th>Name</th><th>Type</th><th>Target</th><th>Min sev</th><th>On</th><th></th></tr></thead>
       <tbody id="t-channels"></tbody></table>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <h3>Scheduled Reports <span class="pill">auto-email client snapshots</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Email a branded service report to a client contact on a recurring cadence. Delivery runs with the scheduler (run-checks).</p>
+      <div class="flex">
+        <select id="rs-client" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
+        <input id="rs-email" placeholder="recipient@client.com" style="flex:1;min-width:200px">
+        <select id="rs-cadence" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)">
+          <option value="weekly">Weekly</option><option value="monthly" selected>Monthly</option><option value="quarterly">Quarterly</option></select>
+        <button class="btn sm" onclick="createSchedule()">Add</button>
+        <button class="btn sm" onclick="runReportsNow()">Send due now</button>
+      </div>
+      <div class="err" id="rs-msg"></div>
+      <table style="margin-top:10px"><thead><tr><th>Client</th><th>Recipient</th><th>Cadence</th><th>Last sent</th><th>On</th><th></th></tr></thead>
+      <tbody id="t-schedules"></tbody></table>
     </div>
     <div class="grid cols-2" style="align-items:start">
       <div class="card">
@@ -621,6 +646,33 @@ async function delChannel(id){if(!confirm('Delete this channel?'))return;
 async function testChannel(id){const r=await post(`/api/notification-channels/${id}/test`);const j=await r.json().catch(()=>({}));
   alert(j.ok?'Test delivered ✅':'Delivery failed — check the URL/address.');}
 
+// scheduled reports
+async function loadSchedules(){
+  const rows=await api('/api/report-schedules');if(!rows)return;
+  const sel=document.getElementById('rs-client');
+  if(sel)sel.innerHTML=Object.entries(CLIENTS||{}).map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('');
+  document.getElementById('t-schedules').innerHTML=rows.map(s=>
+    `<tr><td>${esc((CLIENTS&&CLIENTS[s.client_id])||('#'+s.client_id))}</td><td class="muted">${esc(s.recipient_email)}</td>
+     <td>${esc(s.cadence)}</td><td class="muted">${s.last_sent_at?new Date(s.last_sent_at).toLocaleDateString():'never'}</td>
+     <td><button class="btn sm ${s.enabled?'':'ghost'}" onclick="toggleSchedule(${s.id})">${s.enabled?'on':'off'}</button></td>
+     <td><button class="btn sm ghost" onclick="delSchedule(${s.id})">✕</button></td></tr>`).join('')
+    ||'<tr><td colspan=6 class="muted">No scheduled reports yet.</td></tr>';
+}
+async function createSchedule(){
+  const msg=document.getElementById('rs-msg');msg.textContent='';
+  const email=document.getElementById('rs-email').value.trim();
+  if(!email){msg.textContent='Recipient email is required.';return;}
+  const r=await post('/api/report-schedules',{client_id:+document.getElementById('rs-client').value,
+    recipient_email:email,cadence:document.getElementById('rs-cadence').value});
+  if(r.ok){document.getElementById('rs-email').value='';loadSchedules();}
+  else{const d=await r.json().catch(()=>({}));msg.textContent=d.detail||'Failed';}
+}
+async function toggleSchedule(id){await post(`/api/report-schedules/${id}/toggle`);loadSchedules();}
+async function delSchedule(id){if(!confirm('Delete this schedule?'))return;
+  const r=await fetch(`/api/report-schedules/${id}`,{method:'DELETE'});if(r.ok)loadSchedules();else alert('Owner/Tech only.');}
+async function runReportsNow(){const r=await post('/api/report-schedules/run-now');const j=await r.json().catch(()=>({}));
+  alert(r.ok?`Sent ${j.reports_sent} due report(s).`:'Failed');loadSchedules();}
+
 // ---- Invoices ----
 async function loadInvoices(){
   const rows=await api('/api/invoices');if(!rows)return;
@@ -846,6 +898,43 @@ async function showSoftware(devId, host){
   document.getElementById('dev-sw-title').textContent=`Installed software — ${host} (${(j.software||[]).length})`;
 }
 
+async function showPatches(devId, host){
+  const box=document.getElementById('dev-pa'), body=document.getElementById('t-dev-pa');
+  box.classList.remove('hidden');
+  body.innerHTML='<tr><td colspan=3 class="muted">Loading…</td></tr>';
+  const r=await fetch(`/api/devices/${devId}/patches`); const j=await r.json().catch(()=>({patches:[]}));
+  document.getElementById('dev-pa-title').textContent=`Pending patches — ${host} (${(j.patches||[]).length})`;
+  if(!r.ok){body.innerHTML=`<tr><td colspan=3 class="muted">${esc((j&&j.detail)||'Failed')}</td></tr>`;return;}
+  body.innerHTML=(j.patches||[]).map(p=>
+    `<tr><td>${esc(p.name)}</td><td>${esc(p.kb)||'—'}</td><td>${esc(p.severity)||'—'}</td></tr>`).join('')
+    ||'<tr><td colspan=3 style="color:var(--ok)">Up to date — no pending patches reported.</td></tr>';
+}
+
+// Tiny dependency-free SVG sparkline (0-100 series).
+function sparkline(vals, color){
+  vals=vals.filter(v=>v!=null);
+  if(!vals.length)return '<span class="muted">no data</span>';
+  const W=240,H=40,n=vals.length, dx=n>1?W/(n-1):0;
+  const pts=vals.map((v,i)=>`${(i*dx).toFixed(1)},${(H-(Math.max(0,Math.min(100,v))/100*H)).toFixed(1)}`).join(' ');
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="overflow:visible">
+    <polyline fill="none" stroke="${color}" stroke-width="2" points="${pts}"/></svg>`;
+}
+async function showMetrics(devId, host){
+  const box=document.getElementById('dev-mx'), body=document.getElementById('dev-mx-body');
+  box.classList.remove('hidden'); body.innerHTML='Loading…';
+  const r=await fetch(`/api/devices/${devId}/metrics?limit=50`); const j=await r.json().catch(()=>({series:[]}));
+  document.getElementById('dev-mx-title').textContent=`Metric history — ${host} (${(j.series||[]).length} check-ins)`;
+  if(!r.ok){body.innerHTML=`<span class="muted">${esc((j&&j.detail)||'Failed')}</span>`;return;}
+  const s=j.series||[];
+  if(!s.length){body.innerHTML='<span class="muted">No check-in history yet (charts appear after the agent reports a few times).</span>';return;}
+  const row=(label,key,color)=>{const last=s[s.length-1][key];
+    return `<div style="margin:8px 0"><div class="flex" style="justify-content:space-between">
+      <b>${label}</b><span class="muted">now: ${last??'—'}${key==='health_score'?'':'%'}</span></div>
+      ${sparkline(s.map(p=>p[key]),color)}</div>`;};
+  body.innerHTML=row('CPU','cpu_pct','#6c5ce7')+row('RAM','ram_pct','#00b894')
+    +row('Disk','disk_pct','#fdcb6e')+row('Health','health_score','#0984e3');
+}
+
 // ---- Networking / IPAM ----
 let CURNET=null;
 async function subnetCalc(){
@@ -1031,12 +1120,15 @@ async function load(){
   if(agSel)agSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   const ctSel=document.getElementById('ct-client');
   if(ctSel)ctSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
-  document.getElementById('t-devices').innerHTML=devices.map(d=>
-    `<tr><td>${esc(d.hostname)} <span class="muted">#${d.id}</span></td><td>${esc(d.os)||'—'}</td><td>${d.cpu_pct??'—'}</td>
-     <td>${d.disk_pct??'—'}</td><td>${esc(d.av_status)||'—'}</td><td>${badge(d.health_score,80,60)}</td>
+  document.getElementById('t-devices').innerHTML=devices.map(d=>{
+    const pp=d.patches_pending; const pcell=pp==null?'—':(pp===0?'<span style="color:var(--ok)">up to date</span>':`<span style="color:var(--warn)">${pp} pending</span>`);
+    return `<tr><td>${esc(d.hostname)} <span class="muted">#${d.id}</span></td><td>${esc(d.os)||'—'}</td><td>${d.cpu_pct??'—'}</td>
+     <td>${d.disk_pct??'—'}</td><td>${esc(d.av_status)||'—'}</td><td>${pcell}</td><td>${badge(d.health_score,80,60)}</td>
      <td class="muted">${ago(d.last_checkin)}</td>
-     <td><button class="btn sm" onclick="showSoftware(${d.id},'${esc(d.hostname)}')">View</button></td></tr>`).join('')
-    ||'<tr><td colspan=8 class="muted">No devices enrolled yet.</td></tr>';
+     <td class="flex"><button class="btn sm" onclick="showSoftware(${d.id},'${esc(d.hostname)}')">Software</button>
+       <button class="btn sm" onclick="showPatches(${d.id},'${esc(d.hostname)}')">Patches</button>
+       <button class="btn sm" onclick="showMetrics(${d.id},'${esc(d.hostname)}')">Metrics</button></td></tr>`;}).join('')
+    ||'<tr><td colspan=9 class="muted">No devices enrolled yet.</td></tr>';
 
   document.getElementById('t-licenses').innerHTML=licenses.map(l=>
     `<tr><td>${esc(l.product)}</td><td>${esc(l.vendor)||'—'}</td><td>${l.seats_used??'?'}/${l.seats??'?'}</td>
@@ -1054,7 +1146,7 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules()]);
 }
 load();
 </script>

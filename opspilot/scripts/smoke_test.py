@@ -629,7 +629,43 @@ def main():
         assert c.get(f"/api/devices/{dev_id}/software").json()["count"]==1
         print("software inventory report + read + dedup + replace + RBAC OK")
 
-    print("\n=== OpsPilot v0.19 SMOKE TEST PASSED ===")
+        # ===================== v0.20: patch management =====================
+        pr=a.post("/api/agent/patches", headers=hdr, json={"patches":[
+            {"name":"2024-05 Cumulative Update","kb":"5034123","severity":"critical"},
+            {"name":"Defender definitions","kb":None,"severity":"security"},
+        ]})
+        assert pr.status_code==200 and pr.json()["pending"]==2, pr.text
+        pj=c.get(f"/api/devices/{dev_id}/patches").json()
+        assert pj["pending"]==2 and any(p["kb"]=="KB5034123" or p["kb"]=="5034123" for p in pj["patches"]), pj
+        # device list surfaces the pending count; client can read own device patches
+        assert [d for d in c.get("/api/devices").json() if d["id"]==dev_id][0]["patches_pending"]==2
+        assert ca_c.get(f"/api/devices/{dev_id}/patches").json()["pending"]==2
+        # re-report replaces (now zero -> up to date)
+        a.post("/api/agent/patches", headers=hdr, json={"patches":[]})
+        assert c.get(f"/api/devices/{dev_id}/patches").json()["pending"]==0
+        print("patch report + read + count + replace + RBAC OK")
+
+        # ===================== v0.20: metric history =====================
+        mh=c.get(f"/api/devices/{dev_id}/metrics").json()
+        assert mh["points"]>=1 and isinstance(mh["series"],list), mh
+        assert ca_c.get(f"/api/devices/{dev_id}/metrics").status_code==200  # client own device
+        print("metric history series + RBAC OK")
+
+        # ===================== v0.20: scheduled reports =====================
+        sc=c.post("/api/report-schedules", json={"client_id":cid,"recipient_email":"owner@acme.co","cadence":"monthly"})
+        assert sc.status_code==201, sc.text
+        sid=sc.json()["id"]
+        assert c.post("/api/report-schedules", json={"client_id":cid,"recipient_email":"x@y.co","cadence":"daily"}).status_code==400
+        # first run sends it (last_sent None => due); second run is a no-op (not due yet)
+        r1=c.post("/api/report-schedules/run-now").json()
+        assert r1["reports_sent"]>=1, r1
+        assert c.post("/api/report-schedules/run-now").json()["reports_sent"]==0
+        assert c.post(f"/api/report-schedules/{sid}/toggle").json()["enabled"] is False
+        assert ca_c.get("/api/report-schedules").status_code==403  # staff-only
+        assert c.delete(f"/api/report-schedules/{sid}").status_code==204
+        print("scheduled reports CRUD + due-cadence + run-checks integration + RBAC OK")
+
+    print("\n=== OpsPilot v0.20 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

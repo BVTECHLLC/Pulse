@@ -23,7 +23,7 @@ from ...core.security import (
     verify_password,
 )
 from ...models import (
-    Client, Device, DeviceCheckin, DeviceSoftware, DeploymentStatus,
+    Client, Device, DeviceCheckin, DevicePatch, DeviceSoftware, DeploymentStatus,
     DiagnosticRequest, Role, ScriptDeployment, User,
 )
 from ...services import audit, automation, monitoring
@@ -216,6 +216,47 @@ def report_inventory(body: InventoryIn, request: Request,
             break
     db.commit()
     return {"ok": True, "stored": count}
+
+
+# --------------------------------------------------------------------------- #
+# Patch reporting (v0.20). The agent reports pending OS/software updates; we
+# replace the device's pending set and keep a count on the device for fast views.
+# --------------------------------------------------------------------------- #
+class PatchItem(BaseModel):
+    name: str
+    kb: str | None = None
+    severity: str | None = None
+
+
+class PatchesIn(BaseModel):
+    patches: list[PatchItem]
+
+
+@router.post("/patches")
+def report_patches(body: PatchesIn, request: Request,
+                   x_enroll_id: str = Header(...), x_agent_key: str = Header(...),
+                   db: Session = Depends(get_db)):
+    dev = _auth_device(db, x_enroll_id, x_agent_key)
+    db.query(DevicePatch).filter(DevicePatch.device_id == dev.id).delete()
+    now = datetime.now(timezone.utc)
+    count = 0
+    for item in body.patches:
+        name = (item.name or "").strip()[:400]
+        if not name:
+            continue
+        db.add(DevicePatch(
+            device_id=dev.id, client_id=dev.client_id, name=name,
+            kb=(item.kb or None) and item.kb.strip()[:60],
+            severity=(item.severity or None) and item.severity.strip()[:40],
+            reported_at=now,
+        ))
+        count += 1
+        if count >= 2000:
+            break
+    dev.patches_pending = count
+    dev.patch_status = "current" if count == 0 else f"{count} pending"
+    db.commit()
+    return {"ok": True, "pending": count}
 
 
 class JobResultIn(BaseModel):

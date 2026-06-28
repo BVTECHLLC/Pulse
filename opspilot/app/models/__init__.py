@@ -99,6 +99,7 @@ class Device(Base):
     logged_in_user: Mapped[str | None] = mapped_column(String(200))
     av_status: Mapped[str | None] = mapped_column(String(120))
     patch_status: Mapped[str | None] = mapped_column(String(120))
+    patches_pending: Mapped[int | None] = mapped_column(Integer)  # count of pending updates
     health_score: Mapped[int | None] = mapped_column(Integer)  # 0-100
     last_checkin: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # agent linkage
@@ -203,6 +204,33 @@ class DeviceSoftware(Base):
     version: Mapped[str | None] = mapped_column(String(120))
     publisher: Mapped[str | None] = mapped_column(String(200))
     reported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class DevicePatch(Base):
+    """Pending OS/software updates reported by the agent (v0.20). The agent
+    replaces a device's pending set on each report. Powers patch-compliance
+    visibility across the fleet."""
+    __tablename__ = "device_patches"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), index=True, nullable=False)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(400), nullable=False)
+    kb: Mapped[str | None] = mapped_column(String(60))         # e.g. KB5034123 (Windows)
+    severity: Mapped[str | None] = mapped_column(String(40))   # critical|important|security|other
+    reported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class ReportSchedule(Base):
+    """Recurring client report delivery (v0.20). The run-checks tick emails the
+    client's branded report on the configured cadence."""
+    __tablename__ = "report_schedules"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    recipient_email: Mapped[str] = mapped_column(String(200), nullable=False)
+    cadence: Mapped[str] = mapped_column(String(20), default="monthly")  # weekly|monthly|quarterly
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 # --------------------------------------------------------------------------- #
