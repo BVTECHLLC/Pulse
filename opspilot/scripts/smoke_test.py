@@ -527,12 +527,23 @@ def main():
 
         rep=c.get(f"/api/reports/{cid}/summary").json()
         assert rep["client"]["id"]==cid and "security" in rep and abs(rep["revenue"]["contract_mrr"]-2500)<0.01, rep
+        # v0.29: enriched QBR sections present
+        for k in ("patch","projects","assets","service"):
+            assert k in rep, ("missing report section", k)
+        assert "compliance_pct" in rep["patch"] and "active" in rep["projects"]
+        assert "warranty_expiring" in rep["assets"] and "hours_90d" in rep["service"]
+        # CSV export downloads, is real CSV, tenant-scoped
+        ex=c.get(f"/api/reports/{cid}/export.csv")
+        assert ex.status_code==200 and "text/csv" in ex.headers.get("content-type","")
+        assert "attachment" in ex.headers.get("content-disposition","")
+        assert ex.text.splitlines()[0]=="Metric,Value" and "MRR" in ex.text, ex.text[:120]
         assert c.get(f"/report/{cid}").status_code==200, "report page broken"
-        # client can view their own report but cannot create contracts
+        # client can view their own report + CSV but cannot create contracts
         assert ca_c.get(f"/api/reports/{cid}/summary").status_code==200
+        assert ca_c.get(f"/api/reports/{cid}/export.csv").status_code==200
         assert ca_c.post("/api/contracts", json={"client_id":cid,"name":"x","amount":1}).status_code==403
         assert all(ct["client_id"]==cid for ct in ca_c.get("/api/contracts").json())
-        print("client report + contracts RBAC OK")
+        print("client report (enriched QBR + CSV export) + RBAC OK")
 
         # ===================== v0.15: Notification channels =====================
         import threading
@@ -929,7 +940,7 @@ def main():
         assert c.delete(f"/api/assets/{a1['id']}").status_code==204
         print("asset management (CMDB + warranty + filters + RBAC + search) OK")
 
-    print("\n=== OpsPilot v0.28 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.29 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

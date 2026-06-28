@@ -1,5 +1,21 @@
 # BVTech OpsPilot — Changelog
 
+## v0.29.0 — QBR report builder (branded, exportable) (June 2026)
+
+### Added — a client-facing deliverable you can hand over or resell
+- The client report (`/api/reports/{id}/summary` + `/report/{id}`) now pulls in
+  **everything we've built**: device health, **patch compliance %**, alerts,
+  security score, ticket volume + **resolved** + SLA breaches, **active projects
+  & task completion**, **assets + warranties expiring**, **service hours
+  delivered (90d, billable split)**, and recurring revenue (MRR/ARR).
+- **CSV export** (`/api/reports/{id}/export.csv`): the whole snapshot as a flat
+  Metric,Value CSV — drop into Excel/Sheets or a QBR deck. Tenant-scoped.
+- The branded report page gains a second KPI row (Patch Compliance, Tickets
+  Resolved, Service Delivered, Assets) plus Projects and Infrastructure panels,
+  an **Export CSV** button next to Print/Save-PDF, and stays print-ready.
+- Staff and the owning client can both pull the report + CSV (read-only). Smoke
+  test covers the enriched sections, the CSV download, and RBAC. No schema change.
+
 ## v0.28.0 — Agent self-onboarding (fix "I installed it but don't see myself") (June 2026)
 
 ### Fixed — a downloaded agent now actually registers
