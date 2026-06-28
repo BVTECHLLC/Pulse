@@ -1,5 +1,43 @@
 # BVTech OpsPilot — Changelog
 
+## v0.21.0 — Integrations & command center (June 2026)
+
+### Added — interoperate with anything
+- **API keys** (`/api/integrations/api-keys`): any external tool can call the
+  Pulse API with an `X-API-Key` header. A key authenticates **as its owner**
+  (inheriting role + client scope); only a SHA-256 hash is stored, plaintext is
+  shown once. Wired into the core auth dependency, so keys work on **every**
+  endpoint.
+- **Outbound webhooks / event bus** (`/api/integrations/webhooks`): subscribe any
+  URL to internal events (`ticket.created`, `alert.opened`, `ticket.sla_breached`,
+  …). Deliveries are **HMAC-SHA256 signed** (`X-OpsPilot-Signature`), SSRF-guarded,
+  and fired centrally from the automation dispatcher. Per-subscription event
+  filter + client scope; test button.
+- **Inbound ingest** (`POST /api/ingest/{token}`): generate a tokenized URL any
+  external system can POST JSON to; Pulse creates a **ticket or alert** for the
+  bound client (recognizes subject/title, body/message, severity, priority). The
+  token is the auth — no session required. Ingested events also fan out on the
+  event bus.
+- **Integration catalog + connections** (`/api/integrations/catalog`,
+  `/connections`): a curated directory (ConnectWise, Autotask, HaloPSA, Datto/
+  Ninja/N-able RMM, IT Glue, Hudu, Slack/Teams, M365/Google, QuickBooks/Xero/
+  Stripe, Pax8, SentinelOne/Bitdefender/Huntress, Zapier/Make, custom) plus saved
+  connections storing each product's config. Config keys are listed back, never
+  secret values.
+
+### Added — search everywhere
+- **Global search** (`/api/search`): one bar in the header searches clients,
+  devices, tickets, alerts, invoices, licenses, KB, software inventory and
+  integrations — tenant-scoped, typed results with jump targets. Press **/** to
+  focus it.
+
+### Notes
+- New `api_keys`, `webhook_subscriptions`, `inbound_sources`,
+  `integration_connections` tables (migration `c5d6e7f8a9ba`); up/down/up +
+  single-head verified. Smoke test extended across all of the above (key
+  auth/revoke, signed event delivery, inbound→ticket/alert fan-out, catalog,
+  scoped search) — all passing.
+
 ## v0.20.0 — Patch management, metric history, scheduled reports (June 2026)
 
 ### Added — patch management

@@ -196,6 +196,14 @@ def _run_actions(db: Session, rule: AutomationRule, ctx: dict) -> tuple[bool, st
 def dispatch(db: Session, trigger: str, context: dict) -> list[dict]:
     """Run all enabled rules for `trigger` whose scope+conditions match. Commits
     its own work. Returns a list of {rule_id, rule_name, success, summary}."""
+    # Fan the event out to external webhook subscribers (the integration bus).
+    # Best-effort and isolated so a slow/failing endpoint never blocks automation.
+    try:
+        from . import events
+        events.emit(db, trigger, context, client_id=context.get("client_id"))
+    except Exception:
+        pass
+
     rules = (db.query(AutomationRule)
              .filter(AutomationRule.trigger == trigger, AutomationRule.enabled.is_(True))
              .all())

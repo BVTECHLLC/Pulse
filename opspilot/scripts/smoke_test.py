@@ -665,7 +665,83 @@ def main():
         assert c.delete(f"/api/report-schedules/{sid}").status_code==204
         print("scheduled reports CRUD + due-cadence + run-checks integration + RBAC OK")
 
-    print("\n=== OpsPilot v0.20 SMOKE TEST PASSED ===")
+        # ===================== v0.21: integrations & command center =====================
+        # --- API keys: external auth as the owner via X-API-Key ---
+        keyj=c.post("/api/integrations/api-keys", json={"label":"smoke-tool"}).json()
+        raw=keyj["api_key"]; kid=keyj["id"]
+        kc=TestClient(app); kc.cookies.clear()
+        assert kc.get("/api/clients").status_code==401                       # no auth
+        rk=kc.get("/api/clients", headers={"X-API-Key":raw})
+        assert rk.status_code==200 and isinstance(rk.json(),list), rk.text    # key works everywhere
+        c.delete(f"/api/integrations/api-keys/{kid}")
+        assert kc.get("/api/clients", headers={"X-API-Key":raw}).status_code==401  # revoked
+        assert ca_c.get("/api/integrations/api-keys").status_code==403        # staff-only
+        print("API keys: auth-as-owner + revoke + RBAC OK")
+
+        # --- Outbound webhooks (event bus) with a fresh local receiver ---
+        evt_hits=[]
+        class _EH(BaseHTTPRequestHandler):
+            def do_POST(self):
+                n=int(self.headers.get("content-length",0))
+                evt_hits.append((self.headers.get("X-OpsPilot-Event"),
+                                 self.headers.get("X-OpsPilot-Signature"),
+                                 self.rfile.read(n).decode()))
+                self.send_response(200); self.end_headers(); self.wfile.write(b"ok")
+            def log_message(self,*a): pass
+        srv2=HTTPServer(("127.0.0.1",0),_EH)
+        threading.Thread(target=srv2.serve_forever,daemon=True).start()
+        ehook=f"http://127.0.0.1:{srv2.server_address[1]}/ev"
+        whj=c.post("/api/integrations/webhooks", json={"url":ehook,"events":["ticket.created"]}).json()
+        assert "secret" in whj, whj
+        assert any(e=="ticket.created" for e in c.get("/api/integrations/events").json()["events"])
+        tw=c.post(f"/api/integrations/webhooks/{whj['id']}/test").json()
+        assert tw["ok"] and 200<=tw["status"]<300, tw
+        assert any(h[0]=="ping" for h in evt_hits), evt_hits           # signed test event delivered
+        assert all(h[1] and h[1].startswith("sha256=") for h in evt_hits), "missing HMAC signature"
+        assert c.post("/api/integrations/webhooks", json={"url":"ftp://x"}).status_code==400  # http(s) only
+        assert c.post("/api/integrations/webhooks", json={"url":ehook,"events":["nope.bad"]}).status_code==400
+
+        # --- Inbound ingest: any tool -> ticket/alert (token IS the auth) ---
+        ij=c.post("/api/integrations/inbound", json={"name":"UptimeRobot","client_id":cid,"action":"ticket"}).json()
+        ingest_url=ij["url"]; ipath=ingest_url[ingest_url.index("/api/ingest/"):]
+        pub=TestClient(app); pub.cookies.clear()
+        rr=pub.post(ipath, json={"subject":"Site down","body":"HTTP 500","priority":"high"})
+        assert rr.status_code==200 and rr.json()["created"]=="ticket", rr.text
+        # that ticket.created event should have reached our webhook receiver (event bus)
+        assert any(h[0]=="ticket.created" and "Site down" in h[2] for h in evt_hits), evt_hits
+        assert pub.post("/api/ingest/bogus-token", json={"subject":"x"}).status_code==404
+        # alert action
+        aj=c.post("/api/integrations/inbound", json={"name":"Datadog","client_id":cid,"action":"alert"}).json()
+        apath=aj["url"][aj["url"].index("/api/ingest/"):]
+        ar=pub.post(apath, json={"title":"CPU 99%","severity":"critical"})
+        assert ar.status_code==200 and ar.json()["created"]=="alert", ar.text
+        assert any(s["received_count"]>=1 for s in c.get("/api/integrations/inbound").json())
+        assert ca_c.get("/api/integrations/inbound").status_code==403
+        print("inbound ingest -> ticket/alert + event-bus fan-out + HMAC + RBAC OK")
+
+        # --- Integration catalog + saved connections ---
+        cat=c.get("/api/integrations/catalog").json()["catalog"]
+        assert len(cat)>=10 and any(x["key"]=="connectwise" for x in cat), cat
+        conn=c.post("/api/integrations/connections", json={"provider":"slack","config":{"webhook_url":"x"}}).json()
+        conns=c.get("/api/integrations/connections").json()
+        assert any(cc["id"]==conn["id"] and "webhook_url" in cc["config_keys"] for cc in conns), conns
+        assert c.post(f"/api/integrations/connections/{conn['id']}/toggle").json()["enabled"] is False
+        assert c.delete(f"/api/integrations/connections/{conn['id']}").status_code==204
+        srv2.shutdown()
+        print("integration catalog + connections OK")
+
+        # --- Global search across the command center ---
+        sj=c.get("/api/search", params={"q":"Smoke"}).json()
+        assert any(r["type"]=="client" for r in sj["results"]), sj
+        sd=c.get("/api/search", params={"q":"SMOKE-PC"}).json()
+        assert any(r["type"]=="device" for r in sd["results"]), sd
+        assert c.get("/api/search", params={"q":"a"}).json()["results"]==[]   # min length guard
+        # client user search is tenant-scoped (only their own client surfaces)
+        cs=ca_c.get("/api/search", params={"q":"Smoke"}).json()
+        assert all(r.get("type")!="integration" for r in cs["results"])        # integrations are staff-only
+        print("global search across entities + scope OK")
+
+    print("\n=== OpsPilot v0.21 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
