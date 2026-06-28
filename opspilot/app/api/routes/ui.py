@@ -43,3 +43,8 @@ def portal(request: Request):
 @router.get("/invoice/{invoice_id}", response_class=HTMLResponse)
 def invoice_view(invoice_id: int, request: Request):
     return _templates.TemplateResponse("invoice.html", _ctx(request, invoice_id=invoice_id))
+
+
+@router.get("/report/{client_id}", response_class=HTMLResponse)
+def report_view(client_id: int, request: Request):
+    return _templates.TemplateResponse("report.html", _ctx(request, client_id=client_id))

@@ -9,12 +9,26 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import FileResponse, PlainTextResponse
 
 router = APIRouter(prefix="/download", tags=["agent-download"])
 
-_AGENT_FILE = Path(__file__).resolve().parents[3] / "agent" / "opspilot_agent.py"
+
+def _agent_path() -> Path | None:
+    """Find the agent script across dev + container layouts (robust to where the
+    app is mounted)."""
+    here = Path(__file__).resolve()
+    candidates = [
+        here.parents[3] / "agent" / "opspilot_agent.py",   # /app/agent (container) & repo
+        here.parents[2] / "agent" / "opspilot_agent.py",   # app/agent fallback
+        Path("/app/agent/opspilot_agent.py"),
+        Path.cwd() / "agent" / "opspilot_agent.py",
+    ]
+    for c in candidates:
+        if c.is_file():
+            return c
+    return None
 
 
 def _base_url(request: Request) -> str:
@@ -27,8 +41,10 @@ def _base_url(request: Request) -> str:
 @router.get("/agent")
 def download_agent():
     """The raw agent script."""
-    return FileResponse(str(_AGENT_FILE), media_type="text/x-python",
-                        filename="opspilot_agent.py")
+    path = _agent_path()
+    if not path:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Agent file not found on server")
+    return FileResponse(str(path), media_type="text/x-python", filename="opspilot_agent.py")
 
 
 @router.get("/install.sh", response_class=PlainTextResponse)

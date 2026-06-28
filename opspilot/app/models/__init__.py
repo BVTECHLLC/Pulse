@@ -700,3 +700,22 @@ class DiagnosticRequest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# --------------------------------------------------------------------------- #
+# v0.14 — Recurring service contracts (MRR)
+# --------------------------------------------------------------------------- #
+class Contract(Base):
+    """A recurring service agreement — flat monthly (or per-period) revenue that
+    feeds the billing/MRR rollup independently of license costs."""
+    __tablename__ = "contracts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    amount: Mapped[float] = mapped_column(Float, default=0.0)      # per billing period
+    billing_period: Mapped[str] = mapped_column(String(20), default="monthly")  # monthly|quarterly|annual
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)  # active|paused|expired
+    start_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    end_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

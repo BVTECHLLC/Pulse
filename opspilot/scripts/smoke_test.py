@@ -509,9 +509,32 @@ def main():
         assert ps.status_code==200 and "TESTTOKEN" in ps.text and "PULSE_URL" in ps.text and "schtasks" in ps.text, ps.text[:200]
         # installer auto-targets the serving host (so it reports back to us)
         assert "http://testserver" in sh.text, "installer didn't embed server URL"
+        # the agent file actually serves (this is the part that must never 404)
+        assert "opspilot_agent.py" in c.get("/download/agent").headers.get("content-disposition","")
+        # enroll-token works for a real client (the Deploy Agent button path)
+        assert c.post(f"/api/agent/enroll-token/{cid}").status_code==200
         print("agent download + one-click installers OK")
 
-    print("\n=== OpsPilot v0.13 SMOKE TEST PASSED ===")
+        # ===================== v0.14: Contracts + client reports =====================
+        base=c.get("/api/billing/summary").json()["total_mrr"]
+        c.post("/api/contracts", json={"client_id":cid,"name":"Managed IT","amount":1500,"billing_period":"monthly"})
+        s=c.get("/api/billing/summary").json()
+        assert abs(s["contract_mrr"]-1500)<0.01 and abs(s["total_mrr"]-(base+1500))<0.01, s
+        c.post("/api/contracts", json={"client_id":cid,"name":"Backups","amount":3000,"billing_period":"quarterly"})
+        s2=c.get("/api/billing/summary").json()
+        assert abs(s2["contract_mrr"]-2500)<0.01, s2   # 1500/mo + (3000/quarter = 1000/mo)
+        print("contracts MRR (monthly + quarterly normalize) OK")
+
+        rep=c.get(f"/api/reports/{cid}/summary").json()
+        assert rep["client"]["id"]==cid and "security" in rep and abs(rep["revenue"]["contract_mrr"]-2500)<0.01, rep
+        assert c.get(f"/report/{cid}").status_code==200, "report page broken"
+        # client can view their own report but cannot create contracts
+        assert ca_c.get(f"/api/reports/{cid}/summary").status_code==200
+        assert ca_c.post("/api/contracts", json={"client_id":cid,"name":"x","amount":1}).status_code==403
+        assert all(ct["client_id"]==cid for ct in ca_c.get("/api/contracts").json())
+        print("client report + contracts RBAC OK")
+
+    print("\n=== OpsPilot v0.14 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
