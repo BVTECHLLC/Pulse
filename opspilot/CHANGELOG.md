@@ -1,5 +1,22 @@
 # BVTech OpsPilot — Changelog
 
+## v0.19.0 — Software inventory (RMM) (June 2026)
+
+### Added — installed-software inventory across the fleet
+- **Agent (v1.1.0) reports installed software** on first check-in then ~every 6h:
+  Windows via the registry uninstall hives (no extra deps), Linux via
+  `dpkg`/`rpm`, macOS via `system_profiler`. Read-only, best-effort.
+- **`POST /api/agent/inventory`** (device-authenticated): replaces the device's
+  full software set each report (dedup by name+version, capped for safety).
+- **`GET /api/devices/{id}/software`**: per-device inventory, tenant-scoped
+  (staff any client; client users their own).
+- **`GET /api/software/search?q=`**: fleet-wide "who has app X?" — aggregates
+  install counts by name+version across devices the caller can see. Powers
+  license reconciliation and vulnerability response.
+- **Dashboard Devices tab** gains a per-device **Software → View** drill-down.
+- New `device_software` table (migration `a3b4c5d6e7f8`); verified up/down/up and
+  single-head on SQLite. Agent Linux collection verified live (686 real pkgs).
+
 ## v0.18.0 — Standalone .exe download that actually works (June 2026)
 
 ### Added — no-Python agent install path

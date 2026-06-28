@@ -32,9 +32,10 @@ import time
 from pathlib import Path
 from urllib import request as urlreq
 
-AGENT_VERSION = "1.0.0"
+AGENT_VERSION = "1.1.0"
 PULSE_URL = os.environ.get("PULSE_URL", "https://portal.bvtech.org")
 CHECKIN_INTERVAL = 300  # seconds; server can override
+INVENTORY_INTERVAL = 6 * 3600  # software inventory cadence (seconds)
 
 if os.name == "nt":
     CONF_DIR = Path(os.environ.get("ProgramData", "C:/ProgramData")) / "BVTechOpsPilot"
@@ -131,6 +132,101 @@ def _av_status() -> str | None:
 def _patch_status() -> str | None:
     # Lightweight heuristic placeholder; Phase 4 wires real Windows Update COM API.
     return None
+
+
+def collect_software() -> list[dict]:
+    """Installed-software inventory, per OS. Read-only. Best-effort: returns
+    whatever it can enumerate, [] on failure."""
+    try:
+        if os.name == "nt":
+            return _software_windows()
+        if sys.platform == "darwin":
+            return _software_macos()
+        return _software_linux()
+    except Exception as e:
+        _log(f"software inventory failed: {e}")
+        return []
+
+
+def _software_windows() -> list[dict]:
+    # Read both 64- and 32-bit uninstall hives from the registry (no extra deps).
+    import winreg  # type: ignore
+    apps: list[dict] = []
+    roots = [
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+    ]
+    for hive, path in roots:
+        try:
+            key = winreg.OpenKey(hive, path)
+        except OSError:
+            continue
+        for i in range(winreg.QueryInfoKey(key)[0]):
+            try:
+                sub = winreg.OpenKey(key, winreg.EnumKey(key, i))
+                name = winreg.QueryValueEx(sub, "DisplayName")[0]
+            except OSError:
+                continue
+            if not name:
+                continue
+            def _v(k):
+                try:
+                    return winreg.QueryValueEx(sub, k)[0]
+                except OSError:
+                    return None
+            apps.append({"name": str(name), "version": _v("DisplayVersion"),
+                         "publisher": _v("Publisher")})
+    return apps
+
+
+def _software_linux() -> list[dict]:
+    import subprocess
+    # dpkg (Debian/Ubuntu)
+    try:
+        out = subprocess.run(["dpkg-query", "-W", "-f=${Package}\t${Version}\t${Maintainer}\n"],
+                             capture_output=True, text=True, timeout=30)
+        if out.returncode == 0 and out.stdout.strip():
+            apps = []
+            for line in out.stdout.splitlines():
+                parts = line.split("\t")
+                if parts and parts[0]:
+                    apps.append({"name": parts[0],
+                                 "version": parts[1] if len(parts) > 1 else None,
+                                 "publisher": parts[2] if len(parts) > 2 else None})
+            return apps
+    except Exception:
+        pass
+    # rpm (RHEL/Fedora/SUSE)
+    try:
+        out = subprocess.run(["rpm", "-qa", "--qf", "%{NAME}\t%{VERSION}-%{RELEASE}\t%{VENDOR}\n"],
+                             capture_output=True, text=True, timeout=30)
+        if out.returncode == 0 and out.stdout.strip():
+            apps = []
+            for line in out.stdout.splitlines():
+                parts = line.split("\t")
+                if parts and parts[0]:
+                    apps.append({"name": parts[0],
+                                 "version": parts[1] if len(parts) > 1 else None,
+                                 "publisher": parts[2] if len(parts) > 2 else None})
+            return apps
+    except Exception:
+        pass
+    return []
+
+
+def _software_macos() -> list[dict]:
+    import subprocess
+    out = subprocess.run(["system_profiler", "-json", "SPApplicationsDataType"],
+                         capture_output=True, text=True, timeout=60)
+    data = json.loads(out.stdout or "{}")
+    apps = []
+    for a in data.get("SPApplicationsDataType", []):
+        name = a.get("_name")
+        if name:
+            apps.append({"name": name, "version": a.get("version"),
+                         "publisher": a.get("obtained_from")})
+    return apps
 
 
 # --------------------------------------------------------------------------- #
@@ -301,6 +397,8 @@ def run_loop(enable_scripts: bool = False) -> None:
         print("  --enable-remote-scripts.")
         print("=" * 64)
     print("  Network diagnostics: ON (read-only probes; ping/dns/port/traceroute/discovery).")
+    print("  Software inventory: ON (installed apps; refreshed ~every 6h).")
+    last_inventory = 0.0
     while True:
         try:
             res = _post("/api/agent/checkin", collect(), headers)
@@ -308,6 +406,14 @@ def run_loop(enable_scripts: bool = False) -> None:
             _process_diagnostics(headers)  # read-only; always processed
             if enable_scripts:
                 _process_jobs(headers)
+            # Software inventory is heavier; report on first cycle then ~every 6h.
+            now = time.time()
+            if now - last_inventory >= INVENTORY_INTERVAL:
+                sw = collect_software()
+                if sw:
+                    _post("/api/agent/inventory", {"software": sw}, headers)
+                    _log(f"reported {len(sw)} installed apps")
+                last_inventory = now
         except Exception as e:
             print(f"cycle failed: {e}")
         time.sleep(interval)

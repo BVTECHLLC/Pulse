@@ -23,8 +23,8 @@ from ...core.security import (
     verify_password,
 )
 from ...models import (
-    Client, Device, DeviceCheckin, DeploymentStatus, DiagnosticRequest, Role,
-    ScriptDeployment, User,
+    Client, Device, DeviceCheckin, DeviceSoftware, DeploymentStatus,
+    DiagnosticRequest, Role, ScriptDeployment, User,
 )
 from ...services import audit, automation, monitoring
 
@@ -170,6 +170,52 @@ def pull_jobs(x_enroll_id: str = Header(...), x_agent_key: str = Header(...),
     if jobs:
         db.commit()
     return {"jobs": out}
+
+
+# --------------------------------------------------------------------------- #
+# Software inventory (v0.19). The agent reports installed apps; we replace the
+# device's full set each time so the inventory always reflects current state.
+# --------------------------------------------------------------------------- #
+class SoftwareItem(BaseModel):
+    name: str
+    version: str | None = None
+    publisher: str | None = None
+
+
+class InventoryIn(BaseModel):
+    software: list[SoftwareItem]
+
+
+@router.post("/inventory")
+def report_inventory(body: InventoryIn, request: Request,
+                     x_enroll_id: str = Header(...), x_agent_key: str = Header(...),
+                     db: Session = Depends(get_db)):
+    dev = _auth_device(db, x_enroll_id, x_agent_key)
+    # Replace the whole set (dedup by name+version; cap to a sane fleet size).
+    db.query(DeviceSoftware).filter(DeviceSoftware.device_id == dev.id).delete()
+    seen: set[tuple[str, str | None]] = set()
+    now = datetime.now(timezone.utc)
+    count = 0
+    for item in body.software:
+        name = (item.name or "").strip()[:300]
+        if not name:
+            continue
+        version = (item.version or None)
+        key = (name.lower(), (version or "").lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        db.add(DeviceSoftware(
+            device_id=dev.id, client_id=dev.client_id, name=name,
+            version=(version[:120] if version else None),
+            publisher=((item.publisher or None) and item.publisher.strip()[:200]),
+            reported_at=now,
+        ))
+        count += 1
+        if count >= 5000:   # guardrail against a runaway report
+            break
+    db.commit()
+    return {"ok": True, "stored": count}
 
 
 class JobResultIn(BaseModel):

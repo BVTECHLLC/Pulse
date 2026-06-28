@@ -100,8 +100,13 @@
       </div>
     </div>
     <div class="card"><table>
-    <thead><tr><th>Host</th><th>OS</th><th>CPU</th><th>Disk</th><th>AV</th><th>Health</th><th>Last seen</th></tr></thead>
-    <tbody id="t-devices"></tbody></table></div></section>
+    <thead><tr><th>Host</th><th>OS</th><th>CPU</th><th>Disk</th><th>AV</th><th>Health</th><th>Last seen</th><th>Software</th></tr></thead>
+    <tbody id="t-devices"></tbody></table></div>
+    <div id="dev-sw" class="card hidden" style="margin-top:12px">
+      <div class="flex" style="justify-content:space-between"><h3 id="dev-sw-title" style="margin:0">Installed software</h3>
+        <button class="btn sm" onclick="document.getElementById('dev-sw').classList.add('hidden')">Close</button></div>
+      <table><thead><tr><th>Name</th><th>Version</th><th>Publisher</th></tr></thead><tbody id="t-dev-sw"></tbody></table>
+    </div></section>
 
   <section id="alerts" class="hidden">
     <div class="card">
@@ -826,6 +831,21 @@ async function genAgent(){
   document.getElementById('ag-out').classList.remove('hidden');
 }
 
+// ---- Software inventory ----
+async function showSoftware(devId, host){
+  const box=document.getElementById('dev-sw'), body=document.getElementById('t-dev-sw');
+  document.getElementById('dev-sw-title').textContent=`Installed software — ${host}`;
+  box.classList.remove('hidden');
+  body.innerHTML='<tr><td colspan=3 class="muted">Loading…</td></tr>';
+  const r=await fetch(`/api/devices/${devId}/software`);
+  const j=await r.json().catch(()=>({software:[]}));
+  if(!r.ok){body.innerHTML=`<tr><td colspan=3 class="muted">${esc((j&&j.detail)||'Failed to load')}</td></tr>`;return;}
+  body.innerHTML=(j.software||[]).map(s=>
+    `<tr><td>${esc(s.name)}</td><td>${esc(s.version)||'—'}</td><td>${esc(s.publisher)||'—'}</td></tr>`).join('')
+    ||'<tr><td colspan=3 class="muted">No inventory reported yet (the agent reports installed apps on first check-in).</td></tr>';
+  document.getElementById('dev-sw-title').textContent=`Installed software — ${host} (${(j.software||[]).length})`;
+}
+
 // ---- Networking / IPAM ----
 let CURNET=null;
 async function subnetCalc(){
@@ -1014,8 +1034,9 @@ async function load(){
   document.getElementById('t-devices').innerHTML=devices.map(d=>
     `<tr><td>${esc(d.hostname)} <span class="muted">#${d.id}</span></td><td>${esc(d.os)||'—'}</td><td>${d.cpu_pct??'—'}</td>
      <td>${d.disk_pct??'—'}</td><td>${esc(d.av_status)||'—'}</td><td>${badge(d.health_score,80,60)}</td>
-     <td class="muted">${ago(d.last_checkin)}</td></tr>`).join('')
-    ||'<tr><td colspan=7 class="muted">No devices enrolled yet.</td></tr>';
+     <td class="muted">${ago(d.last_checkin)}</td>
+     <td><button class="btn sm" onclick="showSoftware(${d.id},'${esc(d.hostname)}')">View</button></td></tr>`).join('')
+    ||'<tr><td colspan=8 class="muted">No devices enrolled yet.</td></tr>';
 
   document.getElementById('t-licenses').innerHTML=licenses.map(l=>
     `<tr><td>${esc(l.product)}</td><td>${esc(l.vendor)||'—'}</td><td>${l.seats_used??'?'}/${l.seats??'?'}</td>

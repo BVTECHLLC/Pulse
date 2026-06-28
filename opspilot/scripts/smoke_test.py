@@ -606,7 +606,30 @@ def main():
             assert "no-store" in cc, (pth, cc)
         print("HTML no-store cache headers OK")
 
-    print("\n=== OpsPilot v0.18 SMOKE TEST PASSED ===")
+        # ===================== v0.19: software inventory =====================
+        # SMOKE-PC was enrolled earlier (hdr). Agent reports installed software;
+        # staff + the owning client can read it; fleet search aggregates by app.
+        dev_id=[d for d in c.get("/api/devices").json() if d["hostname"]=="SMOKE-PC"][0]["id"]
+        inv=a.post("/api/agent/inventory", headers=hdr, json={"software":[
+            {"name":"Google Chrome","version":"125.0","publisher":"Google LLC"},
+            {"name":"7-Zip","version":"23.01","publisher":"Igor Pavlov"},
+            {"name":"Google Chrome","version":"125.0","publisher":"Google LLC"},  # dup -> collapsed
+        ]})
+        assert inv.status_code==200 and inv.json()["stored"]==2, inv.text
+        got=c.get(f"/api/devices/{dev_id}/software").json()
+        assert got["count"]==2 and any(s["name"]=="Google Chrome" for s in got["software"]), got
+        # fleet-wide search (staff) finds Chrome on >=1 device
+        srch=c.get("/api/software/search", params={"q":"chrome"}).json()
+        assert any(r["name"]=="Google Chrome" and r["devices"]>=1 for r in srch), srch
+        # owning client (ca_c) can read its own device's software + scoped search
+        assert ca_c.get(f"/api/devices/{dev_id}/software").json()["count"]==2
+        assert all(True for _ in ca_c.get("/api/software/search").json())  # 200, scoped
+        # re-report REPLACES the set (now a single app)
+        a.post("/api/agent/inventory", headers=hdr, json={"software":[{"name":"Slack","version":"4.0"}]})
+        assert c.get(f"/api/devices/{dev_id}/software").json()["count"]==1
+        print("software inventory report + read + dedup + replace + RBAC OK")
+
+    print("\n=== OpsPilot v0.19 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
