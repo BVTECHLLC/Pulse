@@ -13,7 +13,7 @@ from ...core.db import get_db
 from ...core.deps import current_user, is_staff
 from ...models import (
     Alert, Client, Device, DeviceSoftware, IntegrationConnection, Invoice,
-    KBArticle, License, SupportTicket, User,
+    KBArticle, License, Project, ProjectTask, SupportTicket, User,
 )
 
 router = APIRouter(prefix="/api/search", tags=["search"])
@@ -81,6 +81,15 @@ def search(q: str = "", limit: int = 8, db: Session = Depends(get_db),
                     DeviceSoftware).limit(cap).all():
         out.append({"type": "software", "id": sw.device_id, "label": sw.name,
                     "sub": (sw.version or "") + " · device #%d" % sw.device_id, "tab": "devices"})
+
+    for pr in scope(db.query(Project).filter(Project.name.ilike(like)), Project).limit(cap).all():
+        out.append({"type": "project", "id": pr.id, "label": pr.name,
+                    "sub": pr.status.value, "tab": "projects"})
+
+    for tk in scope(db.query(ProjectTask).filter(ProjectTask.title.ilike(like)),
+                    ProjectTask).limit(cap).all():
+        out.append({"type": "task", "id": tk.id, "label": tk.title,
+                    "sub": f"{tk.status} · project #{tk.project_id}", "tab": "projects"})
 
     if staff:
         for ic in db.query(IntegrationConnection).filter(

@@ -1,5 +1,23 @@
 # BVTech OpsPilot — Changelog
 
+## v0.24.0 — PSA projects & Kanban board (June 2026)
+
+### Added — project management
+- **Projects** (`/api/projects`): client engagements (onboarding, migrations,
+  rollouts) with status, due date, budget hours, and owner. Staff manage; the
+  owning **client can view their own boards** (read-only transparency).
+- **Kanban board** (`/api/projects/{id}/board`): tasks grouped into **To do /
+  In progress / Review / Done** columns. `POST /api/tasks/{id}/move` is the
+  drag-between-columns action — moving into *Done* stamps `completed_at`, moving
+  out clears it; progress rolls up as done/total %.
+- **Tasks**: title, description, assignee, priority, due date, estimate hours,
+  position. Full CRUD; deleting a project cascades its tasks.
+- Dashboard gains a **Projects** tab with a live board (per-card ← / → to move,
+  add task, progress in the project switcher). Projects + tasks are now in
+  **global search**.
+- New `projects` + `project_tasks` tables (migration `e7f8a9bacbdc`); up/down/up
+  verified on SQLite and **Postgres 16** (incl. the enum type).
+
 ## v0.23.0 — OAuth2 SSO + connectors (June 2026)
 
 ### Added — sign in with Microsoft / Google, and connect provider accounts

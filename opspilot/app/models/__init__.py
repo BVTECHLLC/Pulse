@@ -339,6 +339,56 @@ class OAuthToken(Base):
 
 
 # --------------------------------------------------------------------------- #
+# v0.24 — PSA projects & Kanban board
+# --------------------------------------------------------------------------- #
+class ProjectStatus(str, enum.Enum):
+    ACTIVE = "active"
+    ON_HOLD = "on_hold"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+# Kanban columns, left-to-right. Tasks store the string; `done` stamps completed_at.
+TASK_COLUMNS = ["todo", "in_progress", "review", "done"]
+
+
+class Project(Base):
+    """A client engagement / piece of project work (onboarding, migration, rollout).
+    Staff manage; the owning client can view (read-only transparency)."""
+    __tablename__ = "projects"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[ProjectStatus] = mapped_column(Enum(ProjectStatus), default=ProjectStatus.ACTIVE, index=True)
+    start_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    budget_hours: Mapped[float | None] = mapped_column(Float)
+    owner_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class ProjectTask(Base):
+    """A card on the project's Kanban board."""
+    __tablename__ = "project_tasks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True, nullable=False)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="todo", index=True)  # one of TASK_COLUMNS
+    assignee_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    priority: Mapped[str] = mapped_column(String(20), default="normal")  # low|normal|high|urgent
+    due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    estimate_hours: Mapped[float | None] = mapped_column(Float)
+    position: Mapped[int] = mapped_column(Integer, default=0)   # order within a column
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+# --------------------------------------------------------------------------- #
 # v0.3 — Monitoring & alerting
 # --------------------------------------------------------------------------- #
 class AlertStatus(str, enum.Enum):

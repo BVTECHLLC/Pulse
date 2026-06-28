@@ -33,6 +33,7 @@
     <a data-tab="devices" onclick="tab('devices')">Devices</a>
     <a data-tab="alerts" onclick="tab('alerts')">Alerts</a>
     <a data-tab="tickets" onclick="tab('tickets')">Tickets</a>
+    <a data-tab="projects" onclick="tab('projects')">Projects</a>
     <a data-tab="billing" onclick="tab('billing')">Billing</a>
     <a data-tab="automation" onclick="tab('automation')">Automation</a>
     <a data-tab="security" onclick="tab('security')">Security</a>
@@ -152,6 +153,31 @@
     <div class="card"><table>
       <thead><tr><th>#</th><th>Subject</th><th>Client</th><th>Priority</th><th>Status</th><th>SLA</th><th>Opened</th></tr></thead>
       <tbody id="t-tickets"></tbody></table></div>
+  </section>
+
+  <section id="projects" class="hidden">
+    <div class="card" style="margin-bottom:16px">
+      <h3>Projects <span class="pill">Kanban board</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Plan and track client engagements — onboarding, migrations, rollouts. Clients can view their own boards.</p>
+      <div class="flex">
+        <select id="pj-client" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
+        <input id="pj-name" placeholder="Project name (e.g. M365 Migration)" style="flex:1;min-width:200px">
+        <button class="btn sm" onclick="createProject()">New project</button>
+      </div>
+      <div class="err" id="pj-msg"></div>
+      <div class="flex" style="margin-top:10px;flex-wrap:wrap;gap:8px" id="pj-list"></div>
+    </div>
+    <div id="pj-board-wrap" class="hidden">
+      <div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+        <div><b id="pj-board-title">—</b> <span class="muted" id="pj-board-sub"></span></div>
+        <div class="flex">
+          <input id="pj-task-title" placeholder="New task title" style="min-width:200px">
+          <button class="btn sm" onclick="addTask()">Add task</button>
+          <button class="btn sm ghost" onclick="delProject()">Delete project</button>
+        </div>
+      </div>
+      <div class="grid cols-4" id="pj-board" style="align-items:start"></div>
+    </div>
   </section>
 
   <section id="billing" class="hidden">
@@ -637,7 +663,8 @@ async function sendReply(id){
   await post(`/api/tickets/${id}/comments`,{body,internal:document.getElementById('td-internal').checked});
   refreshTicketStats();openTicket(id);
 }
-async function loadStaff(){STAFF=await api('/api/staff')||[];}
+let STAFFMAP={};
+async function loadStaff(){STAFF=await api('/api/staff')||[];STAFFMAP={};(STAFF||[]).forEach(u=>STAFFMAP[u.id]=u.full_name||u.email);}
 async function refreshTicketStats(){
   const [all,sla]=await Promise.all([api('/api/tickets'),api('/api/tickets/sla-summary').catch(()=>null)]);
   if(all)document.getElementById('s-tickets').textContent=all.filter(t=>t.status==='open'||t.status==='in_progress').length;
@@ -1019,6 +1046,69 @@ async function showMetrics(devId, host){
     +row('Disk','disk_pct','#fdcb6e')+row('Health','health_score','#0984e3');
 }
 
+// ---- Projects / Kanban ----
+const COLS={todo:'To do',in_progress:'In progress',review:'Review',done:'Done'};
+const COLORDER=['todo','in_progress','review','done'];
+let CURPROJ=null;
+async function loadProjects(){
+  const sel=document.getElementById('pj-client');
+  if(sel)sel.innerHTML=Object.entries(CLIENTS||{}).map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('');
+  const rows=await api('/api/projects');if(!rows)return;
+  document.getElementById('pj-list').innerHTML=rows.map(p=>
+    `<button class="btn sm ${CURPROJ===p.id?'':'ghost'}" onclick="openProject(${p.id})">
+       ${esc(p.name)} <span class="muted">· ${p.progress}%</span></button>`).join('')
+    ||'<span class="muted">No projects yet — create one above.</span>';
+  if(CURPROJ && rows.some(p=>p.id===CURPROJ)) openProject(CURPROJ);
+}
+async function createProject(){
+  const msg=document.getElementById('pj-msg');msg.textContent='';
+  const name=document.getElementById('pj-name').value.trim();
+  if(!name){msg.textContent='Project name required.';return;}
+  const r=await post('/api/projects',{client_id:+document.getElementById('pj-client').value,name});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){document.getElementById('pj-name').value='';CURPROJ=j.id;loadProjects();}
+  else{msg.style.color='var(--bad)';msg.textContent=j.detail||'Failed';}
+}
+async function openProject(id){
+  CURPROJ=id;
+  const b=await api(`/api/projects/${id}/board`);if(!b)return;
+  document.getElementById('pj-board-wrap').classList.remove('hidden');
+  document.getElementById('pj-board-title').textContent=b.project.name;
+  document.getElementById('pj-board-sub').textContent=`${b.project.done_count}/${b.project.task_count} done · ${b.project.progress}% · ${b.project.status}`;
+  const board=document.getElementById('pj-board');
+  board.innerHTML=COLORDER.map(col=>{
+    const tasks=(b.tasks[col]||[]);
+    return `<div class="card" style="background:#0a1228">
+      <div class="flex" style="justify-content:space-between"><b>${COLS[col]}</b><span class="muted">${tasks.length}</span></div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+      ${tasks.map(t=>taskCard(t,col)).join('')||'<span class="muted" style="font-size:12px">—</span>'}
+      </div></div>`;}).join('');
+}
+function taskCard(t,col){
+  const i=COLORDER.indexOf(col);
+  const pri={low:'var(--muted)',normal:'var(--ink)',high:'var(--warn)',urgent:'var(--bad)'}[t.priority]||'var(--ink)';
+  const who=t.assignee_user_id?('· '+(STAFFMAP[t.assignee_user_id]||('user #'+t.assignee_user_id))):'';
+  return `<div style="border:1px solid var(--line);border-radius:10px;padding:8px;background:#0c1430">
+    <div style="font-size:13px">${esc(t.title)}</div>
+    <div class="muted" style="font-size:11px;margin-top:3px"><span style="color:${pri}">${esc(t.priority)}</span> ${esc(who)} ${t.due_date?'· due '+new Date(t.due_date).toLocaleDateString():''}</div>
+    <div class="flex" style="margin-top:6px;gap:4px">
+      <button class="btn sm ghost" ${i<=0?'disabled':''} onclick="moveTask(${t.id},'${COLORDER[Math.max(0,i-1)]}')">←</button>
+      <button class="btn sm ghost" ${i>=3?'disabled':''} onclick="moveTask(${t.id},'${COLORDER[Math.min(3,i+1)]}')">→</button>
+      <button class="btn sm ghost" onclick="delTask(${t.id})">✕</button>
+    </div></div>`;
+}
+async function addTask(){
+  if(!CURPROJ)return;
+  const title=document.getElementById('pj-task-title').value.trim();if(!title)return;
+  const r=await post(`/api/projects/${CURPROJ}/tasks`,{title});
+  if(r.ok){document.getElementById('pj-task-title').value='';openProject(CURPROJ);}
+}
+async function moveTask(id,status){await post(`/api/tasks/${id}/move`,{status});openProject(CURPROJ);loadProjects();}
+async function delTask(id){const r=await fetch(`/api/tasks/${id}`,{method:'DELETE'});if(r.ok)openProject(CURPROJ);}
+async function delProject(){if(!CURPROJ||!confirm('Delete this project and all its tasks?'))return;
+  const r=await fetch(`/api/projects/${CURPROJ}`,{method:'DELETE'});
+  if(r.ok){document.getElementById('pj-board-wrap').classList.add('hidden');CURPROJ=null;loadProjects();}}
+
 // ---- Global search ----
 let _gsTimer=null;
 function globalSearch(q){
@@ -1369,7 +1459,7 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations(),loadProjects()]);
 }
 load();
 </script>
