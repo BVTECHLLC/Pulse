@@ -33,6 +33,7 @@
     <a data-tab="devices" onclick="tab('devices')">Devices</a>
     <a data-tab="alerts" onclick="tab('alerts')">Alerts</a>
     <a data-tab="tickets" onclick="tab('tickets')">Tickets</a>
+    <a data-tab="time" onclick="tab('time')">Time</a>
     <a data-tab="projects" onclick="tab('projects')">Projects</a>
     <a data-tab="billing" onclick="tab('billing')">Billing</a>
     <a data-tab="automation" onclick="tab('automation')">Automation</a>
@@ -173,6 +174,34 @@
     <div class="card"><table>
       <thead><tr><th>#</th><th>Subject</th><th>Client</th><th>Priority</th><th>Status</th><th>SLA</th><th>Opened</th></tr></thead>
       <tbody id="t-tickets"></tbody></table></div>
+  </section>
+
+  <section id="time" class="hidden">
+    <div class="card" id="timer-card" style="margin-bottom:16px">
+      <div class="flex" style="justify-content:space-between;align-items:center">
+        <div><h3 style="margin:0">Time Tracker</h3><span class="muted" id="timer-state">No timer running</span></div>
+        <div class="stat" id="timer-clock" style="font-variant-numeric:tabular-nums">00:00:00</div>
+      </div>
+      <div class="flex" style="margin-top:10px">
+        <select id="tm-ticket" style="flex:1;min-width:220px;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
+        <input id="tm-note" placeholder="What are you working on?" style="flex:1;min-width:180px">
+        <label class="flex" style="margin:0;font-size:13px;color:var(--muted)"><input type="checkbox" id="tm-bill" checked style="width:auto"> billable</label>
+        <button class="btn sm" id="tm-start" onclick="startTimer()">Start</button>
+        <button class="btn sm ghost hidden" id="tm-stop" onclick="stopTimer()">Stop &amp; log</button>
+      </div>
+    </div>
+    <div class="grid cols-2" style="align-items:start">
+      <div class="card">
+        <h3>Ready to Bill <span class="pill">billable · uninvoiced</span></h3>
+        <p class="muted" style="margin:4px 0 8px">Generate an invoice from the Billing tab to roll these hours up.</p>
+        <table><thead><tr><th>Client</th><th>Hours</th><th>Entries</th></tr></thead><tbody id="t-unbilled"></tbody></table>
+        <div class="stat sub" id="unbilled-total" style="margin-top:6px">—</div>
+      </div>
+      <div class="card">
+        <h3>Recent Time</h3>
+        <table><thead><tr><th>When</th><th>Who</th><th>Min</th><th>Bill</th><th>Inv</th></tr></thead><tbody id="t-time"></tbody></table>
+      </div>
+    </div>
   </section>
 
   <section id="projects" class="hidden">
@@ -1066,6 +1095,63 @@ async function showMetrics(devId, host){
     +row('Disk','disk_pct','#fdcb6e')+row('Health','health_score','#0984e3');
 }
 
+// ---- Time tracking ----
+let TIMER_TICK=null, TIMER_BASE=0, TIMER_START=0;
+function fmtHMS(s){s=Math.max(0,s|0);const h=(s/3600|0),m=((s%3600)/60|0),x=s%60;
+  return [h,m,x].map(n=>String(n).padStart(2,'0')).join(':');}
+async function loadTime(){
+  // ticket picker from open tickets
+  const sel=document.getElementById('tm-ticket');
+  if(sel)sel.innerHTML=(TICKETS||[]).filter(t=>t.status==='open'||t.status==='in_progress')
+    .map(t=>`<option value="${t.id}">#${t.id} ${esc(t.subject)} — ${esc(CLIENTS[t.client_id]||'')}</option>`).join('')
+    ||'<option value="">(no open tickets — create one first)</option>';
+  await refreshTimer();
+  await loadUnbilled();
+  await loadRecentTime();
+}
+async function refreshTimer(){
+  const t=await api('/api/timers/current');
+  const stateEl=document.getElementById('timer-state'),clock=document.getElementById('timer-clock');
+  const startBtn=document.getElementById('tm-start'),stopBtn=document.getElementById('tm-stop');
+  if(TIMER_TICK){clearInterval(TIMER_TICK);TIMER_TICK=null;}
+  if(t){
+    TIMER_BASE=t.elapsed_seconds;TIMER_START=Date.now();
+    stateEl.textContent=(t.ticket_id?`Ticket #${t.ticket_id}`:`Task #${t.task_id}`)+(t.note?(' · '+t.note):'')+(t.billable?' · billable':' · non-billable');
+    startBtn.classList.add('hidden');stopBtn.classList.remove('hidden');
+    const upd=()=>{clock.textContent=fmtHMS(TIMER_BASE+((Date.now()-TIMER_START)/1000|0));};
+    upd();TIMER_TICK=setInterval(upd,1000);
+  }else{
+    clock.textContent='00:00:00';stateEl.textContent='No timer running';
+    startBtn.classList.remove('hidden');stopBtn.classList.add('hidden');
+  }
+}
+async function startTimer(){
+  const tid=document.getElementById('tm-ticket').value;
+  if(!tid){alert('Create/select an open ticket first.');return;}
+  const r=await post('/api/timers/start',{ticket_id:+tid,note:document.getElementById('tm-note').value.trim()||null,
+    billable:document.getElementById('tm-bill').checked});
+  if(r.ok){document.getElementById('tm-note').value='';refreshTimer();}else{const j=await r.json().catch(()=>({}));alert(j.detail||'Failed');}
+}
+async function stopTimer(){
+  const r=await post('/api/timers/stop');
+  if(r.ok){refreshTimer();loadUnbilled();loadRecentTime();}else alert('No running timer.');
+}
+async function loadUnbilled(){
+  const u=await api('/api/time/unbilled');if(!u)return;
+  document.getElementById('t-unbilled').innerHTML=(u.by_client||[]).map(r=>
+    `<tr><td>${esc(r.client_name)}</td><td>${r.hours}</td><td>${r.entries}</td></tr>`).join('')
+    ||'<tr><td colspan=3 class="muted">Nothing unbilled.</td></tr>';
+  document.getElementById('unbilled-total').textContent=`Total ready to bill: ${u.total_hours} h`;
+}
+async function loadRecentTime(){
+  const rows=await api('/api/time/entries?limit=50');if(!rows)return;
+  document.getElementById('t-time').innerHTML=rows.map(e=>
+    `<tr><td class="muted">${e.created_at?new Date(e.created_at).toLocaleString():'—'}</td>
+     <td class="muted">${esc(e.user_email)||'—'}</td><td>${e.minutes}</td>
+     <td>${e.billable?'✓':'—'}</td><td>${e.invoiced?'✓':'—'}</td></tr>`).join('')
+    ||'<tr><td colspan=5 class="muted">No time logged yet.</td></tr>';
+}
+
 // ---- Live command-center overview ----
 let OV_TIMER=null;
 async function loadOverview(){
@@ -1506,7 +1592,7 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations(),loadProjects(),loadOverview()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations(),loadProjects(),loadOverview(),loadTime()]);
   toggleOvAuto();   // start the command-center live refresh
 }
 load();

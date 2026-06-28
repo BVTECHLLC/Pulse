@@ -1,5 +1,25 @@
 # BVTech OpsPilot — Changelog
 
+## v0.26.0 — Time tracking: live timers → billable hours → invoice (June 2026)
+
+### Added — close the PSA money loop
+- **Live timers** (`/api/timers/start|stop|current`): a per-user stopwatch on a
+  ticket or project task. Starting a new timer **banks** the running one as a
+  logged entry; stopping materializes a `TimeEntry` for the elapsed minutes.
+- **Time on project tasks**, not just tickets: `time_entries.ticket_id` is now
+  nullable and a `task_id` was added; `POST /api/tasks/{id}/time` logs manual task
+  time (parity with the ticket endpoint).
+- **Unbilled visibility** (`/api/time/unbilled`): billable, not-yet-invoiced time
+  grouped by client — exactly what's ready to bill — plus `/api/time/entries`.
+- The existing `/invoices/generate` consumes that billable time into line items,
+  so the loop is closed: **start timer → work → stop → see unbilled → invoice**
+  (verified: invoicing drops the client's unbilled total back to 0).
+- Dashboard **Time** tab: a live HH:MM:SS tracker (start on an open ticket,
+  billable toggle, stop & log), a "Ready to Bill" rollup, and recent entries.
+- New `active_timers` table + `time_entries` changes (migration `f8a9bacbdcef`);
+  up/down/up verified on **SQLite and Postgres 16** (batch alter for the nullable
+  column). Staff-only; smoke test covers the full loop + RBAC.
+
 ## v0.25.0 — Live command-center overview (June 2026)
 
 ### Added — one pulse for the whole shop

@@ -869,7 +869,37 @@ def main():
         # client activity feed is scoped (no cross-tenant rows)
         print("live command-center overview (KPIs + activity + scope) OK")
 
-    print("\n=== OpsPilot v0.25 SMOKE TEST PASSED ===")
+        # ===================== v0.26: time tracking / money loop =====================
+        tt_ticket=c.post("/api/tickets", json={"client_id":cid,"subject":"Timer ticket","priority":"normal"}).json()["id"]
+        tt_pid=c.post("/api/projects", json={"client_id":cid,"name":"Timer project"}).json()["id"]
+        tt_task=c.post(f"/api/projects/{tt_pid}/tasks", json={"title":"Timed task"}).json()["id"]
+        assert c.get("/api/timers/current").json() is None
+        s=c.post("/api/timers/start", json={"ticket_id":tt_ticket,"note":"work"}).json()
+        assert s["ticket_id"]==tt_ticket and "elapsed_seconds" in s, s
+        assert c.get("/api/timers/current").json()["ticket_id"]==tt_ticket
+        # starting another banks the first as a logged entry
+        s2=c.post("/api/timers/start", json={"task_id":tt_task}).json()
+        assert "banked_entry" in s2 and s2["task_id"]==tt_task, s2
+        e=c.post("/api/timers/stop").json()
+        assert e["task_id"]==tt_task and e["minutes"]>=1, e
+        assert c.get("/api/timers/current").json() is None
+        assert c.post("/api/timers/stop").status_code==404   # nothing running
+        # manual task time + exactly-one-context guard
+        assert c.post(f"/api/tasks/{tt_task}/time", json={"minutes":30}).json()["minutes"]==30
+        assert c.post("/api/timers/start", json={"ticket_id":tt_ticket,"task_id":tt_task}).status_code==400
+        # unbilled rollup, then invoice consumes it -> back to 0
+        ub=c.get("/api/time/unbilled").json()
+        assert ub["total_minutes"]>=31 and any(r["client_id"]==cid for r in ub["by_client"]), ub
+        gi=c.post("/api/invoices/generate", json={"client_id":cid,"include_time":True,"hourly_rate":120,"include_licenses":False})
+        assert gi.status_code==201 and gi.json()["total"]>0, gi.text
+        assert c.get("/api/time/unbilled").json()["total_minutes"]==0
+        # RBAC: clients cannot touch timers/time
+        assert ca_c.get("/api/timers/current").status_code==403
+        assert ca_c.post("/api/timers/start", json={"ticket_id":tt_ticket}).status_code==403
+        assert ca_c.get("/api/time/unbilled").status_code==403
+        print("time tracking: timers + task time + unbilled -> invoice money loop + RBAC OK")
+
+    print("\n=== OpsPilot v0.26 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

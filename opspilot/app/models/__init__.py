@@ -489,11 +489,13 @@ class SLAPolicy(Base):
 
 
 class TimeEntry(Base):
-    """Billable/non-billable work logged against a ticket by staff. Powers PSA
-    time rollups and (later) invoicing."""
+    """Billable/non-billable work logged against a ticket OR a project task by
+    staff. Powers PSA time rollups and invoicing. `ticket_id` is nullable so time
+    can be logged against project tasks too (v0.26)."""
     __tablename__ = "time_entries"
     id: Mapped[int] = mapped_column(primary_key=True)
-    ticket_id: Mapped[int] = mapped_column(ForeignKey("support_tickets.id"), index=True, nullable=False)
+    ticket_id: Mapped[int | None] = mapped_column(ForeignKey("support_tickets.id"), index=True)
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("project_tasks.id"), index=True)
     client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
     user_id: Mapped[int | None] = mapped_column(Integer)
     user_email: Mapped[str | None] = mapped_column(String(200))
@@ -504,6 +506,21 @@ class TimeEntry(Base):
     invoiced: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     invoice_id: Mapped[int | None] = mapped_column(Integer, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+class ActiveTimer(Base):
+    """A running stopwatch for one user (at most one). On stop it materializes a
+    TimeEntry for the elapsed minutes against its ticket/task."""
+    __tablename__ = "active_timers"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, unique=True, nullable=False)
+    user_email: Mapped[str | None] = mapped_column(String(200))
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    ticket_id: Mapped[int | None] = mapped_column(ForeignKey("support_tickets.id"))
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("project_tasks.id"))
+    note: Mapped[str | None] = mapped_column(Text)
+    billable: Mapped[bool] = mapped_column(Boolean, default=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class KBArticle(Base):
