@@ -1,0 +1,53 @@
+name: Build Agent Binaries
+
+# Build standalone agent binaries (no Python needed on the endpoint).
+# Trigger: manual, or push a tag like `agent-v1.0.0`.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["agent-v*"]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: opspilot-agent.exe
+            pyinstaller_name: opspilot-agent
+          - os: ubuntu-latest
+            artifact: opspilot-agent
+            pyinstaller_name: opspilot-agent
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: opspilot
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build deps
+        run: pip install pyinstaller psutil
+      - name: Build standalone binary
+        run: pyinstaller --onefile --name ${{ matrix.pyinstaller_name }} agent/opspilot_agent.py
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: opspilot/dist/${{ matrix.artifact }}
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/agent-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Publish release with binaries
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*

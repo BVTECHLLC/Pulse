@@ -47,6 +47,32 @@ def download_agent():
     return FileResponse(str(path), media_type="text/x-python", filename="opspilot_agent.py")
 
 
+def _binary_path(name: str) -> Path | None:
+    """Built standalone binaries live in agent/dist/ (populated by CI or synced
+    from a release). Returns the path if present."""
+    here = Path(__file__).resolve()
+    for root in (here.parents[3], here.parents[2], Path("/app"), Path.cwd()):
+        p = root / "agent" / "dist" / name
+        if p.is_file():
+            return p
+    return None
+
+
+@router.get("/agent.exe")
+def download_agent_exe():
+    """Standalone Windows binary (no Python needed). Built by the build-agent CI
+    workflow and placed in agent/dist/. 404 (with guidance) until present."""
+    p = _binary_path("opspilot-agent.exe")
+    if not p:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "Standalone .exe not published yet. Use the PowerShell installer (it "
+            "auto-installs Python), or run the build-agent workflow and place "
+            "opspilot-agent.exe in agent/dist/.")
+    return FileResponse(str(p), media_type="application/vnd.microsoft.portable-executable",
+                        filename="opspilot-agent.exe")
+
+
 @router.get("/install.sh", response_class=PlainTextResponse)
 def install_sh(request: Request, token: str = ""):
     base = _base_url(request)
@@ -88,8 +114,16 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 Invoke-WebRequest -Uri "$PULSE_URL/download/agent" -OutFile "$dest\\opspilot_agent.py"
 $py = (Get-Command python -ErrorAction SilentlyContinue)
 if (-not $py) {{
-  Write-Host "Python 3 is required. Install it then re-run:  winget install -e --id Python.Python.3.12"
-  exit 1
+  Write-Host "Python not found - installing it automatically via winget..."
+  try {{
+    winget install -e --id Python.Python.3.12 --silent --accept-package-agreements --accept-source-agreements
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+  }} catch {{ }}
+  $py = (Get-Command python -ErrorAction SilentlyContinue)
+  if (-not $py) {{
+    Write-Host "Could not auto-install Python. Install it once with:  winget install -e --id Python.Python.3.12  then re-run this command."
+    exit 1
+  }}
 }}
 python -m pip install psutil 2>$null
 $env:PULSE_URL = $PULSE_URL

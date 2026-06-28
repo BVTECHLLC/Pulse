@@ -106,13 +106,15 @@ def _act_ack_alert(db: Session, action: dict, ctx: dict) -> str:
 
 def _act_notify(db: Session, action: dict, ctx: dict) -> str:
     msg = action.get("message") or _default_notify_message(ctx)
+    severity = action.get("severity", ctx.get("severity", "info"))
     db.add(Notification(
         client_id=ctx.get("client_id"), target_user_id=action.get("user_id"),
-        kind=action.get("kind", "automation"),
-        severity=action.get("severity", ctx.get("severity", "info")),
-        message=msg[:1000],
+        kind=action.get("kind", "automation"), severity=severity, message=msg[:1000],
     ))
-    return "raised notification"
+    # Fan out to configured channels (email/Slack/Teams/webhook). Best-effort.
+    from . import notifications as notif_svc
+    sent = notif_svc.fanout(db, message=msg, severity=severity, client_id=ctx.get("client_id"))
+    return f"raised notification (+{sent} channel(s))" if sent else "raised notification"
 
 
 def _default_notify_message(ctx: dict) -> str:

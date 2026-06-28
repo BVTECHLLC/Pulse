@@ -182,6 +182,23 @@
       <h3>Notifications <button class="btn sm ghost" style="float:right" onclick="markAllRead()">Mark all read</button></h3>
       <div id="t-notifs"></div>
     </div>
+    <div class="card" style="margin-bottom:16px">
+      <h3>Notification Channels <span class="pill">email · Slack · Teams · webhook</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Fan out automation notifications to your team. Paste a Slack/Teams incoming-webhook URL or an email address.</p>
+      <div class="flex">
+        <input id="nc-name" placeholder="e.g. #alerts" style="width:130px">
+        <select id="nc-type" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)">
+          <option value="slack">Slack</option><option value="teams">Teams</option>
+          <option value="webhook">Webhook</option><option value="email">Email</option></select>
+        <input id="nc-target" placeholder="https://hooks.slack.com/… or you@bvtech.org" style="flex:1;min-width:200px">
+        <select id="nc-sev" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)">
+          <option value="info">info+</option><option value="warning">warning+</option><option value="critical">critical only</option></select>
+        <button class="btn sm" onclick="createChannel()">Add</button>
+      </div>
+      <div class="err" id="nc-msg"></div>
+      <table style="margin-top:10px"><thead><tr><th>Name</th><th>Type</th><th>Target</th><th>Min sev</th><th>On</th><th></th></tr></thead>
+      <tbody id="t-channels"></tbody></table>
+    </div>
     <div class="grid cols-2" style="align-items:start">
       <div class="card">
         <h3>New Automation Rule</h3>
@@ -568,6 +585,31 @@ async function loadNotifications(){
 }
 async function readNotif(id){await post(`/api/notifications/${id}/read`);loadNotifications();}
 async function markAllRead(){await post('/api/notifications/read-all');loadNotifications();}
+// notification channels
+async function loadChannels(){
+  const rows=await api('/api/notification-channels');if(!rows)return;
+  document.getElementById('t-channels').innerHTML=rows.map(ch=>
+    `<tr><td>${esc(ch.name)}</td><td>${esc(ch.type)}</td><td class="muted">${esc(ch.target)}</td>
+     <td>${esc(ch.min_severity)}</td>
+     <td><button class="btn sm ${ch.enabled?'':'ghost'}" onclick="toggleChannel(${ch.id},${!ch.enabled})">${ch.enabled?'on':'off'}</button></td>
+     <td class="flex"><button class="btn sm ghost" onclick="testChannel(${ch.id})">test</button>
+       <button class="btn sm ghost" onclick="delChannel(${ch.id})">✕</button></td></tr>`).join('')
+    ||'<tr><td colspan=6 class="muted">No channels yet — add Slack/Teams/email above.</td></tr>';
+}
+async function createChannel(){
+  const msg=document.getElementById('nc-msg');msg.textContent='';
+  const target=document.getElementById('nc-target').value.trim();
+  if(!target){msg.textContent='Target is required.';return;}
+  const r=await post('/api/notification-channels',{name:document.getElementById('nc-name').value.trim()||'Channel',
+    type:document.getElementById('nc-type').value,target,min_severity:document.getElementById('nc-sev').value});
+  if(r.ok){document.getElementById('nc-name').value='';document.getElementById('nc-target').value='';loadChannels();}
+  else{const d=await r.json().catch(()=>({}));msg.textContent=d.detail||'Failed';}
+}
+async function toggleChannel(id,en){await patch(`/api/notification-channels/${id}`,{enabled:en});loadChannels();}
+async function delChannel(id){if(!confirm('Delete this channel?'))return;
+  const r=await fetch(`/api/notification-channels/${id}`,{method:'DELETE'});if(r.ok)loadChannels();else alert('Owner only.');}
+async function testChannel(id){const r=await post(`/api/notification-channels/${id}/test`);const j=await r.json().catch(()=>({}));
+  alert(j.ok?'Test delivered ✅':'Delivery failed — check the URL/address.');}
 
 // ---- Invoices ----
 async function loadInvoices(){
@@ -985,7 +1027,7 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels()]);
 }
 load();
 </script>
