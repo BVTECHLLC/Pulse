@@ -767,7 +767,7 @@ def main():
                 ohits["token"]+=1; n=int(self.headers.get("content-length",0)); self.rfile.read(n)
                 self._send({"access_token":"AT-123","refresh_token":"RT-456","expires_in":3600,"scope":"openid email"})
             def do_GET(self):
-                self._send({"email":"help@bvtech.org","mail":"help@bvtech.org"})
+                self._send({"email":owner_email,"mail":owner_email})
             def log_message(self,*a): pass
         osrv=HTTPServer(("127.0.0.1",0),_OAuthMock)
         threading.Thread(target=osrv.serve_forever,daemon=True).start()
@@ -791,7 +791,7 @@ def main():
         cb=oc.get(f"/api/oauth/mock/callback?state={state}&code=AUTHCODE", follow_redirects=False)
         assert cb.status_code==302 and cb.headers["location"]=="/dashboard", cb.headers
         assert oc.cookies.get("access_token"), "SSO did not establish a session"
-        assert oc.get("/api/auth/me").json()["email"]=="help@bvtech.org", "SSO logged in wrong user"
+        assert oc.get("/api/auth/me").json()["email"]==owner_email, "SSO logged in wrong user"
         assert ohits["token"]>=1, "token endpoint was not called"
         print("OAuth SSO: authorize(PKCE+state) -> callback -> session OK")
 
@@ -807,7 +807,7 @@ def main():
         c.get(f"/api/oauth/mock/callback?state={cstate}&code=AUTHCODE", follow_redirects=False)
         toks=c.get("/api/oauth/tokens").json()
         mocktok=[t for t in toks if t["provider"]=="mock"]
-        assert mocktok and mocktok[0]["has_refresh"] and mocktok[0]["account_email"]=="help@bvtech.org", toks
+        assert mocktok and mocktok[0]["has_refresh"] and mocktok[0]["account_email"]==owner_email, toks
         assert "access_token" not in str(toks), "token material must never be returned"
         # confirm at-rest encryption is real: ciphertext decrypts back to the token
         assert cryptosvc.encrypt("AT-123")!="AT-123" and cryptosvc.decrypt(cryptosvc.encrypt("AT-123"))=="AT-123"
