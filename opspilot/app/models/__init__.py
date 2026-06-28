@@ -719,3 +719,24 @@ class Contract(Base):
     end_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+# --------------------------------------------------------------------------- #
+# v0.15 — Notification channels (fan out in-app notifications to email/Slack/etc)
+# --------------------------------------------------------------------------- #
+CHANNEL_TYPES = ("email", "slack", "teams", "webhook")
+SEVERITY_RANK = {"info": 0, "warning": 1, "critical": 2}
+
+
+class NotificationChannel(Base):
+    """An outbound delivery target configured by staff. When a notification is
+    raised, it fans out to enabled channels whose scope + min severity match."""
+    __tablename__ = "notification_channels"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    type: Mapped[str] = mapped_column(String(20), nullable=False)   # email|slack|teams|webhook
+    target: Mapped[str] = mapped_column(Text, nullable=False)        # email addr or webhook URL
+    min_severity: Mapped[str] = mapped_column(String(20), default="info")
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)  # None = all
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

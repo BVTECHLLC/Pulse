@@ -1,5 +1,27 @@
 # BVTech OpsPilot — Changelog
 
+## v0.16.0 — Standalone agent binary + notification channels (June 2026)
+
+### Added — Notification channels (v0.15)
+- **`/api/notification-channels`**: staff-managed delivery targets — **email,
+  Slack, Teams, generic webhook** — with a per-channel minimum severity and
+  optional client scope. The automation `notify` action now **fans out** to all
+  matching enabled channels (in addition to the in-app notification).
+- **Test button** per channel; SSRF guard blocks the cloud-metadata address and
+  requires http(s) for webhooks. Automation tab gains a Channels panel.
+- Verified with a **real webhook delivery** test (local receiver), severity
+  routing, the end-to-end automation→channel path, and RBAC.
+
+### Added — Standalone agent binary (v0.16)
+- **`build-agent` GitHub Actions workflow**: builds `opspilot-agent.exe`
+  (Windows) and a Linux binary via **PyInstaller** and publishes them as release
+  assets (on `agent-v*` tags or manual dispatch). Packaging verified locally
+  (single-file binary runs).
+- **Windows installer now auto-installs Python** via winget if it's missing —
+  so endpoints need **nothing** pre-installed.
+- **`/download/agent.exe`** serves the standalone binary once present in
+  `agent/dist/` (graceful 404 with guidance until the build is published).
+
 ## v0.14.0 — Contracts, client reports & deploy-flow fixes (June 2026)
 
 ### Fixed

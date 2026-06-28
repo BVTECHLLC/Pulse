@@ -534,7 +534,60 @@ def main():
         assert all(ct["client_id"]==cid for ct in ca_c.get("/api/contracts").json())
         print("client report + contracts RBAC OK")
 
-    print("\n=== OpsPilot v0.14 SMOKE TEST PASSED ===")
+        # ===================== v0.15: Notification channels =====================
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        _hits = []
+        class _H(BaseHTTPRequestHandler):
+            def do_POST(self):
+                n = int(self.headers.get("content-length", 0))
+                _hits.append(self.rfile.read(n).decode())
+                self.send_response(200); self.end_headers(); self.wfile.write(b"ok")
+            def log_message(self, *a): pass
+        srv = HTTPServer(("127.0.0.1", 0), _H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        hook = f"http://127.0.0.1:{srv.server_address[1]}/hook"
+
+        # real webhook delivery via the test endpoint
+        chid = c.post("/api/notification-channels", json={"name":"Slack","type":"slack","target":hook,"min_severity":"info"}).json()["id"]
+        assert c.post(f"/api/notification-channels/{chid}/test").json()["ok"], "channel test delivery failed"
+        assert any("test notification" in h for h in _hits), _hits
+        print("notification channel webhook delivery OK")
+
+        # severity routing: a critical-only channel must NOT get a warning event
+        c.post("/api/notification-channels", json={"name":"CritOnly","type":"webhook","target":hook,"min_severity":"critical"})
+        from app.services import notifications as _nsvc
+        from app.core.db import SessionLocal as _NSL
+        before = len(_hits); _db = _NSL()
+        _nsvc.fanout(_db, message="warn-level event", severity="warning", client_id=None); _db.close()
+        assert len(_hits) - before == 1, f"severity routing wrong: {len(_hits)-before}"
+        print("notification severity routing OK")
+
+        # automation notify action -> channel fanout (end to end)
+        c.post("/api/automation/rules", json={"name":"new ticket -> notify","trigger":"ticket.created",
+            "conditions":{},"actions":[{"type":"notify","message":"new ticket via channel","severity":"info"}]})
+        before2 = len(_hits)
+        c.post("/api/tickets", json={"client_id":cid,"subject":"Channel test ticket"})
+        assert len(_hits) > before2 and any("new ticket via channel" in h for h in _hits), _hits[-3:]
+        print("automation -> channel fanout OK")
+
+        # RBAC: clients cannot see or manage channels
+        assert ca_c.get("/api/notification-channels").status_code==403
+        assert ca_c.post("/api/notification-channels", json={"name":"x","type":"slack","target":hook}).status_code==403
+        srv.shutdown()
+        print("notification channels RBAC OK")
+
+        # ===================== v0.16: standalone agent binary endpoint =====================
+        # The .py agent always serves; the .exe route 404s gracefully until a built
+        # binary is published into agent/dist/ (by the build-agent CI workflow).
+        assert c.get("/download/agent").status_code==200
+        rexe=c.get("/download/agent.exe")
+        assert rexe.status_code in (200, 404)
+        if rexe.status_code==404:
+            assert "Standalone .exe" in rexe.json()["detail"]
+        print("agent binary endpoint OK (exe %s)" % ("present" if rexe.status_code==200 else "pending CI build"))
+
+    print("\n=== OpsPilot v0.16 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
