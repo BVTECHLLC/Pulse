@@ -1,5 +1,20 @@
 # BVTech OpsPilot — Changelog
 
+## v0.25.0 — Live command-center overview (June 2026)
+
+### Added — one pulse for the whole shop
+- **`GET /api/overview`**: a single tenant-scoped call that fuses RMM + PSA +
+  billing into one payload — devices online/offline + avg health, **patch
+  compliance %**, active alerts (+critical), open tickets with **SLA breached /
+  at-risk** counts, active projects + task progress, **MRR** + outstanding
+  invoices, and a **live activity stream** (scoped audit feed). Staff see the
+  whole fleet; client users see only their own org.
+- Dashboard **Overview** becomes a real command center: a KPI strip (Devices
+  Online, Patch Compliance, SLA Risk, Active Projects) plus a Live Activity feed,
+  with **auto-refresh every 30s** (toggle).
+- No schema change. Smoke test covers the rollup, the activity feed, and tenant
+  scoping.
+
 ## v0.24.0 — PSA projects & Kanban board (June 2026)
 
 ### Added — project management
