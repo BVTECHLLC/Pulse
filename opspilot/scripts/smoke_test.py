@@ -853,7 +853,23 @@ def main():
         assert c.get(f"/api/projects/{pid}/board").status_code==404
         print("PSA projects + Kanban board (tasks/move/rollup/RBAC/search/cascade) OK")
 
-    print("\n=== OpsPilot v0.24 SMOKE TEST PASSED ===")
+        # ===================== v0.25: live command-center overview =====================
+        ov=c.get("/api/overview").json()
+        for k in ("clients","devices","patch","alerts","tickets","projects","billing","activity"):
+            assert k in ov, ("missing overview key", k)
+        # numbers reflect reality created earlier in this run
+        assert ov["clients"]["total"]>=1 and ov["devices"]["total"]>=1, ov
+        assert isinstance(ov["activity"], list) and len(ov["activity"])>=1, "activity feed empty"
+        assert ov["billing"]["mrr"]>=0 and "outstanding_total" in ov["billing"]
+        # SLA risk accounting is present and numeric
+        assert isinstance(ov["tickets"]["sla_breached"], int) and isinstance(ov["tickets"]["sla_at_risk"], int)
+        # tenant scoping: a client user only sees their own org in the rollup
+        cov=ca_c.get("/api/overview").json()
+        assert cov["clients"]["total"]==1, cov   # ca_c belongs to exactly one client
+        # client activity feed is scoped (no cross-tenant rows)
+        print("live command-center overview (KPIs + activity + scope) OK")
+
+    print("\n=== OpsPilot v0.25 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

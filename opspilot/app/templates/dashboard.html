@@ -46,6 +46,21 @@
   </div>
 
   <section id="overview">
+    <div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+      <div><b>Command Center</b> <span class="muted" id="ov-ts">live</span></div>
+      <label class="flex" style="margin:0;font-size:12px;color:var(--muted)">
+        <input type="checkbox" id="ov-auto" checked style="width:auto" onchange="toggleOvAuto()"> auto-refresh</label>
+    </div>
+    <div class="grid cols-4" style="margin-bottom:16px">
+      <div class="card"><h3>Devices Online</h3><div class="stat" id="ov-online">—</div>
+        <div class="stat sub" id="ov-online-sub">—</div></div>
+      <div class="card"><h3>Patch Compliance</h3><div class="stat" id="ov-patch">—</div>
+        <div class="stat sub" id="ov-patch-sub">—</div></div>
+      <div class="card"><h3>SLA Risk</h3><div class="stat" id="ov-sla" style="color:var(--warn)">—</div>
+        <div class="stat sub" id="ov-sla-sub">—</div></div>
+      <div class="card"><h3>Active Projects</h3><div class="stat" id="ov-proj">—</div>
+        <div class="stat sub" id="ov-proj-sub">—</div></div>
+    </div>
     <div class="grid cols-4">
       <div class="card"><h3>Clients</h3><div class="stat" id="s-clients">—</div></div>
       <div class="card"><h3>Devices</h3><div class="stat" id="s-devices">—</div>
@@ -67,6 +82,11 @@
       <h3>Access Requests</h3>
       <table><thead><tr><th>When</th><th>Name</th><th>Email</th><th>Company</th><th>Status</th><th></th></tr></thead>
       <tbody id="t-signups"></tbody></table>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h3>Live Activity <span class="pill">audit stream</span></h3>
+      <table><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>OK</th></tr></thead>
+      <tbody id="t-activity"><tr><td colspan=5 class="muted">Loading…</td></tr></tbody></table>
     </div>
   </section>
 
@@ -1046,6 +1066,33 @@ async function showMetrics(devId, host){
     +row('Disk','disk_pct','#fdcb6e')+row('Health','health_score','#0984e3');
 }
 
+// ---- Live command-center overview ----
+let OV_TIMER=null;
+async function loadOverview(){
+  const o=await api('/api/overview');if(!o)return;
+  const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  set('ov-online',`${o.devices.online}/${o.devices.total}`);
+  set('ov-online-sub',`${o.devices.offline} offline · avg health ${o.devices.avg_health??'—'}`);
+  set('ov-patch',o.patch.compliance_pct==null?'—':o.patch.compliance_pct+'%');
+  set('ov-patch-sub',`${o.patch.devices_behind} behind · ${o.patch.pending_total} updates`);
+  const slaEl=document.getElementById('ov-sla');
+  if(slaEl){slaEl.textContent=o.tickets.sla_breached+o.tickets.sla_at_risk;
+    slaEl.style.color=o.tickets.sla_breached?'var(--bad)':'var(--warn)';}
+  set('ov-sla-sub',`${o.tickets.sla_breached} breached · ${o.tickets.sla_at_risk} at risk`);
+  set('ov-proj',o.projects.active);
+  set('ov-proj-sub',`${o.projects.tasks_done}/${o.projects.tasks_total} tasks done`);
+  set('ov-ts','updated '+new Date(o.generated_at).toLocaleTimeString());
+  document.getElementById('t-activity').innerHTML=(o.activity||[]).map(a=>
+    `<tr><td class="muted">${a.ts?new Date(a.ts).toLocaleString():'—'}</td><td>${esc(a.actor)||'system'}</td>
+     <td>${esc(a.action)}</td><td class="muted">${esc(a.target)||''}</td><td>${a.success?'✓':'✗'}</td></tr>`).join('')
+    ||'<tr><td colspan=5 class="muted">No activity yet.</td></tr>';
+}
+function toggleOvAuto(){
+  const on=document.getElementById('ov-auto').checked;
+  if(OV_TIMER){clearInterval(OV_TIMER);OV_TIMER=null;}
+  if(on)OV_TIMER=setInterval(loadOverview,30000);
+}
+
 // ---- Projects / Kanban ----
 const COLS={todo:'To do',in_progress:'In progress',review:'Review',done:'Done'};
 const COLORDER=['todo','in_progress','review','done'];
@@ -1459,7 +1506,8 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations(),loadProjects()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations(),loadProjects(),loadOverview()]);
+  toggleOvAuto();   // start the command-center live refresh
 }
 load();
 </script>
