@@ -1,5 +1,25 @@
 # BVTech OpsPilot — Changelog
 
+## v0.28.0 — Agent self-onboarding (fix "I installed it but don't see myself") (June 2026)
+
+### Fixed — a downloaded agent now actually registers
+- The standalone `.exe`, when **double-clicked**, used to just print usage and
+  exit — so it never enrolled and no device appeared. The agent (**v1.3.0**) now
+  **self-onboards**: on first run with no config it asks for the portal URL
+  (defaulting to `portal.bvtech.org`) and an **enrollment token**, enrolls, and
+  immediately starts reporting. Paste the token → the computer shows up within a
+  minute.
+- `enroll <token>` now **chains straight into `run`** (no separate step), and the
+  portal URL is **persisted** so the boot Scheduled Task and later double-clicks
+  reconnect to the right server. An already-enrolled agent that's re-launched just
+  resumes. Non-interactive/no-TTY launches still print usage.
+- Dashboard **Deploy Agent** card now shows the **raw enrollment token** front and
+  centre with a one-line "download the .exe, double-click, paste this" path, plus
+  a ready-to-paste `opspilot-agent.exe enroll <token> --url …` command for an
+  already-downloaded binary.
+- Verified end-to-end: agent enroll → **device appears in the portal list** →
+  check-in populates health (the exact thing that was missing).
+
 ## v0.27.0 — Asset management / CMDB + warranty tracking (June 2026)
 
 ### Added — track everything the agent can't

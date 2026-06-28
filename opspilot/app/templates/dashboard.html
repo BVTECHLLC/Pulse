@@ -117,13 +117,22 @@
         <button class="btn sm" onclick="genAgent()">Generate installer</button>
       </div>
       <div id="ag-out" class="hidden" style="margin-top:12px">
-        <label>Windows — standalone .exe <span class="pill">no Python needed</span></label>
+        <div class="card" style="background:#0a1228;border-color:var(--brand,#6c5ce7)">
+          <label><b>Enrollment token</b> <span class="pill">valid 72h</span></label>
+          <input id="ag-token" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
+          <p class="muted" style="margin:8px 0 0">
+            <b>Easiest:</b> <a href="/download/agent.exe">download the Windows .exe</a>, double-click it,
+            and paste this token when it asks. The computer shows up here within a minute.</p>
+          <label style="margin-top:8px">Already downloaded the .exe? Run this in its folder (PowerShell):</label>
+          <input id="ag-bare" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
+        </div>
+        <label style="margin-top:10px">One-line install — Windows standalone .exe <span class="pill">no Python needed</span></label>
         <input id="ag-exe" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
         <label style="margin-top:8px">Windows (PowerShell, as Administrator) — installs Python if missing</label>
         <input id="ag-win" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
         <label style="margin-top:8px">Linux / macOS</label>
         <input id="ag-nix" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
-        <p class="muted" style="margin-top:8px">Token valid 72h · download:
+        <p class="muted" style="margin-top:8px">Downloads:
           <a id="ag-dl" href="/download/agent">raw agent (.py)</a> ·
           <a href="/download/agent.exe">Windows .exe</a> ·
           <a href="/download/agent-linux">Linux binary</a></p>
@@ -1062,7 +1071,9 @@ async function genAgent(){
   const r=await post(`/api/agent/enroll-token/${cid}`);
   const j=await r.json().catch(()=>({}));
   if(!r.ok){alert(j.detail||'Failed to generate token');return;}
-  const base=location.origin, tok=encodeURIComponent(j.enroll_token);
+  const base=location.origin, raw=j.enroll_token, tok=encodeURIComponent(raw);
+  document.getElementById('ag-token').value=raw;
+  document.getElementById('ag-bare').value=`.\\opspilot-agent.exe enroll ${raw} --url ${base}`;
   document.getElementById('ag-exe').value=`powershell -ExecutionPolicy Bypass -c "irm '${base}/download/install-exe.ps1?token=${tok}' | iex"`;
   document.getElementById('ag-win').value=`powershell -ExecutionPolicy Bypass -c "irm '${base}/download/install.ps1?token=${tok}' | iex"`;
   document.getElementById('ag-nix').value=`curl -fsSL "${base}/download/install.sh?token=${tok}" | bash`;
