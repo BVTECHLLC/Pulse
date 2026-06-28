@@ -1,5 +1,22 @@
 # BVTech OpsPilot — Changelog
 
+## v0.18.0 — Standalone .exe download that actually works (June 2026)
+
+### Added — no-Python agent install path
+- **`/download/agent.exe`** now serves the binary from `agent/dist/` if present,
+  otherwise **302-redirects to the published GitHub release asset**
+  (`AGENT_RELEASE_BASE`, default the repo's `releases/latest/download`). The repo
+  is public, so the `latest` URL downloads without auth — the `.exe` works the
+  moment the `build-agent` workflow publishes it, with **no server-side sync**.
+- **`/download/agent-linux`**: same strategy for the standalone Linux binary.
+- **`/download/install-exe.ps1`**: a **no-Python** Windows installer — pulls the
+  standalone `.exe`, enrolls with the embedded token, and registers a boot-time
+  Scheduled Task. Endpoints need nothing pre-installed.
+- Dashboard **Deploy Agent** card now offers three one-liners (standalone `.exe`,
+  Python PowerShell, Linux/macOS) plus direct download links for the `.exe` and
+  Linux binary.
+- Tag `agent-v1.0.0` publishes the binaries via the `build-agent` workflow.
+
 ## v0.17.1 — No-store on HTML pages (June 2026)
 
 ### Fixed — site showed an old version after a successful deploy

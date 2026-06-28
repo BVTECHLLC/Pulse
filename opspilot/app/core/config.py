@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # --- Identity ---
     APP_NAME: str = "BVTech OpsPilot"
-    APP_VERSION: str = "0.17.1"
+    APP_VERSION: str = "0.18.0"
     ENV: str = "development"  # development | production
 
     # --- Security ---
@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     # --- Branding / public URLs ---
     SUPPORT_EMAIL: str = "help@bvtech.org"          # signup notifications land here
     PUBLIC_BASE_URL: str = "https://portal.bvtech.org"
+
+    # Where prebuilt standalone agent binaries live. The build-agent workflow
+    # publishes opspilot-agent.exe / opspilot-agent to GitHub Releases; the repo
+    # is public so the `latest` asset URLs are downloadable without auth. If a
+    # binary is present locally in agent/dist/ it's served directly; otherwise
+    # /download/agent.exe redirects here so the .exe works as soon as it's built.
+    AGENT_RELEASE_BASE: str = "https://github.com/BVTECHLLC/Pulse/releases/latest/download"
 
     # --- Outbound email (SMTP). If unset, email is logged, never sent (safe no-op). ---
     SMTP_HOST: str | None = None
