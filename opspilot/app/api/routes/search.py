@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ...core.db import get_db
 from ...core.deps import current_user, is_staff
 from ...models import (
-    Alert, Client, Device, DeviceSoftware, IntegrationConnection, Invoice,
+    Alert, Asset, Client, Device, DeviceSoftware, IntegrationConnection, Invoice,
     KBArticle, License, Project, ProjectTask, SupportTicket, User,
 )
 
@@ -90,6 +90,13 @@ def search(q: str = "", limit: int = 8, db: Session = Depends(get_db),
                     ProjectTask).limit(cap).all():
         out.append({"type": "task", "id": tk.id, "label": tk.title,
                     "sub": f"{tk.status} · project #{tk.project_id}", "tab": "projects"})
+
+    for ast in scope(db.query(Asset).filter(or_(
+            Asset.name.ilike(like), Asset.serial.ilike(like), Asset.asset_tag.ilike(like))),
+            Asset).limit(cap).all():
+        out.append({"type": "asset", "id": ast.id, "label": ast.name,
+                    "sub": f"{ast.asset_type} · {ast.serial or ast.asset_tag or ''}".strip(" ·"),
+                    "tab": "assets"})
 
     if staff:
         for ic in db.query(IntegrationConnection).filter(

@@ -899,7 +899,37 @@ def main():
         assert ca_c.get("/api/time/unbilled").status_code==403
         print("time tracking: timers + task time + unbilled -> invoice money loop + RBAC OK")
 
-    print("\n=== OpsPilot v0.26 SMOKE TEST PASSED ===")
+        # ===================== v0.27: asset management (CMDB) =====================
+        import datetime as _dtmod
+        soon=( _dtmod.datetime.now(_dtmod.timezone.utc)+_dtmod.timedelta(days=20)).isoformat()
+        far =( _dtmod.datetime.now(_dtmod.timezone.utc)+_dtmod.timedelta(days=400)).isoformat()
+        meta=c.get("/api/assets/meta").json()
+        assert "printer" in meta["types"] and "active" in meta["statuses"], meta
+        a1=c.post("/api/assets", json={"client_id":cid,"name":"Front Printer","asset_type":"printer",
+            "make":"HP","model":"M404","serial":"PRN-001","warranty_expires":soon}).json()
+        a2=c.post("/api/assets", json={"client_id":cid,"name":"Core Switch","asset_type":"network",
+            "serial":"SW-999","warranty_expires":far}).json()
+        assert a1["warranty_state"]=="expiring" and a2["warranty_state"]=="ok", (a1,a2)
+        # invalid type rejected on patch
+        assert c.patch(f"/api/assets/{a1['id']}", json={"asset_type":"spaceship"}).status_code==400
+        assert c.patch(f"/api/assets/{a1['id']}", json={"assigned_to":"Reception","status":"in_repair"}).json()["status"]=="in_repair"
+        # list + type filter
+        assert len(c.get("/api/assets").json())>=2
+        assert all(a["asset_type"]=="printer" for a in c.get("/api/assets", params={"asset_type":"printer"}).json())
+        # warranty-expiring surfaces a1 (20d) but not a2 (400d)
+        we=c.get("/api/assets/warranty-expiring", params={"days":60}).json()
+        assert any(a["id"]==a1["id"] for a in we) and not any(a["id"]==a2["id"] for a in we), we
+        # client can VIEW own assets, staff-only to mutate
+        assert ca_c.get("/api/assets").status_code==200
+        assert any(a["id"]==a1["id"] for a in ca_c.get("/api/assets").json())
+        assert ca_c.post("/api/assets", json={"client_id":cid,"name":"x"}).status_code==403
+        assert ca_c.delete(f"/api/assets/{a2['id']}").status_code==403
+        # global search finds an asset by serial
+        assert any(r["type"]=="asset" for r in c.get("/api/search", params={"q":"SW-999"}).json()["results"])
+        assert c.delete(f"/api/assets/{a1['id']}").status_code==204
+        print("asset management (CMDB + warranty + filters + RBAC + search) OK")
+
+    print("\n=== OpsPilot v0.27 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
