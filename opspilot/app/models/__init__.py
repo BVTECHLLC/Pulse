@@ -508,6 +508,37 @@ class TimeEntry(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
 
 
+ASSET_TYPES = ["laptop", "desktop", "server", "printer", "network", "firewall",
+               "phone", "mobile", "monitor", "peripheral", "other"]
+ASSET_STATUSES = ["active", "in_repair", "spare", "retired"]
+
+
+class Asset(Base):
+    """A tracked asset that isn't (or can't be) an RMM agent device — printers,
+    switches, firewalls, phones, monitors, etc. — plus warranty/lifecycle. Agents
+    cover computers; this is the CMDB for everything else. Staff manage; the
+    owning client can view their own inventory."""
+    __tablename__ = "assets"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    asset_type: Mapped[str] = mapped_column(String(30), default="other", index=True)
+    make: Mapped[str | None] = mapped_column(String(120))
+    model: Mapped[str | None] = mapped_column(String(120))
+    serial: Mapped[str | None] = mapped_column(String(120), index=True)
+    asset_tag: Mapped[str | None] = mapped_column(String(80), index=True)
+    location: Mapped[str | None] = mapped_column(String(160))
+    assigned_to: Mapped[str | None] = mapped_column(String(160))
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    purchase_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    warranty_expires: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    cost: Mapped[float | None] = mapped_column(Float)
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id"))  # link an agent device
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
 class ActiveTimer(Base):
     """A running stopwatch for one user (at most one). On stop it materializes a
     TimeEntry for the elapsed minutes against its ticket/task."""

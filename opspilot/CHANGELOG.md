@@ -1,5 +1,22 @@
 # BVTech OpsPilot — Changelog
 
+## v0.27.0 — Asset management / CMDB + warranty tracking (June 2026)
+
+### Added — track everything the agent can't
+- **Assets** (`/api/assets`): a CMDB for non-agent gear — printers, switches,
+  firewalls, phones, monitors, peripherals — with make/model/serial/asset-tag,
+  location, assignee, status (active/in_repair/spare/retired), purchase date,
+  **warranty expiry**, cost, notes, and an optional link to an agent device.
+- **Warranty tracking**: each asset reports a `warranty_state`
+  (ok / expiring ≤60d / expired); `GET /api/assets/warranty-expiring?days=` lists
+  what's lapsing so nothing slips. Dashboard surfaces an expiring-soon banner.
+- Staff manage; the owning **client can view their own inventory** (read-only).
+  Filter by type/status; assets are in **global search** (name/serial/tag).
+- Dashboard **Assets** tab with add form, warranty highlighting, and the full
+  inventory table. New `assets` table (migration `a9bacbdcefab`); verified
+  up/down/up on SQLite and **Postgres 16**. Smoke test covers CRUD, warranty
+  filter, validation, RBAC, scoping, and search.
+
 ## v0.26.0 — Time tracking: live timers → billable hours → invoice (June 2026)
 
 ### Added — close the PSA money loop

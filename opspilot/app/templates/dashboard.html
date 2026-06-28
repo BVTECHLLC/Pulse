@@ -31,6 +31,7 @@
     <a class="active" data-tab="overview" onclick="tab('overview')">Overview</a>
     <a data-tab="clients" onclick="tab('clients')">Clients</a>
     <a data-tab="devices" onclick="tab('devices')">Devices</a>
+    <a data-tab="assets" onclick="tab('assets')">Assets</a>
     <a data-tab="alerts" onclick="tab('alerts')">Alerts</a>
     <a data-tab="tickets" onclick="tab('tickets')">Tickets</a>
     <a data-tab="time" onclick="tab('time')">Time</a>
@@ -146,6 +147,31 @@
         <button class="btn sm" onclick="document.getElementById('dev-mx').classList.add('hidden')">Close</button></div>
       <div id="dev-mx-body" class="muted">Loading…</div>
     </div></section>
+
+  <section id="assets" class="hidden">
+    <div class="card" style="margin-bottom:16px">
+      <h3>Add Asset <span class="pill">CMDB · warranties</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Track everything that isn't an RMM agent — printers, switches, firewalls, phones, monitors — and never miss a warranty expiry.</p>
+      <div class="flex" style="flex-wrap:wrap">
+        <select id="as-client" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
+        <input id="as-name" placeholder="Name (e.g. Front-desk printer)" style="flex:1;min-width:160px">
+        <select id="as-type" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
+        <input id="as-make" placeholder="Make" style="width:110px">
+        <input id="as-model" placeholder="Model" style="width:110px">
+        <input id="as-serial" placeholder="Serial" style="width:120px">
+        <input id="as-warranty" type="date" title="Warranty expires" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:9px;color:var(--ink)">
+        <button class="btn sm" onclick="createAsset()">Add asset</button>
+      </div>
+      <div class="err" id="as-msg"></div>
+    </div>
+    <div class="card hidden" id="as-warn-card" style="margin-bottom:16px;border-color:var(--warn)">
+      <h3 style="color:var(--warn)">⚠ Warranties expiring (next 60 days)</h3>
+      <table><thead><tr><th>Asset</th><th>Client</th><th>Type</th><th>Expires</th></tr></thead><tbody id="t-as-warn"></tbody></table>
+    </div>
+    <div class="card"><table>
+      <thead><tr><th>Name</th><th>Type</th><th>Make/Model</th><th>Serial</th><th>Assigned</th><th>Status</th><th>Warranty</th><th></th></tr></thead>
+      <tbody id="t-assets"></tbody></table></div>
+  </section>
 
   <section id="alerts" class="hidden">
     <div class="card">
@@ -1095,6 +1121,50 @@ async function showMetrics(devId, host){
     +row('Disk','disk_pct','#fdcb6e')+row('Health','health_score','#0984e3');
 }
 
+// ---- Assets / CMDB ----
+let ASSET_TYPES=[];
+async function loadAssets(){
+  if(!ASSET_TYPES.length){const m=await api('/api/assets/meta');if(m)ASSET_TYPES=m.types||[];}
+  const cl=document.getElementById('as-client');
+  if(cl)cl.innerHTML=Object.entries(CLIENTS||{}).map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('');
+  const ty=document.getElementById('as-type');
+  if(ty)ty.innerHTML=ASSET_TYPES.map(t=>`<option value="${t}">${esc(t)}</option>`).join('');
+  const rows=await api('/api/assets');if(!rows)return;
+  const wState=s=>s==='expired'?'<span style="color:var(--bad)">expired</span>':
+    s==='expiring'?'<span style="color:var(--warn)">expiring</span>':s==='ok'?'<span style="color:var(--ok)">ok</span>':'—';
+  document.getElementById('t-assets').innerHTML=rows.map(a=>
+    `<tr><td>${esc(a.name)}</td><td>${esc(a.asset_type)}</td><td class="muted">${esc(a.make)||''} ${esc(a.model)||''}</td>
+     <td class="muted">${esc(a.serial)||'—'}</td><td class="muted">${esc(a.assigned_to)||'—'}</td><td>${esc(a.status)}</td>
+     <td>${a.warranty_expires?(new Date(a.warranty_expires).toLocaleDateString()+' · '+wState(a.warranty_state)):'—'}</td>
+     <td><button class="btn sm ghost" onclick="delAsset(${a.id})">✕</button></td></tr>`).join('')
+    ||'<tr><td colspan=8 class="muted">No assets yet — add one above.</td></tr>';
+  // warranty-expiring highlight card
+  const warn=await api('/api/assets/warranty-expiring?days=60');
+  const card=document.getElementById('as-warn-card');
+  if(warn && warn.length){card.classList.remove('hidden');
+    document.getElementById('t-as-warn').innerHTML=warn.map(a=>
+      `<tr><td>${esc(a.name)}</td><td class="muted">${esc(CLIENTS[a.client_id]||'')}</td><td>${esc(a.asset_type)}</td>
+       <td>${new Date(a.warranty_expires).toLocaleDateString()}</td></tr>`).join('');
+  }else card.classList.add('hidden');
+}
+async function createAsset(){
+  const msg=document.getElementById('as-msg');msg.textContent='';
+  const name=document.getElementById('as-name').value.trim();
+  if(!name){msg.textContent='Asset name required.';return;}
+  const w=document.getElementById('as-warranty').value;
+  const body={client_id:+document.getElementById('as-client').value,name,
+    asset_type:document.getElementById('as-type').value,
+    make:document.getElementById('as-make').value.trim()||null,
+    model:document.getElementById('as-model').value.trim()||null,
+    serial:document.getElementById('as-serial').value.trim()||null,
+    warranty_expires:w?new Date(w).toISOString():null};
+  const r=await post('/api/assets',body);
+  if(r.ok){['as-name','as-make','as-model','as-serial','as-warranty'].forEach(i=>document.getElementById(i).value='');loadAssets();}
+  else{const j=await r.json().catch(()=>({}));msg.textContent=j.detail||'Failed';}
+}
+async function delAsset(id){if(!confirm('Delete this asset?'))return;
+  const r=await fetch(`/api/assets/${id}`,{method:'DELETE'});if(r.ok)loadAssets();else alert('Owner/Tech only.');}
+
 // ---- Time tracking ----
 let TIMER_TICK=null, TIMER_BASE=0, TIMER_START=0;
 function fmtHMS(s){s=Math.max(0,s|0);const h=(s/3600|0),m=((s%3600)/60|0),x=s%60;
@@ -1592,7 +1662,7 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations(),loadProjects(),loadOverview(),loadTime()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations(),loadProjects(),loadOverview(),loadTime(),loadAssets()]);
   toggleOvAuto();   // start the command-center live refresh
 }
 load();

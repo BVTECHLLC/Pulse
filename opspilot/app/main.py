@@ -18,7 +18,7 @@ from .api.routes import (
     auth, resources, agent, ui, tickets, alerts, billing, kb, automation, security,
     scripts, signup, m365, invoices, networking, netdiag, download, contracts, reports,
     channels, report_schedules, integrations, search, oauth, projects, overview,
-    time_tracking,
+    time_tracking, assets,
 )
 
 _s = get_settings()
@@ -118,6 +118,7 @@ app.include_router(oauth.router)
 app.include_router(projects.router)
 app.include_router(overview.router)
 app.include_router(time_tracking.router)
+app.include_router(assets.router)
 app.include_router(ui.router)
 
 
