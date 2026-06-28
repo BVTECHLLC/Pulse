@@ -1,5 +1,30 @@
 # BVTech OpsPilot — Changelog
 
+## v0.23.0 — OAuth2 SSO + connectors (June 2026)
+
+### Added — sign in with Microsoft / Google, and connect provider accounts
+- A full **OAuth2 authorization-code framework with PKCE** (no third-party client
+  lib). Providers light up automatically when their credentials are present:
+  **Microsoft** (reuses `M365_CLIENT_ID/SECRET`, tenant `common`) and **Google**
+  (`GOOGLE_CLIENT_ID/SECRET`). Custom providers can be added at runtime via
+  `oauth.register_provider()`.
+- **Single sign-on**: the login page shows "Sign in with Microsoft / Google"
+  buttons. The callback matches the verified provider email to an existing,
+  active Pulse user and issues the same DB-backed session as password login
+  (no silent auto-provisioning). `OAUTH_ALLOW_SSO` gates it.
+- **Connectors**: staff can connect a provider account; the access/refresh tokens
+  are **encrypted at rest** (Fernet, keyed off `SECRET_KEY`) and never returned by
+  the API. `/api/oauth/tokens` lists connections; revoke removes them.
+- **Security**: CSRF is enforced by a **single-use, server-side state** row (10-min
+  TTL); the **PKCE verifier never leaves the server** — only its S256 challenge is
+  sent. New `oauth_states` + `oauth_tokens` tables (migration `d6e7f8a9bacb`).
+- Integrations tab gains an **OAuth Connections** panel; sign-in helper resolved.
+
+### Verified
+- End-to-end smoke test against a live mock IdP: PKCE known-answer, authorize→
+  callback→session SSO, forged/reused-state rejection, encrypted-token store +
+  RBAC + revoke. Full migration chain clean on **Postgres 16** (single head).
+
 ## v0.22.0 — Comprehensive audit log + developer hub (June 2026)
 
 ### Added — log everything, not just logins

@@ -66,7 +66,15 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
     if needs_rehash(user.password_hash):
         user.password_hash = hash_password(body.password)
 
-    # Create DB-backed session
+    issue_session(db, user, request, response, method="password")
+    return {"ok": True, "role": user.role.value, "mfa_enabled": user.mfa_enabled}
+
+
+def issue_session(db: Session, user: User, request: Request, response: Response,
+                  *, method: str = "password") -> None:
+    """Mint a DB-backed session + access/refresh cookies for `user`. Shared by
+    password login and OAuth SSO so every sign-in path is consistent + audited."""
+    ip = _client_ip(request)
     sid = random_token(16)
     refresh = random_token(32)
     sess = AuthSession(
@@ -77,12 +85,10 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
     db.add(sess)
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
-
     access = create_access_token(user_id=user.id, role=user.role.value, session_id=sid)
     _set_cookies(response, access, f"{sid}.{refresh}")
-    audit.record(db, action="login.success", actor_user_id=user.id,
-                 actor_email=user.email, actor_role=user.role.value, ip=ip)
-    return {"ok": True, "role": user.role.value, "mfa_enabled": user.mfa_enabled}
+    audit.record(db, action="login.success", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, ip=ip, detail=f"method={method}")
 
 
 @router.post("/logout")
