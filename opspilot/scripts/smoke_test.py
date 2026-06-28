@@ -816,7 +816,44 @@ def main():
         osrv.shutdown()
         print("OAuth connector: encrypted token store + list + RBAC + revoke OK")
 
-    print("\n=== OpsPilot v0.23 SMOKE TEST PASSED ===")
+        # ===================== v0.24: PSA projects + Kanban =====================
+        pj=c.post("/api/projects", json={"client_id":cid,"name":"M365 Migration","budget_hours":40})
+        assert pj.status_code==201, pj.text
+        pid=pj.json()["id"]
+        # add tasks across columns
+        t1=c.post(f"/api/projects/{pid}/tasks", json={"title":"Audit mailboxes","priority":"high"}).json()
+        t2=c.post(f"/api/projects/{pid}/tasks", json={"title":"Cutover","status":"todo"}).json()
+        assert t1["status"]=="todo" and t1["position"]==0 and t2["position"]==1, (t1,t2)
+        # board groups by column
+        board=c.get(f"/api/projects/{pid}/board").json()
+        assert board["columns"]==["todo","in_progress","review","done"]
+        assert len(board["tasks"]["todo"])==2 and board["project"]["task_count"]==2, board
+        # move a task across the board; done stamps completed_at + rolls up progress
+        mv=c.post(f"/api/tasks/{t1['id']}/move", json={"status":"done"}).json()
+        assert mv["status"]=="done" and mv["completed_at"], mv
+        assert c.get(f"/api/projects/{pid}/board").json()["project"]["progress"]==50
+        # moving out of done clears completion
+        assert c.post(f"/api/tasks/{t1['id']}/move", json={"status":"review"}).json()["completed_at"] is None
+        assert c.post(f"/api/tasks/{t1['id']}/move", json={"status":"bogus"}).status_code==400
+        # patch a task (assignee/priority)
+        assert c.patch(f"/api/tasks/{t2['id']}", json={"priority":"urgent"}).json()["priority"]=="urgent"
+        # project list shows rollups
+        assert any(p["id"]==pid and p["task_count"]==2 for p in c.get("/api/projects").json())
+        # client (same org) can VIEW the board but not mutate
+        assert ca_c.get(f"/api/projects/{pid}/board").status_code==200
+        assert ca_c.post(f"/api/projects/{pid}/tasks", json={"title":"x"}).status_code==403
+        assert ca_c.post("/api/projects", json={"client_id":cid,"name":"y"}).status_code==403
+        assert ca_c.post(f"/api/tasks/{t2['id']}/move", json={"status":"done"}).status_code==403
+        # global search finds the project + task
+        psr=c.get("/api/search", params={"q":"Migration"}).json()
+        assert any(r["type"]=="project" for r in psr["results"]), psr
+        assert any(r["type"]=="task" for r in c.get("/api/search", params={"q":"Cutover"}).json()["results"])
+        # delete cascades tasks
+        assert c.delete(f"/api/projects/{pid}").status_code==204
+        assert c.get(f"/api/projects/{pid}/board").status_code==404
+        print("PSA projects + Kanban board (tasks/move/rollup/RBAC/search/cascade) OK")
+
+    print("\n=== OpsPilot v0.24 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
