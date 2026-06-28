@@ -448,7 +448,39 @@ def main():
         assert ca_c.post(f"/api/invoices/{inv2['id']}/line-items", json={"description":"x"}).status_code==403
         print("invoice lifecycle + client visibility + RBAC OK")
 
-    print("\n=== OpsPilot v0.10 SMOKE TEST PASSED ===")
+        # ===================== v0.11: Networking / IPAM =====================
+        calc=c.post("/api/net/subnet-calc", json={"cidr":"10.0.0.0/24"}).json()
+        assert calc["usable_hosts"]==254 and calc["network_address"]=="10.0.0.0" and calc["broadcast_address"]=="10.0.0.255", calc
+        assert c.post("/api/net/subnet-calc", json={"cidr":"not-a-cidr"}).status_code==400
+        print("subnet calculator OK (/24 -> %d hosts)" % calc["usable_hosts"])
+
+        site_id=c.post("/api/net/sites", json={"client_id":cid,"name":"HQ","address":"El Campo, TX"}).json()["id"]
+        assert c.post("/api/net/networks", json={"client_id":cid,"name":"LAN","cidr":"bad"}).status_code==400
+        net_id=c.post("/api/net/networks", json={"client_id":cid,"name":"Office LAN","cidr":"10.0.0.0/24",
+            "site_id":site_id,"vlan":10,"gateway":"10.0.0.1"}).json()["id"]
+        nets=c.get("/api/net/networks").json()
+        mynet=next(n for n in nets if n["id"]==net_id)
+        assert mynet["capacity"]==254 and mynet["used"]==0, mynet
+        print("site + network create OK (cap %d)" % mynet["capacity"])
+
+        # IPAM allocation + guards
+        assert c.post(f"/api/net/networks/{net_id}/ips", json={"address":"10.0.0.10","hostname":"dc01"}).status_code==201
+        assert c.post(f"/api/net/networks/{net_id}/ips", json={"address":"192.168.1.5"}).status_code==400, "out-of-range allowed!"
+        assert c.post(f"/api/net/networks/{net_id}/ips", json={"address":"10.0.0.10"}).status_code==409, "duplicate allowed!"
+        assert c.post(f"/api/net/networks/{net_id}/ips", json={"address":"999.1.1.1"}).status_code==400, "invalid IP allowed!"
+        ips=c.get(f"/api/net/networks/{net_id}/ips").json()
+        assert len(ips)==1 and ips[0]["address"]=="10.0.0.10", ips
+        assert next(n for n in c.get("/api/net/networks").json() if n["id"]==net_id)["used"]==1
+        # release
+        assert c.request("DELETE", f"/api/net/ips/{ips[0]['id']}").status_code==200
+        print("IPAM allocate + in-range/dup/invalid guards + release OK")
+
+        # clients get read-only visibility; cannot create network records
+        assert ca_c.get("/api/net/networks").status_code==200
+        assert ca_c.post("/api/net/networks", json={"client_id":cid,"name":"x","cidr":"10.1.0.0/24"}).status_code==403
+        print("networking RBAC (client read-only) OK")
+
+    print("\n=== OpsPilot v0.11 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

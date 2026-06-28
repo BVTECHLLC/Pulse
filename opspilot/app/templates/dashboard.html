@@ -31,6 +31,7 @@
     <a data-tab="automation" onclick="tab('automation')">Automation</a>
     <a data-tab="security" onclick="tab('security')">Security</a>
     <a data-tab="scripts" onclick="tab('scripts')">Scripts</a>
+    <a data-tab="network" onclick="tab('network')">Network</a>
     <a data-tab="kb" onclick="tab('kb')">Knowledge Base</a>
     <a data-tab="licenses" onclick="tab('licenses')">Licenses</a>
     <a data-tab="audit" onclick="tab('audit')">Audit Log</a>
@@ -227,6 +228,45 @@
     <div class="card" style="margin-top:16px"><h3>Deployments</h3><table>
       <thead><tr><th>#</th><th>Script</th><th>Device</th><th>By</th><th>Status</th><th>Exit</th><th></th></tr></thead>
       <tbody id="t-deployments"></tbody></table></div>
+  </section>
+
+  <section id="network" class="hidden">
+    <div class="grid cols-2" style="align-items:start">
+      <div class="card">
+        <h3>Subnet Calculator</h3>
+        <div class="flex"><input id="calc-cidr" placeholder="10.0.0.0/24" style="flex:1">
+          <button class="btn sm" onclick="subnetCalc()">Calculate</button></div>
+        <div id="calc-out" class="muted" style="margin-top:10px;white-space:pre-wrap;font-family:monospace"></div>
+      </div>
+      <div class="card">
+        <h3>New Network</h3>
+        <select id="net-client" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
+        <div class="flex" style="margin-top:8px">
+          <input id="net-name" placeholder="Office LAN" style="flex:1">
+          <input id="net-cidr" placeholder="10.0.0.0/24" style="width:150px">
+        </div>
+        <div class="flex" style="margin-top:8px">
+          <input id="net-vlan" type="number" placeholder="VLAN" style="width:90px">
+          <input id="net-gw" placeholder="Gateway 10.0.0.1" style="flex:1">
+        </div>
+        <div class="err" id="net-msg"></div>
+        <button class="btn" style="margin-top:10px" onclick="createNetwork()">Add network</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>Networks</h3><table>
+      <thead><tr><th>Name</th><th>Client</th><th>CIDR</th><th>VLAN</th><th>Utilization</th><th></th></tr></thead>
+      <tbody id="t-networks"></tbody></table></div>
+    <div class="card hidden" id="ipam-card" style="margin-top:16px">
+      <h3 id="ipam-title">IP Addresses</h3>
+      <div class="flex" style="margin:8px 0">
+        <input id="ip-addr" placeholder="10.0.0.10" style="width:150px">
+        <input id="ip-host" placeholder="hostname (optional)" style="flex:1">
+        <button class="btn sm" onclick="allocateIp()">Allocate</button>
+        <span class="err" id="ip-msg"></span>
+      </div>
+      <table><thead><tr><th>Address</th><th>Hostname</th><th>Status</th><th></th></tr></thead>
+      <tbody id="t-ips"></tbody></table>
+    </div>
   </section>
 
   <section id="kb" class="hidden">
@@ -620,6 +660,60 @@ async function createFinding(){
 }
 async function setFinding(id,st){await patch(`/api/security/findings/${id}`,{status:st});loadSecurity();refreshBadges();loadAlerts();}
 
+// ---- Networking / IPAM ----
+let CURNET=null;
+async function subnetCalc(){
+  const r=await post('/api/net/subnet-calc',{cidr:document.getElementById('calc-cidr').value.trim()});
+  const j=await r.json().catch(()=>({}));
+  const o=document.getElementById('calc-out');
+  if(r.ok){o.style.color='var(--ink)';
+    o.textContent=`Network:  ${j.network_address}\nBroadcast: ${j.broadcast_address||'—'}\nNetmask:  ${j.netmask} (/${j.prefixlen})\nUsable:   ${j.usable_hosts} hosts\nRange:    ${j.first_host} – ${j.last_host}`;}
+  else{o.style.color='var(--bad)';o.textContent=j.detail||'Invalid CIDR';}
+}
+async function loadNetworks(){
+  const nets=await api('/api/net/networks');if(!nets)return;
+  document.getElementById('t-networks').innerHTML=nets.map(n=>{
+    const u=n.utilization_pct;
+    const bar=u==null?'—':`<div style="background:var(--line);border-radius:6px;height:8px;width:120px;display:inline-block;vertical-align:middle"><div style="height:8px;border-radius:6px;width:${Math.min(100,u)}%;background:${u>=90?'var(--bad)':(u>=70?'var(--warn)':'var(--ok)')}"></div></div> <span class="muted">${n.used}/${n.capacity}</span>`;
+    return `<tr style="cursor:pointer" onclick="openNet(${n.id},'${esc(n.name)}')"><td>${esc(n.name)}</td>
+     <td>${esc(CLIENTS[n.client_id]||n.client_id)}</td><td class="muted">${esc(n.cidr)}</td>
+     <td>${n.vlan??'—'}</td><td>${bar}</td>
+     <td><button class="btn sm ghost" onclick="event.stopPropagation();deleteNet(${n.id})">✕</button></td></tr>`;}).join('')
+    ||'<tr><td colspan=6 class="muted">No networks documented yet.</td></tr>';
+}
+async function createNetwork(){
+  const msg=document.getElementById('net-msg');msg.textContent='';
+  const vlan=parseInt(document.getElementById('net-vlan').value);
+  const r=await post('/api/net/networks',{client_id:parseInt(document.getElementById('net-client').value),
+    name:document.getElementById('net-name').value.trim(),cidr:document.getElementById('net-cidr').value.trim(),
+    vlan:isNaN(vlan)?null:vlan,gateway:document.getElementById('net-gw').value.trim()||null});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){document.getElementById('net-name').value='';document.getElementById('net-cidr').value='';loadNetworks();}
+  else msg.textContent=j.detail||'Failed';
+}
+async function deleteNet(id){if(!confirm('Delete this network and its IPs?'))return;
+  const r=await fetch(`/api/net/networks/${id}`,{method:'DELETE'});if(r.ok){loadNetworks();document.getElementById('ipam-card').classList.add('hidden');}else alert('Owner only.');}
+async function openNet(id,name){
+  CURNET=id;document.getElementById('ipam-card').classList.remove('hidden');
+  document.getElementById('ipam-title').textContent=`IP Addresses · ${name}`;
+  const ips=await api(`/api/net/networks/${id}/ips`)||[];
+  document.getElementById('t-ips').innerHTML=ips.map(ip=>
+    `<tr><td>${esc(ip.address)}</td><td>${esc(ip.hostname||'—')}</td>
+     <td><span class="badge ${ip.status==='allocated'?'ok':(ip.status==='reserved'?'warn':'')}">${esc(ip.status)}</span></td>
+     <td><button class="btn sm ghost" onclick="releaseIp(${ip.id})">release</button></td></tr>`).join('')
+    ||'<tr><td colspan=4 class="muted">No IPs tracked. Allocate one above.</td></tr>';
+}
+async function allocateIp(){
+  if(!CURNET)return;const msg=document.getElementById('ip-msg');msg.textContent='';
+  const r=await post(`/api/net/networks/${CURNET}/ips`,{address:document.getElementById('ip-addr').value.trim(),
+    hostname:document.getElementById('ip-host').value.trim()||null});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){document.getElementById('ip-addr').value='';document.getElementById('ip-host').value='';
+    openNet(CURNET,document.getElementById('ipam-title').textContent.split('· ')[1]||'');loadNetworks();}
+  else msg.textContent=j.detail||'Failed';
+}
+async function releaseIp(id){await fetch(`/api/net/ips/${id}`,{method:'DELETE'});openNet(CURNET,document.getElementById('ipam-title').textContent.split('· ')[1]||'');loadNetworks();}
+
 // ---- Knowledge base ----
 async function loadKB(){
   const arts=await api('/api/kb');if(!arts)return;
@@ -700,6 +794,8 @@ async function load(){
   if(mSel)mSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   const iSel=document.getElementById('inv-client');
   if(iSel)iSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const nSel=document.getElementById('net-client');
+  if(nSel)nSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   document.getElementById('s-clients').textContent=clients.length;
   document.getElementById('s-devices').textContent=devices.length;
   document.getElementById('s-attn').textContent=devices.filter(d=>(d.health_score??100)<70).length+' need attention';
@@ -733,7 +829,7 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks()]);
 }
 load();
 </script>

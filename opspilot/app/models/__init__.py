@@ -10,7 +10,8 @@ import enum
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Boolean, DateTime, Enum, ForeignKey, Integer, JSON, String, Text, Float, func
+    Boolean, DateTime, Enum, ForeignKey, Integer, JSON, String, Text, Float,
+    UniqueConstraint, func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -628,3 +629,49 @@ class InvoiceLineItem(Base):
     amount: Mapped[float] = mapped_column(Float, default=0.0)
     source: Mapped[str] = mapped_column(String(20), default="manual")  # time|license|manual
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+# --------------------------------------------------------------------------- #
+# v0.11 — Sites & networking (IPAM)
+# --------------------------------------------------------------------------- #
+class Site(Base):
+    """A physical/logical location for a client (HQ, branch, datacenter)."""
+    __tablename__ = "sites"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    address: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class Network(Base):
+    """A subnet/VLAN for a client (optionally tied to a site). `cidr` drives the
+    IPAM math (usable hosts, ranges) computed in services/networking.py."""
+    __tablename__ = "networks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    cidr: Mapped[str] = mapped_column(String(64), nullable=False)   # e.g. 10.0.0.0/24
+    vlan: Mapped[int | None] = mapped_column(Integer)
+    gateway: Mapped[str | None] = mapped_column(String(64))
+    dns: Mapped[str | None] = mapped_column(String(200))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class IPAddress(Base):
+    """A tracked IP within a Network. Unique per (network, address)."""
+    __tablename__ = "ip_addresses"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    network_id: Mapped[int] = mapped_column(ForeignKey("networks.id"), index=True, nullable=False)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    address: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    hostname: Mapped[str | None] = mapped_column(String(200))
+    mac: Mapped[str | None] = mapped_column(String(40))
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id"))
+    status: Mapped[str] = mapped_column(String(20), default="allocated")  # allocated|reserved|free
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    __table_args__ = (UniqueConstraint("network_id", "address", name="uq_ip_per_network"),)

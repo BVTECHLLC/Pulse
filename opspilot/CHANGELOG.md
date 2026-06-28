@@ -1,5 +1,26 @@
 # BVTech OpsPilot — Changelog
 
+## v0.11.0 — Networking & IPAM (June 2026)
+
+### Added
+- **Sites** (`/api/net/sites`): per-client locations (HQ, branch, datacenter).
+- **Networks / subnets** (`/api/net/networks`): CIDR-based subnet records with
+  VLAN, gateway, DNS; each shows live **utilization** (tracked IPs ÷ usable hosts).
+- **IPAM** (`/api/net/networks/{id}/ips`): allocate/release IPs with guards —
+  must be a valid IP, **in-range** for the subnet, and **unique** per network
+  (no conflicts); optional hostname/MAC/device link.
+- **Subnet calculator** (`/api/net/subnet-calc`): network/broadcast/mask/usable
+  host range — pure stdlib `ipaddress`, no external calls.
+- **Dashboard Network tab**: subnet calculator, network create, utilization bars,
+  click-through IP allocation table.
+- New Alembic migration (`sites`, `networks`, `ip_addresses`) — verified reversible.
+- Smoke test: subnet math, network create + validation, IPAM allocate with
+  in-range/duplicate/invalid guards + release, client read-only RBAC.
+
+### Security
+- Writes are staff-only; client users get read-only visibility into their own
+  org's network docs. Every change audited.
+
 ## v0.10.0 — Invoicing (June 2026)
 
 Closes the PSA money loop: tracked billable time + licenses → invoices.
