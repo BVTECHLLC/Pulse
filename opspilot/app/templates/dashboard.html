@@ -31,6 +31,7 @@
     <a data-tab="automation" onclick="tab('automation')">Automation</a>
     <a data-tab="security" onclick="tab('security')">Security</a>
     <a data-tab="scripts" onclick="tab('scripts')">Scripts</a>
+    <a data-tab="network" onclick="tab('network')">Network</a>
     <a data-tab="kb" onclick="tab('kb')">Knowledge Base</a>
     <a data-tab="licenses" onclick="tab('licenses')">Licenses</a>
     <a data-tab="audit" onclick="tab('audit')">Audit Log</a>
@@ -227,6 +228,75 @@
     <div class="card" style="margin-top:16px"><h3>Deployments</h3><table>
       <thead><tr><th>#</th><th>Script</th><th>Device</th><th>By</th><th>Status</th><th>Exit</th><th></th></tr></thead>
       <tbody id="t-deployments"></tbody></table></div>
+  </section>
+
+  <section id="network" class="hidden">
+    <div class="grid cols-2" style="align-items:start">
+      <div class="card">
+        <h3>Subnet Calculator</h3>
+        <div class="flex"><input id="calc-cidr" placeholder="10.0.0.0/24" style="flex:1">
+          <button class="btn sm" onclick="subnetCalc()">Calculate</button></div>
+        <div id="calc-out" class="muted" style="margin-top:10px;white-space:pre-wrap;font-family:monospace"></div>
+      </div>
+      <div class="card">
+        <h3>New Network</h3>
+        <select id="net-client" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
+        <div class="flex" style="margin-top:8px">
+          <input id="net-name" placeholder="Office LAN" style="flex:1">
+          <input id="net-cidr" placeholder="10.0.0.0/24" style="width:150px">
+        </div>
+        <div class="flex" style="margin-top:8px">
+          <input id="net-vlan" type="number" placeholder="VLAN" style="width:90px">
+          <input id="net-gw" placeholder="Gateway 10.0.0.1" style="flex:1">
+        </div>
+        <div class="err" id="net-msg"></div>
+        <button class="btn" style="margin-top:10px" onclick="createNetwork()">Add network</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>Networks</h3><table>
+      <thead><tr><th>Name</th><th>Client</th><th>CIDR</th><th>VLAN</th><th>Utilization</th><th></th></tr></thead>
+      <tbody id="t-networks"></tbody></table></div>
+    <div class="card hidden" id="ipam-card" style="margin-top:16px">
+      <h3 id="ipam-title">IP Addresses</h3>
+      <div class="flex" style="margin:8px 0">
+        <input id="ip-addr" placeholder="10.0.0.10" style="width:150px">
+        <input id="ip-host" placeholder="hostname (optional)" style="flex:1">
+        <button class="btn sm" onclick="allocateIp()">Allocate</button>
+        <span class="err" id="ip-msg"></span>
+      </div>
+      <table><thead><tr><th>Address</th><th>Hostname</th><th>Status</th><th></th></tr></thead>
+      <tbody id="t-ips"></tbody></table>
+    </div>
+    <div class="grid cols-2" style="align-items:start;margin-top:16px">
+      <div class="card">
+        <h3>Live Diagnostics <span class="pill">looking glass</span></h3>
+        <p class="muted" style="margin:4px 0 10px">Run from our server toward a <b>public</b> host (their website, mail, DNS). Private/internal targets are blocked.</p>
+        <div class="flex"><input id="lg-host" placeholder="example.com or 1.1.1.1" style="flex:1"></div>
+        <div class="flex" style="margin-top:8px">
+          <button class="btn sm" onclick="lg('dns')">DNS</button>
+          <button class="btn sm" onclick="lg('reachability')">Reachability</button>
+          <button class="btn sm" onclick="lg('http')">HTTP</button>
+          <input id="lg-port" type="number" placeholder="port" style="width:80px">
+          <button class="btn sm ghost" onclick="lg('port')">Port</button>
+        </div>
+        <div id="lg-out" class="muted" style="margin-top:10px;white-space:pre-wrap;font-family:monospace;font-size:12px"></div>
+      </div>
+      <div class="card">
+        <h3>Run On a Device <span class="pill">on-site agent</span></h3>
+        <p class="muted" style="margin:4px 0 10px">Queue a read-only probe for an enrolled agent to run on the client's <b>internal</b> LAN.</p>
+        <div class="flex">
+          <select id="dg-device" style="flex:1;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
+          <select id="dg-kind" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)">
+            <option value="ping">ping</option><option value="traceroute">traceroute</option>
+            <option value="dns">dns</option><option value="port_check">port check</option>
+            <option value="subnet_discovery">subnet discovery</option></select>
+        </div>
+        <input id="dg-target" placeholder="target (host/IP; blank for subnet discovery)" style="margin-top:8px">
+        <button class="btn" style="margin-top:10px" onclick="runDiag()">Queue diagnostic</button>
+        <table style="margin-top:12px"><thead><tr><th>Kind</th><th>Target</th><th>Status</th><th></th></tr></thead>
+        <tbody id="t-diag"></tbody></table>
+      </div>
+    </div>
   </section>
 
   <section id="kb" class="hidden">
@@ -620,6 +690,91 @@ async function createFinding(){
 }
 async function setFinding(id,st){await patch(`/api/security/findings/${id}`,{status:st});loadSecurity();refreshBadges();loadAlerts();}
 
+// ---- Networking / IPAM ----
+let CURNET=null;
+async function subnetCalc(){
+  const r=await post('/api/net/subnet-calc',{cidr:document.getElementById('calc-cidr').value.trim()});
+  const j=await r.json().catch(()=>({}));
+  const o=document.getElementById('calc-out');
+  if(r.ok){o.style.color='var(--ink)';
+    o.textContent=`Network:  ${j.network_address}\nBroadcast: ${j.broadcast_address||'—'}\nNetmask:  ${j.netmask} (/${j.prefixlen})\nUsable:   ${j.usable_hosts} hosts\nRange:    ${j.first_host} – ${j.last_host}`;}
+  else{o.style.color='var(--bad)';o.textContent=j.detail||'Invalid CIDR';}
+}
+async function loadNetworks(){
+  const nets=await api('/api/net/networks');if(!nets)return;
+  document.getElementById('t-networks').innerHTML=nets.map(n=>{
+    const u=n.utilization_pct;
+    const bar=u==null?'—':`<div style="background:var(--line);border-radius:6px;height:8px;width:120px;display:inline-block;vertical-align:middle"><div style="height:8px;border-radius:6px;width:${Math.min(100,u)}%;background:${u>=90?'var(--bad)':(u>=70?'var(--warn)':'var(--ok)')}"></div></div> <span class="muted">${n.used}/${n.capacity}</span>`;
+    return `<tr style="cursor:pointer" onclick="openNet(${n.id},'${esc(n.name)}')"><td>${esc(n.name)}</td>
+     <td>${esc(CLIENTS[n.client_id]||n.client_id)}</td><td class="muted">${esc(n.cidr)}</td>
+     <td>${n.vlan??'—'}</td><td>${bar}</td>
+     <td><button class="btn sm ghost" onclick="event.stopPropagation();deleteNet(${n.id})">✕</button></td></tr>`;}).join('')
+    ||'<tr><td colspan=6 class="muted">No networks documented yet.</td></tr>';
+}
+async function createNetwork(){
+  const msg=document.getElementById('net-msg');msg.textContent='';
+  const vlan=parseInt(document.getElementById('net-vlan').value);
+  const r=await post('/api/net/networks',{client_id:parseInt(document.getElementById('net-client').value),
+    name:document.getElementById('net-name').value.trim(),cidr:document.getElementById('net-cidr').value.trim(),
+    vlan:isNaN(vlan)?null:vlan,gateway:document.getElementById('net-gw').value.trim()||null});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){document.getElementById('net-name').value='';document.getElementById('net-cidr').value='';loadNetworks();}
+  else msg.textContent=j.detail||'Failed';
+}
+async function deleteNet(id){if(!confirm('Delete this network and its IPs?'))return;
+  const r=await fetch(`/api/net/networks/${id}`,{method:'DELETE'});if(r.ok){loadNetworks();document.getElementById('ipam-card').classList.add('hidden');}else alert('Owner only.');}
+async function openNet(id,name){
+  CURNET=id;document.getElementById('ipam-card').classList.remove('hidden');
+  document.getElementById('ipam-title').textContent=`IP Addresses · ${name}`;
+  const ips=await api(`/api/net/networks/${id}/ips`)||[];
+  document.getElementById('t-ips').innerHTML=ips.map(ip=>
+    `<tr><td>${esc(ip.address)}</td><td>${esc(ip.hostname||'—')}</td>
+     <td><span class="badge ${ip.status==='allocated'?'ok':(ip.status==='reserved'?'warn':'')}">${esc(ip.status)}</span></td>
+     <td><button class="btn sm ghost" onclick="releaseIp(${ip.id})">release</button></td></tr>`).join('')
+    ||'<tr><td colspan=4 class="muted">No IPs tracked. Allocate one above.</td></tr>';
+}
+async function allocateIp(){
+  if(!CURNET)return;const msg=document.getElementById('ip-msg');msg.textContent='';
+  const r=await post(`/api/net/networks/${CURNET}/ips`,{address:document.getElementById('ip-addr').value.trim(),
+    hostname:document.getElementById('ip-host').value.trim()||null});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){document.getElementById('ip-addr').value='';document.getElementById('ip-host').value='';
+    openNet(CURNET,document.getElementById('ipam-title').textContent.split('· ')[1]||'');loadNetworks();}
+  else msg.textContent=j.detail||'Failed';
+}
+async function releaseIp(id){await fetch(`/api/net/ips/${id}`,{method:'DELETE'});openNet(CURNET,document.getElementById('ipam-title').textContent.split('· ')[1]||'');loadNetworks();}
+// looking glass
+async function lg(kind){
+  const out=document.getElementById('lg-out');out.style.color='var(--muted)';out.textContent='Running…';
+  const host=document.getElementById('lg-host').value.trim();
+  let path='/api/netdiag/'+kind, body={host};
+  if(kind==='http'){body={url:host};}
+  if(kind==='port'){body={host,port:parseInt(document.getElementById('lg-port').value)||443};}
+  const r=await post(path,body);const j=await r.json().catch(()=>({}));
+  out.style.color=r.ok?'var(--ink)':'var(--bad)';
+  out.textContent=r.ok?JSON.stringify(j,null,2):(j.detail||'Failed');
+}
+// agent diagnostics
+async function loadDiag(){
+  const rows=await api('/api/netdiag/diagnostics');if(!rows)return;
+  document.getElementById('t-diag').innerHTML=rows.slice(0,12).map(d=>
+    `<tr style="cursor:pointer" onclick="viewDiag(${d.id})"><td>${esc(d.kind)}</td><td class="muted">${esc(d.target||'—')}</td>
+     <td><span class="badge ${d.status==='done'?'ok':(d.status==='failed'?'bad':'warn')}">${esc(d.status)}</span></td>
+     <td>${d.status==='done'||d.status==='failed'?'view':''}</td></tr>`).join('')
+    ||'<tr><td colspan=4 class="muted">No diagnostics yet.</td></tr>';
+}
+async function runDiag(){
+  const r=await post('/api/netdiag/diagnostics',{device_id:parseInt(document.getElementById('dg-device').value),
+    kind:document.getElementById('dg-kind').value,target:document.getElementById('dg-target').value.trim()||null});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){alert('Queued. The agent runs it on its next check-in (≤5 min), then results appear below.');loadDiag();}
+  else alert(j.detail||'Failed');
+}
+async function viewDiag(id){
+  const d=await api(`/api/netdiag/diagnostics/${id}`);if(!d)return;
+  alert(`${d.kind} ${d.target||''} [${d.status}]\n\n${d.result||'(no result)'}`);
+}
+
 // ---- Knowledge base ----
 async function loadKB(){
   const arts=await api('/api/kb');if(!arts)return;
@@ -700,6 +855,8 @@ async function load(){
   if(mSel)mSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   const iSel=document.getElementById('inv-client');
   if(iSel)iSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const nSel=document.getElementById('net-client');
+  if(nSel)nSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   document.getElementById('s-clients').textContent=clients.length;
   document.getElementById('s-devices').textContent=devices.length;
   document.getElementById('s-attn').textContent=devices.filter(d=>(d.health_score??100)<70).length+' need attention';
@@ -711,6 +868,8 @@ async function load(){
     ||'<tr><td colspan=4 class="muted">No clients yet. Add one via the API.</td></tr>';
 
   devices.forEach(d=>DEVICES[d.id]=d.hostname);
+  const dgSel=document.getElementById('dg-device');
+  if(dgSel)dgSel.innerHTML=devices.map(d=>`<option value="${d.id}">${esc(d.hostname)}</option>`).join('')||'<option>no devices</option>';
   document.getElementById('t-devices').innerHTML=devices.map(d=>
     `<tr><td>${esc(d.hostname)} <span class="muted">#${d.id}</span></td><td>${esc(d.os)||'—'}</td><td>${d.cpu_pct??'—'}</td>
      <td>${d.disk_pct??'—'}</td><td>${esc(d.av_status)||'—'}</td><td>${badge(d.health_score,80,60)}</td>
@@ -733,7 +892,7 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag()]);
 }
 load();
 </script>

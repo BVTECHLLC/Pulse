@@ -23,7 +23,8 @@ from ...core.security import (
     verify_password,
 )
 from ...models import (
-    Client, Device, DeviceCheckin, DeploymentStatus, Role, ScriptDeployment, User,
+    Client, Device, DeviceCheckin, DeploymentStatus, DiagnosticRequest, Role,
+    ScriptDeployment, User,
 )
 from ...services import audit, automation, monitoring
 
@@ -195,3 +196,44 @@ def report_job_result(job_id: int, body: JobResultIn, request: Request,
                  target_id=str(j.id), client_id=j.client_id, ip=_ip(request),
                  detail=f"exit={body.exit_code} status={j.status.value}", success=(body.exit_code == 0))
     return {"ok": True, "status": j.status.value}
+
+
+# --------------------------------------------------------------------------- #
+# Diagnostics queue (v0.12). Read-only network probes the on-site agent runs and
+# reports — pull only this device's pending diagnostics, post results back.
+# --------------------------------------------------------------------------- #
+@router.get("/diagnostics")
+def pull_diagnostics(x_enroll_id: str = Header(...), x_agent_key: str = Header(...),
+                     db: Session = Depends(get_db)):
+    dev = _auth_device(db, x_enroll_id, x_agent_key)
+    rows = (db.query(DiagnosticRequest)
+            .filter(DiagnosticRequest.device_id == dev.id, DiagnosticRequest.status == "pending")
+            .order_by(DiagnosticRequest.created_at).all())
+    out = []
+    for d in rows:
+        d.status = "running"
+        d.started_at = datetime.now(timezone.utc)
+        out.append({"id": d.id, "kind": d.kind, "target": d.target, "params": d.params or {}})
+    if rows:
+        db.commit()
+    return {"diagnostics": out}
+
+
+class DiagResultIn(BaseModel):
+    ok: bool = True
+    result: str | None = None
+
+
+@router.post("/diagnostics/{diag_id}/result")
+def report_diagnostic(diag_id: int, body: DiagResultIn, request: Request,
+                      x_enroll_id: str = Header(...), x_agent_key: str = Header(...),
+                      db: Session = Depends(get_db)):
+    dev = _auth_device(db, x_enroll_id, x_agent_key)
+    d = db.get(DiagnosticRequest, diag_id)
+    if not d or d.device_id != dev.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Diagnostic not found")
+    d.result = (body.result or "")[:50000]
+    d.status = "done" if body.ok else "failed"
+    d.completed_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True, "status": d.status}

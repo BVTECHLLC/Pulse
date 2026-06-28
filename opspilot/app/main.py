@@ -16,7 +16,7 @@ from .core.security import hash_password
 from .models import Role, User
 from .api.routes import (
     auth, resources, agent, ui, tickets, alerts, billing, kb, automation, security,
-    scripts, signup, m365, invoices,
+    scripts, signup, m365, invoices, networking, netdiag,
 )
 
 _s = get_settings()
@@ -94,6 +94,8 @@ app.include_router(scripts.router)
 app.include_router(signup.router)
 app.include_router(m365.router)
 app.include_router(invoices.router)
+app.include_router(networking.router)
+app.include_router(netdiag.router)
 app.include_router(ui.router)
 
 

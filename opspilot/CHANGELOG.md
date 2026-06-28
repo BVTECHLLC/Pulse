@@ -1,5 +1,54 @@
 # BVTech OpsPilot — Changelog
 
+## v0.12.0 — Network diagnostics & discovery (June 2026)
+
+Diagnose client network issues live from the portal — two complementary layers.
+
+### Added
+- **Looking glass** (server-side, `/api/netdiag/{dns,reachability,port,http}`):
+  run DNS / TCP reachability+latency / port / HTTP checks from the portal toward
+  a client's **public** endpoints (site, mail, DNS). **SSRF-guarded** — every
+  target is resolved and any private / loopback / link-local (incl. cloud
+  metadata) / reserved address is refused. ICMP-free (TCP connect), so it works
+  inside the container without privileges. Staff-only.
+- **Agent diagnostics** (`/api/netdiag/diagnostics` + agent pull/report): queue
+  **read-only** probes — `ping`, `traceroute`, `dns`, `port_check`,
+  `subnet_discovery` (LAN ping-sweep) — for an on-site agent to run against the
+  client's **internal** network and report back. Non-destructive by design.
+- **Agent** gained diagnostic handlers and now processes the diagnostics queue
+  each cycle (read-only; runs regardless of the script opt-in).
+- **Dashboard Network tab**: a "Live Diagnostics (looking glass)" panel and a
+  "Run on a device" panel with results.
+- New Alembic migration (`diagnostic_requests`) — verified reversible.
+- Smoke test: SSRF guard rejects private/loopback/metadata, RBAC, and the full
+  agent queue → pull → report → read flow.
+
+### Security
+- Looking glass is staff-only and cannot reach internal/metadata ranges.
+- Agent diagnostics are read-only (no config changes) and per-device scoped;
+  every request is audited.
+
+## v0.11.0 — Networking & IPAM (June 2026)
+
+### Added
+- **Sites** (`/api/net/sites`): per-client locations (HQ, branch, datacenter).
+- **Networks / subnets** (`/api/net/networks`): CIDR-based subnet records with
+  VLAN, gateway, DNS; each shows live **utilization** (tracked IPs ÷ usable hosts).
+- **IPAM** (`/api/net/networks/{id}/ips`): allocate/release IPs with guards —
+  must be a valid IP, **in-range** for the subnet, and **unique** per network
+  (no conflicts); optional hostname/MAC/device link.
+- **Subnet calculator** (`/api/net/subnet-calc`): network/broadcast/mask/usable
+  host range — pure stdlib `ipaddress`, no external calls.
+- **Dashboard Network tab**: subnet calculator, network create, utilization bars,
+  click-through IP allocation table.
+- New Alembic migration (`sites`, `networks`, `ip_addresses`) — verified reversible.
+- Smoke test: subnet math, network create + validation, IPAM allocate with
+  in-range/duplicate/invalid guards + release, client read-only RBAC.
+
+### Security
+- Writes are staff-only; client users get read-only visibility into their own
+  org's network docs. Every change audited.
+
 ## v0.10.0 — Invoicing (June 2026)
 
 Closes the PSA money loop: tracked billable time + licenses → invoices.
