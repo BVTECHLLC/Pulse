@@ -20,31 +20,43 @@ def _ctx(request: Request, **extra):
     return {"request": request, "app_name": _s.APP_NAME, "version": _s.APP_VERSION, **extra}
 
 
+# HTML shells must NEVER be cached: the footer version + the JS they load are tied
+# to the running build, so a cached page makes a freshly deployed site look stale
+# (and can pin clients to an old installer flow). `no-store` defeats both the
+# browser cache and any intermediary (e.g. Cloudflare) so a new deploy is visible
+# on the very next request. Static assets (/static) keep their own caching.
+def _page(name: str, request: Request, **extra) -> HTMLResponse:
+    resp = _templates.TemplateResponse(name, _ctx(request, **extra))
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @router.get("/", response_class=HTMLResponse)
 def login_page(request: Request):
-    return _templates.TemplateResponse("login.html", _ctx(request))
+    return _page("login.html", request)
 
 
 @router.get("/signup", response_class=HTMLResponse)
 def signup_page(request: Request):
-    return _templates.TemplateResponse("signup.html", _ctx(request))
+    return _page("signup.html", request)
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):
-    return _templates.TemplateResponse("dashboard.html", _ctx(request))
+    return _page("dashboard.html", request)
 
 
 @router.get("/portal", response_class=HTMLResponse)
 def portal(request: Request):
-    return _templates.TemplateResponse("portal.html", _ctx(request))
+    return _page("portal.html", request)
 
 
 @router.get("/invoice/{invoice_id}", response_class=HTMLResponse)
 def invoice_view(invoice_id: int, request: Request):
-    return _templates.TemplateResponse("invoice.html", _ctx(request, invoice_id=invoice_id))
+    return _page("invoice.html", request, invoice_id=invoice_id)
 
 
 @router.get("/report/{client_id}", response_class=HTMLResponse)
 def report_view(client_id: int, request: Request):
-    return _templates.TemplateResponse("report.html", _ctx(request, client_id=client_id))
+    return _page("report.html", request, client_id=client_id)

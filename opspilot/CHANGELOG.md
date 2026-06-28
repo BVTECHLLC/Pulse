@@ -1,5 +1,16 @@
 # BVTech OpsPilot — Changelog
 
+## v0.17.1 — No-store on HTML pages (June 2026)
+
+### Fixed — site showed an old version after a successful deploy
+- HTML page shells (`/`, `/signup`, `/dashboard`, `/portal`, `/invoice/*`,
+  `/report/*`) were served with **no cache headers**, so the browser and
+  Cloudflare could hold a stale copy — the login footer kept showing an old
+  `vX.Y.Z` (and an old installer flow) even after the origin was upgraded.
+- All HTML pages now send **`Cache-Control: no-store, no-cache, must-revalidate`**
+  (+ `Pragma: no-cache`), so a new deploy is visible on the very next request.
+  Static assets under `/static` keep their own caching.
+
 ## v0.17.0 — Self-healing auto-deploy (June 2026)
 
 ### Fixed — the real cause of the "installer still 404s" report
