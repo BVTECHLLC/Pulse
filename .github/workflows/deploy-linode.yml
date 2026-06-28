@@ -1,0 +1,59 @@
+# .github/workflows/deploy-linode.yml
+#
+# Deploys BVTech OpsPilot to the Linode host over SSH.
+#
+# Triggers:
+#   - push to `main`        (automatic deploy on merge)
+#   - workflow_dispatch     (manual "Run workflow" button)
+#
+# Required GitHub repo Secrets (Settings -> Secrets and variables -> Actions):
+#   LINODE_HOST     -> 45.33.29.100         (the Linode public IP / host)
+#   LINODE_USER     -> deploy               (key-only SSH user, in docker group, NO sudo)
+#   LINODE_SSH_KEY  -> <ed25519 PRIVATE key> (the full private key text, incl. BEGIN/END lines)
+#   LINODE_APP_DIR  -> /opt/bvtech-portal   (git clone root; compose runs from $LINODE_APP_DIR/opspilot)
+#
+# Notes:
+#   - Runs as `deploy` (NOT root). `deploy` is in the docker group, so NO sudo is used.
+#   - opspilot/docker-compose.override.yml (cloudflared) is a server-only, uncommitted file;
+#     `git pull --ff-only` leaves it untouched so the Cloudflare Tunnel keeps running.
+#   - In production the app does NOT auto-create tables; migrations are applied explicitly
+#     with `docker compose run --rm api alembic upgrade head` before the service is rebuilt.
+
+name: Deploy to Linode
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never let two deploys run at once. Do NOT cancel an in-progress deploy if a newer
+# one arrives, so an in-flight migration/rebuild is never interrupted mid-run.
+concurrency:
+  group: deploy-linode
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy (SSH)
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.LINODE_HOST }}
+          username: ${{ secrets.LINODE_USER }}
+          key: ${{ secrets.LINODE_SSH_KEY }}
+          envs: LINODE_APP_DIR
+          script_stop: true
+          script: |
+            set -e
+            cd "${LINODE_APP_DIR}"
+            git pull --ff-only origin main
+            cd opspilot
+            docker compose run --rm api alembic upgrade head
+            docker compose up -d --build api
+            docker image prune -f
+        env:
+          LINODE_APP_DIR: ${{ secrets.LINODE_APP_DIR }}
