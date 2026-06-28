@@ -54,12 +54,32 @@ def billing_summary(client_id: int | None = None, db: Session = Depends(get_db),
         pc["seats_used"] += lic.seats_used or 0
         pc["license_count"] += 1
 
+    # Fold in active recurring contracts (normalized to monthly).
+    from ...models import Contract
+    from .contracts import monthly_value
+    cq = db.query(Contract).filter(Contract.status == "active")
+    if is_staff(user):
+        if client_id:
+            cq = cq.filter(Contract.client_id == client_id)
+    else:
+        cq = cq.filter(Contract.client_id == user.client_id)
+    contract_mrr = 0.0
+    for ct in cq.all():
+        mv = monthly_value(ct)
+        contract_mrr += mv
+        total_mrr += mv
+        pc = per_client.setdefault(
+            ct.client_id, {"client_id": ct.client_id, "mrr": 0.0,
+                           "seats": 0, "seats_used": 0, "license_count": 0})
+        pc["mrr"] += mv
+        pc["contract_mrr"] = pc.get("contract_mrr", 0.0) + mv
+
     # Attach client names for staff-facing breakdown.
     if per_client:
         names = {c.id: c.name for c in
                  db.query(Client).filter(Client.id.in_(per_client.keys())).all()}
-        for cid, row in per_client.items():
-            row["client_name"] = names.get(cid)
+        for cid_, row in per_client.items():
+            row["client_name"] = names.get(cid_)
             row["mrr"] = round(row["mrr"], 2)
 
     utilization = round(100.0 * seats_used / seats_total, 1) if seats_total else None
@@ -68,6 +88,8 @@ def billing_summary(client_id: int | None = None, db: Session = Depends(get_db),
     return {
         "total_mrr": round(total_mrr, 2),
         "total_arr": round(total_mrr * 12, 2),
+        "license_mrr": round(total_mrr - contract_mrr, 2),
+        "contract_mrr": round(contract_mrr, 2),
         "license_count": len(licenses),
         "seats_total": seats_total,
         "seats_used": seats_used,

@@ -62,8 +62,20 @@
     </div>
   </section>
 
-  <section id="clients" class="hidden"><div class="card"><table>
-    <thead><tr><th>Name</th><th>Contact</th><th>Email</th><th>Status</th></tr></thead>
+  <section id="clients" class="hidden">
+    <div class="card" style="margin-bottom:16px">
+      <h3>Add Client</h3>
+      <div class="flex">
+        <input id="cl-name" placeholder="Client / company name" style="flex:1;min-width:160px">
+        <input id="cl-contact" placeholder="Primary contact" style="flex:1;min-width:140px">
+        <input id="cl-email" placeholder="Email" style="flex:1;min-width:140px">
+        <input id="cl-phone" placeholder="Phone" style="width:140px">
+        <button class="btn sm" onclick="createClient()">Add client</button>
+      </div>
+      <div class="err" id="cl-msg"></div>
+    </div>
+    <div class="card"><table>
+    <thead><tr><th>Name</th><th>Contact</th><th>Email</th><th>Status</th><th>Report</th></tr></thead>
     <tbody id="t-clients"></tbody></table></div></section>
 
   <section id="devices" class="hidden">
@@ -149,6 +161,19 @@
       </div>
       <table><thead><tr><th>#</th><th>Client</th><th>Total</th><th>Status</th><th>Issued</th><th></th></tr></thead>
       <tbody id="t-invoices"></tbody></table>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h3>Recurring Contracts</h3>
+      <div class="flex" style="margin:8px 0">
+        <select id="ct-client" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
+        <input id="ct-name" placeholder="Managed IT — 25 seats" style="flex:1">
+        <input id="ct-amt" type="number" placeholder="amount" style="width:110px">
+        <select id="ct-period" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)">
+          <option value="monthly">monthly</option><option value="quarterly">quarterly</option><option value="annual">annual</option></select>
+        <button class="btn sm" onclick="createContract()">Add</button>
+      </div>
+      <table><thead><tr><th>Client</th><th>Contract</th><th>Amount</th><th>MRR</th><th>Status</th></tr></thead>
+      <tbody id="t-contracts"></tbody></table>
     </div>
   </section>
 
@@ -570,6 +595,27 @@ async function generateInvoice(){
 }
 async function invAction(id,a){await post(`/api/invoices/${id}/${a}`);loadInvoices();loadBilling();}
 
+// ---- Contracts ----
+async function loadContracts(){
+  const rows=await api('/api/contracts');if(!rows)return;
+  const money=v=>'$'+(v||0).toLocaleString(undefined,{maximumFractionDigits:0});
+  document.getElementById('t-contracts').innerHTML=rows.map(ct=>
+    `<tr><td>${esc(CLIENTS[ct.client_id]||ct.client_id)}</td><td>${esc(ct.name)}</td>
+     <td>${money(ct.amount)}/${esc(ct.billing_period)}</td><td>${money(ct.monthly_value)}/mo</td>
+     <td><span class="badge ${ct.status==='active'?'ok':(ct.status==='expired'?'bad':'warn')}">${esc(ct.status)}</span></td></tr>`).join('')
+    ||'<tr><td colspan=5 class="muted">No contracts yet.</td></tr>';
+}
+async function createContract(){
+  const amt=parseFloat(document.getElementById('ct-amt').value);
+  if(!amt){alert('Enter an amount.');return;}
+  const r=await post('/api/contracts',{client_id:parseInt(document.getElementById('ct-client').value),
+    name:document.getElementById('ct-name').value.trim()||'Service contract',amount:amt,
+    billing_period:document.getElementById('ct-period').value});
+  if(r.ok){document.getElementById('ct-name').value='';document.getElementById('ct-amt').value='';
+    loadContracts();loadBilling();}
+  else alert((await r.json().catch(()=>({}))).detail||'Failed');
+}
+
 // ---- Microsoft 365 ----
 let M365_OK=false;
 async function loadM365(){
@@ -706,9 +752,23 @@ async function createFinding(){
 }
 async function setFinding(id,st){await patch(`/api/security/findings/${id}`,{status:st});loadSecurity();refreshBadges();loadAlerts();}
 
+// ---- Clients ----
+async function createClient(){
+  const msg=document.getElementById('cl-msg');msg.textContent='';
+  const name=document.getElementById('cl-name').value.trim();
+  if(!name){msg.textContent='Client name is required.';return;}
+  const r=await post('/api/clients',{name,primary_contact:document.getElementById('cl-contact').value.trim()||null,
+    email:document.getElementById('cl-email').value.trim()||null,phone:document.getElementById('cl-phone').value.trim()||null});
+  if(r.ok){document.getElementById('cl-name').value='';document.getElementById('cl-contact').value='';
+    document.getElementById('cl-email').value='';document.getElementById('cl-phone').value='';
+    msg.style.color='var(--ok)';msg.textContent='Client added ✓';load();}
+  else{const d=await r.json().catch(()=>({}));msg.style.color='var(--bad)';msg.textContent=d.detail||'Failed';}
+}
+
 // ---- Agent deployment ----
 async function genAgent(){
   const cid=document.getElementById('ag-client').value;
+  if(!cid){alert('Add a client first (Clients tab), then come back to deploy an agent.');return;}
   const r=await post(`/api/agent/enroll-token/${cid}`);
   const j=await r.json().catch(()=>({}));
   if(!r.ok){alert(j.detail||'Failed to generate token');return;}
@@ -892,14 +952,17 @@ async function load(){
 
   document.getElementById('t-clients').innerHTML=clients.map(c=>
     `<tr><td>${esc(c.name)}</td><td>${esc(c.primary_contact)||'—'}</td><td>${esc(c.email)||'—'}</td>
-     <td><span class="badge ${c.is_active?'ok':'bad'}">${c.is_active?'active':'inactive'}</span></td></tr>`).join('')
-    ||'<tr><td colspan=4 class="muted">No clients yet. Add one via the API.</td></tr>';
+     <td><span class="badge ${c.is_active?'ok':'bad'}">${c.is_active?'active':'inactive'}</span></td>
+     <td><a class="btn sm ghost" href="/report/${c.id}" target="_blank">Report</a></td></tr>`).join('')
+    ||'<tr><td colspan=5 class="muted">No clients yet. Add one via the API.</td></tr>';
 
   devices.forEach(d=>DEVICES[d.id]=d.hostname);
   const dgSel=document.getElementById('dg-device');
   if(dgSel)dgSel.innerHTML=devices.map(d=>`<option value="${d.id}">${esc(d.hostname)}</option>`).join('')||'<option>no devices</option>';
   const agSel=document.getElementById('ag-client');
   if(agSel)agSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const ctSel=document.getElementById('ct-client');
+  if(ctSel)ctSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   document.getElementById('t-devices').innerHTML=devices.map(d=>
     `<tr><td>${esc(d.hostname)} <span class="muted">#${d.id}</span></td><td>${esc(d.os)||'—'}</td><td>${d.cpu_pct??'—'}</td>
      <td>${d.disk_pct??'—'}</td><td>${esc(d.av_status)||'—'}</td><td>${badge(d.health_score,80,60)}</td>
@@ -922,7 +985,7 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts()]);
 }
 load();
 </script>

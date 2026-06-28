@@ -1,5 +1,29 @@
 # BVTech OpsPilot — Changelog
 
+## v0.14.0 — Contracts, client reports & deploy-flow fixes (June 2026)
+
+### Fixed
+- **Agent deploy was unusable with no clients**: the Devices "Deploy Agent" panel
+  posted to `/api/agent/enroll-token/` with an empty client id → 404 "Not Found".
+  Added an **Add Client** form on the Clients tab (client creation was previously
+  API-only), a guard so the installer button tells you to add a client first, and
+  hardened `/download/agent` path resolution so the agent file always serves.
+  Verified the full flow end-to-end: add client → generate installer → download
+  agent → enroll → check-in.
+
+### Added
+- **Recurring contracts** (`/api/contracts`): flat monthly/quarterly/annual
+  service agreements; active contracts feed **MRR** (normalized to monthly) in
+  the billing rollup (`contract_mrr` + `license_mrr` split). Dashboard Billing
+  tab gains a Contracts panel.
+- **Branded client reports** (`/report/{client_id}` + `/api/reports/{id}/summary`):
+  a one-click, print-to-PDF QBR snapshot — security score, device health, active
+  alerts, helpdesk/SLA, and recurring revenue. "Report" link per client; clients
+  can view their own.
+- New Alembic migration (`contracts`) — verified reversible.
+- Smoke test: contracts MRR (incl. quarterly normalization), report aggregation,
+  RBAC, and the agent download + enroll-token flow.
+
 ## v0.13.0 — Production agent + one-click deploy (June 2026)
 
 Makes the on-site agent real and turnkey — download, install, and it reports to
