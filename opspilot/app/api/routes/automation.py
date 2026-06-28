@@ -20,7 +20,7 @@ from ...models import (
     AUTOMATION_ACTIONS, AUTOMATION_TRIGGERS, AutomationRule, AutomationRun,
     Client, Notification, Role, SupportTicket, TicketStatus, User,
 )
-from ...services import audit, automation, monitoring, sla
+from ...services import audit, automation, monitoring, scheduled_reports, sla
 
 router = APIRouter(prefix="/api/automation", tags=["automation"])
 notif_router = APIRouter(prefix="/api/notifications", tags=["notifications"])
@@ -178,10 +178,14 @@ def run_checks(db: Session = Depends(get_db),
             automation.dispatch(db, "ticket.sla_breached", ctx)
             sla_fired += 1
 
+    # Deliver any due scheduled client reports (v0.20).
+    reports = scheduled_reports.send_due(db, now)
+
     audit.record(db, action="automation.run_checks", actor_user_id=user.id, actor_email=user.email,
                  actor_role=user.role.value, target_type="automation", ip=None,
-                 detail=f"offline_opened={sweep['offline_opened']} sla_breaches_fired={sla_fired}")
-    return {"offline": sweep, "sla_breaches_fired": sla_fired}
+                 detail=f"offline_opened={sweep['offline_opened']} sla_breaches_fired={sla_fired} "
+                        f"reports_sent={reports['reports_sent']}")
+    return {"offline": sweep, "sla_breaches_fired": sla_fired, "reports": reports}
 
 
 # --------------------------------------------------------------------------- #

@@ -32,7 +32,7 @@ import time
 from pathlib import Path
 from urllib import request as urlreq
 
-AGENT_VERSION = "1.1.0"
+AGENT_VERSION = "1.2.0"
 PULSE_URL = os.environ.get("PULSE_URL", "https://portal.bvtech.org")
 CHECKIN_INTERVAL = 300  # seconds; server can override
 INVENTORY_INTERVAL = 6 * 3600  # software inventory cadence (seconds)
@@ -229,6 +229,96 @@ def _software_macos() -> list[dict]:
     return apps
 
 
+def collect_patches() -> list[dict]:
+    """Pending OS/software updates, per OS. Read-only (checks, never installs)."""
+    try:
+        if os.name == "nt":
+            return _patches_windows()
+        if sys.platform == "darwin":
+            return _patches_macos()
+        return _patches_linux()
+    except Exception as e:
+        _log(f"patch check failed: {e}")
+        return []
+
+
+def _patches_windows() -> list[dict]:
+    # Query the Windows Update agent COM API via PowerShell (native, no modules).
+    import subprocess
+    ps = (
+        "$s=New-Object -ComObject Microsoft.Update.Session;"
+        "$r=($s.CreateUpdateSearcher()).Search('IsInstalled=0 and IsHidden=0');"
+        "$r.Updates | ForEach-Object {"
+        " $kb=($_.KBArticleIDs -join ',');"
+        " $sev=$_.MsrcSeverity;"
+        " \"$($_.Title)`t$kb`t$sev\" }"
+    )
+    out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                         capture_output=True, text=True, timeout=120)
+    patches = []
+    for line in (out.stdout or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split("\t")
+        title = parts[0].strip()
+        if not title:
+            continue
+        kb = parts[1].strip() if len(parts) > 1 and parts[1].strip() else None
+        if kb and not kb.upper().startswith("KB"):
+            kb = "KB" + kb
+        sev = parts[2].strip() if len(parts) > 2 and parts[2].strip() else None
+        patches.append({"name": title, "kb": kb, "severity": (sev or "other").lower()})
+    return patches
+
+
+def _patches_linux() -> list[dict]:
+    import subprocess
+    # Debian/Ubuntu: simulate an upgrade and read the 'Inst' lines.
+    try:
+        out = subprocess.run(["apt-get", "-s", "upgrade"],
+                             capture_output=True, text=True, timeout=60)
+        if out.returncode == 0:
+            patches = []
+            for line in out.stdout.splitlines():
+                if line.startswith("Inst "):
+                    toks = line.split()
+                    name = toks[1] if len(toks) > 1 else line[5:]
+                    sev = "security" if "security" in line.lower() else "other"
+                    patches.append({"name": name, "kb": None, "severity": sev})
+            if patches:
+                return patches
+    except Exception:
+        pass
+    # RHEL/Fedora: dnf check-update exits 100 when updates are available.
+    try:
+        out = subprocess.run(["dnf", "-q", "check-update"],
+                             capture_output=True, text=True, timeout=90)
+        patches = []
+        for line in out.stdout.splitlines():
+            line = line.strip()
+            if not line or line.startswith("Obsoleting") or " " not in line:
+                continue
+            name = line.split()[0]
+            if "." in name:   # name.arch
+                patches.append({"name": name, "kb": None, "severity": "other"})
+        return patches
+    except Exception:
+        pass
+    return []
+
+
+def _patches_macos() -> list[dict]:
+    import subprocess
+    out = subprocess.run(["softwareupdate", "-l"], capture_output=True, text=True, timeout=120)
+    patches = []
+    for line in (out.stdout or "").splitlines():
+        line = line.strip()
+        if line.startswith("* ") or line.startswith("- "):
+            patches.append({"name": line[2:].strip(), "kb": None, "severity": "other"})
+    return patches
+
+
 # --------------------------------------------------------------------------- #
 def enroll(token: str) -> dict:
     body = {
@@ -397,7 +487,7 @@ def run_loop(enable_scripts: bool = False) -> None:
         print("  --enable-remote-scripts.")
         print("=" * 64)
     print("  Network diagnostics: ON (read-only probes; ping/dns/port/traceroute/discovery).")
-    print("  Software inventory: ON (installed apps; refreshed ~every 6h).")
+    print("  Software inventory + patch scan: ON (read-only; refreshed ~every 6h).")
     last_inventory = 0.0
     while True:
         try:
@@ -406,13 +496,16 @@ def run_loop(enable_scripts: bool = False) -> None:
             _process_diagnostics(headers)  # read-only; always processed
             if enable_scripts:
                 _process_jobs(headers)
-            # Software inventory is heavier; report on first cycle then ~every 6h.
+            # Software inventory + patch scan are heavier; first cycle then ~every 6h.
             now = time.time()
             if now - last_inventory >= INVENTORY_INTERVAL:
                 sw = collect_software()
                 if sw:
                     _post("/api/agent/inventory", {"software": sw}, headers)
                     _log(f"reported {len(sw)} installed apps")
+                patches = collect_patches()
+                _post("/api/agent/patches", {"patches": patches}, headers)
+                _log(f"reported {len(patches)} pending patches")
                 last_inventory = now
         except Exception as e:
             print(f"cycle failed: {e}")

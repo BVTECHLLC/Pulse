@@ -11,7 +11,10 @@ from ...core.db import get_db
 from sqlalchemy import func
 
 from ...core.deps import assert_client_access, current_user, is_staff, require_roles
-from ...models import Client, Device, DeviceSoftware, License, AuditLog, Role, User
+from ...models import (
+    Client, Device, DeviceCheckin, DevicePatch, DeviceSoftware, License,
+    AuditLog, Role, User,
+)
 from ...services import audit
 
 router = APIRouter(prefix="/api", tags=["resources"])
@@ -75,7 +78,7 @@ def list_devices(client_id: int | None = None, db: Session = Depends(get_db),
             "id": d.id, "client_id": d.client_id, "hostname": d.hostname,
             "os": d.os, "ip": d.ip, "cpu_pct": d.cpu_pct, "ram_pct": d.ram_pct,
             "disk_pct": d.disk_pct, "av_status": d.av_status, "patch_status": d.patch_status,
-            "health_score": d.health_score,
+            "patches_pending": d.patches_pending, "health_score": d.health_score,
             "last_checkin": d.last_checkin.isoformat() if d.last_checkin else None,
         })
     return out
@@ -121,6 +124,51 @@ def software_search(q: str = "", client_id: int | None = None,
     rows = query.order_by(func.count(func.distinct(DeviceSoftware.device_id)).desc(),
                           DeviceSoftware.name).limit(200).all()
     return [{"name": n, "version": v, "devices": d} for (n, v, d) in rows]
+
+
+# --------------------------------------------------------------------------- #
+# Patch management (v0.20) — pending OS/software updates reported by the agent
+# --------------------------------------------------------------------------- #
+@router.get("/devices/{device_id}/patches")
+def device_patches(device_id: int, db: Session = Depends(get_db),
+                   user: User = Depends(current_user)):
+    dev = db.get(Device, device_id)
+    if not dev:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    assert_client_access(user, dev.client_id)
+    rows = (db.query(DevicePatch)
+            .filter(DevicePatch.device_id == device_id)
+            .order_by(DevicePatch.severity, DevicePatch.name).all())
+    return {
+        "device_id": device_id, "hostname": dev.hostname,
+        "pending": dev.patches_pending or 0,
+        "patches": [{"name": r.name, "kb": r.kb, "severity": r.severity} for r in rows],
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Metric history (v0.20) — recent check-in trend for sparkline charts
+# --------------------------------------------------------------------------- #
+@router.get("/devices/{device_id}/metrics")
+def device_metrics(device_id: int, limit: int = 50, db: Session = Depends(get_db),
+                   user: User = Depends(current_user)):
+    dev = db.get(Device, device_id)
+    if not dev:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    assert_client_access(user, dev.client_id)
+    limit = max(1, min(limit, 500))
+    rows = (db.query(DeviceCheckin)
+            .filter(DeviceCheckin.device_id == device_id)
+            .order_by(DeviceCheckin.ts.desc()).limit(limit).all())
+    rows = list(reversed(rows))   # oldest -> newest for charting
+    return {
+        "device_id": device_id, "hostname": dev.hostname, "points": len(rows),
+        "series": [
+            {"ts": r.ts.isoformat() if r.ts else None, "cpu_pct": r.cpu_pct,
+             "ram_pct": r.ram_pct, "disk_pct": r.disk_pct, "health_score": r.health_score}
+            for r in rows
+        ],
+    }
 
 
 # --------------------------------------------------------------------------- #
