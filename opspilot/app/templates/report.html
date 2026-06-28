@@ -18,6 +18,7 @@
   <div class="noprint flex" style="justify-content:space-between;margin-bottom:12px">
     <a class="lockup" href="/dashboard"><img src="/static/img/mark.svg"><span class="wm"><b>BVTech</b> OpsPilot</span></a>
     <div class="flex"><button class="btn sm" onclick="window.print()">Print / Save PDF</button>
+      <a class="btn sm ghost" id="csv-link" href="#">Export CSV</a>
       <a class="btn sm ghost" href="/dashboard">Back</a></div>
   </div>
   <div class="card" id="rep">Loading…</div>
@@ -35,7 +36,9 @@ async function load(){
   if(r.status===401){location.href='/';return;}
   if(!r.ok){document.getElementById('rep').textContent='Report unavailable.';return;}
   const d=await r.json();
+  const csv=document.getElementById('csv-link'); if(csv)csv.href=`/api/reports/${CID}/export.csv`;
   const sec=d.security||{}, al=d.alerts||{}, dv=d.devices||{}, tk=d.tickets||{}, rev=d.revenue||{};
+  const pa=d.patch||{}, pj=d.projects||{}, as=d.assets||{}, sv=d.service||{};
   document.getElementById('rep').innerHTML=`
     <div class="flex" style="justify-content:space-between;align-items:flex-start">
       <div><h2 style="margin:0">${esc(d.client.name)}</h2>
@@ -48,14 +51,30 @@ async function load(){
       ${kpi('Active Alerts', al.total||0, (al.critical||0)+' critical', (al.total?'var(--bad)':'var(--ok)'))}
       ${kpi('Monthly Spend', money(rev.mrr), money(rev.arr)+' / yr', 'var(--ink)')}
     </div>
+    <div class="kpis" style="margin:0 0 18px">
+      ${kpi('Patch Compliance', pa.compliance_pct!=null?pa.compliance_pct+'%':'—', (pa.pending_total||0)+' updates pending', scoreColor(pa.compliance_pct||0))}
+      ${kpi('Tickets Resolved', tk.resolved||0, (tk.open||0)+' still open', 'var(--ink)')}
+      ${kpi('Service Delivered', (sv.hours_90d||0)+'h', (sv.billable_hours_90d||0)+'h billable · 90d', 'var(--ink)')}
+      ${kpi('Assets Tracked', as.total||0, (as.warranty_expiring||0)+' warranties expiring', (as.warranty_expiring?'var(--warn)':'var(--ink)'))}
+    </div>
     <div class="grid cols-2">
       <div class="card"><h3>Support</h3>
         <p>Open tickets: <b>${tk.open||0}</b> of ${tk.total||0}</p>
+        <p>Resolved: <b>${tk.resolved||0}</b></p>
         <p>SLA breached: <b style="color:${tk.sla_breached?'var(--bad)':'var(--ok)'}">${tk.sla_breached||0}</b></p></div>
+      <div class="card"><h3>Projects</h3>
+        <p>Active projects: <b>${pj.active||0}</b> of ${pj.total||0}</p>
+        <p>Tasks completed: <b>${pj.tasks_done||0}</b> of ${pj.tasks_total||0}</p></div>
+    </div>
+    <div class="grid cols-2" style="margin-top:14px">
       <div class="card"><h3>Recurring Revenue</h3>
         <p>Contracts: ${money(rev.contract_mrr)}/mo (${rev.active_contracts||0} active)</p>
         <p>Licenses: ${money(rev.license_mrr)}/mo (${rev.licenses||0})</p>
-        <p><b>Total MRR: ${money(rev.mrr)}</b></p></div>
+        <p><b>Total MRR: ${money(rev.mrr)}</b> · ${money(rev.arr)}/yr</p></div>
+      <div class="card"><h3>Infrastructure</h3>
+        <p>Managed devices: <b>${dv.total||0}</b> (avg health ${dv.avg_health!=null?dv.avg_health:'—'})</p>
+        <p>Patch compliance: <b>${pa.compliance_pct!=null?pa.compliance_pct+'%':'—'}</b></p>
+        <p>Assets: <b>${as.total||0}</b> · ${as.warranty_expiring||0} warranties expiring (60d)</p></div>
     </div>
     <div class="card" style="margin-top:14px"><h3>Security Findings by Severity</h3>
       <p>Critical: <b style="color:var(--bad)">${(sec.by_severity||{}).critical||0}</b> ·
