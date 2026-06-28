@@ -500,7 +500,18 @@ def main():
         assert ca_c.post("/api/netdiag/diagnostics", json={"device_id":target_dev,"kind":"ping","target":"8.8.8.8"}).status_code==403
         print("agent diagnostics queue + run + report + RBAC OK")
 
-    print("\n=== OpsPilot v0.12 SMOKE TEST PASSED ===")
+        # ===================== v0.13: Agent download & installers =====================
+        ra=c.get("/download/agent")
+        assert ra.status_code==200 and "OpsPilot Agent" in ra.text, "agent download broken"
+        sh=c.get("/download/install.sh?token=TESTTOKEN")
+        assert sh.status_code==200 and "TESTTOKEN" in sh.text and "/download/agent" in sh.text and "enroll" in sh.text, sh.text[:200]
+        ps=c.get("/download/install.ps1?token=TESTTOKEN")
+        assert ps.status_code==200 and "TESTTOKEN" in ps.text and "PULSE_URL" in ps.text and "schtasks" in ps.text, ps.text[:200]
+        # installer auto-targets the serving host (so it reports back to us)
+        assert "http://testserver" in sh.text, "installer didn't embed server URL"
+        print("agent download + one-click installers OK")
+
+    print("\n=== OpsPilot v0.13 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

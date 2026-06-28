@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 COPY migrations ./migrations
+COPY agent ./agent
 COPY alembic.ini .
 
 # Non-root runtime user
