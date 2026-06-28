@@ -10,9 +10,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, status
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
+
+from ...core.config import get_settings
 
 router = APIRouter(prefix="/download", tags=["agent-download"])
+_s = get_settings()
 
 
 def _agent_path() -> Path | None:
@@ -60,17 +63,25 @@ def _binary_path(name: str) -> Path | None:
 
 @router.get("/agent.exe")
 def download_agent_exe():
-    """Standalone Windows binary (no Python needed). Built by the build-agent CI
-    workflow and placed in agent/dist/. 404 (with guidance) until present."""
+    """Standalone Windows binary (no Python needed). Served from agent/dist/ if
+    present; otherwise we redirect to the published GitHub release asset (the repo
+    is public, so the `latest` URL downloads without auth). This means the .exe
+    works the moment the build-agent workflow publishes it — no server sync."""
     p = _binary_path("opspilot-agent.exe")
-    if not p:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND,
-            "Standalone .exe not published yet. Use the PowerShell installer (it "
-            "auto-installs Python), or run the build-agent workflow and place "
-            "opspilot-agent.exe in agent/dist/.")
-    return FileResponse(str(p), media_type="application/vnd.microsoft.portable-executable",
-                        filename="opspilot-agent.exe")
+    if p:
+        return FileResponse(str(p), media_type="application/vnd.microsoft.portable-executable",
+                            filename="opspilot-agent.exe")
+    return RedirectResponse(f"{_s.AGENT_RELEASE_BASE}/opspilot-agent.exe", status_code=302)
+
+
+@router.get("/agent-linux")
+def download_agent_linux():
+    """Standalone Linux binary (no Python needed). Same strategy as agent.exe."""
+    p = _binary_path("opspilot-agent")
+    if p:
+        return FileResponse(str(p), media_type="application/octet-stream",
+                            filename="opspilot-agent")
+    return RedirectResponse(f"{_s.AGENT_RELEASE_BASE}/opspilot-agent", status_code=302)
 
 
 @router.get("/install.sh", response_class=PlainTextResponse)
@@ -97,6 +108,32 @@ fi
 # Run in the background (for a permanent install, wrap this in a systemd unit).
 PULSE_URL="$PULSE_URL" nohup python3 opspilot_agent.py run --url "$PULSE_URL" >/dev/null 2>&1 &
 echo "BVTech OpsPilot agent installed and reporting to $PULSE_URL."
+"""
+    return script
+
+
+@router.get("/install-exe.ps1", response_class=PlainTextResponse)
+def install_exe_ps1(request: Request, token: str = ""):
+    """No-Python Windows installer: pulls the standalone .exe and runs it as a
+    boot-time Scheduled Task. Endpoints need nothing pre-installed."""
+    base = _base_url(request)
+    script = f"""# BVTech OpsPilot - standalone agent installer (Windows, run as Administrator)
+# Python-free - uses the prebuilt opspilot-agent.exe.
+$ErrorActionPreference = "Stop"
+$PULSE_URL = "{base}"
+$TOKEN = "{token}"
+$dest = "$env:ProgramData\\BVTechOpsPilot"
+$exe  = "$dest\\opspilot-agent.exe"
+Write-Host "Installing BVTech OpsPilot standalone agent from $PULSE_URL ..."
+New-Item -ItemType Directory -Force -Path $dest | Out-Null
+Invoke-WebRequest -Uri "$PULSE_URL/download/agent.exe" -OutFile $exe
+$env:PULSE_URL = $PULSE_URL
+if ($TOKEN -ne "") {{ & $exe enroll $TOKEN --url $PULSE_URL }}
+# Auto-start at boot via Scheduled Task (SYSTEM), and start it now.
+$action = "cmd /c set PULSE_URL=$PULSE_URL && `"$exe`" run"
+schtasks /Create /TN "BVTechOpsPilot" /TR $action /SC ONSTART /RU SYSTEM /F | Out-Null
+Start-Process -WindowStyle Hidden $exe -ArgumentList "run --url $PULSE_URL"
+Write-Host "BVTech OpsPilot standalone agent installed and reporting to $PULSE_URL."
 """
     return script
 

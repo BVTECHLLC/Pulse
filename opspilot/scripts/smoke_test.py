@@ -578,16 +578,35 @@ def main():
         print("notification channels RBAC OK")
 
         # ===================== v0.16: standalone agent binary endpoint =====================
-        # The .py agent always serves; the .exe route 404s gracefully until a built
-        # binary is published into agent/dist/ (by the build-agent CI workflow).
+        # The .py agent always serves; the binary routes serve a local file if
+        # present, else 302-redirect to the published GitHub release asset.
         assert c.get("/download/agent").status_code==200
-        rexe=c.get("/download/agent.exe")
-        assert rexe.status_code in (200, 404)
-        if rexe.status_code==404:
-            assert "Standalone .exe" in rexe.json()["detail"]
-        print("agent binary endpoint OK (exe %s)" % ("present" if rexe.status_code==200 else "pending CI build"))
+        rexe=c.get("/download/agent.exe", follow_redirects=False)
+        assert rexe.status_code in (200, 302)
+        if rexe.status_code==302:
+            assert rexe.headers["location"].endswith("/opspilot-agent.exe")
+        rlin=c.get("/download/agent-linux", follow_redirects=False)
+        assert rlin.status_code in (200, 302)
+        if rlin.status_code==302:
+            assert rlin.headers["location"].endswith("/opspilot-agent")
+        print("agent binary endpoints OK (exe %s)" % ("local" if rexe.status_code==200 else "release-redirect"))
 
-    print("\n=== OpsPilot v0.17 SMOKE TEST PASSED ===")
+        # ===================== v0.18: no-Python .exe installer =====================
+        rexeps=c.get("/download/install-exe.ps1")
+        assert rexeps.status_code==200
+        body=rexeps.text
+        assert "/download/agent.exe" in body and "schtasks" in body and "ProgramData" in body
+        # the whole point: no Python invocation (winget/pip/python.exe) anywhere
+        assert "winget" not in body and "pip" not in body and "python " not in body.lower()
+        print("no-Python .exe installer OK")
+
+        # HTML pages must be uncacheable so deploys are visible immediately (v0.17.1).
+        for pth in ("/", "/dashboard", "/portal", "/signup"):
+            cc=c.get(pth).headers.get("cache-control","")
+            assert "no-store" in cc, (pth, cc)
+        print("HTML no-store cache headers OK")
+
+    print("\n=== OpsPilot v0.18 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

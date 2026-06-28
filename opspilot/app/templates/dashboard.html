@@ -87,11 +87,16 @@
         <button class="btn sm" onclick="genAgent()">Generate installer</button>
       </div>
       <div id="ag-out" class="hidden" style="margin-top:12px">
-        <label>Windows (PowerShell, as Administrator)</label>
+        <label>Windows — standalone .exe <span class="pill">no Python needed</span></label>
+        <input id="ag-exe" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
+        <label style="margin-top:8px">Windows (PowerShell, as Administrator) — installs Python if missing</label>
         <input id="ag-win" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
         <label style="margin-top:8px">Linux / macOS</label>
         <input id="ag-nix" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
-        <p class="muted" style="margin-top:8px">Token valid 72h · <a id="ag-dl" href="/download/agent">download the raw agent</a></p>
+        <p class="muted" style="margin-top:8px">Token valid 72h · download:
+          <a id="ag-dl" href="/download/agent">raw agent (.py)</a> ·
+          <a href="/download/agent.exe">Windows .exe</a> ·
+          <a href="/download/agent-linux">Linux binary</a></p>
       </div>
     </div>
     <div class="card"><table>
@@ -815,6 +820,7 @@ async function genAgent(){
   const j=await r.json().catch(()=>({}));
   if(!r.ok){alert(j.detail||'Failed to generate token');return;}
   const base=location.origin, tok=encodeURIComponent(j.enroll_token);
+  document.getElementById('ag-exe').value=`powershell -ExecutionPolicy Bypass -c "irm '${base}/download/install-exe.ps1?token=${tok}' | iex"`;
   document.getElementById('ag-win').value=`powershell -ExecutionPolicy Bypass -c "irm '${base}/download/install.ps1?token=${tok}' | iex"`;
   document.getElementById('ag-nix').value=`curl -fsSL "${base}/download/install.sh?token=${tok}" | bash`;
   document.getElementById('ag-out').classList.remove('hidden');
