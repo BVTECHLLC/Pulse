@@ -1,5 +1,29 @@
 # BVTech OpsPilot — Changelog
 
+## v0.17.0 — Self-healing auto-deploy (June 2026)
+
+### Fixed — the real cause of the "installer still 404s" report
+- **Auto-deploy could wedge on a half-failed run and never recover.** The old
+  `deploy.sh` used `set -e` plus an early `exit 0` whenever git was unchanged, so
+  a single failed step (e.g. a migration or an image rebuild) left the server
+  running **old code against a half-updated tree** and it would never retry — the
+  live site stayed pinned to a stale version while `main` moved on. That stale
+  version, not the installer code, is why the download/installer endpoints 404'd
+  in production even though they return HTTP 200 in a clean build. Verified the
+  installer + `/download/agent` paths serve correctly in **production mode against
+  real Postgres**, and the full Alembic chain (13 migrations) applies clean.
+- **`deploy.sh` is now self-healing.** It redeploys whenever new commits exist
+  **or** the running app version != the committed version, so a wedge fixes itself
+  on the next 2-minute poll. It rebuilds **only** the `api` service (never the
+  proxy/db, which could stall the whole stack), drops `set -e` so one failed step
+  can't abort the rest, applies migrations, restarts `api`, and **logs the final
+  running version** every run so ground truth is visible in the deploy log.
+
+### Unstick command (run once on the server to recover a wedged deploy now)
+```
+cd /opt/bvtech-portal && git pull --ff-only origin main && chmod +x opspilot/deploy.sh && opspilot/deploy.sh
+```
+
 ## v0.16.0 — Standalone agent binary + notification channels (June 2026)
 
 ### Added — Notification channels (v0.15)

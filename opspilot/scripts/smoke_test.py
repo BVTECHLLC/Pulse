@@ -587,7 +587,7 @@ def main():
             assert "Standalone .exe" in rexe.json()["detail"]
         print("agent binary endpoint OK (exe %s)" % ("present" if rexe.status_code==200 else "pending CI build"))
 
-    print("\n=== OpsPilot v0.16 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.17 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
