@@ -896,6 +896,39 @@ def main():
         # client activity feed is scoped (no cross-tenant rows)
         print("live command-center overview (KPIs + activity + scope) OK")
 
+        # ===================== v0.32: Action Center (ranked next-best-actions) ====
+        # Seed a guaranteed-actionable signal: an open critical security finding.
+        acf = c.post("/api/security/findings", json={
+            "client_id": cid, "title": "AC smoke — exposed service",
+            "severity": "critical"})
+        assert acf.status_code in (200, 201), acf.text
+        ac = c.get("/api/action-center").json()
+        for k in ("generated_at", "ops_score", "total", "counts", "by_kind", "items"):
+            assert k in ac, ("missing action-center key", k)
+        assert isinstance(ac["ops_score"], int) and 0 <= ac["ops_score"] <= 100, ac["ops_score"]
+        for sk in ("critical", "high", "medium", "low"):
+            assert sk in ac["counts"], sk
+        # items are ranked by score, descending
+        scores = [i["score"] for i in ac["items"]]
+        assert scores == sorted(scores, reverse=True), ("not ranked", scores)
+        # every item is well-formed and explainable
+        for i in ac["items"]:
+            assert all(f in i for f in ("kind","severity","score","title","detail","action","link","client_id","client_name"))
+            assert i["severity"] in ("critical","high","medium","low")
+        # our seeded critical finding surfaces as a security_finding item
+        assert any(i["kind"]=="security_finding" and i["severity"]=="critical" for i in ac["items"]), \
+            "seeded critical finding not in action center"
+        assert ac["counts"]["critical"] >= 1
+        # staff can filter to one client; every returned item belongs to it
+        acf1 = c.get(f"/api/action-center?client_id={cid}").json()
+        assert all(i["client_id"]==cid for i in acf1["items"]), "client filter leaked other tenants"
+        # tenant scoping: a client user only ever sees their own org's actions
+        cac = ca_c.get("/api/action-center").json()
+        assert all(i["client_id"]==cid for i in cac["items"]), "client user saw foreign actions"
+        # a client user cannot peek at another client's action center
+        assert ca_c.get("/api/action-center?client_id=999999").status_code in (403, 404)
+        print("Action Center: ranked + explainable + RBAC scoped OK")
+
         # ===================== v0.26: time tracking / money loop =====================
         tt_ticket=c.post("/api/tickets", json={"client_id":cid,"subject":"Timer ticket","priority":"normal"}).json()["id"]
         tt_pid=c.post("/api/projects", json={"client_id":cid,"name":"Timer project"}).json()["id"]
@@ -956,7 +989,7 @@ def main():
         assert c.delete(f"/api/assets/{a1['id']}").status_code==204
         print("asset management (CMDB + warranty + filters + RBAC + search) OK")
 
-    print("\n=== OpsPilot v0.31 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.32 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

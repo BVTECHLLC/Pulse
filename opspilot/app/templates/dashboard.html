@@ -29,6 +29,7 @@
 <div class="wrap">
   <div class="nav">
     <a class="active" data-tab="overview" onclick="tab('overview')">Overview</a>
+    <a data-tab="action" onclick="tab('action')">⚡ Action Center</a>
     <a data-tab="clients" onclick="tab('clients')">Clients</a>
     <a data-tab="devices" onclick="tab('devices')">Devices</a>
     <a data-tab="assets" onclick="tab('assets')">Assets</a>
@@ -52,6 +53,14 @@
       <div><b>Command Center</b> <span class="muted" id="ov-ts">live</span></div>
       <label class="flex" style="margin:0;font-size:12px;color:var(--muted)">
         <input type="checkbox" id="ov-auto" checked style="width:auto" onchange="toggleOvAuto()"> auto-refresh</label>
+    </div>
+    <div class="card" style="margin-bottom:16px;display:flex;align-items:center;gap:20px;cursor:pointer;border-color:var(--brand,#6c5ce7)" onclick="tab('action')">
+      <div id="ops-gauge" style="width:78px;height:78px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;flex-shrink:0;background:#0c1430">—</div>
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:15px">Ops Score <span class="pill">⚡ Action Center</span></div>
+        <div class="muted" id="ops-line" style="margin-top:4px">Loading what needs attention…</div>
+      </div>
+      <div id="ops-chips" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"></div>
     </div>
     <div class="grid cols-4" style="margin-bottom:16px">
       <div class="card"><h3>Devices Online</h3><div class="stat" id="ov-online">—</div>
@@ -90,6 +99,25 @@
       <table><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>OK</th></tr></thead>
       <tbody id="t-activity"><tr><td colspan=5 class="muted">Loading…</td></tr></tbody></table>
     </div>
+  </section>
+
+  <section id="action" class="hidden">
+    <div class="card" style="margin-bottom:16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+      <div id="ac-gauge" style="width:96px;height:96px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;background:#0c1430">
+        <span style="font-size:30px;font-weight:800" id="ac-score">—</span><span class="muted" style="font-size:10px">OPS SCORE</span></div>
+      <div style="flex:1;min-width:200px">
+        <div style="font-weight:700;font-size:16px">Action Center <span class="pill">what to do next, ranked</span></div>
+        <div class="muted" id="ac-summary" style="margin-top:4px">Loading…</div>
+      </div>
+      <div class="flex" style="margin:0;gap:8px;flex-wrap:wrap">
+        <select id="ac-client" onchange="loadActionCenter()" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:9px;color:var(--ink)"></select>
+        <select id="ac-sev" onchange="renderAC()" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:9px;color:var(--ink)">
+          <option value="">All severities</option><option value="critical">Critical</option>
+          <option value="high">High+</option><option value="medium">Medium+</option></select>
+        <button class="btn sm ghost" onclick="loadActionCenter()">Refresh</button>
+      </div>
+    </div>
+    <div id="ac-list"><div class="card muted">Loading…</div></div>
   </section>
 
   <section id="clients" class="hidden">
@@ -1264,7 +1292,69 @@ async function loadOverview(){
 function toggleOvAuto(){
   const on=document.getElementById('ov-auto').checked;
   if(OV_TIMER){clearInterval(OV_TIMER);OV_TIMER=null;}
-  if(on)OV_TIMER=setInterval(loadOverview,30000);
+  if(on)OV_TIMER=setInterval(()=>{loadOverview();loadActionCenter();},30000);
+}
+
+// ---- Action Center (the "what to do next" brain) ----
+let AC_DATA=null, AC_CLIENT_FILLED=false;
+const SEV_RANK={critical:3,high:2,medium:1,low:0};
+function opsColor(s){return s>=85?'var(--ok,#2ecc71)':(s>=60?'var(--warn,#f1c40f)':'var(--bad,#e74c3c)');}
+function sevColor(s){return {critical:'var(--bad,#e74c3c)',high:'#e67e22',medium:'var(--warn,#f1c40f)',low:'#7f8fa6'}[s]||'#7f8fa6';}
+async function loadActionCenter(){
+  // staff get a per-client filter; populate once from CLIENTS.
+  const sel=document.getElementById('ac-client');
+  if(sel&&!AC_CLIENT_FILLED&&Object.keys(CLIENTS).length){
+    sel.innerHTML='<option value="">All clients</option>'+Object.entries(CLIENTS).map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('');
+    AC_CLIENT_FILLED=true;
+  }
+  const cid=sel?sel.value:'';
+  const data=await api('/api/action-center'+(cid?`?client_id=${cid}`:''));
+  if(!data)return;
+  AC_DATA=data;
+  // overview hero
+  const g=document.getElementById('ops-gauge');
+  if(g){g.textContent=data.ops_score;g.style.boxShadow=`inset 0 0 0 4px ${opsColor(data.ops_score)}`;}
+  const ol=document.getElementById('ops-line');
+  if(ol)ol.textContent=data.total?`${data.total} item${data.total>1?'s':''} need attention — click to triage`:'All clear — nothing needs attention 🎉';
+  const chips=document.getElementById('ops-chips');
+  if(chips)chips.innerHTML=['critical','high','medium','low'].filter(s=>data.counts[s]).map(s=>
+    `<span class="badge" style="background:${sevColor(s)};color:#0b1020;font-weight:700">${data.counts[s]} ${s}</span>`).join('')||'<span class="badge ok">clear</span>';
+  renderAC();
+}
+function renderAC(){
+  const data=AC_DATA; if(!data)return;
+  document.getElementById('ac-score').textContent=data.ops_score;
+  const ag=document.getElementById('ac-gauge');
+  if(ag)ag.style.boxShadow=`inset 0 0 0 5px ${opsColor(data.ops_score)}`;
+  document.getElementById('ac-summary').textContent=data.total?
+    `${data.counts.critical} critical · ${data.counts.high} high · ${data.counts.medium} medium · ${data.counts.low} low`:
+    'Everything is healthy — no actions right now. 🎉';
+  const minRank=SEV_RANK[document.getElementById('ac-sev').value]??-1;
+  const items=data.items.filter(i=>SEV_RANK[i.severity]>=minRank);
+  const box=document.getElementById('ac-list');
+  if(!items.length){box.innerHTML='<div class="card muted">Nothing matches this filter. 🎉</div>';return;}
+  box.innerHTML=items.map(i=>`
+    <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:14px;cursor:pointer;border-left:4px solid ${sevColor(i.severity)}" onclick="acJump('${esc(i.link)}')">
+      <div style="width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;background:${sevColor(i.severity)};color:#0b1020;flex-shrink:0">${i.score}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">${esc(i.title)}</div>
+        <div class="muted" style="font-size:12px;margin-top:2px">${esc(i.detail)}</div>
+        <div class="muted" style="font-size:12px;margin-top:3px">→ ${esc(i.action)}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div class="badge" style="background:${sevColor(i.severity)};color:#0b1020;font-weight:700">${i.severity}</div>
+        <div class="muted" style="font-size:11px;margin-top:4px">${esc(i.client_name)}</div>
+      </div>
+    </div>`).join('');
+}
+function acJump(link){
+  // link looks like '#tickets/123' or '#devices/4' or '#billing'
+  const m=(link||'').replace(/^#/,'').split('/');
+  const name=m[0], id=m[1];
+  const known=['overview','action','clients','devices','assets','alerts','tickets','time','projects','billing','automation','security','scripts','network','kb','licenses','integrations','audit'];
+  if(!known.includes(name)){tab('action');return;}
+  tab(name);
+  if(name==='tickets'&&id&&typeof openTicket==='function')openTicket(parseInt(id));
 }
 
 // ---- Projects / Kanban ----
@@ -1680,7 +1770,7 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations(),loadProjects(),loadOverview(),loadTime(),loadAssets()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations(),loadProjects(),loadOverview(),loadTime(),loadAssets(),loadActionCenter()]);
   toggleOvAuto();   // start the command-center live refresh
 }
 load();

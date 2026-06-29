@@ -1,5 +1,30 @@
 # BVTech OpsPilot — Changelog
 
+## v0.32.0 — Action Center: the "what to do next" brain (June 2026)
+
+### Added — one ranked, explainable feed across every module
+- New **Action Center** (`GET /api/action-center`, dedicated dashboard tab) fuses
+  every signal we collect into a single prioritized list of what a tech should do
+  next, across the whole book of business: **SLA breaches & at-risk tickets**,
+  **active alerts**, **offline devices**, **AV disabled**, **low health**,
+  **patch-behind**, **open high/critical security findings**, **warranties
+  expiring**, **contracts up for renewal**, **unbilled time (revenue leak)**, and
+  **overdue project tasks**.
+- Every item carries a **0-100 priority score** (severity band + age + type
+  nudge), a plain-English **reason** and **recommended action**, and a
+  **deep-link** straight to the right tab — so triage is one glance, not twelve
+  dashboards.
+- An overall **Ops Score** (0-100) summarizes how much is on fire, shown as a
+  hero gauge on the Overview home screen with severity chips, plus a filterable
+  ranked feed on the Action Center tab (per-client filter for staff).
+- Smart de-duplication: an offline device suppresses its own stale AV/health/
+  patch noise so you see "it's offline," not five derived alarms.
+- **Tenant-scoped + RBAC**: staff see all clients (optionally one); a client user
+  only ever sees their own org, and a foreign `client_id` filter is denied.
+- Pure read model — computes from existing tables, mutates nothing.
+- Verified end-to-end: backend ranking/scoping, the smoke suite, and the live
+  dashboard rendered headless (Action Center tab + Overview Ops Score hero).
+
 ## v0.31.0 — Preconfigured ("preloaded") agent installer (June 2026)
 
 ### Added — zero-copy-paste agent deployment: the token is baked in
