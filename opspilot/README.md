@@ -62,6 +62,18 @@ tables auto-create; in production you run Alembic migrations instead.
 python scripts/smoke_test.py     # runs the full enroll→checkin→audit flow
 ```
 
+### Unit tests
+```bash
+pip install -r requirements-dev.txt
+pytest                           # fast, isolated unit tests (no network/DB server)
+pytest --cov=app --cov-report=term-missing   # with coverage
+```
+The suite in `tests/` covers the security-critical primitives in isolation:
+password hashing, JWT/enrollment tokens, TOTP MFA (against RFC test vectors),
+at-rest encryption, the auth/RBAC/tenant-scoping dependencies, the SSRF guard on
+the network looking-glass, and the IPAM/subnet math. CI runs these alongside the
+end-to-end smoke test and the Alembic migration check.
+
 ---
 
 ## What's in the platform

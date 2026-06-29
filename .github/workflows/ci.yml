@@ -35,7 +35,12 @@ jobs:
           cache-dependency-path: opspilot/requirements.txt
 
       - name: Install dependencies
-        run: pip install -r requirements.txt httpx
+        run: pip install -r requirements-dev.txt
+
+      - name: Run unit tests (with coverage)
+        env:
+          DATABASE_URL: sqlite:///./ci_unit.db
+        run: pytest --cov=app --cov-report=term-missing
 
       - name: Validate Alembic migrations (build from scratch, then up/down/up)
         env:
