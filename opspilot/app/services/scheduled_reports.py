@@ -8,10 +8,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 
 from ..core.config import get_settings
-from ..models import (
-    Alert, AlertStatus, Client, Device, ReportSchedule, SupportTicket,
-    TicketStatus,
-)
+from ..models import Client, ReportSchedule
 from . import email as email_svc
 
 _PERIOD = {"weekly": timedelta(days=7), "monthly": timedelta(days=30),
@@ -30,35 +27,56 @@ def _is_due(sched: ReportSchedule, now: datetime) -> bool:
     return (now - last) >= period
 
 
-def _summary_text(db: Session, client: Client, now: datetime) -> str:
-    devices = db.query(Device).filter(Device.client_id == client.id).all()
-    healths = [d.health_score for d in devices if d.health_score is not None]
-    avg_health = round(sum(healths) / len(healths)) if healths else "n/a"
-    open_alerts = (db.query(Alert)
-                   .filter(Alert.client_id == client.id,
-                           Alert.status != AlertStatus.RESOLVED).count())
-    open_tickets = (db.query(SupportTicket)
-                    .filter(SupportTicket.client_id == client.id,
-                            SupportTicket.status.in_([TicketStatus.OPEN,
-                                                      TicketStatus.IN_PROGRESS])).count())
-    pending_patches = sum((d.patches_pending or 0) for d in devices)
+def _report_body(summary: dict, client: Client) -> str:
+    """A rich, readable QBR text body built from the full report summary."""
     s = get_settings()
-    return (
-        f"{s.APP_NAME} — service report for {client.name}\n"
-        f"Generated {now.strftime('%Y-%m-%d %H:%M UTC')}\n"
-        f"{'-' * 48}\n"
-        f"Devices monitored : {len(devices)}\n"
-        f"Average health    : {avg_health}\n"
-        f"Open alerts       : {open_alerts}\n"
-        f"Open tickets      : {open_tickets}\n"
-        f"Pending patches   : {pending_patches}\n"
-        f"{'-' * 48}\n"
-        f"View the full interactive report at {s.PUBLIC_BASE_URL}/report/{client.id}\n"
-    )
+    d, pa, al = summary["devices"], summary["patch"], summary["alerts"]
+    tk, pj, asset_ = summary["tickets"], summary["projects"], summary["assets"]
+    sv, rev, sec = summary["service"], summary["revenue"], summary["security"]
+
+    def line(label, val):
+        return f"  {label:<26}{val}"
+
+    return "\n".join([
+        f"{s.APP_NAME} — Service Review for {client.name}",
+        f"Generated {summary['generated_at'][:16].replace('T', ' ')} UTC",
+        "=" * 52,
+        "INFRASTRUCTURE",
+        line("Devices monitored", d["total"]),
+        line("Average health", d["avg_health"] if d["avg_health"] is not None else "n/a"),
+        line("Patch compliance", f"{pa['compliance_pct']}%" if pa["compliance_pct"] is not None else "n/a"),
+        line("Pending patches", pa["pending_total"]),
+        line("Assets tracked", asset_["total"]),
+        line("Warranties expiring (60d)", asset_["warranty_expiring"]),
+        "",
+        "SECURITY & ALERTS",
+        line("Security score", sec.get("score", "n/a")),
+        line("Active alerts", f"{al['total']} ({al['critical']} critical)"),
+        "",
+        "SERVICE DESK",
+        line("Open tickets", tk["open"]),
+        line("Resolved tickets", tk["resolved"]),
+        line("SLA breaches", tk["sla_breached"]),
+        line("Hours delivered (90d)", f"{sv['hours_90d']} ({sv['billable_hours_90d']} billable)"),
+        "",
+        "PROJECTS",
+        line("Active projects", pj["active"]),
+        line("Tasks completed", f"{pj['tasks_done']}/{pj['tasks_total']}"),
+        "",
+        "INVESTMENT",
+        line("Monthly recurring", f"${rev['mrr']:,.2f}"),
+        line("Annual run-rate", f"${rev['arr']:,.2f}"),
+        "=" * 52,
+        f"Full interactive report: {s.PUBLIC_BASE_URL}/report/{client.id}",
+        "A CSV of these metrics is attached.",
+    ])
 
 
 def send_due(db: Session, now: datetime | None = None) -> dict:
-    """Email every due schedule. Returns counts. Safe to call every tick."""
+    """Email every due schedule with the full QBR body + a CSV attachment.
+    Returns counts. Safe to call every tick."""
+    # Lazy import avoids any import cycle (reports route pulls in services).
+    from ..api.routes.reports import _build_summary, summary_csv
     now = now or datetime.now(timezone.utc)
     schedules = db.query(ReportSchedule).filter(ReportSchedule.enabled.is_(True)).all()
     sent = 0
@@ -68,8 +86,12 @@ def send_due(db: Session, now: datetime | None = None) -> dict:
         client = db.get(Client, sched.client_id)
         if not client:
             continue
-        subject = f"{get_settings().APP_NAME} report — {client.name}"
-        email_svc.send(sched.recipient_email, subject, _summary_text(db, client, now))
+        summary = _build_summary(db, client, now)
+        body = _report_body(summary, client)
+        csv_name = f"report-{client.name.replace(' ', '_')}.csv"
+        email_svc.send(sched.recipient_email,
+                       f"{get_settings().APP_NAME} report — {client.name}",
+                       body, attachments=[(csv_name, summary_csv(summary), "text/csv")])
         sched.last_sent_at = now
         sent += 1
     if sent:

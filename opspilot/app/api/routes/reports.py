@@ -111,15 +111,9 @@ def client_summary(client_id: int, db: Session = Depends(get_db),
     return _build_summary(db, client, datetime.now(timezone.utc))
 
 
-@router.get("/{client_id}/export.csv", response_class=PlainTextResponse)
-def export_csv(client_id: int, db: Session = Depends(get_db),
-               user: User = Depends(current_user)):
-    """The QBR snapshot as a flat CSV — drop into Excel/Sheets or a deck."""
-    client = db.get(Client, client_id)
-    if not client:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Client not found")
-    assert_client_access(user, client_id)
-    s = _build_summary(db, client, datetime.now(timezone.utc))
+def summary_csv(s: dict) -> str:
+    """Render a summary dict (from _build_summary) as a flat Metric,Value CSV.
+    Shared by the export endpoint and the scheduled-report attachment."""
     rows = [
         ("Client", s["client"]["name"]),
         ("Generated", s["generated_at"]),
@@ -150,6 +144,18 @@ def export_csv(client_id: int, db: Session = Depends(get_db),
     w = csv.writer(buf)
     w.writerow(["Metric", "Value"])
     w.writerows(rows)
+    return buf.getvalue()
+
+
+@router.get("/{client_id}/export.csv", response_class=PlainTextResponse)
+def export_csv(client_id: int, db: Session = Depends(get_db),
+               user: User = Depends(current_user)):
+    """The QBR snapshot as a flat CSV — drop into Excel/Sheets or a deck."""
+    client = db.get(Client, client_id)
+    if not client:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Client not found")
+    assert_client_access(user, client_id)
+    s = _build_summary(db, client, datetime.now(timezone.utc))
     fname = f"report-{client.name.replace(' ', '_')}.csv"
-    return PlainTextResponse(buf.getvalue(), media_type="text/csv",
+    return PlainTextResponse(summary_csv(s), media_type="text/csv",
                              headers={"Content-Disposition": f'attachment; filename="{fname}"'})

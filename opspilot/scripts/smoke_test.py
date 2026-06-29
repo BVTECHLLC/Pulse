@@ -940,7 +940,7 @@ def main():
         assert c.delete(f"/api/assets/{a1['id']}").status_code==204
         print("asset management (CMDB + warranty + filters + RBAC + search) OK")
 
-    print("\n=== OpsPilot v0.29 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.30 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
