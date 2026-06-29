@@ -1,5 +1,29 @@
 # BVTech OpsPilot — Changelog
 
+## v0.35.0 — Daily auto-publishing pipeline for BVTech.org (June 2026)
+
+### Added — hands-off daily security advisories, live on the site
+- `automation/` toolkit that lets Claude Code (headless, on the Linode box)
+  write a fresh, fact-checked security advisory each day in Jordan's voice and
+  publish it live to bvtech.org:
+  - `bvtech_persona.md` — the writing voice/structure distilled from the
+    existing posts (calm, SMB-focused, "⚡ 60-Second Version" box, sign-off).
+  - `daily_blog_prompt.md` — the daily task: web-search a real current story,
+    verify across sources, write, and publish (never fabricate, never leak data).
+  - `daily_blog.sh` — cron wrapper: locks, pulls both repos, runs headless
+    Claude with web+write+bash tools, and has a safety-net publish.
+  - `SETUP.md` — full runbook: Cloudflare Pages ← GitHub auto-deploy, a Linode
+    deploy key for push, Claude Code install, and the cron schedule.
+- `scripts/publish_post.py` now also inserts the new post into `sitemap.xml`
+  (idempotent) and stages it for the commit, so posts get crawled immediately.
+
+### Notes
+- Publishing runs from the **Linode box's** deploy key (this session's GitHub
+  access is scoped to `bvtechllc/pulse`); the box is the publisher, which is the
+  correct, secure design for unattended deploys.
+- Verified: the JSON-driven publish path end-to-end against a real site copy
+  (pixel-perfect clone + sitemap update) and `daily_blog.sh` shell syntax.
+
 ## v0.34.0 — Content Studio: publish on-brand pages to BVTech.org (June 2026)
 
 ### Added — generate blog/advisory pages that match bvtech.org exactly

@@ -34,6 +34,28 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.services import content_studio as cs   # noqa: E402
 
 
+def _update_sitemap(repo: Path, meta: dict) -> bool:
+    """Insert a <url> entry for the new post into sitemap.xml (idempotent).
+    Safe + high-SEO: this is what gets Google to crawl the post. Returns True
+    if the sitemap was changed."""
+    sm = repo / "sitemap.xml"
+    if not sm.is_file():
+        return False
+    try:
+        xml = sm.read_text(encoding="utf-8")
+    except Exception:
+        return False
+    if meta["url"] in xml:
+        return False  # already listed
+    entry = (f'  <url><loc>{meta["url"]}</loc><lastmod>{meta["date"]}</lastmod>'
+             f'<changefreq>weekly</changefreq><priority>0.9</priority></url>\n')
+    if "</urlset>" not in xml:
+        return False
+    xml = xml.replace("</urlset>", entry + "</urlset>", 1)
+    sm.write_text(xml, encoding="utf-8")
+    return True
+
+
 def _newest_skeleton(blog_dir: Path) -> str | None:
     posts = [p for p in blog_dir.glob("*.html") if p.name not in ("index.html",)]
     if not posts:
@@ -112,10 +134,15 @@ def main() -> int:
         return 3
     print(f"wrote {out}  ({len(html)} bytes, {mode})")
     print(f"url:   {meta['url']}")
+    sitemap_changed = _update_sitemap(repo, meta)
+    if sitemap_changed:
+        print("updated sitemap.xml")
 
     if args.git:
         try:
             _git(repo, "add", str(out.relative_to(repo)))
+            if sitemap_changed:
+                _git(repo, "add", "sitemap.xml")
             _git(repo, "commit", "-m", f"blog: {meta['title']}")
             _git(repo, "push", "origin", args.branch)
             print("pushed — Cloudflare Pages will deploy shortly.")
