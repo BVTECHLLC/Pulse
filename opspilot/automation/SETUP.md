@@ -1,6 +1,6 @@
 # BVTech.org — Live Auto-Publishing Setup
 
-This wires up: **GitLab Pages** auto-deploy for the website repo,
+This wires up: **Cloudflare Pages connected to your GitLab repo** for auto-deploy,
 **Claude Code on your Linode box** to write a fresh security advisory daily in
 your voice, and a **cron job** that publishes it live — every day, hands-off.
 
@@ -16,47 +16,44 @@ your voice, and a **cron job** that publishes it live — every day, hands-off.
     │  writes blog/<slug>.html + updates sitemap.xml
     │  git commit && git push  →  GitLab repo (main)
     ▼
- GitLab Pages CI  ──auto-deploy──►  https://bvtech.org/blog/<slug>.html  (LIVE)
+ Cloudflare Pages (←GitLab) ─auto-deploy─► https://bvtech.org/blog/<slug>.html (LIVE)
 ```
 
 ---
 
-## Part 1 — GitLab Pages auto-deploy (chosen path)
+## Part 1 — Cloudflare Pages ← GitLab (the chosen, working path)
 
-We're using **GitLab Pages** (self-contained — avoids the Cloudflare↔Git
-integration that was failing). When creating the GitLab project, pick the
-**Pages/Plain HTML** template (your site is static HTML — no build framework).
+You connected **Cloudflare Pages project `jordanpolasek-site`** to the GitLab
+repo **`bvtechllc-group/bvtech-website-new`**, branch `main`, auto-deploy on.
+That's the whole deploy half — no GitLab Pages, no `.gitlab-ci.yml` needed
+(ignore/delete `automation/gitlab-ci.yml`; it's only for a GitLab-Pages fallback).
 
-1. **Seed the repo with your site.** On the Linode box (or your laptop), with
-   the V107 site files in a folder:
+To finish it:
+1. **Make sure your V107 site is actually in the repo at the ROOT** (so the repo
+   has `index.html`, `blog/`, `assets/`, `_headers`, `sitemap.xml` at top level —
+   not nested in a subfolder). If you haven't pushed it yet:
    ```bash
-   cd /path/to/bvtech-website
+   cd /path/to/bvtech-website            # the unzipped V107 files
    git init -b main
-   git remote add origin git@gitlab.com:BVTECHLLC-group/BVTECHLLC-website.git
+   git remote add origin git@gitlab.com:bvtechllc-group/bvtech-website-new.git
    git add -A && git commit -m "Import BVTech.org V107"
    git push -u origin main
    ```
-2. **Add the deploy config.** Copy `automation/gitlab-ci.yml` from this repo into
-   the website repo **root** as `.gitlab-ci.yml` (it replaces the template's
-   one). It mirrors your root files into `public/` on every push to `main`, so
-   you don't have to restructure the site. Commit + push it.
-3. GitLab → your project → **Build → Pipelines** — watch the `pages` job go
-   green. Then **Deploy → Pages** shows your live `*.gitlab.io` URL. Confirm it
-   looks right.
-4. **Custom domain:** **Deploy → Pages → New Domain → `bvtech.org`**. GitLab
-   gives you a `TXT` verification record and a target (`A`/`CNAME`). Add those in
-   your **Cloudflare DNS** tab. Tip: set the records to **DNS only (grey cloud)**
-   first so GitLab can verify + issue its Let's Encrypt cert; you can re-enable
-   the orange proxy afterward.
-5. Headers: GitLab Pages (16.6+) honors a root **`_headers`** file like yours, so
-   your security headers carry over. If your version doesn't, re-add them in the
-   `.gitlab-ci.yml` or Pages settings (ask me and I'll wire it).
+2. **Build settings** (Cloudflare → your Pages project → Settings → Build):
+   - **Framework preset:** None
+   - **Build command:** *(blank)*
+   - **Build output directory:** `/`  ← important: your files live at the repo root
+   - **Root directory:** *(blank)*
+3. **Deployments tab** → confirm the latest build is **Success**, then open the
+   `*.pages.dev` URL and check the site (and a blog post) render correctly.
+4. **Custom domain:** Pages project → **Custom domains → Set up a custom domain →
+   `bvtech.org`** (and `www`). Since the domain is already in this Cloudflare
+   account, DNS is added automatically. Remove `bvtech.org` from any *old* Pages
+   project / direct-upload deployment so only this one serves it.
+5. `_headers` + `_redirects` at the repo root are honored by Cloudflare Pages
+   automatically — your security headers and caching carry over.
 
 ✅ From now on, **every `git push` to `main` auto-deploys** to bvtech.org.
-
-> Prefer Cloudflare after all? Cloudflare Pages can connect to **GitLab** too
-> (Workers & Pages → Create → Pages → Connect to Git → GitLab), or publish via
-> `wrangler pages deploy public` from the box. Either works — say the word.
 
 ---
 
@@ -82,7 +79,7 @@ cat ~/.ssh/bvtech_deploy.pub
     IdentityFile ~/.ssh/bvtech_deploy
     IdentitiesOnly yes
   EOF
-  git clone gitlab-bvtech:BVTECHLLC-group/BVTECHLLC-website.git /srv/bvtech-website-new
+  git clone gitlab-bvtech:bvtechllc-group/bvtech-website-new.git /srv/bvtech-website-new
   git -C /srv/bvtech-website-new config user.name  "BVTech Publisher"
   git -C /srv/bvtech-website-new config user.email "publisher@bvtech.org"
   ```
