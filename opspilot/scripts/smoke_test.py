@@ -994,6 +994,34 @@ def main():
         assert all(r["client_id"] == cid for r in chc["clients"]), "client saw other orgs' health"
         print("Client Health Score: weighted + explainable + RBAC OK")
 
+        # ===================== v0.34: Content Studio (blog/advisory gen) =========
+        cpost = {"title": "Patch Tuesday June 2026 — Two Zero-Days Under Active Attack",
+                 "kind": "advisory", "keywords": "Patch Tuesday, CVE, BVTech",
+                 "body": "Microsoft shipped **74 fixes** today.\n\n## What to do\nPatch now.\n\n- Update endpoints\n- Verify backups\n\n> Managed clients are already covered.\n\nQuestions? [Book a call](https://bvtech.org/book/)."}
+        rr = c.post("/api/content/render", json=cpost)
+        assert rr.status_code == 200, rr.text
+        rj = rr.json()
+        assert rj["slug"] == "patch-tuesday-june-2026-two-zero-days-under-active-attack", rj["slug"]
+        assert rj["publish_path"] == f"blog/{rj['slug']}.html"
+        assert rj["url"].endswith(rj["slug"] + ".html")
+        h = rj["html"]
+        # SEO + schema + on-brand + safe markdown all present
+        for must in ["<title>", "application/ld+json", "BlogPosting", 'property="og:image"',
+                     "#0E0D2C", "<strong>74 fixes</strong>", "<h2>What to do</h2>",
+                     "<ul><li>Update endpoints", "<blockquote>", 'href="https://bvtech.org/book/"']:
+            assert must in h, ("content missing " + must)
+        # preview returns a live HTML page
+        pv = c.post("/api/content/preview", json=cpost)
+        assert pv.status_code == 200 and pv.headers["content-type"].startswith("text/html")
+        # stage computes the publish target
+        st = c.post("/api/content/stage", json=cpost).json()
+        assert st["staged"] and st["filename"].endswith(".html")
+        # title is required
+        assert c.post("/api/content/render", json={"title": ""}).status_code == 422
+        # RBAC: a client user cannot generate site content
+        assert ca_c.post("/api/content/render", json=cpost).status_code == 403
+        print("Content Studio: render + preview + stage + SEO/schema + RBAC OK")
+
         # ===================== v0.26: time tracking / money loop =====================
         tt_ticket=c.post("/api/tickets", json={"client_id":cid,"subject":"Timer ticket","priority":"normal"}).json()["id"]
         tt_pid=c.post("/api/projects", json={"client_id":cid,"name":"Timer project"}).json()["id"]
@@ -1054,7 +1082,7 @@ def main():
         assert c.delete(f"/api/assets/{a1['id']}").status_code==204
         print("asset management (CMDB + warranty + filters + RBAC + search) OK")
 
-    print("\n=== OpsPilot v0.33 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.34 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

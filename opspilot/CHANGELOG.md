@@ -1,5 +1,33 @@
 # BVTech OpsPilot — Changelog
 
+## v0.34.0 — Content Studio: publish on-brand pages to BVTech.org (June 2026)
+
+### Added — generate blog/advisory pages that match bvtech.org exactly
+- `services/content_studio.py` turns a title + lightweight-markdown body into a
+  finished, SEO-complete HTML page. Two modes:
+  - **Template-clone (pixel-perfect):** clones the newest real bvtech.org
+    `/blog/*.html` as the skeleton and transplants the new `<title>`, meta
+    description, canonical/OG URLs, schema.org JSON-LD, `<h1>`, dateline, and
+    article body — keeping the live site's header, footer, fonts, and CSS.
+  - **Standalone:** a self-contained on-brand page (BVTech navy/peri/gold,
+    Poppins+Lato) so previews work anywhere before the website repo is wired.
+- Full SEO out of the box: title/description, Open Graph, canonical, and
+  BlogPosting + BreadcrumbList JSON-LD. Public-safe by construction — no tenant
+  data is ever embedded.
+- **Content Studio** portal tab (staff-only): compose, **live-preview exactly as
+  it publishes** (iframe), and **stage** a post with its computed publish path.
+- `POST /api/content/render | /preview | /stage` (OWNER/TECH only).
+- `scripts/publish_post.py` — the CLI the daily job runs on the Linode box:
+  renders + writes `<website-repo>/blog/<slug>.html`, with optional
+  `--git` commit/push so Cloudflare Pages auto-deploys.
+- Loosened the portal CSP to allow `frame-src 'self' blob:` so the preview
+  iframe renders; added the Lato web font for typography parity with the site.
+
+### Verified
+- Generator (both modes) against a real bvtech.org blog skeleton, the publish
+  CLI (dry-run + write), the full smoke suite, and the live portal tab headless
+  (compose → preview → stage, zero console/CSP errors).
+
 ## v0.33.0 — Predictive Foresight + Client Health + Command Palette (June 2026)
 
 ### Added — Predictive Foresight: see problems before they happen

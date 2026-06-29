@@ -18,7 +18,7 @@ from .api.routes import (
     auth, resources, agent, ui, tickets, alerts, billing, kb, automation, security,
     scripts, signup, m365, invoices, networking, netdiag, download, contracts, reports,
     channels, report_schedules, integrations, search, oauth, projects, overview,
-    time_tracking, assets, action_center, foresight, client_health,
+    time_tracking, assets, action_center, foresight, client_health, content,
 )
 
 _s = get_settings()
@@ -49,7 +49,9 @@ async def security_headers(request: Request, call_next):
         "default-src 'self'; img-src 'self' data:; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
-        "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'"
+        # blob: lets the Content Studio preview its generated page in an iframe
+        # (the blob is created by our own page; the framed doc has no extra rights).
+        "script-src 'self' 'unsafe-inline'; frame-src 'self' blob:; frame-ancestors 'none'"
     )
     if _s.is_prod:
         resp.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
@@ -122,6 +124,7 @@ app.include_router(assets.router)
 app.include_router(action_center.router)
 app.include_router(foresight.router)
 app.include_router(client_health.router)
+app.include_router(content.router)
 app.include_router(ui.router)
 
 

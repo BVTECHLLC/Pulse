@@ -54,6 +54,7 @@
     <a data-tab="scripts" onclick="tab('scripts')">Scripts</a>
     <a data-tab="network" onclick="tab('network')">Network</a>
     <a data-tab="kb" onclick="tab('kb')">Knowledge Base</a>
+    <a data-tab="content" onclick="tab('content')">✍️ Content Studio</a>
     <a data-tab="licenses" onclick="tab('licenses')">Licenses</a>
     <a data-tab="integrations" onclick="tab('integrations')">Integrations</a>
     <a data-tab="audit" onclick="tab('audit')">Audit Log</a>
@@ -129,6 +130,37 @@
       </div>
     </div>
     <div id="ac-list"><div class="card muted">Loading…</div></div>
+  </section>
+
+  <section id="content" class="hidden">
+    <div class="card" style="margin-bottom:16px">
+      <h3>Content Studio <span class="pill">publish to BVTech.org</span></h3>
+      <p class="muted" style="margin:4px 0 12px">Write a security advisory or blog post; preview it exactly as it'll appear on bvtech.org, then stage it for publish. Output is on-brand HTML with full SEO + schema. (No client data is ever included — these are public articles.)</p>
+      <div class="grid cols-2" style="gap:14px">
+        <div>
+          <label>Title</label>
+          <input id="ct-title" placeholder="Patch Tuesday June 2026 — Two Zero-Days Under Active Attack">
+          <div class="flex" style="margin-top:10px;gap:10px">
+            <div style="flex:1"><label>Type</label>
+              <select id="ct-kind" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:11px;color:var(--ink)">
+                <option value="advisory">Security Advisory</option><option value="blog">Blog / Insights</option></select></div>
+            <div style="flex:2"><label>Keywords (SEO, comma-sep)</label>
+              <input id="ct-keywords" placeholder="CVE, zero-day, Texas SMB, BVTech"></div>
+          </div>
+          <label style="margin-top:10px">Body <span class="muted">(markdown-lite: ## heading, - bullet, &gt; callout, **bold**, [link](url))</span></label>
+          <textarea id="ct-body" rows="14" placeholder="Microsoft shipped **74 fixes** today...&#10;&#10;## What to do&#10;Patch now.&#10;&#10;- Update endpoints&#10;- Verify backups" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink);font-family:ui-monospace,monospace;font-size:13px;resize:vertical"></textarea>
+          <div class="flex" style="margin-top:12px;gap:10px">
+            <button class="btn" onclick="ctPreview()">Preview</button>
+            <button class="btn ghost" onclick="ctStage()">Stage for publish</button>
+          </div>
+          <div class="muted" id="ct-msg" style="margin-top:10px;font-size:13px"></div>
+        </div>
+        <div>
+          <label>Live preview <span class="muted">— exactly as it publishes</span></label>
+          <iframe id="ct-frame" style="width:100%;height:560px;border:1px solid var(--line);border-radius:12px;background:#0E0D2C"></iframe>
+        </div>
+      </div>
+    </div>
   </section>
 
   <section id="clients" class="hidden">
@@ -1370,6 +1402,31 @@ function renderAC(){
       </div>
     </div>`).join('');
 }
+// ---- Content Studio (compose + preview + stage for BVTech.org) ----
+function ctPost(){return {title:document.getElementById('ct-title').value.trim(),
+  kind:document.getElementById('ct-kind').value,
+  keywords:document.getElementById('ct-keywords').value.trim(),
+  body:document.getElementById('ct-body').value};}
+async function ctPreview(){
+  const p=ctPost(); const msg=document.getElementById('ct-msg');
+  if(!p.title){msg.textContent='Add a title first.';return;}
+  msg.textContent='Rendering…';
+  const r=await fetch('/api/content/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+  if(!r.ok){msg.textContent='Preview failed ('+r.status+').';return;}
+  const htmlText=await r.text();
+  const blob=new Blob([htmlText],{type:'text/html'});
+  document.getElementById('ct-frame').src=URL.createObjectURL(blob);
+  msg.textContent='Previewing. This is exactly how it will publish.';
+}
+async function ctStage(){
+  const p=ctPost(); const msg=document.getElementById('ct-msg');
+  if(!p.title){msg.textContent='Add a title first.';return;}
+  const r=await fetch('/api/content/stage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){msg.textContent=j.detail||'Stage failed.';return;}
+  msg.innerHTML=`Staged ✓ → publishes to <b>${esc(j.publish_path)}</b> at <b>${esc(j.url)}</b>. (Deploy step pushes it live.)`;
+}
+
 // ---- Client Health board (explainable score + churn radar) ----
 function healthColor(s){return s>=85?'var(--ok,#2ecc71)':(s>=70?'var(--warn,#f1c40f)':'var(--bad,#e74c3c)');}
 function riskPill(r){const c={healthy:'ok',watch:'warn',high:'bad'}[r]||'';return `<span class="badge ${c}">${r}</span>`;}
