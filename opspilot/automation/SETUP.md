@@ -1,6 +1,6 @@
 # BVTech.org — Live Auto-Publishing Setup
 
-This wires up: **Cloudflare Pages ← GitHub (`bvtech-website-new`)** for auto-deploy,
+This wires up: **GitLab Pages** auto-deploy for the website repo,
 **Claude Code on your Linode box** to write a fresh security advisory daily in
 your voice, and a **cron job** that publishes it live — every day, hands-off.
 
@@ -14,71 +14,80 @@ your voice, and a **cron job** that publishes it live — every day, hands-off.
  scripts/publish_post.py
     │  clones newest /blog post for pixel-perfect template
     │  writes blog/<slug>.html + updates sitemap.xml
-    │  git commit && git push  →  bvtech-website-new (main)
+    │  git commit && git push  →  GitLab repo (main)
     ▼
- Cloudflare Pages  ──auto-deploy──►  https://bvtech.org/blog/<slug>.html  (LIVE)
+ GitLab Pages CI  ──auto-deploy──►  https://bvtech.org/blog/<slug>.html  (LIVE)
 ```
 
 ---
 
-## Part 1 — Connect `bvtech-website-new` to Cloudflare Pages (auto-deploy)
+## Part 1 — GitLab Pages auto-deploy (chosen path)
 
-Do this once, in the **Cloudflare dashboard** (I can't click here for you):
+We're using **GitLab Pages** (self-contained — avoids the Cloudflare↔Git
+integration that was failing). When creating the GitLab project, pick the
+**Pages/Plain HTML** template (your site is static HTML — no build framework).
 
-1. First, get your current site into the new repo. On the Linode box (or your
-   laptop), with the website files (the V107 zip contents) in a folder:
+1. **Seed the repo with your site.** On the Linode box (or your laptop), with
+   the V107 site files in a folder:
    ```bash
    cd /path/to/bvtech-website
    git init -b main
-   git remote add origin git@github.com:BVTECHLLC/bvtech-website-new.git
+   git remote add origin git@gitlab.com:BVTECHLLC-group/BVTECHLLC-website.git
    git add -A && git commit -m "Import BVTech.org V107"
    git push -u origin main
    ```
-2. Cloudflare dashboard → **Workers & Pages → Create → Pages → Connect to Git**.
-3. Pick **BVTECHLLC/bvtech-website-new**, branch **main**.
-4. Build settings: **Framework preset = None**, **Build command = (blank)**,
-   **Build output directory = `/`** (the site is static — no build step).
-5. Deploy. You'll get a `*.pages.dev` URL — confirm it looks right.
-6. **Custom domain:** Pages project → **Custom domains → Set up a custom domain
-   → `bvtech.org`** (and `www`). Cloudflare adds the DNS records automatically
-   since your domain is already on Cloudflare. Remove/replace the old direct-
-   upload Pages project's domain binding so `bvtech.org` points at this one.
-7. Keep your `_headers` and `_redirects` files in the repo root — Pages honors
-   them automatically (your security headers + caching carry over).
+2. **Add the deploy config.** Copy `automation/gitlab-ci.yml` from this repo into
+   the website repo **root** as `.gitlab-ci.yml` (it replaces the template's
+   one). It mirrors your root files into `public/` on every push to `main`, so
+   you don't have to restructure the site. Commit + push it.
+3. GitLab → your project → **Build → Pipelines** — watch the `pages` job go
+   green. Then **Deploy → Pages** shows your live `*.gitlab.io` URL. Confirm it
+   looks right.
+4. **Custom domain:** **Deploy → Pages → New Domain → `bvtech.org`**. GitLab
+   gives you a `TXT` verification record and a target (`A`/`CNAME`). Add those in
+   your **Cloudflare DNS** tab. Tip: set the records to **DNS only (grey cloud)**
+   first so GitLab can verify + issue its Let's Encrypt cert; you can re-enable
+   the orange proxy afterward.
+5. Headers: GitLab Pages (16.6+) honors a root **`_headers`** file like yours, so
+   your security headers carry over. If your version doesn't, re-add them in the
+   `.gitlab-ci.yml` or Pages settings (ask me and I'll wire it).
 
 ✅ From now on, **every `git push` to `main` auto-deploys** to bvtech.org.
 
+> Prefer Cloudflare after all? Cloudflare Pages can connect to **GitLab** too
+> (Workers & Pages → Create → Pages → Connect to Git → GitLab), or publish via
+> `wrangler pages deploy public` from the box. Either works — say the word.
+
 ---
 
-## Part 2 — Give the Linode box push access to the repo
+## Part 2 — Give the Linode box push access to the GitLab repo
 
-The publishing happens from the **Linode box's** git credentials (not my
-session — my access is scoped to `bvtechllc/pulse` only). Use a **deploy key**:
+Publishing runs from the **Linode box's** git credentials (this session's access
+is scoped to `bvtechllc/pulse`, so the box is the publisher — the secure design
+for unattended deploys). Use a **GitLab deploy key with write access**:
 
 ```bash
 # On the Linode box:
 ssh-keygen -t ed25519 -C "linode-bvtech-publisher" -f ~/.ssh/bvtech_deploy -N ""
 cat ~/.ssh/bvtech_deploy.pub
 ```
-- GitHub → **BVTECHLLC/bvtech-website-new → Settings → Deploy keys → Add deploy
-  key** → paste the `.pub` → **Allow write access** ✅.
-- Tell the box to use that key for this repo:
+- GitLab → **project → Settings → Repository → Deploy keys → Add key** → paste
+  the `.pub` → tick **Grant write permissions** ✅.
+- Point the box at it and clone:
   ```bash
   cat >> ~/.ssh/config <<'EOF'
-  Host github-bvtech
-    HostName github.com
+  Host gitlab-bvtech
+    HostName gitlab.com
     User git
     IdentityFile ~/.ssh/bvtech_deploy
     IdentitiesOnly yes
   EOF
-  git clone github-bvtech:BVTECHLLC/bvtech-website-new.git /srv/bvtech-website-new
+  git clone gitlab-bvtech:BVTECHLLC-group/BVTECHLLC-website.git /srv/bvtech-website-new
   git -C /srv/bvtech-website-new config user.name  "BVTech Publisher"
   git -C /srv/bvtech-website-new config user.email "publisher@bvtech.org"
   ```
-
-> If you'd rather I manage the repo directly via GitHub too, add me/your token —
-> but note this **session** is policy-locked to `bvtechllc/pulse`, so the live
-> daily publishing must run from the box regardless. The box is the publisher.
+- `daily_blog.sh` pushes to `origin main` — no script change needed; it's
+  git-host-agnostic. Just keep `BV_WEBSITE_REPO=/srv/bvtech-website-new`.
 
 ---
 

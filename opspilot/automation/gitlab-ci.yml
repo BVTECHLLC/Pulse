@@ -1,0 +1,23 @@
+# BVTech.org — GitLab Pages deploy for a plain static site.
+# Drop this in the website repo ROOT as `.gitlab-ci.yml` (replaces the one the
+# "Pages/Plain HTML" template scaffolds).
+#
+# Why this shape: your site files live at the repo ROOT (index.html, blog/,
+# assets/, _headers, sitemap.xml, ...) and scripts/publish_post.py writes new
+# posts to blog/<slug>.html at the root. GitLab Pages, however, serves from a
+# `public/` directory. So this job copies everything (except git/CI/public
+# itself) into public/ on each push to main — no restructuring of your site.
+
+pages:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - rm -rf public && mkdir -p public
+    # Copy all top-level entries except the repo plumbing into public/.
+    - cp -r $(ls -A | grep -vE '^(public|\.git|\.gitlab-ci\.yml|\.gitlab)$') public/
+    - echo "Published $(find public -name '*.html' | wc -l) HTML files to GitLab Pages."
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
