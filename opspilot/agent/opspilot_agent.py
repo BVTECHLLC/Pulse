@@ -32,7 +32,7 @@ import time
 from pathlib import Path
 from urllib import request as urlreq
 
-AGENT_VERSION = "1.3.1"
+AGENT_VERSION = "1.4.0"
 
 
 def _normalize_url(u: str) -> str:
@@ -577,6 +577,73 @@ def _interactive_onboard() -> bool:
         return False
 
 
+def _embedded_token() -> tuple[str, str] | None:
+    """Preconfigured ("preloaded") deployment: a per-client agent that already
+    knows its enrollment token, so the client just runs it — zero copy-paste.
+
+    The token (and optional portal URL) is supplied, in priority order, by:
+      1. env vars  OPSPILOT_ENROLL_TOKEN  (+ optional OPSPILOT_URL)
+      2. a file beside the executable, or in the config dir, named one of:
+           opspilot-enroll.token   -> first line = token, optional 2nd line = url
+           opspilot-enroll.json    -> {"token": "...", "url": "..."}
+    Returns (token, url) or None. The token file is single-use: it's deleted
+    after a successful enroll so the secret doesn't linger on disk.
+    """
+    env_tok = (os.environ.get("OPSPILOT_ENROLL_TOKEN") or "").strip()
+    if env_tok:
+        return env_tok, _normalize_url(os.environ.get("OPSPILOT_URL", "") or PULSE_URL)
+
+    # Look next to the running binary/script first, then the config dir.
+    bases = []
+    try:
+        bases.append(Path(sys.executable).resolve().parent if getattr(sys, "frozen", False)
+                     else Path(__file__).resolve().parent)
+    except Exception:
+        pass
+    bases.append(CONF_DIR)
+    for base in bases:
+        for name in ("opspilot-enroll.json", "opspilot-enroll.token"):
+            f = base / name
+            if not f.is_file():
+                continue
+            try:
+                text = f.read_text(encoding="utf-8").strip()
+            except Exception:
+                continue
+            if not text:
+                continue
+            if name.endswith(".json"):
+                try:
+                    data = json.loads(text)
+                except Exception:
+                    continue
+                tok = (data.get("token") or "").strip()
+                url = _normalize_url(data.get("url", "") or PULSE_URL)
+            else:
+                parts = [l.strip() for l in text.splitlines() if l.strip()]
+                tok = parts[0] if parts else ""
+                url = _normalize_url(parts[1]) if len(parts) > 1 else PULSE_URL
+            if tok:
+                return tok, url
+    return None
+
+
+def _consume_token_files() -> None:
+    """Delete any preconfig token files after a successful enroll (single-use)."""
+    bases = [CONF_DIR]
+    try:
+        bases.append(Path(sys.executable).resolve().parent if getattr(sys, "frozen", False)
+                     else Path(__file__).resolve().parent)
+    except Exception:
+        pass
+    for base in bases:
+        for name in ("opspilot-enroll.json", "opspilot-enroll.token"):
+            try:
+                (base / name).unlink()
+            except Exception:
+                pass
+
+
 if __name__ == "__main__":
     _take_url_flag()
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
@@ -596,6 +663,21 @@ if __name__ == "__main__":
         # Already enrolled (e.g. double-clicked again, or boot task) -> just run.
         _apply_saved_url()
         run_loop(enable_scripts=enable_scripts)
+    elif _embedded_token():
+        # Preconfigured ("preloaded") agent: token baked in via env or a file
+        # shipped beside the .exe. Self-enroll silently, then run. Zero copy-paste.
+        _tok, _url = _embedded_token()
+        if not _URL_OVERRIDDEN and _url:
+            PULSE_URL = _url
+        _log(f"Preconfigured agent: enrolling automatically to {PULSE_URL} ...")
+        try:
+            enroll(_tok)            # saves config (incl. URL); raises SystemExit on failure
+            _consume_token_files()  # single-use: remove the baked-in token
+            run_loop(enable_scripts=enable_scripts)
+        except SystemExit:
+            _log("Preconfigured enrollment failed (token may be expired). "
+                 "Generate a fresh installer from the portal.")
+            raise
     elif sys.stdin and sys.stdin.isatty():
         # Fresh double-click in a console: walk the user through onboarding.
         if _interactive_onboard():

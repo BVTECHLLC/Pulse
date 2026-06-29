@@ -1,5 +1,26 @@
 # BVTech OpsPilot — Changelog
 
+## v0.31.0 — Preconfigured ("preloaded") agent installer (June 2026)
+
+### Added — zero-copy-paste agent deployment: the token is baked in
+- New **"Download ready-to-run installer (.cmd)"** button on the Deploy Agent
+  card. Generate a client's installer, hand the **single file** to them, and they
+  just **double-click it** — no token to paste, no URL to type. The installer
+  (`/download/deploy.cmd?token=…`) self-elevates to Administrator, then hands off
+  to the proven `install-exe.ps1`: downloads the standalone `opspilot-agent.exe`,
+  **enrolls with the embedded token**, and registers the boot Scheduled Task.
+- The agent (**v1.4.0**) gained **embedded-token auto-enroll**: a preconfigured
+  agent reads its enrollment token from `OPSPILOT_ENROLL_TOKEN` (env) or a
+  co-located `opspilot-enroll.json` / `opspilot-enroll.token` file, then enrolls
+  silently on first run and starts reporting — truly "it just works." The token
+  file is **single-use** (deleted after a successful enroll).
+- `install-exe.ps1` now also drops that single-use token file beside the exe, so
+  the boot task **self-enrolls** even if the first enroll is interrupted.
+- The copy-paste one-liners (.exe, PowerShell, Linux/macOS) remain as options.
+- Verified: token resolution (env + both file formats + single-use consume),
+  the `deploy.cmd` endpoint (token embedded, self-elevation, file download
+  headers), and the full smoke suite.
+
 ## v0.30.0 — Scheduled QBR emails + agent URL fix (June 2026)
 
 ### Fixed — agent enrollment failed when the URL was typed without a scheme

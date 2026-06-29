@@ -609,7 +609,23 @@ def main():
         assert "/download/agent.exe" in body and "schtasks" in body and "ProgramData" in body
         # the whole point: no Python invocation (winget/pip/python.exe) anywhere
         assert "winget" not in body and "pip" not in body and "python " not in body.lower()
+        # install-exe drops a single-use token file so the boot task self-enrolls.
+        assert "opspilot-enroll.json" in body
         print("no-Python .exe installer OK")
+
+        # ============== v0.31: preconfigured ("preloaded") .cmd installer ==========
+        dtok = c.post(f"/api/agent/enroll-token/{cid}").json()["enroll_token"]
+        rcmd = c.get(f"/download/deploy.cmd?token={dtok}")
+        assert rcmd.status_code == 200, rcmd.status_code
+        cb = rcmd.text
+        # token baked in, hands off to install-exe.ps1, self-elevates, downloads as a file
+        assert dtok in cb, "enrollment token must be embedded in deploy.cmd"
+        assert "OPSPILOT_ENROLL_TOKEN" in cb
+        assert "install-exe.ps1?token=" in cb
+        assert "RunAs" in cb and "@echo off" in cb
+        assert "attachment" in rcmd.headers.get("content-disposition", "")
+        assert "bvtech-opspilot-install.cmd" in rcmd.headers.get("content-disposition", "")
+        print("preconfigured .cmd installer OK (token baked in)")
 
         # HTML pages must be uncacheable so deploys are visible immediately (v0.17.1).
         for pth in ("/", "/dashboard", "/portal", "/signup"):
@@ -940,7 +956,7 @@ def main():
         assert c.delete(f"/api/assets/{a1['id']}").status_code==204
         print("asset management (CMDB + warranty + filters + RBAC + search) OK")
 
-    print("\n=== OpsPilot v0.30 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.31 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

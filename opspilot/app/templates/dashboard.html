@@ -120,9 +120,15 @@
         <div class="card" style="background:#0a1228;border-color:var(--brand,#6c5ce7)">
           <label><b>Enrollment token</b> <span class="pill">valid 72h</span></label>
           <input id="ag-token" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
+          <p style="margin:10px 0 0">
+            <a id="ag-deploy" class="btn" href="#" download style="text-decoration:none">⬇ Download ready-to-run installer (.cmd)</a>
+            <span class="pill">token baked in · zero copy-paste</span></p>
+          <p class="muted" style="margin:6px 0 0">
+            <b>Truly the easiest:</b> send this file to the client. They double-click it — it self-elevates,
+            downloads the agent, enrolls with the token already inside, and starts reporting. Nothing to type.</p>
           <p class="muted" style="margin:8px 0 0">
-            <b>Easiest:</b> <a href="/download/agent.exe">download the Windows .exe</a>, double-click it,
-            and paste this token when it asks. The computer shows up here within a minute.</p>
+            Prefer the bare .exe? <a href="/download/agent.exe">Download it</a>, double-click,
+            and paste the token above when it asks.</p>
           <label style="margin-top:8px">Already downloaded the .exe? Run this in its folder (PowerShell):</label>
           <input id="ag-bare" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
         </div>
@@ -1073,6 +1079,7 @@ async function genAgent(){
   if(!r.ok){alert(j.detail||'Failed to generate token');return;}
   const base=location.origin, raw=j.enroll_token, tok=encodeURIComponent(raw);
   document.getElementById('ag-token').value=raw;
+  document.getElementById('ag-deploy').href=`${base}/download/deploy.cmd?token=${tok}`;
   document.getElementById('ag-bare').value=`.\\opspilot-agent.exe enroll ${raw} --url ${base}`;
   document.getElementById('ag-exe').value=`powershell -ExecutionPolicy Bypass -c "irm '${base}/download/install-exe.ps1?token=${tok}' | iex"`;
   document.getElementById('ag-win').value=`powershell -ExecutionPolicy Bypass -c "irm '${base}/download/install.ps1?token=${tok}' | iex"`;
