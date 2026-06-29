@@ -27,6 +27,17 @@
 </div>
 
 <div class="wrap">
+  <!-- Command Palette (⌘K / Ctrl+K) -->
+  <div id="cmdk" class="hidden" style="position:fixed;inset:0;z-index:200;background:rgba(4,8,20,.6);backdrop-filter:blur(3px)" onclick="if(event.target===this)closeCmdk()">
+    <div style="max-width:620px;margin:10vh auto 0;background:#0c1430;border:1px solid var(--brand,#6c5ce7);border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.6);overflow:hidden">
+      <input id="cmdk-input" placeholder="Type a command, jump to a section, or search…" autocomplete="off"
+        oninput="cmdkFilter()" onkeydown="cmdkKey(event)"
+        style="width:100%;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--ink);padding:16px 18px;font-size:15px;outline:none">
+      <div id="cmdk-list" style="max-height:54vh;overflow:auto;padding:6px"></div>
+      <div class="muted" style="padding:8px 14px;border-top:1px solid var(--line);font-size:11px">↑↓ navigate · ↵ run · esc close · ⌘K / Ctrl-K anytime</div>
+    </div>
+  </div>
+
   <div class="nav">
     <a class="active" data-tab="overview" onclick="tab('overview')">Overview</a>
     <a data-tab="action" onclick="tab('action')">⚡ Action Center</a>
@@ -121,6 +132,18 @@
   </section>
 
   <section id="clients" class="hidden">
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+        <div id="ch-gauge" style="width:74px;height:74px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;background:#0c1430">
+          <span style="font-size:24px;font-weight:800" id="ch-portfolio">—</span><span class="muted" style="font-size:9px">PORTFOLIO</span></div>
+        <div style="flex:1;min-width:180px">
+          <div style="font-weight:700">Client Health <span class="pill">explainable score · churn radar</span></div>
+          <div class="muted" id="ch-summary" style="margin-top:3px">Loading client health…</div>
+        </div>
+        <button class="btn sm ghost" onclick="loadClientHealth()">Refresh</button>
+      </div>
+      <div id="ch-board" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin-top:14px"></div>
+    </div>
     <div class="card" style="margin-bottom:16px">
       <h3>Add Client</h3>
       <div class="flex">
@@ -1347,6 +1370,28 @@ function renderAC(){
       </div>
     </div>`).join('');
 }
+// ---- Client Health board (explainable score + churn radar) ----
+function healthColor(s){return s>=85?'var(--ok,#2ecc71)':(s>=70?'var(--warn,#f1c40f)':'var(--bad,#e74c3c)');}
+function riskPill(r){const c={healthy:'ok',watch:'warn',high:'bad'}[r]||'';return `<span class="badge ${c}">${r}</span>`;}
+async function loadClientHealth(){
+  const data=await api('/api/clients/health'); if(!data)return;
+  const g=document.getElementById('ch-gauge'), pf=document.getElementById('ch-portfolio');
+  if(pf)pf.textContent=data.portfolio_score??'—';
+  if(g&&data.portfolio_score!=null)g.style.boxShadow=`inset 0 0 0 4px ${healthColor(data.portfolio_score)}`;
+  const sm=document.getElementById('ch-summary');
+  if(sm)sm.textContent=data.count?`${data.count} client${data.count>1?'s':''} · ${data.at_risk} at risk of churn`:'No clients yet.';
+  const board=document.getElementById('ch-board');
+  if(!board)return;
+  board.innerHTML=(data.clients||[]).map(c=>`
+    <div class="card" style="margin:0;border-left:4px solid ${healthColor(c.score)};cursor:pointer" onclick="tab('clients')">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <b>${esc(c.client_name)}</b>
+        <span style="font-size:22px;font-weight:800;color:${healthColor(c.score)}">${c.score}<span class="muted" style="font-size:12px"> ${c.grade}</span></span>
+      </div>
+      <div style="margin:4px 0">${riskPill(c.risk)}</div>
+      <div class="muted" style="font-size:12px">${c.factors.length?esc(c.factors.slice(0,3).join(' · ')):'All metrics healthy ✓'}</div>
+    </div>`).join('')||'<div class="muted">No clients yet.</div>';
+}
 function acJump(link){
   // link looks like '#tickets/123' or '#devices/4' or '#billing'
   const m=(link||'').replace(/^#/,'').split('/');
@@ -1446,6 +1491,68 @@ document.addEventListener('keydown',e=>{
   if(e.key==='/'&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'){
     e.preventDefault();document.getElementById('gsearch').focus();}});
 document.addEventListener('click',e=>{if(!e.target.closest('#gsearch')&&!e.target.closest('#gsearch-results'))closeSearch();});
+
+// ---- Command Palette (⌘K / Ctrl+K) — power-user nav + quick actions ----
+const CMDK_NAV=['overview','action','clients','devices','assets','alerts','tickets','time','projects','billing','automation','security','scripts','network','kb','licenses','integrations','audit'];
+const CMDK_LABEL={overview:'Overview',action:'⚡ Action Center',clients:'Clients',devices:'Devices',assets:'Assets',alerts:'Alerts',tickets:'Tickets',time:'Time',projects:'Projects',billing:'Billing',automation:'Automation',security:'Security',scripts:'Scripts',network:'Network',kb:'Knowledge Base',licenses:'Licenses',integrations:'Integrations',audit:'Audit Log'};
+function cmdkCommands(){
+  const cmds=CMDK_NAV.map(t=>({icon:'→',label:'Go to '+CMDK_LABEL[t],hint:'navigate',run:()=>tab(t)}));
+  cmds.push(
+    {icon:'⚡',label:'Open Action Center',hint:'triage',run:()=>{tab('action');loadActionCenter();}},
+    {icon:'🩺',label:'View Client Health board',hint:'health',run:()=>{tab('clients');loadClientHealth();}},
+    {icon:'🔮',label:'Show predictive risks (Foresight)',hint:'predict',run:()=>{tab('action');document.getElementById('ac-sev').value='high';loadActionCenter();}},
+    {icon:'🖥️',label:'Deploy an agent / generate installer',hint:'onboard',run:()=>tab('devices')},
+    {icon:'➕',label:'Add a client',hint:'create',run:()=>{tab('clients');const e=document.getElementById('cl-name');if(e)e.focus();}},
+    {icon:'🧹',label:'Run monitoring sweep now',hint:'rmm',run:()=>{if(typeof runSweep==='function')runSweep();}},
+    {icon:'🔄',label:'Refresh everything',hint:'reload',run:()=>load()},
+  );
+  return cmds;
+}
+let CMDK_ITEMS=[], CMDK_SEL=0, _cmdkTimer=null;
+function openCmdk(){
+  document.getElementById('cmdk').classList.remove('hidden');
+  const i=document.getElementById('cmdk-input');i.value='';i.focus();
+  cmdkFilter();
+}
+function closeCmdk(){document.getElementById('cmdk').classList.add('hidden');}
+function cmdkRender(){
+  const box=document.getElementById('cmdk-list');
+  box.innerHTML=CMDK_ITEMS.map((it,idx)=>
+    `<div class="cmdk-row" data-i="${idx}" onclick="cmdkRun(${idx})"
+       style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:9px;cursor:pointer;${idx===CMDK_SEL?'background:rgba(108,92,231,.25)':''}">
+       <span style="width:22px;text-align:center">${it.icon||'•'}</span>
+       <span style="flex:1">${esc(it.label)}</span>
+       <span class="pill" style="font-size:10px">${esc(it.hint||'')}</span></div>`).join('')
+    ||'<div class="muted" style="padding:12px">No matches.</div>';
+}
+function cmdkFilter(){
+  const q=document.getElementById('cmdk-input').value.trim().toLowerCase();
+  const cmds=cmdkCommands().filter(c=>!q||c.label.toLowerCase().includes(q));
+  CMDK_ITEMS=cmds.slice(0,8); CMDK_SEL=0; cmdkRender();
+  // Live entity search merged in (debounced).
+  clearTimeout(_cmdkTimer);
+  if(q.length>=2){
+    _cmdkTimer=setTimeout(async()=>{
+      const r=await fetch('/api/search?q='+encodeURIComponent(q)).catch(()=>null);
+      const j=r?await r.json().catch(()=>({results:[]})):{results:[]};
+      const hits=(j.results||[]).slice(0,6).map(x=>({icon:'🔎',label:x.label,hint:x.type,
+        run:()=>gsJump(x.tab,x.type,x.id)}));
+      // keep top commands, append search hits
+      CMDK_ITEMS=cmds.slice(0,5).concat(hits); CMDK_SEL=0; cmdkRender();
+    },180);
+  }
+}
+function cmdkRun(i){const it=CMDK_ITEMS[i];if(it){closeCmdk();it.run();}}
+function cmdkKey(e){
+  if(e.key==='Escape'){closeCmdk();return;}
+  if(e.key==='ArrowDown'){e.preventDefault();CMDK_SEL=Math.min(CMDK_SEL+1,CMDK_ITEMS.length-1);cmdkRender();}
+  else if(e.key==='ArrowUp'){e.preventDefault();CMDK_SEL=Math.max(CMDK_SEL-1,0);cmdkRender();}
+  else if(e.key==='Enter'){e.preventDefault();cmdkRun(CMDK_SEL);}
+}
+document.addEventListener('keydown',e=>{
+  if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){e.preventDefault();
+    const open=!document.getElementById('cmdk').classList.contains('hidden');
+    open?closeCmdk():openCmdk();}});
 
 // ---- Integrations ----
 async function loadIntegrations(){
@@ -1770,7 +1877,7 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations(),loadProjects(),loadOverview(),loadTime(),loadAssets(),loadActionCenter()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations(),loadProjects(),loadOverview(),loadTime(),loadAssets(),loadActionCenter(),loadClientHealth()]);
   toggleOvAuto();   // start the command-center live refresh
 }
 load();

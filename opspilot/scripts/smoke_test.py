@@ -929,6 +929,52 @@ def main():
         assert ca_c.get("/api/action-center?client_id=999999").status_code in (403, 404)
         print("Action Center: ranked + explainable + RBAC scoped OK")
 
+        # ===================== v0.33: Predictive Foresight =======================
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+        from app.core.db import SessionLocal as _SL
+        from app import models as _M
+        _now = _dt.now(_tz.utc)
+        _db = _SL()
+        _fdev = _M.Device(client_id=cid, hostname="FORECAST-FILER", os="Windows Server",
+                          health_score=72, patches_pending=2, av_status="on",
+                          disk_pct=91, last_checkin=_now)
+        _db.add(_fdev); _db.flush()
+        for _i in range(11):                       # 70% -> 92% over 10 days (~2.2%/day)
+            _db.add(_M.DeviceCheckin(device_id=_fdev.id, ts=_now - _td(days=10 - _i),
+                                     cpu_pct=30, ram_pct=60, disk_pct=70 + _i * 2.2,
+                                     health_score=82 - _i))
+        _db.commit(); _fid = _fdev.id; _db.close()
+
+        fdc = c.get(f"/api/devices/{_fid}/forecast").json()
+        assert fdc["enough_data"] and fdc["disk"], fdc
+        assert fdc["disk"]["days_to_full"] is not None and fdc["disk"]["days_to_full"] < 10, fdc["disk"]
+        assert fdc["disk"]["trend"] == "degrading", fdc["disk"]
+        assert any(r["kind"] == "disk_fill" for r in fdc["risks"]), fdc["risks"]
+        # fleet roll-up surfaces the predicted disk-fill, severity-ordered
+        ff = c.get("/api/foresight").json()
+        assert ff["total"] >= 1 and any(r["hostname"] == "FORECAST-FILER" for r in ff["risks"]), ff
+        # the prediction also flows into the Action Center as a predict_* item
+        ac2 = c.get("/api/action-center").json()
+        assert any(i["kind"].startswith("predict_") for i in ac2["items"]), "no predictive AC item"
+        # tenant scoping + not-found
+        assert ca_c.get(f"/api/devices/{_fid}/forecast").json()["device_id"] == _fid  # ca_c owns cid
+        assert c.get("/api/devices/999999/forecast").status_code == 404
+        print("Predictive Foresight: disk-fill projection + fleet + AC + RBAC OK")
+
+        # ===================== v0.33: Client Health Score ========================
+        ch = c.get("/api/clients/health").json()
+        assert "portfolio_score" in ch and isinstance(ch["clients"], list) and ch["count"] >= 1, ch
+        row = next(r for r in ch["clients"] if r["client_id"] == cid)
+        for k in ("score", "grade", "risk", "factors", "components", "stats"):
+            assert k in row, ("missing client-health key", k)
+        assert 0 <= row["score"] <= 100 and row["grade"] in ("A","B","C","D","F")
+        assert row["risk"] in ("healthy","watch","high")
+        # single-client endpoint + RBAC: a client user sees only their own
+        assert c.get(f"/api/clients/{cid}/health").json()["client_id"] == cid
+        chc = ca_c.get("/api/clients/health").json()
+        assert all(r["client_id"] == cid for r in chc["clients"]), "client saw other orgs' health"
+        print("Client Health Score: weighted + explainable + RBAC OK")
+
         # ===================== v0.26: time tracking / money loop =====================
         tt_ticket=c.post("/api/tickets", json={"client_id":cid,"subject":"Timer ticket","priority":"normal"}).json()["id"]
         tt_pid=c.post("/api/projects", json={"client_id":cid,"name":"Timer project"}).json()["id"]
@@ -989,7 +1035,7 @@ def main():
         assert c.delete(f"/api/assets/{a1['id']}").status_code==204
         print("asset management (CMDB + warranty + filters + RBAC + search) OK")
 
-    print("\n=== OpsPilot v0.32 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.33 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

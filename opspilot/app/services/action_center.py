@@ -260,6 +260,20 @@ def build(db: Session, user: User, *, now: datetime | None = None,
                     action="Roll this into an invoice.",
                     nudge=min(8, int(hours // 8)))
 
+    # ---- 7b. Predictive foresight: problems before they happen ------------
+    # e.g. "disk full in ~3 days" surfaces as an action BEFORE the outage.
+    from . import foresight as _fs
+    for r in _fs.fleet_risks(db, scope_ids, now):
+        link = f"#devices/{r['device_id']}"
+        col.add(kind=f"predict_{r['kind']}", severity=r["severity"],
+                title=f"Forecast: {r['hostname']} — {r['kind'].replace('_', ' ')}",
+                detail=r["detail"],
+                client_id=r["client_id"], client_name=cname(r["client_id"]),
+                entity_type="device", entity_id=r["device_id"], link=link,
+                action="Act now while it's cheap — before it becomes an outage.",
+                # Sooner predicted failure → higher urgency nudge.
+                nudge=6 if (r.get("days") is not None and r["days"] <= 3) else 2)
+
     # ---- 8. Overdue project tasks -----------------------------------------
     tasks = in_scope(db.query(ProjectTask).filter(
         ProjectTask.due_date.isnot(None), ProjectTask.status != "done"),

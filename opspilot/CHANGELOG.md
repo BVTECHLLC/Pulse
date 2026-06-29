@@ -1,5 +1,38 @@
 # BVTech OpsPilot — Changelog
 
+## v0.33.0 — Predictive Foresight + Client Health + Command Palette (June 2026)
+
+### Added — Predictive Foresight: see problems before they happen
+- A new engine (`services/foresight.py`) trends each device's check-in history
+  with least-squares regression to **project the future**: days-until-disk-full,
+  rising RAM/CPU pressure, and health trajectory (improving / stable / degrading).
+- `GET /api/devices/{id}/forecast` (per-device) and `GET /api/foresight`
+  (fleet-wide, severity-ordered). Honest about uncertainty — it only projects
+  with enough history and a real trend.
+- Predictions flow straight into the **Action Center**: "Disk full in ~3 days"
+  shows up as a ranked action *before* it's a 2 a.m. outage. Read-only, no agent
+  changes, no new tables.
+
+### Added — Client Health Score: one explainable number per client
+- `services/client_health.py` rolls endpoint health, patch compliance, uptime,
+  active alerts, SLA adherence, security findings, and ticket backlog into a
+  weighted **0-100 score** with a letter grade, a **churn-risk** band
+  (healthy / watch / high), and the **specific factors** pulling it down.
+- `GET /api/clients/health` (portfolio, worst-first) and
+  `GET /api/clients/{id}/health`. New **Client Health board** on the Clients tab
+  with a portfolio gauge and per-client cards.
+
+### Added — Command Palette (⌘K / Ctrl-K)
+- Power-user launcher: fuzzy-jump to any section, run quick actions (deploy
+  agent, add client, run monitoring sweep, open foresight), and search every
+  entity — all from the keyboard, with ↑↓ + ↵ navigation.
+
+### Notes
+- All three are **tenant-scoped + RBAC** (staff see the portfolio; a client user
+  only ever sees their own org) and pure read models.
+- Verified: backend math, full smoke suite, and the live dashboard rendered
+  headless (health board + command palette, zero console errors).
+
 ## v0.32.0 — Action Center: the "what to do next" brain (June 2026)
 
 ### Added — one ranked, explainable feed across every module
