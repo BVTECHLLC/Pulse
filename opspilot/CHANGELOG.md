@@ -1,5 +1,22 @@
 # BVTech OpsPilot — Changelog
 
+## v0.30.0 — Scheduled QBR emails + agent URL fix (June 2026)
+
+### Fixed — agent enrollment failed when the URL was typed without a scheme
+- If you typed `portal.bvtech.org` (no `https://`) at the agent's onboarding
+  prompt, it built `portal.bvtech.org/api/agent/enroll` and urllib rejected it
+  ("unknown url type"). The agent (**v1.3.1**) now **normalizes any URL** it's
+  given — interactive prompt, `--url` flag, saved config, or `PULSE_URL` env —
+  adding `https://` when no scheme is present and trimming trailing slashes.
+  Verified: typing a bare host now enrolls and the device appears.
+
+### Added — scheduled reports now carry the full QBR + CSV
+- The recurring report email is now the **complete QBR**: a readable, sectioned
+  body (Infrastructure, Security & Alerts, Service Desk, Projects, Investment)
+  built from the same enriched summary as the report page, **with the metrics CSV
+  attached**. `email.send()` gained attachment support; the CSV builder is shared
+  with the export endpoint. Verified end-to-end (rich body + `.csv` attachment).
+
 ## v0.29.0 — QBR report builder (branded, exportable) (June 2026)
 
 ### Added — a client-facing deliverable you can hand over or resell

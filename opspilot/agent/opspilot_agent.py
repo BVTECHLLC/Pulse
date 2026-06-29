@@ -32,8 +32,19 @@ import time
 from pathlib import Path
 from urllib import request as urlreq
 
-AGENT_VERSION = "1.3.0"
-PULSE_URL = os.environ.get("PULSE_URL", "https://portal.bvtech.org")
+AGENT_VERSION = "1.3.1"
+
+
+def _normalize_url(u: str) -> str:
+    """Accept what a human types: add https:// if no scheme, drop trailing slash.
+    Prevents urllib 'unknown url type' when someone enters 'portal.bvtech.org'."""
+    u = (u or "").strip().rstrip("/")
+    if u and "://" not in u:
+        u = "https://" + u
+    return u
+
+
+PULSE_URL = _normalize_url(os.environ.get("PULSE_URL", "https://portal.bvtech.org"))
 CHECKIN_INTERVAL = 300  # seconds; server can override
 INVENTORY_INTERVAL = 6 * 3600  # software inventory cadence (seconds)
 
@@ -521,7 +532,7 @@ def _take_url_flag() -> None:
     if "--url" in sys.argv:
         i = sys.argv.index("--url")
         if i + 1 < len(sys.argv):
-            PULSE_URL = sys.argv[i + 1].rstrip("/")
+            PULSE_URL = _normalize_url(sys.argv[i + 1])
             _URL_OVERRIDDEN = True
             del sys.argv[i:i + 2]
 
@@ -534,7 +545,7 @@ def _apply_saved_url() -> None:
         return
     conf = _load_conf()
     if conf and conf.get("url"):
-        PULSE_URL = conf["url"].rstrip("/")
+        PULSE_URL = _normalize_url(conf["url"])
 
 
 def _interactive_onboard() -> bool:
@@ -550,7 +561,7 @@ def _interactive_onboard() -> bool:
     except EOFError:
         u = ""
     if u:
-        PULSE_URL = u.rstrip("/")
+        PULSE_URL = _normalize_url(u)
     token = ""
     while not token:
         try:

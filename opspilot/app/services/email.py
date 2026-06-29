@@ -17,11 +17,14 @@ def _from_addr(s) -> str:
     return s.SMTP_FROM or s.SUPPORT_EMAIL
 
 
-def send(to: str, subject: str, body: str) -> bool:
-    """Send a plain-text email. Returns True if handed to an SMTP server."""
+def send(to: str, subject: str, body: str, attachments: list[tuple] | None = None) -> bool:
+    """Send a plain-text email, optionally with attachments. Each attachment is a
+    (filename, content_str_or_bytes, mimetype) tuple, e.g.
+    ('report.csv', csv_text, 'text/csv'). Returns True if handed to SMTP."""
     s = get_settings()
     if not s.email_enabled:
-        print(f"[email:disabled] to={to} subject={subject!r} "
+        extra = f" attachments={[a[0] for a in attachments]}" if attachments else ""
+        print(f"[email:disabled] to={to} subject={subject!r}{extra} "
               f"(set SMTP_HOST to enable real delivery)")
         return False
     try:
@@ -30,6 +33,11 @@ def send(to: str, subject: str, body: str) -> bool:
         msg["To"] = to
         msg["Subject"] = subject
         msg.set_content(body)
+        for fname, content, mimetype in (attachments or []):
+            data = content.encode() if isinstance(content, str) else content
+            maintype, _, subtype = (mimetype or "application/octet-stream").partition("/")
+            msg.add_attachment(data, maintype=maintype, subtype=subtype or "octet-stream",
+                               filename=fname)
         with smtplib.SMTP(s.SMTP_HOST, s.SMTP_PORT, timeout=20) as smtp:
             if s.SMTP_STARTTLS:
                 smtp.starttls()
