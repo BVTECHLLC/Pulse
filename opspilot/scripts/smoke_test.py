@@ -961,6 +961,25 @@ def main():
         assert c.get("/api/devices/999999/forecast").status_code == 404
         print("Predictive Foresight: disk-fill projection + fleet + AC + RBAC OK")
 
+        # ---- anomaly detection: a sudden spike vs the device's own baseline ----
+        _db = _SL()
+        _adev = _M.Device(client_id=cid, hostname="ANOMALY-APP", health_score=82,
+                          av_status="on", cpu_pct=98, disk_pct=50, last_checkin=_now)
+        _db.add(_adev); _db.flush()
+        for _i in range(9):                        # stable ~20% CPU baseline
+            _db.add(_M.DeviceCheckin(device_id=_adev.id, ts=_now - _td(hours=18 - _i * 2),
+                                     cpu_pct=20 + (_i % 3), ram_pct=50, disk_pct=50, health_score=85))
+        _db.add(_M.DeviceCheckin(device_id=_adev.id, ts=_now, cpu_pct=98, ram_pct=50,
+                                 disk_pct=50, health_score=82))   # the spike
+        _db.commit(); _aid = _adev.id; _db.close()
+        afc = c.get(f"/api/devices/{_aid}/forecast").json()
+        assert any(a["kind"] == "cpu_spike" for a in afc.get("anomalies", [])), afc.get("anomalies")
+        ac3 = c.get("/api/action-center").json()
+        spikes = [i for i in ac3["items"] if i["kind"] == "predict_cpu_spike"
+                  and "ANOMALY-APP" in i["title"]]
+        assert len(spikes) == 1, ("expected exactly one anomaly item", len(spikes))
+        print("Anomaly detection: z-score spike + AC (deduped) OK")
+
         # ===================== v0.33: Client Health Score ========================
         ch = c.get("/api/clients/health").json()
         assert "portfolio_score" in ch and isinstance(ch["clients"], list) and ch["count"] >= 1, ch

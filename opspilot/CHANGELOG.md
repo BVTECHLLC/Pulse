@@ -9,6 +9,10 @@
 - `GET /api/devices/{id}/forecast` (per-device) and `GET /api/foresight`
   (fleet-wide, severity-ordered). Honest about uncertainty — it only projects
   with enough history and a real trend.
+- **Statistical anomaly detection**: z-scores the latest reading against each
+  device's own baseline to catch *sudden* spikes (distinct from slow trends) —
+  a spike must be both statistically extreme (≥3σ) and absolutely high, so it
+  never cries wolf. Surfaces in the forecast (`anomalies`) and Action Center.
 - Predictions flow straight into the **Action Center**: "Disk full in ~3 days"
   shows up as a ranked action *before* it's a 2 a.m. outage. Read-only, no agent
   changes, no new tables.

@@ -158,6 +158,52 @@ def forecast_device(db: Session, device: Device, now: datetime | None = None) ->
                 })
         out["health"] = blk
 
+    # Sudden spikes vs the device's own baseline (distinct from slow trends).
+    anomalies = detect_anomalies(db, device, now)
+    out["anomalies"] = anomalies
+    out["risks"].extend(anomalies)
+    return out
+
+
+def detect_anomalies(db: Session, device: Device, now: datetime | None = None) -> list[dict]:
+    """Spot a *sudden* deviation from a device's own normal — distinct from the
+    slow trends forecast_device() catches. We z-score the latest reading against
+    the device's recent baseline (mean+std of prior points). A spike only counts
+    if it's both statistically extreme (z >= 3) AND absolutely high (so a jump
+    from 2%→8% CPU doesn't cry wolf). Pure stats; no thresholds to tune per box.
+    """
+    now = now or datetime.now(timezone.utc)
+    since = now - timedelta(days=7)
+    rows = (db.query(DeviceCheckin)
+            .filter(DeviceCheckin.device_id == device.id, DeviceCheckin.ts >= since)
+            .order_by(DeviceCheckin.ts.asc()).all())
+    if len(rows) < 6:
+        return []
+    out: list[dict] = []
+    # (attr, key, label, absolute floor below which a spike isn't worth paging on)
+    for attr, key, label, floor in (("cpu_pct", "cpu", "CPU", 85.0),
+                                    ("ram_pct", "ram", "RAM", 88.0),
+                                    ("disk_pct", "disk", "disk", 90.0)):
+        vals = [getattr(r, attr) for r in rows if getattr(r, attr) is not None]
+        if len(vals) < 6:
+            continue
+        latest = vals[-1]
+        baseline = vals[:-1]
+        n = len(baseline)
+        mean = sum(baseline) / n
+        var = sum((v - mean) ** 2 for v in baseline) / n
+        std = var ** 0.5
+        if std < 1e-6:
+            continue
+        z = (latest - mean) / std
+        if z >= 3.0 and latest >= floor:
+            out.append({
+                "kind": f"{key}_spike",
+                "severity": "high" if latest >= floor + 7 else "medium",
+                "metric": attr, "days": None,
+                "detail": f"{label} spiked to {latest:.0f}% — {z:.1f}σ above its "
+                          f"baseline of {mean:.0f}%. Anomalous for this device.",
+            })
     return out
 
 
@@ -173,7 +219,7 @@ def fleet_risks(db: Session, client_ids: list[int] | None, now: datetime | None 
     devices = q.limit(limit_devices).all()
     risks: list[dict] = []
     for d in devices:
-        fc = forecast_device(db, d, now)
+        fc = forecast_device(db, d, now)   # fc["risks"] already includes anomalies
         for r in fc["risks"]:
             risks.append({**r, "device_id": d.id, "hostname": d.hostname,
                           "client_id": d.client_id})

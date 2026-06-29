@@ -265,8 +265,9 @@ def build(db: Session, user: User, *, now: datetime | None = None,
     from . import foresight as _fs
     for r in _fs.fleet_risks(db, scope_ids, now):
         link = f"#devices/{r['device_id']}"
+        label = "Anomaly" if r["kind"].endswith("_spike") else "Forecast"
         col.add(kind=f"predict_{r['kind']}", severity=r["severity"],
-                title=f"Forecast: {r['hostname']} — {r['kind'].replace('_', ' ')}",
+                title=f"{label}: {r['hostname']} — {r['kind'].replace('_', ' ')}",
                 detail=r["detail"],
                 client_id=r["client_id"], client_name=cname(r["client_id"]),
                 entity_type="device", entity_id=r["device_id"], link=link,
