@@ -55,8 +55,10 @@
     <a data-tab="network" onclick="tab('network')">Network</a>
     <a data-tab="kb" onclick="tab('kb')">Knowledge Base</a>
     <a data-tab="content" onclick="tab('content')">✍️ Content Studio</a>
+    <a data-tab="mailbox" onclick="tab('mailbox')">📬 Mailbox</a>
     <a data-tab="licenses" onclick="tab('licenses')">Licenses</a>
     <a data-tab="integrations" onclick="tab('integrations')">Integrations</a>
+    <a data-tab="settings" onclick="tab('settings')">🛠️ Settings</a>
     <a data-tab="audit" onclick="tab('audit')">Audit Log</a>
   </div>
 
@@ -733,6 +735,107 @@
     </div>
   </section>
 
+  <section id="mailbox" class="hidden">
+    <div id="mb-unconfigured" class="card hidden" style="margin-bottom:16px">
+      <b>Mailbox not connected.</b> <span class="muted">Add your Microsoft 365 tenant & app credentials in
+      <a href="#" onclick="tab('settings');return false">🛠️ Settings → Mailbox</a> to read and send mail from Pulse.</span>
+    </div>
+    <div class="card" style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input id="mb-addr" placeholder="mailbox (defaults to saved)" style="min-width:200px">
+      <select id="mb-folder" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
+      <input id="mb-search" placeholder="search…" style="min-width:140px" onkeydown="if(event.key==='Enter')loadMailbox()">
+      <button class="btn sm" onclick="loadMailbox()">Refresh</button>
+      <button class="btn sm" onclick="mbCompose()">✉️ Compose</button>
+      <span class="muted" id="mb-status" style="font-size:12px"></span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card">
+        <h3 style="margin-top:0">Messages</h3>
+        <table><thead><tr><th>From</th><th>Subject</th><th>Received</th></tr></thead>
+        <tbody id="t-mailbox"></tbody></table>
+      </div>
+      <div class="card" id="mb-reader">
+        <p class="muted">Select a message to read it here.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="settings" class="hidden">
+    <div class="card" style="margin-bottom:16px">
+      <b>Settings &amp; Integrations.</b>
+      <span class="muted">Connect your MSP's services to Pulse. All secrets are encrypted at rest and never shown again — leave a field blank to keep the saved value.</span>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h3>📬 Microsoft 365 Mailbox <span class="pill" id="set-mb-pill">not configured</span></h3>
+      <p class="muted" style="margin:4px 0 10px">App-only Graph access (Mail.Read / Mail.Send, admin-consented). Used by the Mailbox tab.</p>
+      <div class="grid2">
+        <label>Tenant ID<input id="set-mb-tenant" placeholder="tenant GUID"></label>
+        <label>Application (client) ID<input id="set-mb-client" placeholder="app/client GUID"></label>
+        <label>Client secret<input id="set-mb-secret" type="password" placeholder="(unchanged)"></label>
+        <label>Default mailbox<input id="set-mb-mailbox" placeholder="help@bvtech.org"></label>
+      </div>
+      <div class="flex" style="margin-top:10px"><button class="btn sm" onclick="saveMailboxCfg()">Save</button>
+        <button class="btn sm ghost" onclick="testMailboxCfg()">Test connection</button>
+        <span class="muted" id="set-mb-msg" style="font-size:12px"></span></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h3>💼 LinkedIn Auto-Publisher <span class="pill" id="set-li-pill">not configured</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Post updates to LinkedIn from Pulse. Token &amp; person URN from your LinkedIn app.</p>
+      <div class="grid2">
+        <label>Access token<input id="set-li-token" type="password" placeholder="(unchanged)"></label>
+        <label>Person URN<input id="set-li-urn" placeholder="urn:li:person:xxxx or the id"></label>
+      </div>
+      <div class="flex" style="margin-top:10px"><button class="btn sm" onclick="saveLinkedIn()">Save</button>
+        <span class="muted" id="set-li-msg" style="font-size:12px"></span></div>
+      <div style="margin-top:10px">
+        <textarea id="set-li-text" placeholder="Write a post to publish now…" rows="3" style="width:100%"></textarea>
+        <div class="flex" style="margin-top:6px"><input id="set-li-link" placeholder="optional article URL" style="flex:1">
+          <button class="btn sm" onclick="postLinkedIn()">Post to LinkedIn now</button></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h3>📞 Dialpad Auto-Dialer <span class="pill" id="set-dp-pill">not configured</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Click-to-call: rings your Dialpad device, then dials the number.</p>
+      <div class="grid2">
+        <label>API key<input id="set-dp-key" type="password" placeholder="(unchanged)"></label>
+        <label>Dialpad user ID<input id="set-dp-user" placeholder="user id to ring"></label>
+        <label>Caller ID number<input id="set-dp-caller" placeholder="+1..."></label>
+      </div>
+      <div class="flex" style="margin-top:10px"><button class="btn sm" onclick="saveDialpad()">Save</button>
+        <input id="set-dp-test" placeholder="+1... test number" style="min-width:150px">
+        <button class="btn sm ghost" onclick="dialpadCall(document.getElementById('set-dp-test').value)">Test call</button>
+        <span class="muted" id="set-dp-msg" style="font-size:12px"></span></div>
+    </div>
+
+    <div class="card">
+      <h3>🌐 Website Auto-Publishers <span class="pill">reputation</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Daily auto-posting settings for your sites (run by the publishing service).</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <h4 style="margin:0 0 6px">BVTech.org <label style="font-weight:normal"><input type="checkbox" id="set-wb-en" style="width:auto"> enabled</label></h4>
+          <label>Site URL<input id="set-wb-url" placeholder="https://bvtech.org"></label>
+          <label>Schedule<input id="set-wb-sched" placeholder="07:30 America/Chicago"></label>
+          <label>Topics<input id="set-wb-topics" placeholder="cybersecurity, MSP tips"></label>
+          <label>Persona<input id="set-wb-persona" placeholder="voice/tone"></label>
+          <button class="btn sm" style="margin-top:8px" onclick="saveWebsite('bvtech')">Save</button>
+          <span class="muted" id="set-wb-msg" style="font-size:12px"></span>
+        </div>
+        <div>
+          <h4 style="margin:0 0 6px">JordanPolasek.com <label style="font-weight:normal"><input type="checkbox" id="set-wj-en" style="width:auto"> enabled</label></h4>
+          <label>Site URL<input id="set-wj-url" placeholder="https://jordanpolasek.com"></label>
+          <label>Schedule<input id="set-wj-sched" placeholder="08:00 America/Chicago"></label>
+          <label>Topics<input id="set-wj-topics" placeholder="leadership, tech"></label>
+          <label>Persona<input id="set-wj-persona" placeholder="voice/tone"></label>
+          <button class="btn sm" style="margin-top:8px" onclick="saveWebsite('jp')">Save</button>
+          <span class="muted" id="set-wj-msg" style="font-size:12px"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="audit" class="hidden"><div class="card"><table>
     <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th>IP</th><th>OK</th></tr></thead>
     <tbody id="t-audit"></tbody></table></div></section>
@@ -747,10 +850,15 @@
 async function api(p){const r=await fetch(p);if(r.status===401){location.href='/';return null;}return r.json();}
 async function post(p,b){return fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});}
 async function patch(p,b){return fetch(p,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});}
+async function put(p,b){return fetch(p,{method:'PUT',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});}
+const _tabLoaded={};
 function tab(name){
   document.querySelectorAll('.wrap section').forEach(s=>s.classList.add('hidden'));
   document.getElementById(name).classList.remove('hidden');
   document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('active',a.dataset.tab===name));
+  // Lazy-load tabs that hit external services so we don't call them on every page load.
+  if(name==='mailbox'){loadMailbox();}
+  if(name==='settings'&&!_tabLoaded.settings){_tabLoaded.settings=true;loadSettings();}
 }
 function badge(v,good,warn){if(v==null)return '<span class="badge">—</span>';
   const c=v>=good?'ok':(v>=warn?'warn':'bad');return `<span class="badge ${c}">${v}</span>`;}
@@ -1967,6 +2075,157 @@ async function loadBilling(){
      <td><span class="badge ${r.overdue?'bad':(r.days_until<=14?'warn':'')}">${r.overdue?'overdue':r.days_until+'d'}</span></td></tr>`).join('')
     ||'<tr><td colspan=6 class="muted">Nothing renewing in this window.</td></tr>';
 }
+
+// ===================== Mailbox (Microsoft 365) =====================
+let MB_DEFAULT='';
+async function loadMailbox(){
+  const s=await api('/api/mailbox/settings'); if(!s)return;
+  document.getElementById('mb-unconfigured').classList.toggle('hidden',!!s.configured);
+  MB_DEFAULT=s.mailbox||'';
+  if(!s.configured){document.getElementById('t-mailbox').innerHTML='';return;}
+  const addr=document.getElementById('mb-addr');
+  if(!addr.value&&MB_DEFAULT)addr.placeholder=MB_DEFAULT;
+  // folders
+  const fsel=document.getElementById('mb-folder');
+  if(!fsel.options.length){
+    const f=await api('/api/mailbox/folders'+(addr.value?`?mailbox=${encodeURIComponent(addr.value)}`:''));
+    if(f&&f.folders)fsel.innerHTML=f.folders.map(x=>`<option value="${esc(x.name)}">${esc(x.name)}${x.unread?` (${x.unread})`:''}</option>`).join('');
+    else fsel.innerHTML='<option value="inbox">Inbox</option>';
+  }
+  await mbList();
+}
+function mbQS(){const p=[];const a=document.getElementById('mb-addr').value.trim();
+  if(a)p.push('mailbox='+encodeURIComponent(a));return p;}
+async function mbList(){
+  const st=document.getElementById('mb-status'); st.textContent='loading…';
+  const p=mbQS(); const search=document.getElementById('mb-search').value.trim();
+  if(search)p.push('search='+encodeURIComponent(search));
+  else p.push('folder='+encodeURIComponent(document.getElementById('mb-folder').value||'inbox'));
+  const r=await api('/api/mailbox/messages?'+p.join('&'));
+  if(!r){st.textContent='';return;}
+  if(r.detail){st.textContent=r.detail;document.getElementById('t-mailbox').innerHTML='';return;}
+  st.textContent=`${r.messages.length} message(s) · ${esc(r.mailbox)}`;
+  document.getElementById('t-mailbox').innerHTML=r.messages.map(m=>
+    `<tr style="cursor:pointer${m.is_read?'':';font-weight:600'}" onclick='mbOpen(${JSON.stringify(m.id)})'>
+      <td>${esc((m.from&&(m.from.name||m.from.address))||'—')}</td>
+      <td>${m.has_attachments?'📎 ':''}${esc(m.subject)}</td>
+      <td class="muted" style="font-size:12px">${ago(m.received)}</td></tr>`).join('')
+    ||'<tr><td colspan=3 class="muted">No messages.</td></tr>';
+}
+async function mbOpen(id){
+  const reader=document.getElementById('mb-reader'); reader.innerHTML='<p class="muted">Loading…</p>';
+  const p=mbQS(); const r=await api(`/api/mailbox/messages/${encodeURIComponent(id)}`+(p.length?'?'+p.join('&'):''));
+  if(!r||r.detail){reader.innerHTML=`<p class="err">${esc((r&&r.detail)||'Could not open message.')}</p>`;return;}
+  const from=r.from?`${esc(r.from.name||'')} &lt;${esc(r.from.address||'')}&gt;`:'—';
+  const to=(r.to||[]).map(x=>esc(x.address||x.name)).join(', ');
+  let bodyHtml;
+  if(r.body_type==='html'){bodyHtml=`<iframe sandbox style="width:100%;height:380px;border:1px solid var(--line);border-radius:8px;background:#fff" srcdoc="${esc(r.body_content||'')}"></iframe>`;}
+  else bodyHtml=`<pre style="white-space:pre-wrap;font-family:inherit">${esc(r.body_content||r.preview||'')}</pre>`;
+  reader.innerHTML=`<div class="flex" style="justify-content:space-between"><h3 style="margin:0">${esc(r.subject)}</h3>
+    <button class="btn sm ghost" onclick="mbReply(${JSON.stringify(JSON.stringify({to:r.from&&r.from.address,subject:r.subject}))})">Reply</button></div>
+    <p class="muted" style="margin:6px 0;font-size:12px">From: ${from}<br>To: ${to}<br>${ago(r.received)}</p>
+    <hr style="border-color:var(--line)">${bodyHtml}`;
+}
+function mbReply(payloadJson){const d=JSON.parse(JSON.parse(payloadJson));
+  mbCompose(d.to||'', (d.subject||'').replace(/^(re:\s*)?/i,'Re: '));}
+function mbCompose(to,subject){
+  const reader=document.getElementById('mb-reader');
+  reader.innerHTML=`<h3 style="margin-top:0">New message</h3>
+    <label>To (comma-separated)<input id="mb-to" value="${esc(to||'')}"></label>
+    <label>Subject<input id="mb-subj" value="${esc(subject||'')}"></label>
+    <label>Body<textarea id="mb-body" rows="10" style="width:100%"></textarea></label>
+    <div class="flex" style="margin-top:8px"><button class="btn sm" onclick="mbSend()">Send</button>
+      <span class="muted" id="mb-send-msg" style="font-size:12px"></span></div>`;
+}
+async function mbSend(){
+  const msg=document.getElementById('mb-send-msg'); msg.textContent='sending…';
+  const to=document.getElementById('mb-to').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const body={to,subject:document.getElementById('mb-subj').value,body:document.getElementById('mb-body').value};
+  const a=document.getElementById('mb-addr').value.trim(); if(a)body.mailbox=a;
+  const r=await post('/api/mailbox/send',body); const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Sent ✓';}else{msg.textContent=j.detail||'Send failed';}
+}
+
+// ===================== Settings (credentials & publishers) =====================
+function setPill(id,ok){const p=document.getElementById(id);if(!p)return;
+  p.textContent=ok?'connected':'not configured';p.style.background=ok?'rgba(46,204,113,.18)':'';}
+function fv(fields,key){return (fields&&fields[key]&&fields[key].value)||'';}
+async function loadSettings(){
+  const mb=await api('/api/mailbox/settings');
+  if(mb){setPill('set-mb-pill',mb.configured);
+    document.getElementById('set-mb-tenant').value=fv(mb.fields,'tenant_id');
+    document.getElementById('set-mb-client').value=fv(mb.fields,'client_id');
+    document.getElementById('set-mb-mailbox').value=mb.mailbox||'';}
+  const pub=await api('/api/publishers/settings');
+  if(pub){setPill('set-li-pill',pub.linkedin&&pub.linkedin.configured);
+    if(pub.linkedin)document.getElementById('set-li-urn').value=fv(pub.linkedin.fields,'person_urn');
+    const wb=pub.website_bvtech||{},wbf=wb.fields||{};
+    document.getElementById('set-wb-en').checked=!!wb.enabled;
+    document.getElementById('set-wb-url').value=fv(wbf,'site_url');
+    document.getElementById('set-wb-sched').value=fv(wbf,'schedule');
+    document.getElementById('set-wb-topics').value=fv(wbf,'topics');
+    document.getElementById('set-wb-persona').value=fv(wbf,'persona');
+    const wj=pub.website_jp||{},wjf=wj.fields||{};
+    document.getElementById('set-wj-en').checked=!!wj.enabled;
+    document.getElementById('set-wj-url').value=fv(wjf,'site_url');
+    document.getElementById('set-wj-sched').value=fv(wjf,'schedule');
+    document.getElementById('set-wj-topics').value=fv(wjf,'topics');
+    document.getElementById('set-wj-persona').value=fv(wjf,'persona');}
+  const dp=await api('/api/comms/dialpad/settings');
+  if(dp){setPill('set-dp-pill',dp.configured);
+    document.getElementById('set-dp-user').value=fv(dp.fields,'user_id');
+    document.getElementById('set-dp-caller').value=fv(dp.fields,'caller_number');}
+}
+async function saveMailboxCfg(){
+  const msg=document.getElementById('set-mb-msg'); msg.textContent='saving…';
+  const r=await put('/api/mailbox/settings',{tenant_id:val('set-mb-tenant'),client_id:val('set-mb-client'),
+    client_secret:val('set-mb-secret'),mailbox:val('set-mb-mailbox')});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Saved ✓';setPill('set-mb-pill',j.configured);document.getElementById('set-mb-secret').value='';}
+  else msg.textContent=j.detail||'Save failed';
+}
+async function testMailboxCfg(){
+  const msg=document.getElementById('set-mb-msg'); msg.textContent='testing…';
+  const r=await post('/api/mailbox/test'); const j=await r.json().catch(()=>({}));
+  msg.textContent=r.ok?`Connected ✓ (${j.folders} folders in ${j.mailbox})`:(j.detail||'Test failed');
+}
+async function saveLinkedIn(){
+  const msg=document.getElementById('set-li-msg'); msg.textContent='saving…';
+  const r=await put('/api/publishers/linkedin',{access_token:val('set-li-token'),person_urn:val('set-li-urn')});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Saved ✓';setPill('set-li-pill',j.configured);document.getElementById('set-li-token').value='';}
+  else msg.textContent=j.detail||'Save failed';
+}
+async function postLinkedIn(){
+  const msg=document.getElementById('set-li-msg'); msg.textContent='posting…';
+  const r=await post('/api/publishers/linkedin/post',{text:val('set-li-text'),url:val('set-li-link')});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Posted to LinkedIn ✓';document.getElementById('set-li-text').value='';document.getElementById('set-li-link').value='';}
+  else msg.textContent=j.detail||'Post failed';
+}
+async function saveDialpad(){
+  const msg=document.getElementById('set-dp-msg'); msg.textContent='saving…';
+  const r=await put('/api/comms/dialpad/settings',{api_key:val('set-dp-key'),user_id:val('set-dp-user'),caller_number:val('set-dp-caller')});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Saved ✓';setPill('set-dp-pill',j.configured);document.getElementById('set-dp-key').value='';}
+  else msg.textContent=j.detail||'Save failed';
+}
+async function dialpadCall(number){
+  const msg=document.getElementById('set-dp-msg'); const n=(number||'').trim();
+  if(!n){msg.textContent='Enter a number to dial.';return;}
+  msg.textContent='dialing…';
+  const r=await post('/api/comms/dialpad/call',{to:n}); const j=await r.json().catch(()=>({}));
+  msg.textContent=r.ok?`Calling ${esc(n)} ✓`:(j.detail||'Call failed');
+}
+async function saveWebsite(which){
+  const pfx=which==='jp'?'set-wj':'set-wb', msgId=pfx+'-msg';
+  document.getElementById(msgId).textContent='saving…';
+  const body={site_url:val(pfx+'-url'),schedule:val(pfx+'-sched'),topics:val(pfx+'-topics'),
+    persona:val(pfx+'-persona'),enabled:document.getElementById(pfx+'-en').checked};
+  const r=await put('/api/publishers/website/'+which,body); const j=await r.json().catch(()=>({}));
+  document.getElementById(msgId).textContent=r.ok?'Saved ✓':(j.detail||'Save failed');
+}
+function val(id){return (document.getElementById(id).value||'').trim();}
 
 async function load(){
   const me=await api('/api/auth/me'); if(!me)return;

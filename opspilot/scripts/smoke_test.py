@@ -1184,7 +1184,37 @@ def main():
         assert ca_c.get("/api/analytics/sla-performance").json()["overall"]["tickets"] >= 0
         print("SLA performance analytics (attainment % + avg times + by-priority + scope) OK")
 
-    print("\n=== OpsPilot v0.40 SMOKE TEST PASSED ===")
+        # --- v0.41 Integrations: secure credential vault + mailbox/publishers/dialpad ---
+        assert c.get("/api/mailbox/settings").json()["configured"] is False
+        r = c.put("/api/mailbox/settings", json={"tenant_id": "t-1", "client_id": "c-1",
+                                                 "client_secret": "topsecret9", "mailbox": "help@bvtech.org"})
+        assert r.json()["configured"] is True, r.text
+        s = c.get("/api/mailbox/settings").json()
+        # secrets are masked on read, never echoed; identifiers pass through
+        assert s["fields"]["client_secret"]["value"] is None and s["fields"]["client_secret"]["hint"].endswith("ret9")
+        assert s["fields"]["tenant_id"]["value"] == "t-1" and s["mailbox"] == "help@bvtech.org"
+        # partial update (masked secret, omit mailbox) keeps both
+        c.put("/api/mailbox/settings", json={"client_secret": s["fields"]["client_secret"]["hint"]})
+        s2 = c.get("/api/mailbox/settings").json()
+        assert s2["configured"] is True and s2["mailbox"] == "help@bvtech.org", s2
+        # mail endpoints reachable; without a real tenant they fail upstream (not 500)
+        assert c.get("/api/mailbox/messages").status_code in (502, 503)
+        # client users are blocked from staff-only settings
+        assert ca_c.get("/api/mailbox/settings").status_code == 403
+        # publishers + dialpad credential round-trips (masked)
+        assert c.put("/api/publishers/linkedin", json={"access_token": "li-tok",
+                     "person_urn": "urn:li:person:x"}).json()["configured"] is True
+        assert c.get("/api/publishers/settings").json()["linkedin"]["fields"]["access_token"]["value"] is None
+        assert c.post("/api/publishers/linkedin/post", json={"text": ""}).status_code == 400
+        assert c.put("/api/publishers/website/jp", json={"site_url": "https://jordanpolasek.com",
+                     "enabled": True}).status_code == 200
+        assert c.get("/api/publishers/settings").json()["website_jp"]["enabled"] is True
+        assert c.put("/api/comms/dialpad/settings", json={"api_key": "dp", "user_id": "u1"}).json()["configured"] is True
+        assert c.get("/api/comms/dialpad/settings").json()["fields"]["api_key"]["value"] is None
+        assert c.post("/api/comms/dialpad/call", json={"to": ""}).status_code == 400
+        print("Integrations: secure vault + M365 mailbox + publishers + Dialpad (masked secrets + RBAC) OK")
+
+    print("\n=== OpsPilot v0.41 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
