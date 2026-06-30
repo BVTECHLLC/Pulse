@@ -1,5 +1,15 @@
 # BVTech OpsPilot — Changelog
 
+## v0.44.0 — Prospecting: find & score leads into the CRM (June 2026)
+- **Lead-gen engine** ported from the Command Center. Google Places discovery of
+  real local businesses by market + industry, **MSP-readiness scored 0-100**,
+  deduped, and dropped straight into the CRM pipeline as `source=scrape` contacts.
+- `services/prospecting.py` (injectable Places client — scoring/dedup unit-tested
+  offline with a fake), `routes/prospecting.py`, a **🔎 Find new leads** card on
+  the CRM tab, and a Google-key field in Settings (encrypted in the vault).
+- Markets: Austin, San Antonio, Houston, El Campo. Staff-only + audited.
+  Verified: scoring math, cross-run dedup, market validation, masked key, RBAC.
+
 ## v0.43.0 — Native CRM: our own lead/contact pipeline (June 2026)
 - **We are the PSA/CRM now** — a native CRM replaces SuperOps' CRM side.
   New `crm_contacts` + `crm_activities` tables (Alembic migration verified

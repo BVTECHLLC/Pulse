@@ -1256,7 +1256,18 @@ def main():
         assert ca_c.get("/api/crm/contacts").status_code == 403
         print("Native CRM: pipeline + contact CRUD + timeline + convert→client + RBAC OK")
 
-    print("\n=== OpsPilot v0.43 SMOKE TEST PASSED ===")
+        # --- v0.44 Prospecting: options, settings (masked), run-gating, RBAC ---
+        opts = c.get("/api/prospecting/options").json()
+        assert any(m["key"] == "austin" for m in opts["markets"]) and len(opts["industries"]) >= 5
+        assert c.get("/api/prospecting/settings").json()["configured"] is False
+        assert c.post("/api/prospecting/run", json={"market": "austin", "industry": "law firm"}).status_code == 503
+        assert c.put("/api/prospecting/settings", json={"api_key": "g-secret-key"}).json()["configured"] is True
+        assert c.get("/api/prospecting/settings").json()["fields"]["api_key"]["value"] is None
+        assert ca_c.get("/api/prospecting/options").status_code == 403
+        # scoring + dedup path is covered by an offline unit test (FakePlaces) in dev.
+        print("Prospecting: options + masked key + run-gating + RBAC OK")
+
+    print("\n=== OpsPilot v0.44 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

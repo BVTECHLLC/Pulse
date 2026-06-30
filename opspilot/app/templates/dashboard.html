@@ -766,6 +766,20 @@
   <section id="crm" class="hidden">
     <div id="crm-pipeline" class="grid cols-4" style="margin-bottom:16px"></div>
     <div class="card" style="margin-bottom:16px">
+      <div class="flex" style="justify-content:space-between;flex-wrap:wrap">
+        <h3 style="margin:0">🔎 Find new leads</h3>
+        <span class="muted" id="crm-prospect-state" style="font-size:12px"></span>
+      </div>
+      <p class="muted" style="margin:4px 0 10px">Discover &amp; score real local businesses (Google Places) straight into the pipeline.</p>
+      <div class="flex">
+        <select id="pr-market" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:8px;color:var(--ink)"></select>
+        <select id="pr-industry" style="flex:1;min-width:160px;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:8px;color:var(--ink)"></select>
+        <input id="pr-max" type="number" value="20" min="1" max="60" style="width:80px">
+        <button class="btn sm" onclick="runProspect()">Find leads</button>
+      </div>
+      <div class="muted" id="pr-msg" style="font-size:12px;margin-top:8px"></div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
       <h3 style="margin-top:0">Add contact / lead</h3>
       <div class="grid2">
         <label>Name<input id="crm-name" placeholder="Jane Smith"></label>
@@ -881,6 +895,14 @@
       <div class="flex" style="margin-top:10px"><button class="btn sm" onclick="saveRmmCfg()">Save</button>
         <button class="btn sm ghost" onclick="testRmmCfg()">Test connection</button>
         <span class="muted" id="set-rmm-msg" style="font-size:12px"></span></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h3>🔎 Prospecting (Google Places) <span class="pill" id="set-gp-pill">not configured</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Find &amp; score real local businesses as CRM leads. Needs a Google API key with Places API enabled.</p>
+      <div class="grid2"><label>Google API key<input id="set-gp-key" type="password" placeholder="(unchanged)"></label></div>
+      <div class="flex" style="margin-top:10px"><button class="btn sm" onclick="saveProspecting()">Save</button>
+        <span class="muted" id="set-gp-msg" style="font-size:12px"></span></div>
     </div>
 
     <div class="card">
@@ -2151,10 +2173,36 @@ async function loadBilling(){
     ||'<tr><td colspan=6 class="muted">Nothing renewing in this window.</td></tr>';
 }
 
+// ===================== Prospecting (lead-gen) =====================
+let _prospectInit=false;
+async function initProspecting(){
+  const o=await api('/api/prospecting/options'); if(!o)return;
+  document.getElementById('pr-market').innerHTML=(o.markets||[]).map(m=>`<option value="${m.key}">${esc(m.name)}</option>`).join('');
+  document.getElementById('pr-industry').innerHTML=(o.industries||[]).map(i=>`<option value="${esc(i.query)}">${esc(i.industry)}</option>`).join('');
+  const s=await api('/api/prospecting/settings');
+  document.getElementById('crm-prospect-state').textContent=(s&&s.configured)?'Google Places connected ✓':'Add a Google API key in Settings → Prospecting';
+  _prospectInit=true;
+}
+async function runProspect(){
+  const msg=document.getElementById('pr-msg'); msg.textContent='searching…';
+  const body={market:document.getElementById('pr-market').value,industry:document.getElementById('pr-industry').value,
+    max_results:parseInt(document.getElementById('pr-max').value)||20};
+  const r=await post('/api/prospecting/run',body); const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent=`Found ${j.found}, added ${j.created} new leads (${j.skipped_existing} already in pipeline).`;loadCrm();}
+  else msg.textContent=j.detail||'Prospecting failed';
+}
+async function saveProspecting(){
+  const msg=document.getElementById('set-gp-msg'); msg.textContent='saving…';
+  const r=await put('/api/prospecting/settings',{api_key:val('set-gp-key')}); const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Saved ✓';setPill('set-gp-pill',j.configured);document.getElementById('set-gp-key').value='';}
+  else msg.textContent=j.detail||'Save failed';
+}
+
 // ===================== CRM (native lead/contact pipeline) =====================
 const CRM_STATUSES=['new','contacted','qualified','proposal','customer','lost'];
 let _crmFilterInit=false;
 async function loadCrm(){
+  if(!_prospectInit)initProspecting();
   if(!_crmFilterInit){const sel=document.getElementById('crm-filter');
     sel.innerHTML='<option value="">All statuses</option>'+CRM_STATUSES.map(s=>`<option value="${s}">${s}</option>`).join('');_crmFilterInit=true;}
   const pipe=await api('/api/crm/pipeline');
@@ -2366,6 +2414,8 @@ async function loadSettings(){
   const rmm=await api('/api/rmm/settings');
   if(rmm){setPill('set-rmm-pill',rmm.configured);
     document.getElementById('set-rmm-url').value=fv(rmm.fields,'base_url');}
+  const gp=await api('/api/prospecting/settings');
+  if(gp){setPill('set-gp-pill',gp.configured);}
 }
 async function saveMailboxCfg(){
   const msg=document.getElementById('set-mb-msg'); msg.textContent='saving…';
