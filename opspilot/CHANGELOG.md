@@ -1,5 +1,24 @@
 # BVTech OpsPilot — Changelog
 
+## v0.47.0 — Remote desktop: native WebRTC relay (backbone) (June 2026)
+- **We are the signaling server** — no third party. New `routes/remote.py` brokers
+  a peer-to-peer WebRTC session between an operator (browser) and a device (agent):
+  both join `/api/remote/ws/{token}` and Pulse forwards the SDP offer/answer + ICE.
+  Media flows P2P; only signaling crosses Pulse.
+- Session lifecycle in `remote_sessions` (migration up/down/up verified). Start is
+  **OWNER-only + audited**; the operator WS authenticates with the session cookie
+  (staff only), the agent WS with the device's enroll-id/agent-key; the token
+  scopes the bridge to exactly two peers.
+- Branded **viewer page** (`/remote/{token}`) — RTCPeerConnection, renders the
+  remote screen, forwards mouse/keyboard over a data channel. **🖥 Remote** button
+  on each device. Agent gains a poll (`/api/agent/remote-sessions`) and an optional
+  WebRTC add-on (`agent/opspilot_remote.py`: aiortc screen track + pyautogui input)
+  that activates when a session is pending and the extras are installed.
+- **Verified**: the full signaling relay (operator+agent join, offer/answer/ICE
+  both ways, unauthorized operator rejected, session connected→closed) in the
+  smoke suite. The agent screen-capture media path needs validation on real
+  Windows hardware (next step); the relay/signaling/viewer are done and tested.
+
 ## v0.46.0 — Real endpoint RMM: live status, push-command console, endpoint tickets (June 2026)
 - **Proved the agent works on both sides** with a live end-to-end harness
   (`scripts/agent_e2e.py`): starts the real server, runs the actual agent process

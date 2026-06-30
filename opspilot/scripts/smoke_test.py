@@ -1317,7 +1317,39 @@ def main():
                          json={"command": "x"}).status_code == 403
         print("RMM agent: version/online + endpoint ticket + push-command loop + RBAC OK")
 
-    print("\n=== OpsPilot v0.46 SMOKE TEST PASSED ===")
+        # --- v0.47 Remote desktop: WebRTC signaling relay + session + RBAC ---
+        eid, akey = ent["enroll_id"], ent["agent_key"]
+        rs = c.post(f"/api/remote/sessions/{dev_id}").json()
+        rtok = rs["session"]["token"]
+        assert rs["viewer_url"] == f"/remote/{rtok}"
+        # agent sees the pending session to connect to
+        pend = a.get("/api/agent/remote-sessions", headers=hdr).json()["sessions"]
+        assert any(s["token"] == rtok for s in pend)
+        # relay bridges operator (cookie) + agent (device key), forwarding signaling
+        with c.websocket_connect(f"/api/remote/ws/{rtok}?role=operator") as op:
+            assert op.receive_json()["type"] == "relay.ready"
+            with a.websocket_connect(f"/api/remote/ws/{rtok}?role=agent&enroll_id={eid}&agent_key={akey}") as ag:
+                assert ag.receive_json()["type"] == "relay.ready"
+                assert op.receive_json()["type"] == "relay.peer-joined"
+                ag.send_text('{"type":"offer","sdp":{"type":"offer","sdp":"v=0"}}')
+                assert op.receive_json()["type"] == "offer"
+                op.send_text('{"type":"answer","sdp":{"type":"answer","sdp":"a=0"}}')
+                assert ag.receive_json()["type"] == "answer"
+                op.send_text('{"type":"candidate","candidate":{"candidate":"X"}}')
+                assert ag.receive_json()["candidate"]["candidate"] == "X"
+        # start is OWNER-only; an unauthenticated operator WS is rejected
+        assert ca_c.post(f"/api/remote/sessions/{dev_id}").status_code == 403
+        rejected = False
+        try:
+            from fastapi.testclient import TestClient as _TC
+            with _TC(app).websocket_connect(f"/api/remote/ws/{rtok}?role=operator") as bad:
+                bad.receive_json()
+        except Exception:
+            rejected = True
+        assert rejected, "unauthenticated operator should be rejected"
+        print("Remote desktop: WebRTC signaling relay + auth + session lifecycle + RBAC OK")
+
+    print("\n=== OpsPilot v0.47 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

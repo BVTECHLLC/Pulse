@@ -259,6 +259,19 @@ def _auth_device(db: Session, enroll_id: str, agent_key: str) -> Device:
     return dev
 
 
+@router.get("/remote-sessions")
+def pull_remote_sessions(x_enroll_id: str = Header(...), x_agent_key: str = Header(...),
+                         db: Session = Depends(get_db)):
+    """Pending remote-desktop sessions targeting this device. The agent connects
+    to the signaling relay (/api/remote/ws/{token}?role=agent) for each one."""
+    from ...models import RemoteSession  # local import avoids cycle
+    dev = _auth_device(db, x_enroll_id, x_agent_key)
+    rows = (db.query(RemoteSession)
+            .filter(RemoteSession.device_id == dev.id, RemoteSession.status == "pending")
+            .order_by(RemoteSession.created_at).all())
+    return {"sessions": [{"token": r.token, "id": r.id} for r in rows]}
+
+
 @router.get("/jobs")
 def pull_jobs(x_enroll_id: str = Header(...), x_agent_key: str = Header(...),
               db: Session = Depends(get_db)):

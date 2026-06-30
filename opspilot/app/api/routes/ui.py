@@ -62,6 +62,11 @@ def report_view(client_id: int, request: Request):
     return _page("report.html", request, client_id=client_id)
 
 
+@router.get("/remote/{token}", response_class=HTMLResponse)
+def remote_view(token: str, request: Request):
+    return _page("remote.html", request, token=token)
+
+
 @router.get("/developers", response_class=HTMLResponse)
 def developers(request: Request):
     """Branded developer hub: how to authenticate, the event catalog, webhook
