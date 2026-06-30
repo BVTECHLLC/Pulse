@@ -1055,6 +1055,31 @@ class CrmContact(Base):
     last_touch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+DOC_KINDS = ("password", "article", "network", "config", "license_key", "contact")
+
+
+class Document(Base):
+    """v0.54 client documentation & password vault (the IT Glue/Hudu surface).
+
+    One row per documented item, scoped to a client. `secret_enc` holds a
+    Fernet-encrypted credential (passwords/keys) — never returned by list/read;
+    revealed only via an explicit, audited reveal call. Non-secret kinds
+    (article/network/config) are visible to the client's own users too."""
+    __tablename__ = "documents"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(20), default="article", index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str | None] = mapped_column(Text)          # markdown-lite, non-secret
+    username: Mapped[str | None] = mapped_column(String(200))  # for password items
+    url: Mapped[str | None] = mapped_column(String(400))
+    secret_enc: Mapped[str | None] = mapped_column(Text)       # Fernet-encrypted credential
+    tags: Mapped[list] = mapped_column(JSON, default=list)
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
 class RemoteSession(Base):
     """A native remote-desktop session between an operator (browser) and a device
     (agent), brokered by Pulse's WebRTC signaling relay. The token is the shared

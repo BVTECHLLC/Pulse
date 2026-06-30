@@ -1,5 +1,18 @@
 # BVTech OpsPilot — Changelog
 
+## v0.54.0 — Documentation & Password Vault (IT Glue / Hudu surface) (June 2026)
+- A native **per-client documentation vault**: knowledge articles, network/config
+  notes, contacts, license keys, and an **encrypted password vault**. Passwords/
+  keys are Fernet-encrypted at rest, never returned by list/read, and revealed
+  only via an explicit, **audited** reveal (who saw which credential, when).
+- RBAC: staff manage everything; the **client's own users can read their
+  non-secret docs but never passwords**, and can't reveal or create. New
+  `documents` table (+ migration up/down/up), `routes/docs.py`, and a
+  **📚 Docs & Passwords** tab (add/search/reveal-to-clipboard).
+- Verified: encrypted secret never leaks in list, audited reveal returns
+  plaintext for staff, client sees articles but not passwords and is blocked from
+  reveal/create.
+
 ## v0.53.0 — Scheduled automations (time-based rules) (June 2026)
 - Automation rules can now fire **on a schedule**, not just on events. New
   `schedule` trigger; the schedule lives in the rule's conditions:

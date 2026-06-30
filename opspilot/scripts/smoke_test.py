@@ -1416,6 +1416,28 @@ def main():
         _sdb.close()
         print("Scheduled automations: time-based trigger fires once/period + dedup OK")
 
+        # --- v0.54 Documentation & password vault ---
+        pw = c.post("/api/docs", json={"client_id": cid, "kind": "password", "title": "Firewall",
+                    "username": "admin", "url": "https://fw.local", "secret": "S3cr3t!pw"})
+        assert pw.status_code == 201, pw.text
+        pw_id = pw.json()["id"]
+        # list never leaks the secret, only a has_secret flag
+        docs = c.get(f"/api/docs?client_id={cid}").json()["documents"]
+        d0 = next(x for x in docs if x["id"] == pw_id)
+        assert d0["has_secret"] is True and "secret" not in d0
+        # reveal returns the plaintext (staff only) and is audited
+        rv = c.post(f"/api/docs/{pw_id}/reveal").json()
+        assert rv["secret"] == "S3cr3t!pw" and rv["username"] == "admin"
+        # an article is visible to the client's own users; a password is NOT
+        c.post("/api/docs", json={"client_id": cid, "kind": "article", "title": "Onboarding", "content": "hi"})
+        cu_docs = ca_c.get("/api/docs").json()["documents"]
+        assert any(x["title"] == "Onboarding" for x in cu_docs), "client should see articles"
+        assert not any(x["kind"] == "password" for x in cu_docs), "client must NOT see passwords"
+        # client user cannot reveal a secret or create docs
+        assert ca_c.post(f"/api/docs/{pw_id}/reveal").status_code == 403
+        assert ca_c.post("/api/docs", json={"kind": "article", "title": "x"}).status_code == 403
+        print("Docs vault: encrypted secret + audited reveal + client RBAC (no passwords) OK")
+
         # --- v0.52 integration health watchdog ---
         # /status carries health fields; the live-check endpoint is OWNER/TECH only.
         sj = c.get("/api/integrations/status").json()
