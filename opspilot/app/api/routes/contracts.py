@@ -36,6 +36,8 @@ def _serialize(c: Contract) -> dict:
         "start_date": c.start_date.isoformat() if c.start_date else None,
         "end_date": c.end_date.isoformat() if c.end_date else None,
         "notes": c.notes,
+        "auto_invoice": bool(getattr(c, "auto_invoice", False)),
+        "last_invoiced_at": c.last_invoiced_at.isoformat() if getattr(c, "last_invoiced_at", None) else None,
     }
 
 
@@ -47,6 +49,7 @@ class ContractIn(BaseModel):
     start_date: datetime | None = None
     end_date: datetime | None = None
     notes: str | None = None
+    auto_invoice: bool = False
 
 
 @router.get("")
@@ -71,7 +74,7 @@ def create_contract(body: ContractIn, request: Request, db: Session = Depends(ge
                             f"billing_period must be one of {list(_PERIOD_TO_MONTHLY)}")
     c = Contract(client_id=body.client_id, name=body.name[:200], amount=body.amount,
                  billing_period=body.billing_period, start_date=body.start_date,
-                 end_date=body.end_date, notes=body.notes)
+                 end_date=body.end_date, notes=body.notes, auto_invoice=bool(body.auto_invoice))
     db.add(c)
     db.commit()
     audit.record(db, action="contract.create", actor_user_id=user.id, actor_email=user.email,
@@ -85,6 +88,20 @@ class ContractUpdate(BaseModel):
     status: str | None = None
     amount: float | None = None
     notes: str | None = None
+    auto_invoice: bool | None = None
+
+
+@router.post("/run-recurring")
+def run_recurring(request: Request, db: Session = Depends(get_db),
+                  user: User = Depends(require_roles(Role.OWNER))):
+    """Generate invoices now for any due auto-invoice contracts (also runs on the
+    scheduler tick)."""
+    from ...services import recurring_billing
+    created = recurring_billing.generate_due(db)
+    audit.record(db, action="contract.run_recurring", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="billing", ip=_ip(request),
+                 detail=f"invoices_created={len(created)}")
+    return {"ok": True, "created": created}
 
 
 @router.patch("/{contract_id}")
@@ -102,6 +119,8 @@ def update_contract(contract_id: int, body: ContractUpdate, request: Request,
         c.amount = body.amount
     if body.notes is not None:
         c.notes = body.notes
+    if body.auto_invoice is not None:
+        c.auto_invoice = body.auto_invoice
     db.commit()
     audit.record(db, action="contract.update", actor_user_id=user.id, actor_email=user.email,
                  actor_role=user.role.value, target_type="contract", target_id=str(c.id),

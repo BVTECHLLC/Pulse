@@ -177,6 +177,8 @@ def _reconcile_schema():
         ("integration_connections", "last_health_error", "VARCHAR(300)"),
         ("devices", "agent_version", "VARCHAR(40)"),
         ("devices", "platform", "VARCHAR(40)"),
+        ("contracts", "auto_invoice", "BOOLEAN DEFAULT FALSE"),
+        ("contracts", "last_invoiced_at", "TIMESTAMP WITH TIME ZONE"),
     ]
     insp = inspect(engine)
     is_sqlite = engine.dialect.name == "sqlite"

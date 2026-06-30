@@ -8,13 +8,14 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ...core.db import get_db
-from ...core.deps import require_roles
+from ...core.deps import current_user, is_staff, require_roles
 from ...models import Invoice, InvoiceStatus, Role, User
-from ...services import audit, secure_config, stripe_pay
+from ...services import audit, payment_methods, secure_config, stripe_pay
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
 PROVIDER = "stripe"
+METHODS_PROVIDER = "payment_methods"
 
 
 def _ip(req: Request) -> str:
@@ -52,6 +53,78 @@ def save_settings(body: StripeSettingsIn, request: Request, db: Session = Depend
                  ip=_ip(request), detail="stripe credentials")
     cfg = conn.config or {}
     return {"ok": True, "configured": secure_config.configured(cfg, ("secret_key",))}
+
+
+# --------------------------------------------------------------------------- #
+# Multi-method payments (v0.59): PayPal, Venmo, Cash App, Zelle, bank wire,
+# check, QuickBooks, custom — configured once, rendered on every invoice.
+# --------------------------------------------------------------------------- #
+class PaymentMethodsIn(BaseModel):
+    # All fields optional; only the ones submitted are updated (partial save).
+    # Mirrors payment_methods.ALL_FIELDS — kept as a free dict so adding a field
+    # to the service needs no change here.
+    fields: dict = {}
+
+
+@router.get("/methods/settings")
+def get_methods_settings(db: Session = Depends(get_db),
+                         user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    conn = secure_config.get_platform(db, METHODS_PROVIDER)
+    cfg = (conn.config if conn else None) or {}
+    return {"fields": secure_config.public_view(cfg),
+            "all_fields": payment_methods.ALL_FIELDS,
+            "enabled": payment_methods.enabled_methods(cfg),
+            "catalog": {k: {"label": v["label"], "emoji": v["emoji"], "fields": v["fields"]}
+                        for k, v in payment_methods.METHODS.items()}}
+
+
+@router.put("/methods/settings")
+def save_methods_settings(body: PaymentMethodsIn, request: Request,
+                          db: Session = Depends(get_db),
+                          user: User = Depends(require_roles(Role.OWNER))):
+    # Accept only known fields; trim to str so the vault stays clean.
+    allowed = set(payment_methods.ALL_FIELDS)
+    payload = {k: ("" if v is None else str(v).strip())
+               for k, v in (body.fields or {}).items() if k in allowed}
+    conn = secure_config.upsert_platform(db, METHODS_PROVIDER, "Payment Methods",
+                                         "Payments", payload)
+    audit.record(db, action="payment_methods.configure", actor_user_id=user.id,
+                 actor_email=user.email, actor_role=user.role.value,
+                 target_type="integration", target_id=str(conn.id), ip=_ip(request),
+                 detail="payment methods")
+    cfg = conn.config or {}
+    return {"ok": True, "enabled": payment_methods.enabled_methods(cfg)}
+
+
+@router.get("/invoices/{invoice_id}/options")
+def invoice_pay_options(invoice_id: int, db: Session = Depends(get_db),
+                        user: User = Depends(current_user)):
+    """Every way THIS invoice can be paid — used by the client-facing invoice page.
+    Scoped exactly like GET /invoices/{id}: a client sees only their own, and
+    never a draft."""
+    inv = db.get(Invoice, invoice_id)
+    if not inv:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+    if not is_staff(user):
+        if inv.client_id != user.client_id or inv.status == InvoiceStatus.DRAFT:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+
+    paid = inv.status == InvoiceStatus.PAID
+    ctx = {"id": inv.id, "number": inv.number, "total": inv.total, "currency": inv.currency}
+
+    # Stripe (card) shows as a checkout button when the secret key is present.
+    stripe_conn = secure_config.get_platform(db, PROVIDER)
+    stripe_cfg = (stripe_conn.config if stripe_conn else None) or {}
+    stripe_on = secure_config.configured(stripe_cfg, ("secret_key",))
+
+    mconn = secure_config.get_platform(db, METHODS_PROVIDER)
+    mcfg = (mconn.config if mconn else None) or {}
+    options = payment_methods.pay_options(mcfg, ctx)
+
+    return {"invoice_id": inv.id, "number": inv.number, "total": inv.total,
+            "currency": inv.currency, "status": inv.status.value, "paid": paid,
+            "stripe": stripe_on, "note": (mcfg.get("methods_note") or "").strip(),
+            "options": options}
 
 
 @router.post("/invoices/{invoice_id}/checkout")

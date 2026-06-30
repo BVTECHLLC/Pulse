@@ -1013,6 +1013,44 @@
     </div>
 
     <div class="card" style="margin-bottom:16px">
+      <h3>💰 Payment Methods <span class="pill" id="set-pm-pill">none live</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Offer clients every way to pay on each invoice. Fill in only the rails you use — each one goes live the moment its fields are set, with the invoice amount &amp; number pre-filled into the pay link.</p>
+      <div class="grid2">
+        <label>PayPal.me username<input id="pm-paypal_handle" placeholder="e.g. bvtechllc"></label>
+        <label>…or PayPal email<input id="pm-paypal_email" placeholder="pay@bvtech.org"></label>
+        <label>Venmo handle<input id="pm-venmo_handle" placeholder="@BVTech-LLC"></label>
+        <label>Cash App $cashtag<input id="pm-cashapp_cashtag" placeholder="$BVTech"></label>
+        <label>Zelle email/phone<input id="pm-zelle_handle" placeholder="pay@bvtech.org"></label>
+        <label>Zelle recipient name<input id="pm-zelle_name" placeholder="BVTech LLC"></label>
+      </div>
+      <div class="muted" style="margin:14px 0 6px;font-weight:600">🏦 Bank wire / ACH</div>
+      <div class="grid2">
+        <label>Bank name<input id="pm-bank_name" placeholder="First National"></label>
+        <label>Beneficiary<input id="pm-bank_beneficiary" placeholder="BVTech LLC"></label>
+        <label>Routing / ABA<input id="pm-bank_routing" placeholder="000000000"></label>
+        <label>Account number<input id="pm-bank_account" placeholder="000000000000"></label>
+        <label>SWIFT/BIC (intl, optional)<input id="pm-bank_swift" placeholder="ABCDUS33"></label>
+        <label>Bank address (optional)<input id="pm-bank_address" placeholder="123 Main St…"></label>
+      </div>
+      <div class="muted" style="margin:14px 0 6px;font-weight:600">✉️ Check by mail</div>
+      <div class="grid2">
+        <label>Payable to<input id="pm-check_payee" placeholder="BVTech LLC"></label>
+        <label>Mail to (address)<input id="pm-check_address" placeholder="PO Box 123, El Campo, TX 77437"></label>
+      </div>
+      <div class="muted" style="margin:14px 0 6px;font-weight:600">💵 QuickBooks &amp; custom</div>
+      <div class="grid2">
+        <label>QuickBooks pay link (optional)<input id="pm-quickbooks_pay_url" placeholder="https://connect.intuit.com/pay/…"></label>
+        <label>QuickBooks note (optional)<input id="pm-quickbooks_note" placeholder="A QuickBooks invoice will be emailed."></label>
+        <label>Custom method label<input id="pm-other_label" placeholder="Wise / Crypto / …"></label>
+        <label>Custom pay URL<input id="pm-other_url" placeholder="https://…"></label>
+        <label style="grid-column:1/-1">Custom instructions<input id="pm-other_instructions" placeholder="Any details the client needs to pay this way."></label>
+      </div>
+      <label style="margin-top:10px">Note shown above the pay options (optional)<input id="pm-methods_note" placeholder="Thanks for your business! Pay by any method below."></label>
+      <div class="flex" style="margin-top:8px"><button class="btn sm" onclick="savePayMethods()">Save payment methods</button>
+        <span class="muted" id="set-pm-msg" style="font-size:12px"></span></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
       <h3>💵 QuickBooks Online <span class="pill" id="set-qb-pill">not configured</span></h3>
       <p class="muted" style="margin:4px 0 10px">Push Pulse invoices into QuickBooks. From your Intuit app: client id/secret, realm (company) id, and a refresh token.</p>
       <div class="grid2">
@@ -2499,6 +2537,28 @@ async function saveStripe(){
   if(r.ok){msg.textContent='Saved ✓';setPill('set-sp-pill',j.configured);['set-sp-key','set-sp-wh'].forEach(i=>document.getElementById(i).value='');}
   else msg.textContent=j.detail||'Save failed';
 }
+const PM_FIELDS=['paypal_handle','paypal_email','venmo_handle','cashapp_cashtag','zelle_handle','zelle_name',
+  'bank_name','bank_beneficiary','bank_routing','bank_account','bank_swift','bank_address',
+  'check_payee','check_address','quickbooks_pay_url','quickbooks_note',
+  'other_label','other_url','other_instructions','methods_note'];
+async function savePayMethods(){
+  const msg=document.getElementById('set-pm-msg'); msg.textContent='saving…';
+  const fields={}; PM_FIELDS.forEach(f=>fields[f]=val('pm-'+f));
+  const r=await put('/api/payments/methods/settings',{fields});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent=(j.enabled&&j.enabled.length?j.enabled.length+' method(s) live ✓':'Saved ✓');
+    document.getElementById('set-pm-pill').textContent=(j.enabled&&j.enabled.length?j.enabled.length+' live':'none live');
+    document.getElementById('set-pm-pill').className='pill'+(j.enabled&&j.enabled.length?' ok':'');}
+  else msg.textContent=j.detail||'Save failed';
+}
+async function loadPayMethods(){
+  let j; try{ j=await api('/api/payments/methods/settings'); }catch(e){ return; }
+  if(!j||!j.fields) return;
+  PM_FIELDS.forEach(f=>{const el=document.getElementById('pm-'+f); if(!el) return;
+    const fv=j.fields[f]; el.value=(fv&&fv.value!=null)?fv.value:'';});
+  const n=(j.enabled||[]).length;
+  const pill=document.getElementById('set-pm-pill'); if(pill){pill.textContent=n?n+' live':'none live';pill.className='pill'+(n?' ok':'');}
+}
 async function saveQbo(){
   const msg=document.getElementById('set-qb-msg'); msg.textContent='saving…';
   const r=await put('/api/quickbooks/settings',{client_id:val('set-qb-cid'),client_secret:val('set-qb-secret'),
@@ -2842,6 +2902,7 @@ async function loadSettings(){
   const sp=await api('/api/payments/settings');
   if(sp){setPill('set-sp-pill',sp.configured);
     document.getElementById('set-sp-webhook-url').value=location.origin+'/api/payments/webhook';}
+  await loadPayMethods();
   const hs=await api('/api/hubspot/settings'); if(hs)setPill('set-hs-pill',hs.configured);
   const gb=await api('/api/gbp/settings');
   if(gb){setPill('set-gbp-pill',gb.configured);
