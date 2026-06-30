@@ -9,11 +9,12 @@
 #                                 the reliable home for the publisher's secrets.
 #   /etc/bvtech-daily.env      -> legacy shell file, optional.
 bvtech_load_env() {
-  _bvtech_load_json /etc/bvtech/agent.env
+  _bvtech_load_json /etc/bvtech/agent.env || true
   local f
   for f in /etc/bvtech/publisher.env /etc/bvtech-daily.env; do
-    [ -f "$f" ] && { set -a; . "$f"; set +a; }
+    if [ -f "$f" ]; then set -a; . "$f"; set +a; fi
   done
+  return 0   # never let a missing optional file trip the caller's `set -e`
 }
 
 _bvtech_load_json() {

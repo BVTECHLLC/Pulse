@@ -18,7 +18,7 @@ LOCK="/tmp/bvtech-daily.lock"
 # and normalizes key names (e.g. "anthropic_key" -> ANTHROPIC_API_KEY). Values
 # are never echoed.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-. "$SCRIPT_DIR/lib_env.sh"; bvtech_load_env
+. "$SCRIPT_DIR/lib_env.sh"; bvtech_load_env || true
 # Re-apply path defaults after loading (loader may set them).
 PULSE_REPO="${PULSE_REPO:-/srv/pulse/opspilot}"
 export BV_WEBSITE_REPO="${BV_WEBSITE_REPO:-/srv/bvtech-website-new}"
