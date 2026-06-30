@@ -1,5 +1,11 @@
 # BVTech OpsPilot — Changelog
 
+## v0.37.0 — Bulk alert triage (June 2026)
+- Triage an alert storm in one click: select alerts (or "select all") on the
+  Alerts tab and **Ack** or **Resolve** them in bulk.
+- `POST /api/alerts/bulk {ids, action}` (OWNER/TECH) — skips missing/already-
+  resolved ids, audited, returns per-id results. Verified incl. validation.
+
 ## v0.36.0 — Action Center goes operational: one-click create-ticket (June 2026)
 - Every Action Center item now has a **+ Ticket** button: turn any signal (a
   predicted disk-fill, an SLA breach, an open finding, a contract renewal) into a

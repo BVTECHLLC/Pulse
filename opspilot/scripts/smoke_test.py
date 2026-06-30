@@ -48,6 +48,25 @@ def main():
         assert summ["acknowledged"]>=1 and summ["critical"]>=1, summ
         print("alert ack OK; summary:", {k:summ[k] for k in ("total","critical","acknowledged")})
 
+        # v0.37: bulk ack/resolve on a few throwaway alerts (kept separate from the
+        # device's monitoring alerts so the auto-resolve test below is unaffected).
+        from app.core.db import SessionLocal as _SLb
+        from app.models import Alert as _Al, AlertSeverity as _Sev, AlertStatus as _ASt
+        _db = _SLb()
+        _bids = []
+        for _i in range(3):
+            _a = _Al(client_id=cid, kind="bulk_test", severity=_Sev.WARNING,
+                     status=_ASt.ACTIVE, message=f"bulk test {_i}")
+            _db.add(_a); _db.flush(); _bids.append(_a.id)
+        _db.commit(); _db.close()
+        bulk = c.post("/api/alerts/bulk", json={"ids": _bids[:2] + [999999], "action": "ack"}).json()
+        assert bulk["changed_count"] == 2 and 999999 in bulk["skipped"], bulk
+        br = c.post("/api/alerts/bulk", json={"ids": _bids, "action": "resolve"}).json()
+        assert br["changed_count"] == 3, br   # all three resolve (2 were acked, 1 active)
+        assert c.post("/api/alerts/bulk", json={"ids":[1],"action":"nope"}).status_code == 400
+        assert c.post("/api/alerts/bulk", json={"ids":[],"action":"ack"}).status_code == 400
+        print("bulk alert ack/resolve (skip-missing + validation) OK")
+
         # a healthy check-in must AUTO-RESOLVE the resource alerts
         a.post("/api/agent/checkin", headers=hdr, json={"cpu_pct":5,"disk_pct":40,"ram_pct":30,"av_status":"on","patch_status":"current"})
         live = c.get("/api/alerts").json()
@@ -1098,7 +1117,7 @@ def main():
         assert c.delete(f"/api/assets/{a1['id']}").status_code==204
         print("asset management (CMDB + warranty + filters + RBAC + search) OK")
 
-    print("\n=== OpsPilot v0.36 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.37 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

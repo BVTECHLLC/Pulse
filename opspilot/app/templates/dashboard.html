@@ -278,11 +278,13 @@
         <div class="flex">
           <label class="flex" style="margin:0;font-size:13px;color:var(--muted)">
             <input type="checkbox" id="a-show-resolved" style="width:auto" onchange="loadAlerts()"> show resolved</label>
+          <button class="btn sm ghost" id="a-bulk-ack" onclick="bulkAlerts('ack')" disabled>Ack selected</button>
+          <button class="btn sm ghost" id="a-bulk-res" onclick="bulkAlerts('resolve')" disabled>Resolve selected</button>
           <button class="btn sm" onclick="runSweep()">Run offline sweep</button>
         </div>
       </div>
       <table>
-        <thead><tr><th>Severity</th><th>Device</th><th>Alert</th><th>Detail</th><th>Status</th><th>First seen</th><th></th></tr></thead>
+        <thead><tr><th style="width:28px"><input type="checkbox" id="a-all" style="width:auto" onchange="acToggleAll(this)"></th><th>Severity</th><th>Device</th><th>Alert</th><th>Detail</th><th>Status</th><th>First seen</th><th></th></tr></thead>
         <tbody id="t-alerts"></tbody></table>
     </div>
   </section>
@@ -735,7 +737,8 @@ async function loadAlerts(){
   const al=await api('/api/alerts'+(showRes?'?status_filter=resolved':''));
   if(!al)return;
   document.getElementById('t-alerts').innerHTML=al.map(a=>
-    `<tr><td><span class="sev ${a.severity}">${a.severity}</span></td>
+    `<tr><td>${a.status==='resolved'?'':`<input type="checkbox" class="a-chk" value="${a.id}" style="width:auto" onchange="acSyncBulk()">`}</td>
+     <td><span class="sev ${a.severity}">${a.severity}</span></td>
      <td>${esc(a.hostname||'—')}</td><td>${esc(a.kind)}</td>
      <td class="muted">${esc(a.message)}</td>
      <td><span class="badge ${a.status==='resolved'?'ok':(a.status==='acknowledged'?'warn':'bad')}">${a.status}</span></td>
@@ -743,7 +746,20 @@ async function loadAlerts(){
      <td class="flex">${a.status==='resolved'?'':
         `${a.status==='active'?`<button class="btn sm ghost" onclick="ackAlert(${a.id})">Ack</button>`:''}
          <button class="btn sm" onclick="resolveAlert(${a.id})">Resolve</button>`}</td></tr>`).join('')
-    ||`<tr><td colspan=7 class="muted">No ${showRes?'resolved':'active'} alerts.</td></tr>`;
+    ||`<tr><td colspan=8 class="muted">No ${showRes?'resolved':'active'} alerts.</td></tr>`;
+  const aa=document.getElementById('a-all'); if(aa)aa.checked=false; acSyncBulk();
+}
+function acCheckedIds(){return [...document.querySelectorAll('.a-chk:checked')].map(c=>parseInt(c.value));}
+function acSyncBulk(){const n=acCheckedIds().length;
+  ['a-bulk-ack','a-bulk-res'].forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=!n;});
+  const ack=document.getElementById('a-bulk-ack'); if(ack)ack.textContent=n?`Ack selected (${n})`:'Ack selected';
+  const res=document.getElementById('a-bulk-res'); if(res)res.textContent=n?`Resolve selected (${n})`:'Resolve selected';}
+function acToggleAll(box){document.querySelectorAll('.a-chk').forEach(c=>c.checked=box.checked);acSyncBulk();}
+async function bulkAlerts(action){
+  const ids=acCheckedIds(); if(!ids.length)return;
+  const r=await fetch('/api/alerts/bulk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,action})});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){loadAlerts();refreshBadges();}else{alert(j.detail||'Bulk action failed');}
 }
 async function ackAlert(id){await post(`/api/alerts/${id}/ack`);loadAlerts();refreshBadges();}
 async function resolveAlert(id){await post(`/api/alerts/${id}/resolve`);loadAlerts();refreshBadges();}
