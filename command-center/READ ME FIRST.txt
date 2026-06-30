@@ -1,0 +1,276 @@
+BVTech MSP Command Center v32.0 — POLISH EDITION
+====================================================
+
+WHAT THIS IS
+------------
+A unified dashboard for running an MSP business out of one window:
+prospect scraping, multi-channel content publishing, HubSpot CRM
+sync + email tracking, security audits, M365 inbox, DialPad calling,
+and a local automation engine that runs scheduled tasks even when
+the UI is closed.
+
+Everything runs locally on your Windows machine. No SaaS, no
+subscriptions beyond the APIs you already pay for.
+
+
+QUICK START
+-----------
+1. Run INSTALL.bat   (first time only — installs Python deps)
+2. Run Start-BVTech.bat
+3. Open http://localhost:5678  (the installer opens it for you)
+4. Settings tab → paste your API keys
+5. The "What's New" popup auto-shows on first launch — read it,
+   close it, you're good.
+
+
+WHAT YOU GET (the 21 tabs)
+--------------------------
+CORE WORKFLOW
+  Dashboard       Stats from every connected tool in one view
+  Scraper         Find prospects via Google Places + Hunter.io
+  Super Posting   Generate + publish blog posts to 4 channels at once
+  HS Track        Track manually-sent emails in HubSpot
+  Automation      Local SQLite event log + scheduled tasks
+
+OUTREACH
+  Email           M365 email campaigns
+  SMS             DialPad SMS campaigns
+  Dialer          Power dialer for prospect lists
+  Phone           DialPad AI phone integration
+  Coaching        AI-driven call coaching
+
+CRM / OPS
+  Inbox           M365 unified inbox
+  CRM             HubSpot prospect sync
+  Pipeline        HubSpot deal tracker
+  Revenue         MRR / pipeline rollup
+
+INFRASTRUCTURE
+  TRMM            Tactical RMM ticket dashboard
+  Cloudflare      Pages deploy + DNS
+  CyberAudit      Security audit + pen test reports
+  News            Vulnerability intel feed
+
+ADVANCED
+  Claude AI       Brain panel
+  WARMODE         Aggressive auto-builder
+  Settings        API keys + integrations
+
+
+WHAT'S NEW IN v32 (POLISH EDITION)
+-----------------------------------
+- Channel-specific content rewrites
+  When you publish to "All 4 Channels" (BVTech + JordanPolasek +
+  LinkedIn + GBP), the master article is now rewritten by Claude
+  into 4 distinct voices instead of posted verbatim everywhere.
+  BVTech gets corporate authority, JP gets first-person personal,
+  LinkedIn gets a hook-driven 1200-char post, GBP gets a 300-char
+  local-search blurb. Stops Google's de-dup filter from penalizing
+  you for duplicate content.
+
+- Staggered scheduler
+  Four new scheduled tasks (disabled by default) publish ONE
+  channel per day instead of all four at once:
+    Monday    -> BVTech.org
+    Wednesday -> JordanPolasek.com
+    Friday    -> LinkedIn
+    Saturday  -> Google Business Profile
+  Pulls from a local post queue. Enable them on the Automation tab
+  once you've added items to the queue from Super Posting.
+
+- Post queue
+  Pre-generate post ideas, drop them in the queue from the Super
+  Posting tab. The staggered scheduler tasks fire one channel at a
+  time per item until all 4 are done.
+
+- Retroactive backlinks (standalone CLI)
+  retroactive_backlinks.py walks your existing local blog folder
+  and injects "Related Posts" blocks into old posts using the
+  posts_index.json data. Idempotent (re-running does nothing),
+  has --dry-run by default, makes backups before writing.
+
+  Example:
+    python retroactive_backlinks.py --site bvtech \
+        --site-root "C:\BVTech2\Website\bvtech.org"
+  Then re-run with --commit to actually write.
+
+- Draft & Track
+  New button on the HS Track tab. Builds a mailto: URL with your
+  HubSpot BCC address pre-injected, opens your default mail client
+  (Gmail, Outlook, whatever), and pre-logs the contact to HubSpot.
+  Send manually, BCC catches it, HubSpot logs it. Best of all
+  worlds, no SMTP relay landmines.
+
+- Polish pass
+  - Tab bar reorganized into core / outreach / ops / infra /
+    advanced groupings
+  - Stripped 30+ "v20 NEW" / "v25 NEW" / "v18 KEY FIXES" graffiti
+    from every tab
+  - Deleted orphan Guardz tab (unreachable)
+  - Hid WordPress tab from the bar (legacy fallback still in code)
+  - Removed 7 runtime junk files that had been shipping in zips
+    since v27 (prospects.csv, scrape_cache.json, sent_log.csv, etc.)
+  - All changelog history moved to the "What's New" modal
+
+See CHANGELOG_v32.md for the complete writeup.
+
+
+RUNNING WITHOUT THE EXE
+-----------------------
+You don't need to compile to .exe. Just:
+  1. python -m pip install flask requests
+  2. python bvtech_app.py
+The Start-BVTech.bat script does this for you.
+
+
+WINDOWS TASK SCHEDULER INTEGRATION
+-----------------------------------
+v31 added the ability to install BVTech tasks as Windows scheduled
+tasks. v32 extends this with the 4 staggered publishing tasks.
+
+To install a task to Windows Task Scheduler:
+  1. Open the Automation tab
+  2. Find the task you want
+  3. Click the "⊕ Win" button
+  4. Confirm
+
+The task is registered with schtasks.exe under the prefix
+"BVTech_". View them in taskschd.msc. The Windows Task Scheduler
+will fire the task on its schedule even when BVTech itself is
+closed — it shells out to:
+
+  pythonw.exe bvtech_app.py --run-task <taskname>
+
+Which runs the task and exits without starting the Flask server.
+
+
+HUBSPOT EMAIL TRACKING SETUP (5 minutes)
+-----------------------------------------
+1. HubSpot → Settings → Integrations → Private Apps → Create
+2. Add scopes:
+     crm.objects.contacts.read
+     crm.objects.contacts.write
+     crm.objects.emails.write
+3. Copy the Private App access token
+4. BVTech → Settings → HubSpot CRM → Private App Token → paste
+5. (Optional but recommended) HubSpot → Settings → Objects →
+   Activities → Email tab → copy "Forward to HubSpot" address
+6. BVTech → HS Track tab → BCC field → paste → Save
+7. Click "Verify Connection" — should show your portal ID
+
+Now every email you send and BCC to that address auto-logs to the
+matching contact's timeline in HubSpot. For one-offs you can also
+use the manual log form on the HS Track tab.
+
+
+GOOGLE BUSINESS PROFILE OAUTH SETUP
+------------------------------------
+GBP API access is gated by Google. You have to apply for access
+before localPosts.create will work. Without approval, you'll get
+HTTP 403 on every post attempt.
+
+1. console.cloud.google.com → create or pick a project
+2. Enable: My Business Account Management API,
+           My Business Business Information API,
+           Google My Business API
+3. Fill out the access request form:
+     https://support.google.com/business/contact/api_default
+   Wait 1-2 business days for approval email.
+4. Create OAuth 2.0 credentials (Web application type)
+5. Add redirect URI: http://localhost:5678/api/gbp/oauth/callback
+6. Paste Client ID + Secret into Settings → Google Business Profile
+7. Click "Connect Google Business" → consent → done
+
+
+CLOUDFLARE PAGES DEPLOY SETUP
+------------------------------
+v29 rewrote the deployer to walk your entire local site folder
+and upload via the Direct Upload protocol (same as wrangler pages
+deploy). v30+ uses this for both BVTech.org and JordanPolasek.com.
+
+Required config (Settings → Cloudflare):
+  cf_api_token            Your Cloudflare API token
+  cf_account_id           Your Cloudflare account ID
+  cf_project_name         The Pages project name (e.g. bvtech-org)
+  bvtech_site_root        Local path to bvtech.org folder
+                          (e.g. C:\BVTech2\Website\bvtech.org)
+  jp_site_root            Local path to jordanpolasek.com folder
+
+Then on the Super Posting tab, click "Test Deploy" first to do a
+dry-run that walks the folder, hashes everything, and asks
+Cloudflare what it would upload — without actually deploying.
+
+
+UPGRADING FROM v31 OR EARLIER
+------------------------------
+1. Unzip v32 to a NEW folder (e.g. C:\BVTech_v32\)
+2. Run INSTALL.bat
+3. The installer auto-migrates these files from your previous
+   version folder if found:
+     bvtech_config.json     (your API keys + settings)
+     posts_index.json       (cross-linking history)
+     local_events.db        (v31+ event log)
+4. Done. Your old folder is untouched — keep it as a backup.
+
+If migration didn't happen automatically, manually copy those
+three files from your old version folder.
+
+
+WHAT'S NOT IN v32 (still deferred)
+-----------------------------------
+- Full SMTP relay with open-tracking pixel. v32 ships "Draft &
+  Track" instead, which gives you 90% of the value (auto-BCC,
+  pre-log to HubSpot, opens default mail client) without the
+  DKIM/SPF/Gmail-Send-As rabbit hole.
+
+If you want the full SMTP relay later, that's a v32.1 follow-up.
+
+
+FILES IN THIS RELEASE
+---------------------
+Python modules:
+  bvtech_app.py              Main app (~12,200 lines, 161 routes)
+  channel_rewriter.py        v32: per-channel content rewrites
+  post_queue.py              v32: staggered publishing queue
+  retroactive_backlinks.py   v32: CLI for back-filling old posts
+  hubspot_tracker.py         v31: HubSpot v3 Engagements API
+  local_automation.py        v31: SQLite log + task runner
+  posts_index.py             v30: forward-only cross-linking
+  google_business_profile.py v30: GBP OAuth + localPosts
+  cloudflare_pages_deploy.py v29: CF Direct Upload deployer
+  super_scraper.py           v27: deep prospect discovery
+  prospect_scraper.py        v25: Google Places scraper
+  email_campaign.py          M365 email campaigns
+  sms_campaign.py            DialPad SMS
+  power_dialer.py            Sequential dialing
+  dialpad_integration.py     DialPad API client
+  tacticalrmm_integration.py SuperOps PSA + Guardz
+  autopilot.py               WARMODE auto-builder
+  autoclaude.py              Claude API helper
+  generate_prospects.py      Test data generator
+
+Docs:
+  READ ME FIRST.txt          (this file)
+  README.md                  Markdown version
+  CHANGELOG_v32.md           Detailed v32 changelog
+  CHANGELOG_v31.md           v31 history
+  CHANGELOG_v30.md           v30 history
+  CHANGELOG_v29.md           v29 history
+  CHANGELOG_v28.md           v28 history
+  CHANGELOG_v27.md           v27 history
+  CHANGELOG_v25.md           v25 history
+  CF_DIRECT_SETUP_GUIDE.md   Cloudflare Pages setup walkthrough
+
+Installer / launcher:
+  INSTALL.bat                v32 installer (rewritten)
+  Start-BVTech.bat           Launch script
+  build_exe.bat              Manual PyInstaller build
+
+
+SUPPORT
+-------
+crash.log in the app folder catches any unhandled exceptions.
+The Automation tab event log has every scrape/post/email/call
+the tool has done.
+
+Built by Jordan Polasek for BVTech LLC, El Campo TX.

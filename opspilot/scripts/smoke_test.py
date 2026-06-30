@@ -1214,7 +1214,23 @@ def main():
         assert c.post("/api/comms/dialpad/call", json={"to": ""}).status_code == 400
         print("Integrations: secure vault + M365 mailbox + publishers + Dialpad (masked secrets + RBAC) OK")
 
-    print("\n=== OpsPilot v0.41 SMOKE TEST PASSED ===")
+        # --- v0.42 Tactical RMM connector: SSRF guard + masked creds + RBAC ---
+        assert c.get("/api/rmm/settings").json()["configured"] is False
+        assert c.get("/api/rmm/dashboard").status_code == 503  # not configured yet
+        # SSRF: private / loopback / metadata URLs are refused at save time
+        for bad in ("http://169.254.169.254/api", "http://127.0.0.1:8000", "http://10.0.0.5"):
+            assert c.put("/api/rmm/settings", json={"base_url": bad, "api_key": "k"}).status_code == 400, bad
+        # a public URL saves; key is stored encrypted and masked on read
+        assert c.put("/api/rmm/settings", json={"base_url": "https://api.github.com",
+                     "api_key": "trmm-secret-123"}).json()["configured"] is True
+        s = c.get("/api/rmm/settings").json()
+        assert s["fields"]["api_key"]["value"] is None and s["fields"]["base_url"]["value"] == "https://api.github.com"
+        # client users are blocked from the staff-only connector + mutating actions are OWNER-only
+        assert ca_c.get("/api/rmm/settings").status_code == 403
+        assert ca_c.post("/api/rmm/agents/1/reboot").status_code in (401, 403)
+        print("Tactical RMM connector: SSRF guard + encrypted/masked creds + RBAC OK")
+
+    print("\n=== OpsPilot v0.42 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -19,7 +19,7 @@ from .api.routes import (
     scripts, signup, m365, invoices, networking, netdiag, download, contracts, reports,
     channels, report_schedules, integrations, search, oauth, projects, overview,
     time_tracking, assets, action_center, foresight, client_health, content,
-    maintenance, analytics, mailbox, publishers, comms,
+    maintenance, analytics, mailbox, publishers, comms, rmm,
 )
 
 _s = get_settings()
@@ -131,6 +131,7 @@ app.include_router(analytics.router)
 app.include_router(mailbox.router)
 app.include_router(publishers.router)
 app.include_router(comms.router)
+app.include_router(rmm.router)
 app.include_router(ui.router)
 
 

@@ -55,6 +55,7 @@
     <a data-tab="network" onclick="tab('network')">Network</a>
     <a data-tab="kb" onclick="tab('kb')">Knowledge Base</a>
     <a data-tab="content" onclick="tab('content')">✍️ Content Studio</a>
+    <a data-tab="rmm" onclick="tab('rmm')">🖥️ RMM</a>
     <a data-tab="mailbox" onclick="tab('mailbox')">📬 Mailbox</a>
     <a data-tab="licenses" onclick="tab('licenses')">Licenses</a>
     <a data-tab="integrations" onclick="tab('integrations')">Integrations</a>
@@ -735,6 +736,32 @@
     </div>
   </section>
 
+  <section id="rmm" class="hidden">
+    <div class="card" style="margin-bottom:16px">
+      <b>Pulse is your RMM.</b> <span class="muted">Your devices, monitoring and alerts run natively in Pulse
+      (Devices, Alerts, Automation tabs). This panel is an <b>optional connector</b> to pull in a legacy
+      <b>Tactical RMM</b> instance — handy for migrating off it onto Pulse.</span>
+    </div>
+    <div id="rmm-unconfigured" class="card hidden" style="margin-bottom:16px">
+      <b>No Tactical RMM connected.</b> <span class="muted">Add a URL &amp; API key in
+      <a href="#" onclick="tab('settings');return false">🛠️ Settings → RMM connector</a> to bridge an existing RMM. Optional.</span>
+    </div>
+    <div id="rmm-kpis" class="grid cols-4" style="margin-bottom:16px"></div>
+    <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px">
+      <div class="card">
+        <div class="flex" style="justify-content:space-between"><h3 style="margin:0">Agents</h3>
+          <button class="btn sm ghost" onclick="loadRmm()">Refresh</button></div>
+        <table style="margin-top:10px"><thead><tr><th>Host</th><th>Client</th><th>OS</th><th>Status</th><th></th></tr></thead>
+        <tbody id="t-rmm-agents"></tbody></table>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">Active Alerts</h3>
+        <table><thead><tr><th>Sev</th><th>Agent</th><th>Message</th><th></th></tr></thead>
+        <tbody id="t-rmm-alerts"></tbody></table>
+      </div>
+    </div>
+  </section>
+
   <section id="mailbox" class="hidden">
     <div id="mb-unconfigured" class="card hidden" style="margin-bottom:16px">
       <b>Mailbox not connected.</b> <span class="muted">Add your Microsoft 365 tenant & app credentials in
@@ -810,6 +837,18 @@
         <span class="muted" id="set-dp-msg" style="font-size:12px"></span></div>
     </div>
 
+    <div class="card" style="margin-bottom:16px">
+      <h3>🖥️ Tactical RMM connector <span class="pill" id="set-rmm-pill">not configured</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Optional — bridge a legacy Tactical RMM instance into Pulse (for migration). Pulse's own agents are your native RMM.</p>
+      <div class="grid2">
+        <label>RMM API base URL<input id="set-rmm-url" placeholder="https://api.rmm.yourmsp.com"></label>
+        <label>API key<input id="set-rmm-key" type="password" placeholder="(unchanged)"></label>
+      </div>
+      <div class="flex" style="margin-top:10px"><button class="btn sm" onclick="saveRmmCfg()">Save</button>
+        <button class="btn sm ghost" onclick="testRmmCfg()">Test connection</button>
+        <span class="muted" id="set-rmm-msg" style="font-size:12px"></span></div>
+    </div>
+
     <div class="card">
       <h3>🌐 Website Auto-Publishers <span class="pill">reputation</span></h3>
       <p class="muted" style="margin:4px 0 10px">Daily auto-posting settings for your sites (run by the publishing service).</p>
@@ -858,6 +897,7 @@ function tab(name){
   document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('active',a.dataset.tab===name));
   // Lazy-load tabs that hit external services so we don't call them on every page load.
   if(name==='mailbox'){loadMailbox();}
+  if(name==='rmm'){loadRmm();}
   if(name==='settings'&&!_tabLoaded.settings){_tabLoaded.settings=true;loadSettings();}
 }
 function badge(v,good,warn){if(v==null)return '<span class="badge">—</span>';
@@ -2076,6 +2116,45 @@ async function loadBilling(){
     ||'<tr><td colspan=6 class="muted">Nothing renewing in this window.</td></tr>';
 }
 
+// ===================== RMM (Tactical RMM connector) =====================
+async function loadRmm(){
+  const s=await api('/api/rmm/settings'); if(!s)return;
+  document.getElementById('rmm-unconfigured').classList.toggle('hidden',!!s.configured);
+  if(!s.configured){document.getElementById('rmm-kpis').innerHTML='';
+    document.getElementById('t-rmm-agents').innerHTML='';document.getElementById('t-rmm-alerts').innerHTML='';return;}
+  const [d,ag,al]=await Promise.all([api('/api/rmm/dashboard'),api('/api/rmm/agents'),api('/api/rmm/alerts?resolved=false')]);
+  if(d&&!d.detail)document.getElementById('rmm-kpis').innerHTML=
+    [['Agents',d.total_agents],['Online',d.online],['Offline',d.offline],['Alerts',d.active_alerts],['Clients',d.clients]]
+    .map(([k,v])=>`<div class="card"><h3>${k}</h3><div class="stat">${v??'—'}</div></div>`).join('');
+  const agents=(ag&&ag.agents)||[];
+  document.getElementById('t-rmm-agents').innerHTML=agents.map(a=>
+    `<tr><td>${esc(a.hostname||'—')}</td><td>${esc(a.client||'—')}</td><td>${esc(a.os||'—')}</td>
+     <td><span class="badge ${a.status==='online'?'ok':'bad'}">${esc(a.status||'?')}</span></td>
+     <td><button class="btn sm ghost" onclick="rmmReboot('${esc(a.id)}')">Reboot</button></td></tr>`).join('')
+    ||'<tr><td colspan=5 class="muted">No agents (or none returned).</td></tr>';
+  const alerts=(al&&al.alerts)||[];
+  document.getElementById('t-rmm-alerts').innerHTML=alerts.map(a=>
+    `<tr><td><span class="sev ${(a.severity||'').toLowerCase()}">${esc(a.severity||'—')}</span></td>
+     <td>${esc(a.agent||'—')}</td><td class="muted">${esc(a.message||'')}</td>
+     <td><button class="btn sm" onclick="rmmResolve('${esc(a.id)}')">Resolve</button></td></tr>`).join('')
+    ||'<tr><td colspan=4 class="muted">No active alerts.</td></tr>';
+}
+async function rmmReboot(id){if(!confirm('Reboot this machine?'))return;
+  const r=await post(`/api/rmm/agents/${encodeURIComponent(id)}/reboot`);if(r.ok)loadRmm();else alert((await r.json().catch(()=>({}))).detail||'Failed');}
+async function rmmResolve(id){const r=await post(`/api/rmm/alerts/${encodeURIComponent(id)}/resolve`);if(r.ok)loadRmm();else alert((await r.json().catch(()=>({}))).detail||'Failed');}
+async function saveRmmCfg(){
+  const msg=document.getElementById('set-rmm-msg');msg.textContent='saving…';
+  const r=await put('/api/rmm/settings',{base_url:val('set-rmm-url'),api_key:val('set-rmm-key')});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Saved ✓';setPill('set-rmm-pill',j.configured);document.getElementById('set-rmm-key').value='';}
+  else msg.textContent=j.detail||'Save failed';
+}
+async function testRmmCfg(){
+  const msg=document.getElementById('set-rmm-msg');msg.textContent='testing…';
+  const r=await post('/api/rmm/test');const j=await r.json().catch(()=>({}));
+  msg.textContent=r.ok?`Connected ✓ (${(j.dashboard||{}).total_agents??'?'} agents)`:(j.detail||'Test failed');
+}
+
 // ===================== Mailbox (Microsoft 365) =====================
 let MB_DEFAULT='';
 async function loadMailbox(){
@@ -2175,6 +2254,9 @@ async function loadSettings(){
   if(dp){setPill('set-dp-pill',dp.configured);
     document.getElementById('set-dp-user').value=fv(dp.fields,'user_id');
     document.getElementById('set-dp-caller').value=fv(dp.fields,'caller_number');}
+  const rmm=await api('/api/rmm/settings');
+  if(rmm){setPill('set-rmm-pill',rmm.configured);
+    document.getElementById('set-rmm-url').value=fv(rmm.fields,'base_url');}
 }
 async function saveMailboxCfg(){
   const msg=document.getElementById('set-mb-msg'); msg.textContent='saving…';
