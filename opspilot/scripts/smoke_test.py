@@ -998,6 +998,32 @@ def main():
         assert c.get(f"/api/devices/{dev_id}/patches").json()["pending"]==0
         print("patch report + read + count + replace + RBAC OK")
 
+        # ===================== v0.68: fleet inventory + patch compliance =====================
+        # Re-seed SMOKE-PC with software + pending patches for the fleet rollups.
+        a.post("/api/agent/inventory", headers=hdr, json={"software":[
+            {"name":"Google Chrome","version":"125.0","publisher":"Google LLC"},
+            {"name":"OpenSSL","version":"3.0.1","publisher":"OpenSSL"}]})
+        a.post("/api/agent/patches", headers=hdr, json={"patches":[
+            {"name":"2024-05 Cumulative Update","kb":"5034123","severity":"critical"},
+            {"name":".NET Update","kb":"6000","severity":"important"}]})
+        # Fleet software inventory aggregates titles with device/version counts.
+        fsw=c.get("/api/inventory/software").json()
+        chrome=[x for x in fsw if x["name"]=="Google Chrome"]
+        assert chrome and chrome[0]["devices"]>=1, fsw
+        # Vuln-response drill-down: which devices run OpenSSL?
+        od=c.get("/api/inventory/software/devices", params={"name":"OpenSSL"}).json()
+        assert any(d["device_id"]==dev_id for d in od["devices"]), od
+        # Fleet patch compliance rollup: SMOKE-PC has 2 pending incl. a critical.
+        pc=c.get("/api/inventory/patches").json()
+        assert pc["fleet"]["pending_total"]>=2 and pc["by_severity"].get("critical",0)>=1, pc
+        assert any(w["device_id"]==dev_id and w["pending"]>=2 for w in pc["worst_devices"]), pc["worst_devices"]
+        assert any(t["kb"]=="KB5034123" or t["kb"]=="5034123" for t in pc["top_pending"]), pc["top_pending"]
+        # RBAC: client software inventory is scoped to them; patch rollup is staff-only.
+        casw=ca_c.get("/api/inventory/software").json()
+        assert isinstance(casw,list)   # 200, scoped to their client
+        assert ca_c.get("/api/inventory/patches").status_code==403
+        print("fleet inventory + patch compliance (aggregate + drill-down + RBAC) OK")
+
         # ===================== v0.20: metric history =====================
         mh=c.get(f"/api/devices/{dev_id}/metrics").json()
         assert mh["points"]>=1 and isinstance(mh["series"],list), mh
@@ -1843,7 +1869,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.67 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.68 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -46,6 +46,7 @@
     <a data-tab="dialer" onclick="tab('dialer')">📞 Power Dialer</a>
     <a data-tab="devices" onclick="tab('devices')">Devices</a>
     <a data-tab="assets" onclick="tab('assets')">Assets</a>
+    <a data-tab="inventory" onclick="tab('inventory')">📦 Inventory</a>
     <a data-tab="alerts" onclick="tab('alerts')">Alerts</a>
     <a data-tab="tickets" onclick="tab('tickets')">Tickets</a>
     <a data-tab="time" onclick="tab('time')">Time</a>
@@ -955,6 +956,35 @@
     </div>
   </section>
 
+  <section id="inventory" class="hidden">
+    <div id="patch-kpis" class="grid cols-4" style="margin-bottom:16px"></div>
+    <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px">
+      <div class="card">
+        <div class="flex" style="justify-content:space-between;flex-wrap:wrap">
+          <h3 style="margin:0">📦 Software inventory</h3>
+          <input id="inv-q" placeholder="search software…" style="min-width:160px" onkeydown="if(event.key==='Enter')loadInventory()">
+        </div>
+        <p class="muted" style="margin:4px 0 8px">Every installed title across the fleet — click one to see exactly which devices run it (vuln response).</p>
+        <table><thead><tr><th>Software</th><th>Publisher</th><th>Devices</th><th>Clients</th><th>Versions</th></tr></thead>
+          <tbody id="t-inv-sw"></tbody></table>
+        <div id="inv-devices" class="hidden" style="margin-top:10px"></div>
+      </div>
+      <div>
+        <div class="card" style="margin-bottom:16px">
+          <h3 style="margin-top:0">🩹 Patch compliance by client</h3>
+          <table><thead><tr><th>Client</th><th>Compliant</th><th>Pending</th></tr></thead>
+            <tbody id="t-patch-client"></tbody></table>
+          <p class="muted" style="font-size:12px;margin:8px 0 0">Tip: add an <b>Auto-Remediation</b> rule for <i>patch_behind</i> to auto-fix non-compliant devices.</p>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0">Most-common pending updates</h3>
+          <table><thead><tr><th>Update</th><th>Sev</th><th>Devices</th></tr></thead>
+            <tbody id="t-patch-top"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="docs" class="hidden">
     <div class="card" style="margin-bottom:16px">
       <h3 style="margin-top:0">📚 Documentation &amp; Password Vault</h3>
@@ -1254,6 +1284,7 @@ function tab(name){
   if(name==='docs'){loadDocs();}
   if(name==='crm'){loadCrm();}
   if(name==='dialer'){loadDialer();}
+  if(name==='inventory'){loadInventory();}
   if(name==='rmm'){loadRmm();}
   if(name==='settings'&&!_tabLoaded.settings){_tabLoaded.settings=true;loadSettings();}
 }
@@ -2875,6 +2906,47 @@ async function crmCreate(){
   const r=await post('/api/crm/contacts',body); const j=await r.json().catch(()=>({}));
   if(r.ok){msg.textContent='Added ✓';['crm-name','crm-company','crm-email','crm-phone','crm-title','crm-market'].forEach(i=>document.getElementById(i).value='');loadCrm();}
   else msg.textContent=j.detail||'Save failed';
+}
+// -------------------- Inventory & patch compliance --------------------
+async function loadInventory(){
+  const q=(document.getElementById('inv-q').value||'').trim();
+  const [sw,pc]=await Promise.all([
+    api('/api/inventory/software'+(q?`?q=${encodeURIComponent(q)}`:'')),api('/api/inventory/patches')]);
+  if(sw)document.getElementById('t-inv-sw').innerHTML=sw.length?sw.map(s=>
+    `<tr style="cursor:pointer" onclick="invDevices('${encodeURIComponent(s.name)}')">
+      <td>${esc(s.name)}</td><td class="muted">${esc(s.publisher||'—')}</td>
+      <td><b>${s.devices}</b></td><td>${s.clients}</td><td>${s.versions}</td></tr>`).join('')
+    :'<tr><td colspan=5 class="muted">No software reported yet.</td></tr>';
+  if(pc){
+    const f=pc.fleet||{};
+    document.getElementById('patch-kpis').innerHTML=[
+      ['Patch compliance',(f.compliance_pct!=null?f.compliance_pct+'%':'—')],
+      ['Devices reporting',f.reporting||0],
+      ['Pending updates',f.pending_total||0],
+      ['Critical pending',(pc.by_severity||{}).critical||0]
+    ].map(([k,v],i)=>`<div class="card" style="${i===3&&v>0?'border-color:#b91c1c':''}"><h3 style="font-size:12px">${k}</h3><div class="stat" style="font-size:22px">${v}</div></div>`).join('');
+    document.getElementById('t-patch-client').innerHTML=(pc.by_client||[]).length?pc.by_client.map(b=>
+      `<tr><td>${esc(b.client_name||b.client_id)}</td>
+        <td><span class="badge ${b.compliance_pct>=90?'ok':(b.compliance_pct>=60?'warn':'bad')}">${b.compliance_pct}%</span></td>
+        <td>${b.pending_total}</td></tr>`).join('')
+      :'<tr><td colspan=3 class="muted">All clients compliant.</td></tr>';
+    document.getElementById('t-patch-top').innerHTML=(pc.top_pending||[]).length?pc.top_pending.map(t=>
+      `<tr><td>${esc(t.name)}${t.kb?` <span class="muted">${esc(t.kb)}</span>`:''}</td>
+        <td>${t.severity?sevBadge(t.severity==='critical'?'critical':(t.severity==='important'||t.severity==='security'?'high':'medium')):'—'}</td>
+        <td>${t.devices}</td></tr>`).join('')
+      :'<tr><td colspan=3 class="muted">No pending updates 🎉</td></tr>';
+  }
+}
+async function invDevices(encName){
+  const name=decodeURIComponent(encName);
+  const box=document.getElementById('inv-devices'); box.classList.remove('hidden');
+  box.innerHTML='<p class="muted">Loading…</p>';
+  const r=await api(`/api/inventory/software/devices?name=${encodeURIComponent(name)}`); if(!r)return;
+  box.innerHTML=`<div class="flex" style="justify-content:space-between"><b>${esc(name)} — ${r.devices.length} device(s)</b>
+      <button class="btn sm ghost" onclick="document.getElementById('inv-devices').classList.add('hidden')">close</button></div>
+    <table style="margin-top:6px"><thead><tr><th>Host</th><th>Client</th><th>Version</th></tr></thead><tbody>${
+      r.devices.map(d=>`<tr><td>${esc(d.hostname)}</td><td>${esc(CLIENTS[d.client_id]||d.client_id)}</td><td>${esc(d.version||'—')}</td></tr>`).join('')
+      ||'<tr><td colspan=3 class="muted">None.</td></tr>'}</tbody></table>`;
 }
 // -------------------- Power Dialer --------------------
 const DIALER={session:null,detail:null,scripts:[]};
