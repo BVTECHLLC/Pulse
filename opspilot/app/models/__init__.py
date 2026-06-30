@@ -617,10 +617,11 @@ ACTION_SET_PRIORITY = "set_priority"      # bump/lower ticket priority
 ACTION_ADD_NOTE = "add_note"              # internal note on the ticket
 ACTION_SEND_EMAIL = "send_email"          # send mail via the M365 mailbox integration
 ACTION_LINKEDIN_POST = "linkedin_post"    # publish a post via the LinkedIn integration
+ACTION_SEND_DIGEST = "send_digest"        # email a cross-business morning briefing
 AUTOMATION_ACTIONS = (
     ACTION_CREATE_TICKET, ACTION_ACK_ALERT, ACTION_NOTIFY,
     ACTION_ASSIGN, ACTION_SET_PRIORITY, ACTION_ADD_NOTE,
-    ACTION_SEND_EMAIL, ACTION_LINKEDIN_POST,
+    ACTION_SEND_EMAIL, ACTION_LINKEDIN_POST, ACTION_SEND_DIGEST,
 )
 
 

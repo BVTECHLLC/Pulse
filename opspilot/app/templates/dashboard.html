@@ -68,8 +68,9 @@
   <section id="overview">
     <div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
       <div><b>Command Center</b> <span class="muted" id="ov-ts">live</span></div>
+      <div class="flex"><button class="btn sm ghost" onclick="showBriefing()">📋 Morning Briefing</button>
       <label class="flex" style="margin:0;font-size:12px;color:var(--muted)">
-        <input type="checkbox" id="ov-auto" checked style="width:auto" onchange="toggleOvAuto()"> auto-refresh</label>
+        <input type="checkbox" id="ov-auto" checked style="width:auto" onchange="toggleOvAuto()"> auto-refresh</label></div>
     </div>
     <div class="card" style="margin-bottom:16px;display:flex;align-items:center;gap:20px;cursor:pointer;border-color:var(--brand,#6c5ce7)" onclick="tab('action')">
       <div id="ops-gauge" style="width:78px;height:78px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;flex-shrink:0;background:#0c1430">—</div>
@@ -504,7 +505,7 @@
         <textarea id="ar-cond" rows="2" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)"></textarea>
         <label>Actions (JSON array)</label>
         <textarea id="ar-actions" rows="4" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)"></textarea>
-        <p class="muted" style="font-size:11px;margin:4px 0 0">Actions: <code>create_ticket</code>, <code>ack_alert</code>, <code>notify</code>, <code>assign</code>, <code>set_priority</code>, <code>add_note</code>, <code>send_email</code> (M365), <code>linkedin_post</code>. Outbound actions use <code>{hostname} {message} {severity} {subject}</code> placeholders and skip safely if that integration isn't connected.</p>
+        <p class="muted" style="font-size:11px;margin:4px 0 0">Actions: <code>create_ticket</code>, <code>ack_alert</code>, <code>notify</code>, <code>assign</code>, <code>set_priority</code>, <code>add_note</code>, <code>send_email</code> (M365), <code>linkedin_post</code>, <code>send_digest</code> (emails a morning briefing). Outbound actions use <code>{hostname} {message} {severity} {subject}</code> placeholders and skip safely if that integration isn't connected.</p>
         <div class="err" id="ar-msg"></div>
         <div class="flex" style="margin-top:12px">
           <button class="btn" onclick="createRule()">Create rule</button>
@@ -1280,7 +1281,7 @@ const RULE_EXAMPLES={
   'alert.opened':{cond:{"severity":"critical"},actions:[{type:"create_ticket",priority:"high"},{type:"notify"},{type:"send_email",to:"oncall@bvtech.org",subject:"Critical: {hostname}",body:"{message}"}]},
   'ticket.created':{cond:{"priority":"urgent"},actions:[{type:"assign",auto:true},{type:"add_note",body:"Escalated by automation."}]},
   'ticket.sla_breached':{cond:{},actions:[{type:"notify",message:"SLA breached — needs attention",severity:"warning"}]},
-  'schedule':{cond:{"every":"day","at":"08:00","tz":"America/Chicago"},actions:[{type:"linkedin_post",text:"Daily MSP tip from BVTech 👇"},{type:"send_email",to:"jordan@bvtech.org",subject:"Daily standup",body:"Your scheduled summary."}]},
+  'schedule':{cond:{"every":"day","at":"07:00","tz":"America/Chicago"},actions:[{type:"send_digest",to:"jordan@bvtech.org"},{type:"linkedin_post",text:"Daily MSP tip from BVTech 👇"}]},
 };
 function ruleExample(){
   const ex=RULE_EXAMPLES[document.getElementById('ar-trigger').value];
@@ -2612,6 +2613,22 @@ async function testRmmCfg(){
   const msg=document.getElementById('set-rmm-msg');msg.textContent='testing…';
   const r=await post('/api/rmm/test');const j=await r.json().catch(()=>({}));
   msg.textContent=r.ok?`Connected ✓ (${(j.dashboard||{}).total_agents??'?'} agents)`:(j.detail||'Test failed');
+}
+
+// ===================== Morning Briefing =====================
+async function showBriefing(){
+  const b=await api('/api/briefing'); if(!b||b.detail){alert((b&&b.detail)||'Could not load briefing');return;}
+  const body=(b.sections||[]).map(s=>{
+    const items=(s.lines||[]).map(l=>`<div class="muted" style="font-size:12px;padding-left:14px">• ${esc(l)}</div>`).join('');
+    return `<div style="margin:8px 0"><b>${esc(s.title)}: <span style="color:${s.count?'var(--warn)':'var(--ok)'}">${s.count}</span></b>${items}</div>`;
+  }).join('');
+  const html=`<div onclick="if(event.target===this)this.remove()" style="position:fixed;inset:0;z-index:300;background:rgba(4,8,20,.6);display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px;overflow:auto">
+    <div class="card" style="max-width:640px;width:100%">
+      <div class="flex" style="justify-content:space-between"><h3 style="margin:0">📋 Morning Briefing — ${b.attention_total} items need attention</h3>
+        <button class="btn sm ghost" onclick="this.closest('div[style*=fixed]').remove()">Close</button></div>
+      ${body}
+    </div></div>`;
+  const d=document.createElement('div'); d.innerHTML=html; document.body.appendChild(d.firstElementChild);
 }
 
 // ===================== Docs & Password Vault =====================
