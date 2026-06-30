@@ -48,13 +48,14 @@ cd "$PULSE_REPO"
 PROMPT="$(cat automation/bvtech_persona.md; echo; echo '---'; echo; cat automation/daily_blog_prompt.md)"
 
 # Headless Claude Code: web-search today's story, write the post, run
-# scripts/publish_post.py to publish. In cron there's no one to approve prompts,
-# so we bypass permissions (the prompt + repo scope constrain what it does).
-#   -p / --print            : non-interactive, print result and exit
-#   --permission-mode bypassPermissions : run unattended (no approval prompts)
-# This flag set is stable across Claude Code 2.x. If your build differs, run
-# `claude --help` and adjust this one line.
-claude -p "$PROMPT" --permission-mode bypassPermissions \
+# scripts/publish_post.py to publish. We PRE-AUTHORIZE the specific tools the job
+# needs (instead of fully bypassing permissions) — this runs unattended AND is
+# allowed as root, unlike --dangerously-skip-permissions / bypassPermissions.
+#   -p              : non-interactive print mode
+#   --allowedTools  : tools the agent may use without prompting
+# If your CLI errors on a flag name, run `claude --help` and adjust this line.
+CLAUDE_TOOLS="WebSearch WebFetch Read Write Edit Bash Glob Grep"
+claude -p "$PROMPT" --allowedTools "$CLAUDE_TOOLS" \
   || echo "claude run returned non-zero (safety-net publish below will still try)"
 
 # ---- Safety-net publish: if Claude wrote today.json but didn't push, do it. -- #
