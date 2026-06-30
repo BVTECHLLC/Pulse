@@ -817,6 +817,39 @@ def main():
         assert ca_c.post("/api/posture/snapshot").status_code==403
         print("posture trend: snapshot + history + grade-drop alert + RBAC OK")
 
+        # ===================== v0.70: auto-posting queue + scheduler =====================
+        from app.services import autopost as _ap
+        _orig_poster=_ap._linkedin_poster
+        _ap._linkedin_poster=lambda db:(lambda t,u:"urn:li:share:smoke")   # stub LinkedIn
+        try:
+            st=c.get("/api/autopost/settings").json()
+            assert st["enabled"] is False, st   # off by default (no surprise posting)
+            p=c.post("/api/autopost", json={"body":"Managed IT tip from BVTech","link":"https://bvtech.org"})
+            assert p.status_code==201, p.text
+            pid=p.json()["id"]
+            assert any(x["id"]==pid and x["status"]=="queued" for x in c.get("/api/autopost").json())
+            # Enable, then the scheduler tick publishes the oldest queued post.
+            c.put("/api/autopost/settings", json={"enabled":True,"gap_hours":20})
+            chk=c.post("/api/automation/run-checks").json()
+            assert chk.get("posts_published",0)>=1, chk
+            assert any(x["id"]==pid and x["status"]=="posted" and x["result"]=="urn:li:share:smoke"
+                       for x in c.get("/api/autopost").json())
+            # Cadence: an immediate second tick publishes nothing (gap not elapsed).
+            chk2=c.post("/api/automation/run-checks").json()
+            assert chk2.get("posts_published",0)==0, chk2
+            # Manual post-now bypasses cadence.
+            p2=c.post("/api/autopost", json={"body":"Second post"}).json()
+            pn=c.post(f"/api/autopost/{p2['id']}/post-now").json()
+            assert pn["ok"] and pn["post"]["status"]=="posted", pn
+            # Delete a (failed/queued) post; RBAC: clients can't touch autopost.
+            p3=c.post("/api/autopost", json={"body":"to delete"}).json()
+            assert c.delete(f"/api/autopost/{p3['id']}").status_code==200
+            assert ca_c.get("/api/autopost").status_code==403
+            assert ca_c.post("/api/autopost", json={"body":"x"}).status_code==403
+            print("auto-posting: queue + enable + scheduled publish + cadence + post-now + RBAC OK")
+        finally:
+            _ap._linkedin_poster=_orig_poster
+
         # ===================== v0.60: power dialer + call coaching =====================
         from app.services import power_dialer as _pd
         _orig_caller = _pd.CALLER
@@ -1881,7 +1914,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.69 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.70 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

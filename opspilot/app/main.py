@@ -21,7 +21,7 @@ from .api.routes import (
     time_tracking, assets, action_center, foresight, client_health, content,
     maintenance, analytics, mailbox, publishers, comms, rmm, crm, prospecting,
     campaigns, remote, quickbooks, gbp, hubspot, docs, payments, dialer, posture,
-    remediation, inventory,
+    remediation, inventory, autopost,
 )
 
 _s = get_settings()
@@ -147,6 +147,7 @@ app.include_router(dialer.router)
 app.include_router(posture.router)
 app.include_router(remediation.router)
 app.include_router(inventory.router)
+app.include_router(autopost.router)
 app.include_router(ui.router)
 
 

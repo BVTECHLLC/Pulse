@@ -217,6 +217,14 @@ def run_checks(db: Session = Depends(get_db),
     except Exception:
         pass
 
+    # Auto-posting (v0.70): publish the next queued social post (~daily cadence).
+    from ...services import autopost
+    posts = []
+    try:
+        posts = autopost.publish_due(db, now)
+    except Exception:
+        pass
+
     # Deliver any due scheduled client reports (v0.20).
     reports = scheduled_reports.send_due(db, now)
 
@@ -236,7 +244,8 @@ def run_checks(db: Session = Depends(get_db),
     return {"offline": sweep, "sla_breaches_fired": sla_fired, "escalated": escalated,
             "reports": reports, "health_checked": (health or {}).get("checked", 0),
             "scheduled_fired": len(scheduled), "recurring_invoices": len(recurring),
-            "reminders_sent": len(reminders), "posture_snapshots": len(snapshots)}
+            "reminders_sent": len(reminders), "posture_snapshots": len(snapshots),
+            "posts_published": len([p for p in posts if p.get("ok")])}
 
 
 # --------------------------------------------------------------------------- #
