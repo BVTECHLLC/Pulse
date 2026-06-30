@@ -92,6 +92,26 @@ def save_sso_settings(body: SSOSettingsIn, request: Request, db: Session = Depen
     return {"ok": True, "providers_active": sorted(p["key"] for p in oauth.enabled_providers())}
 
 
+@router.get("/connections")
+def connections(request: Request, db: Session = Depends(get_db),
+                user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """One-click OAuth connect status per integration: is the app configured (so
+    Connect can run) and is it currently connected (token stored)."""
+    oauth.sync_connect_providers(db)
+    base = _base_url(request)
+    avail = {p["key"] for p in oauth.enabled_providers()}
+    out = []
+    for key, label in (("linkedin", "LinkedIn"), ("google_gbp", "Google Business Profile"),
+                       ("quickbooks", "QuickBooks")):
+        tok = (db.query(OAuthToken).filter(OAuthToken.provider == key)
+               .order_by(OAuthToken.id.desc()).first())
+        out.append({"key": key, "name": label, "app_configured": key in avail,
+                    "connected": bool(tok),
+                    "account": tok.account_email if tok else None,
+                    "connect_url": f"{base}/api/oauth/{key}/connect"})
+    return {"connections": out}
+
+
 @router.get("/providers")
 def providers(db: Session = Depends(get_db)):
     """Which SSO/connector providers are configured (drives the login buttons).
@@ -103,6 +123,7 @@ def providers(db: Session = Depends(get_db)):
 def _start(request: Request, db: Session, provider: str, purpose: str,
            user_id: int | None, next_url: str | None) -> RedirectResponse:
     oauth.sync_vault_providers(db)
+    oauth.sync_connect_providers(db)
     if not oauth.get_provider(provider):
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Provider '{provider}' is not configured")
     verifier = oauth.gen_verifier()
@@ -150,6 +171,7 @@ def callback(provider: str, request: Request, response: Response,
     if error:
         return RedirectResponse(f"/?oauth_error={error}", status_code=302)
     oauth.sync_vault_providers(db)   # ensure the provider config is present
+    oauth.sync_connect_providers(db)
     st = _consume_state(db, provider, state)
     purpose, redirect_uri = st.purpose, st.redirect_uri
     uid, next_url, verifier = st.user_id, st.next_url, st.code_verifier
@@ -179,8 +201,26 @@ def callback(provider: str, request: Request, response: Response,
         issue_session(db, user, request, redirect, method=f"oauth:{provider}")
         return redirect
 
-    # purpose == "connect": store the encrypted token for the connecting user.
+    # purpose == "connect": store the encrypted token (with refresh) for the user.
     _store_token(db, provider, tok, user_id=uid, email=email)
+    # Provider-specifics so the integration is immediately usable:
+    try:
+        if provider == "linkedin":
+            # LinkedIn's person URN comes from userinfo `sub` — auto-fill it so the
+            # publisher needs nothing typed by hand.
+            info = oauth.fetch_userinfo("linkedin", access)
+            sub = info.get("sub")
+            if sub:
+                secure_config.upsert_platform(db, "pub_linkedin", "LinkedIn Publisher", "Marketing",
+                                              {"person_urn": f"urn:li:person:{sub}"})
+        elif provider == "quickbooks":
+            # QBO returns the company id as `realmId` on the redirect — persist it.
+            realm = request.query_params.get("realmId")
+            if realm:
+                secure_config.upsert_platform(db, "quickbooks", "QuickBooks Online", "Accounting",
+                                              {"realm_id": realm})
+    except Exception:
+        pass
     audit.record(db, action="oauth.connected", actor_user_id=uid, actor_email=email,
                  target_type="oauth_token", ip=_ip(request), detail=f"provider={provider}")
     return RedirectResponse((next_url or "/dashboard"), status_code=302)
