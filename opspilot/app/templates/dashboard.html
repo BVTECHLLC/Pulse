@@ -939,6 +939,21 @@
     </div>
 
     <div class="card" style="margin-bottom:16px">
+      <h3>💵 QuickBooks Online <span class="pill" id="set-qb-pill">not configured</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Push Pulse invoices into QuickBooks. From your Intuit app: client id/secret, realm (company) id, and a refresh token.</p>
+      <div class="grid2">
+        <label>Client ID<input id="set-qb-cid" placeholder="(unchanged)"></label>
+        <label>Client secret<input id="set-qb-secret" type="password" placeholder="(unchanged)"></label>
+        <label>Realm (company) ID<input id="set-qb-realm" placeholder="realm id"></label>
+        <label>Refresh token<input id="set-qb-refresh" type="password" placeholder="(unchanged)"></label>
+        <label style="font-weight:normal"><input type="checkbox" id="set-qb-sandbox" style="width:auto"> sandbox company</label>
+      </div>
+      <div class="flex" style="margin-top:10px"><button class="btn sm" onclick="saveQbo()">Save</button>
+        <button class="btn sm ghost" onclick="testQbo()">Test connection</button>
+        <span class="muted" id="set-qb-msg" style="font-size:12px"></span></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
       <h3>🔎 Prospecting (Google Places) <span class="pill" id="set-gp-pill">not configured</span></h3>
       <p class="muted" style="margin:4px 0 10px">Find &amp; score real local businesses as CRM leads. Needs a Google API key with Places API enabled.</p>
       <div class="grid2"><label>Google API key<input id="set-gp-key" type="password" placeholder="(unchanged)"></label></div>
@@ -2265,6 +2280,20 @@ async function runProspect(){
   if(r.ok){msg.textContent=`Found ${j.found}, added ${j.created} new leads (${j.skipped_existing} already in pipeline).`;loadCrm();}
   else msg.textContent=j.detail||'Prospecting failed';
 }
+async function saveQbo(){
+  const msg=document.getElementById('set-qb-msg'); msg.textContent='saving…';
+  const r=await put('/api/quickbooks/settings',{client_id:val('set-qb-cid'),client_secret:val('set-qb-secret'),
+    realm_id:val('set-qb-realm'),refresh_token:val('set-qb-refresh'),sandbox:document.getElementById('set-qb-sandbox').checked});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Saved ✓';setPill('set-qb-pill',j.configured);
+    ['set-qb-secret','set-qb-refresh'].forEach(i=>document.getElementById(i).value='');}
+  else msg.textContent=j.detail||'Save failed';
+}
+async function testQbo(){
+  const msg=document.getElementById('set-qb-msg'); msg.textContent='testing…';
+  const r=await post('/api/quickbooks/test'); const j=await r.json().catch(()=>({}));
+  msg.textContent=r.ok?`Connected ✓ (${esc(j.company||'company')})`:(j.detail||'Test failed');
+}
 async function saveProspecting(){
   const msg=document.getElementById('set-gp-msg'); msg.textContent='saving…';
   const r=await put('/api/prospecting/settings',{api_key:val('set-gp-key')}); const j=await r.json().catch(()=>({}));
@@ -2520,6 +2549,10 @@ async function loadSettings(){
     document.getElementById('set-rmm-url').value=fv(rmm.fields,'base_url');}
   const gp=await api('/api/prospecting/settings');
   if(gp){setPill('set-gp-pill',gp.configured);}
+  const qb=await api('/api/quickbooks/settings');
+  if(qb){setPill('set-qb-pill',qb.configured);
+    document.getElementById('set-qb-realm').value=fv(qb.fields,'realm_id');
+    document.getElementById('set-qb-sandbox').checked=!!qb.sandbox;}
 }
 async function saveMailboxCfg(){
   const msg=document.getElementById('set-mb-msg'); msg.textContent='saving…';

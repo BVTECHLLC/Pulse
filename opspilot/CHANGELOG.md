@@ -1,5 +1,15 @@
 # BVTech OpsPilot — Changelog
 
+## v0.48.0 — QuickBooks Online: push invoices to accounting (June 2026)
+- Connect QuickBooks once (client id/secret + realm id + refresh token, encrypted
+  in the vault) and **push a Pulse invoice into QBO** — finds/creates the customer,
+  maps line items, creates the invoice. `services/quickbooks.py` (token refresh +
+  v3 API over stdlib HTTP; injectable so the customer/invoice mapping is unit-
+  tested offline), `routes/quickbooks.py`, Settings → QuickBooks card.
+- `POST /api/quickbooks/invoices/{id}/push` (OWNER, audited); sandbox toggle.
+  Verified: customer find-or-create, line/amount mapping, sandbox base URL,
+  masked creds, gating + RBAC.
+
 ## v0.47.0 — Remote desktop: native WebRTC relay (backbone) (June 2026)
 - **We are the signaling server** — no third party. New `routes/remote.py` brokers
   a peer-to-peer WebRTC session between an operator (browser) and a device (agent):
