@@ -1267,7 +1267,29 @@ def main():
         # scoring + dedup path is covered by an offline unit test (FakePlaces) in dev.
         print("Prospecting: options + masked key + run-gating + RBAC OK")
 
-    print("\n=== OpsPilot v0.44 SMOKE TEST PASSED ===")
+        # --- v0.45 Campaigns: compliance gating + dry-run + RBAC ---
+        # seed a reachable + a do-not-contact + a non-opted-in contact
+        em_id = c.post("/api/crm/contacts", json={"name": "Reachable Rick", "company": "RickCo",
+                       "email": "rick@reach.test", "phone": "+15125550900", "sms_opt_in": True}).json()["id"]
+        c.post("/api/crm/contacts", json={"name": "DNC Dan", "company": "DanCo",
+               "email": "dan@dnc.test", "do_not_contact": True})
+        # email dry-run: audience counts only the reachable one, sends nothing, no creds needed
+        er = c.post("/api/campaigns/email", json={"subject": "Hi {first}", "body": "Hello {company}",
+                    "dry_run": True}).json()
+        assert er["sent"] == 0 and er["audience"] >= 1, er
+        # real email send requires the mailbox to be configured (it is, from the mailbox block)
+        # but Graph is unreachable here -> failures are counted, call still 200
+        real = c.post("/api/campaigns/email", json={"ids": [em_id], "subject": "Hi", "body": "Yo",
+                      "dry_run": False}).json()
+        assert real["audience"] == 1 and (real["failed"] == 1 or real["sent"] == 1), real
+        # SMS dry-run only counts opted-in numbers
+        sr = c.post("/api/campaigns/sms", json={"message": "Hi {first}", "dry_run": True}).json()
+        assert sr["sent"] == 0 and sr["audience"] >= 1, sr
+        # RBAC: client users can't run campaigns
+        assert ca_c.post("/api/campaigns/email", json={"subject": "x", "body": "y"}).status_code == 403
+        print("Campaigns: email/SMS compliance gating + dry-run + RBAC OK")
+
+    print("\n=== OpsPilot v0.45 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
