@@ -1,5 +1,18 @@
 # BVTech OpsPilot — Changelog
 
+## v0.53.0 — Scheduled automations (time-based rules) (June 2026)
+- Automation rules can now fire **on a schedule**, not just on events. New
+  `schedule` trigger; the schedule lives in the rule's conditions:
+  `{"every":"day","at":"08:00","tz":"America/Chicago"}` (also `hour` and
+  `week` + `day`). The run-checks tick runs due rules and dedups via the rule's
+  last-run, so each schedule fires once per period.
+- Combined with the v0.51 cross-integration actions, this means **Pulse can post
+  to LinkedIn, send an M365 email, or run any action on a timer itself** — no box
+  cron required. `⏰ On a schedule` added to the rule builder with an example.
+- Verified: due-detection across day/hour/week with timezones + before-time + the
+  next-day reset; run-scheduled fires due rules (with graceful action skips) and
+  dedups within the period.
+
 ## v0.52.2 — Connector health watchdog runs itself (June 2026)
 - The health watchdog is now **automatic**: the `run-checks` cron tick triggers a
   connector-health sweep **at most once per hour** (`integration_health.maybe_sweep`)

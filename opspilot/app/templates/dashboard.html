@@ -497,6 +497,7 @@
           <option value="alert.opened">An alert opens</option>
           <option value="ticket.created">A ticket is created</option>
           <option value="ticket.sla_breached">A ticket breaches SLA</option>
+          <option value="schedule">⏰ On a schedule (time-based)</option>
         </select>
         <label>Conditions (JSON — empty = always)</label>
         <textarea id="ar-cond" rows="2" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)"></textarea>
@@ -1246,6 +1247,7 @@ const RULE_EXAMPLES={
   'alert.opened':{cond:{"severity":"critical"},actions:[{type:"create_ticket",priority:"high"},{type:"notify"},{type:"send_email",to:"oncall@bvtech.org",subject:"Critical: {hostname}",body:"{message}"}]},
   'ticket.created':{cond:{"priority":"urgent"},actions:[{type:"assign",auto:true},{type:"add_note",body:"Escalated by automation."}]},
   'ticket.sla_breached':{cond:{},actions:[{type:"notify",message:"SLA breached — needs attention",severity:"warning"}]},
+  'schedule':{cond:{"every":"day","at":"08:00","tz":"America/Chicago"},actions:[{type:"linkedin_post",text:"Daily MSP tip from BVTech 👇"},{type:"send_email",to:"jordan@bvtech.org",subject:"Daily standup",body:"Your scheduled summary."}]},
 };
 function ruleExample(){
   const ex=RULE_EXAMPLES[document.getElementById('ar-trigger').value];

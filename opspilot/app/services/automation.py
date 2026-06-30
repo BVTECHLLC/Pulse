@@ -21,7 +21,8 @@ from ..models import (
     ACTION_ACK_ALERT, ACTION_ADD_NOTE, ACTION_ASSIGN, ACTION_CREATE_TICKET,
     ACTION_LINKEDIN_POST, ACTION_NOTIFY, ACTION_SEND_EMAIL, ACTION_SET_PRIORITY,
     Alert, AlertStatus, AutomationRule, AutomationRun, Device, Notification,
-    PRIORITIES, STAFF_ROLES, SupportTicket, TicketComment, TicketStatus, User,
+    PRIORITIES, STAFF_ROLES, SupportTicket, TicketComment, TicketStatus,
+    TRIGGER_SCHEDULE, User,
 )
 from . import audit, sla
 
@@ -297,3 +298,79 @@ def dispatch(db: Session, trigger: str, context: dict) -> list[dict]:
                          target_id=str(r["rule_id"]), client_id=context.get("client_id"),
                          detail=r["summary"][:500], success=r["success"])
     return results
+
+
+# --------------------------------------------------------------------------- #
+# Scheduled rules (trigger="schedule"). The schedule lives in `conditions`:
+#   {"every":"hour"}                                  -> ~hourly
+#   {"every":"day","at":"09:00","tz":"America/Chicago"}
+#   {"every":"week","day":"mon","at":"09:00","tz":"America/Chicago"}
+# Fired by the run-checks tick; dedup uses the rule's last_triggered_at.
+# --------------------------------------------------------------------------- #
+_WEEKDAYS = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
+
+
+def _aware(dt: datetime | None) -> datetime | None:
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def schedule_due(cfg: dict, last: datetime | None, now: datetime) -> bool:
+    """Pure: is a scheduled rule due to run at `now` given its last run?"""
+    from datetime import timedelta
+    try:
+        from zoneinfo import ZoneInfo
+        zone = ZoneInfo(cfg.get("tz") or "UTC")
+    except Exception:  # noqa: BLE001
+        zone = timezone.utc
+    every = (cfg.get("every") or "day").lower()
+    last = _aware(last)
+    if every == "hour":
+        return last is None or (now - last) >= timedelta(minutes=55)
+
+    nowl = now.astimezone(zone)
+    hh, mm = 9, 0
+    at = cfg.get("at") or ""
+    if ":" in at:
+        try:
+            hh, mm = int(at.split(":")[0]), int(at.split(":")[1])
+        except ValueError:
+            pass
+    target = nowl.replace(hour=hh, minute=mm, second=0, microsecond=0)
+    if nowl < target:
+        return False                      # not yet time today
+    if every == "week":
+        want = _WEEKDAYS.get((cfg.get("day") or "mon")[:3].lower(), 0)
+        if nowl.weekday() != want:
+            return False
+    if last is None:
+        return True
+    return last.astimezone(zone) < target  # haven't run since today's target time
+
+
+def run_scheduled(db: Session, now: datetime | None = None) -> list[dict]:
+    """Run every due scheduled rule. Commits. Returns the fired summaries."""
+    now = now or _now()
+    rules = (db.query(AutomationRule)
+             .filter(AutomationRule.trigger == TRIGGER_SCHEDULE,
+                     AutomationRule.enabled.is_(True)).all())
+    fired: list[dict] = []
+    for rule in rules:
+        if not schedule_due(rule.conditions or {}, rule.last_triggered_at, now):
+            continue
+        ctx = {"client_id": rule.client_id, "scheduled": True,
+               "subject": rule.name, "message": f"Scheduled: {rule.name}"}
+        ok, summary = _run_actions(db, rule, ctx)
+        rule.last_triggered_at = now
+        rule.trigger_count = (rule.trigger_count or 0) + 1
+        db.add(AutomationRun(rule_id=rule.id, rule_name=rule.name, trigger="schedule",
+                             client_id=rule.client_id, success=ok, summary=summary))
+        fired.append({"rule_id": rule.id, "rule_name": rule.name, "success": ok, "summary": summary})
+    if fired:
+        db.commit()
+        for r in fired:
+            audit.record(db, action="automation.scheduled", actor_email="automation@system",
+                         actor_role="system", target_type="automation_rule",
+                         target_id=str(r["rule_id"]), detail=r["summary"][:500], success=r["success"])
+    return fired
