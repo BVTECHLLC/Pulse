@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # --- Identity ---
     APP_NAME: str = "BVTech OpsPilot"
-    APP_VERSION: str = "0.68.0"
+    APP_VERSION: str = "0.69.0"
     ENV: str = "development"  # development | production
 
     # --- Security ---
@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     # binary is present locally in agent/dist/ it's served directly; otherwise
     # /download/agent.exe redirects here so the .exe works as soon as it's built.
     AGENT_RELEASE_BASE: str = "https://github.com/BVTECHLLC/Pulse/releases/latest/download"
+    # CF-free source for the raw .py agent (GitHub raw isn't behind the portal's
+    # Cloudflare, so installers can fetch it even when Bot Fight Mode challenges
+    # direct portal downloads).
+    AGENT_SOURCE_RAW_URL: str = ("https://raw.githubusercontent.com/BVTECHLLC/Pulse/"
+                                 "main/opspilot/agent/opspilot_agent.py")
 
     # --- Outbound email (SMTP). If unset, email is logged, never sent (safe no-op). ---
     SMTP_HOST: str | None = None
