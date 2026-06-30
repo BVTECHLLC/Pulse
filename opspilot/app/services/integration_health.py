@@ -92,6 +92,30 @@ CHECKERS = {
 }
 
 
+def maybe_sweep(db: Session, *, min_interval_minutes: int = 60) -> dict | None:
+    """Run a health sweep at most once per `min_interval_minutes` — for the cron
+    tick, so the watchdog runs itself without hammering provider APIs. Returns the
+    sweep summary if it ran, else None. Throttle state is the newest last_health_at
+    across connections (no extra table needed)."""
+    from datetime import timedelta
+    from sqlalchemy import func
+    last = (db.query(func.max(IntegrationConnection.last_health_at))
+            .filter(IntegrationConnection.client_id.is_(None)).scalar())
+    if last is not None:
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        if _now() - last < timedelta(minutes=min_interval_minutes):
+            return None
+    # Only sweep if there's at least one checkable, configured connection.
+    has_checkable = (db.query(IntegrationConnection)
+                     .filter(IntegrationConnection.client_id.is_(None),
+                             IntegrationConnection.provider.in_(list(CHECKERS)))
+                     .first())
+    if not has_checkable:
+        return None
+    return check_all(db)
+
+
 def check_all(db: Session, *, notify: bool = True) -> dict:
     """Run every available checker, then persist. Network I/O happens FIRST (with
     no DB transaction held open), then a single short write records results and
