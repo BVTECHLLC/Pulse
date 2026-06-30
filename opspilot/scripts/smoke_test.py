@@ -1361,7 +1361,23 @@ def main():
         assert ca_c.get("/api/quickbooks/settings").status_code == 403
         print("QuickBooks: encrypted/masked creds + gating + RBAC OK")
 
-    print("\n=== OpsPilot v0.48 SMOKE TEST PASSED ===")
+        # --- v0.49 HubSpot + Google Business Profile connectors ---
+        assert c.get("/api/hubspot/settings").json()["configured"] is False
+        assert c.put("/api/hubspot/settings", json={"token": "hs-tok"}).json()["configured"] is True
+        assert c.get("/api/hubspot/settings").json()["fields"]["token"]["value"] is None
+        # push reaches HubSpot; with a fake token the upstream call fails (not 500)
+        assert c.post(f"/api/hubspot/contacts/{ct_id}/push").status_code == 502
+        assert ca_c.put("/api/hubspot/settings", json={"token": "x"}).status_code == 403
+        assert c.get("/api/gbp/settings").json()["configured"] is False
+        assert c.post("/api/gbp/post", json={"summary": "hi"}).status_code == 503  # not configured
+        gv = c.put("/api/gbp/settings", json={"client_id": "g", "client_secret": "s",
+                   "refresh_token": "r", "account_name": "accounts/1", "location_name": "locations/2"}).json()
+        assert gv["configured"] is True
+        assert c.get("/api/gbp/settings").json()["fields"]["client_secret"]["value"] is None
+        assert ca_c.get("/api/gbp/settings").status_code == 403
+        print("HubSpot + Google Business Profile: encrypted/masked creds + gating + RBAC OK")
+
+    print("\n=== OpsPilot v0.49 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

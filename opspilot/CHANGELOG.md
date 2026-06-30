@@ -1,5 +1,17 @@
 # BVTech OpsPilot — Changelog
 
+## v0.49.0 — HubSpot + Google Business Profile connectors (June 2026)
+- **HubSpot** — push a Pulse CRM contact to HubSpot (create-or-update by email +
+  log a note), one click from the contact (**↗ HubSpot**). `services/hubspot.py`
+  (private-app token; injectable so upsert/note mapping is unit-tested offline),
+  `routes/hubspot.py`, Settings → HubSpot card with Test.
+- **Google Business Profile** — publish a localPost (update + optional CTA) to
+  your Google listing for reputation/visibility. `services/gbp.py` (OAuth refresh
+  + v4 localPosts; injectable, unit-tested offline), `routes/gbp.py`, Settings →
+  GBP card with **Post now**.
+- Both staff-only, audited, creds encrypted/masked. Verified: GBP localPost
+  payload, HubSpot create+update+note paths, gating + RBAC.
+
 ## v0.48.1 — Fix: JordanPolasek.com auto-posts were getting bvtech.org URLs (June 2026)
 - **Root cause** of "no JP posts": `content_studio` hardcoded `SITE =
   https://bvtech.org`, so every post published to the JP repo got a **bvtech.org
