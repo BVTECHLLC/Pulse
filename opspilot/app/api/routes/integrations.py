@@ -255,6 +255,56 @@ def catalog():
     return {"catalog": INTEGRATION_CATALOG}
 
 
+# --------------------------------------------------------------------------- #
+# Platform integrations status hub (v0.50) — one place to see what's connected.
+# Each entry maps a vault provider to the keys it needs + where to configure it,
+# so the UI can render a live "connected / not configured" board. This is what
+# turns a silently-expired key into something you can SEE.
+# --------------------------------------------------------------------------- #
+PLATFORM_INTEGRATIONS = [
+    {"key": "m365_mailbox", "name": "Microsoft 365 Mailbox", "category": "Email",
+     "required": ["tenant_id", "client_id", "client_secret"], "icon": "📬", "tab": "settings"},
+    {"key": "pub_linkedin", "name": "LinkedIn Publisher", "category": "Marketing",
+     "required": ["access_token", "person_urn"], "icon": "💼", "tab": "settings"},
+    {"key": "gbp", "name": "Google Business Profile", "category": "Marketing",
+     "required": ["client_id", "client_secret", "refresh_token", "account_name", "location_name"],
+     "icon": "📍", "tab": "settings"},
+    {"key": "dialpad", "name": "Dialpad (calls + SMS)", "category": "Telephony",
+     "required": ["api_key", "user_id"], "icon": "📞", "tab": "settings"},
+    {"key": "tacticalrmm", "name": "Tactical RMM connector", "category": "RMM",
+     "required": ["base_url", "api_key"], "icon": "🖥️", "tab": "rmm"},
+    {"key": "google_places", "name": "Prospecting (Google Places)", "category": "Sales",
+     "required": ["api_key"], "icon": "🔎", "tab": "crm"},
+    {"key": "hubspot", "name": "HubSpot", "category": "CRM",
+     "required": ["token"], "icon": "🟠", "tab": "settings"},
+    {"key": "quickbooks", "name": "QuickBooks Online", "category": "Accounting",
+     "required": ["client_id", "client_secret", "refresh_token", "realm_id"],
+     "icon": "💵", "tab": "settings"},
+    {"key": "pub_web_bvtech", "name": "BVTech.org Auto-Publisher", "category": "Marketing",
+     "required": ["site_url"], "icon": "🌐", "tab": "settings"},
+    {"key": "pub_web_jp", "name": "JordanPolasek.com Auto-Publisher", "category": "Marketing",
+     "required": ["site_url"], "icon": "🌐", "tab": "settings"},
+]
+
+
+@router.get("/status")
+def platform_status(db: Session = Depends(get_db),
+                    user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    from ...services import secure_config  # local import avoids cycle
+    out = []
+    connected = 0
+    for spec in PLATFORM_INTEGRATIONS:
+        conn = secure_config.get_platform(db, spec["key"])
+        cfg = (conn.config if conn else None) or {}
+        ok = secure_config.configured(cfg, spec["required"]) if spec["required"] else bool(conn)
+        if ok:
+            connected += 1
+        out.append({"key": spec["key"], "name": spec["name"], "category": spec["category"],
+                    "icon": spec["icon"], "tab": spec["tab"], "configured": ok,
+                    "enabled": bool(conn.enabled) if conn else False})
+    return {"integrations": out, "connected": connected, "total": len(PLATFORM_INTEGRATIONS)}
+
+
 class ConnectionIn(BaseModel):
     provider: str
     name: str | None = None

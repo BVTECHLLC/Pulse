@@ -1,5 +1,15 @@
 # BVTech OpsPilot — Changelog
 
+## v0.50.0 — Integration Hub + safe key updater (June 2026)
+- **🔌 Integration Hub** on the Integrations tab — a live board of every platform
+  connector (M365 mailbox, LinkedIn, GBP, Dialpad, RMM, prospecting, HubSpot,
+  QuickBooks, the website publishers) showing **connected / not-set-up** at a
+  glance; click a greyed tile to jump to its setup. `GET /api/integrations/status`
+  aggregates vault state per provider. No more silently-dead credentials.
+- **`automation/set_key.py`** — idiot-proof, JSON-safe updater for agent.env:
+  timestamped backup, atomic write, re-validates, never prints secrets. Run
+  `python3 automation/set_key.py anthropic_key "sk-ant-…"` or `--show` to list keys.
+
 ## v0.49.1 — Publisher works end-to-end on the JordanPolasek.com site (June 2026)
 - Box logs confirmed the JP publish path was structurally wrong for that site:
   posts live at `/<slug>/index.html` (not `blog/<slug>.html`), the skeleton glob
