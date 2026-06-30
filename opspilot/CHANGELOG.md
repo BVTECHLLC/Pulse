@@ -1,5 +1,25 @@
 # BVTech OpsPilot — Changelog
 
+## v0.71.0 — Auto-post to Google Business Profile (with photos), weekly (July 2026)
+- **Google Business Profile is now an auto-post channel.** The auto-poster can
+  publish to **LinkedIn and/or Google Business Profile**; each queued post can
+  carry an **image** (published as the Google Business **photo** — big lift for
+  engagement + local SEO) and a call-to-action link. Pick the cadence: **168h =
+  weekly**, 24h = daily.
+- The GBP publisher (`services/gbp.create_post`) gained **photo support** (`media`
+  sourceUrl), and the manual **`POST /api/gbp/post`** accepts an `image_url` too.
+- Multi-channel publishing: a post fans out to all its channels, is marked
+  **posted** if any channel succeeds, **failed** if all attempted error, and
+  **left queued** (never burned) if no channel is connected yet. Per-channel
+  results are recorded.
+- `social_posts.image_url` (migration `c9d0e1f2a3b5` + startup self-heal); the
+  Auto-post card gains channel checkboxes + an image field; settings expose
+  per-channel readiness (LinkedIn / Google Business connected?).
+- Verified offline (smoke + unit): a post fans out to LinkedIn + Google Business
+  with the **image passed through** to the GBP photo; weekly cadence holds
+  (no second post for 7 days); an unconfigured channel leaves the post queued;
+  per-channel results recorded; client RBAC. Migration up/down/up clean.
+
 ## v0.70.0 — Auto-posting: keep the feed alive on autopilot (July 2026)
 - **Queue a few posts, walk away.** A new **📣 Auto-post queue** in Content Studio
   lets you load social posts; with auto-publish on, the scheduler publishes the

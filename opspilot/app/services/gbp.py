@@ -86,9 +86,13 @@ class GBPClient:
         return True
 
     def create_post(self, summary: str, cta_url: str | None = None,
-                    cta_type: str = "LEARN_MORE") -> dict:
+                    cta_type: str = "LEARN_MORE", image_url: str | None = None) -> dict:
         body: dict = {"languageCode": "en-US", "summary": summary[:1500],
                       "topicType": "STANDARD"}
         if cta_url:
             body["callToAction"] = {"actionType": cta_type, "url": cta_url}
+        # A photo lifts engagement (and SEO) a lot. Google fetches the image from
+        # the public sourceUrl — it must be a reachable https JPG/PNG.
+        if image_url:
+            body["media"] = [{"mediaFormat": "PHOTO", "sourceUrl": image_url}]
         return self._api("POST", f"{self._parent()}/localPosts", body)

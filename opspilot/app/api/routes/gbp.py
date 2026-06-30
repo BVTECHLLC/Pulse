@@ -66,6 +66,7 @@ def save_settings(body: GBPSettingsIn, request: Request, db: Session = Depends(g
 class PostIn(BaseModel):
     summary: str
     cta_url: str | None = None
+    image_url: str | None = None
 
 
 @router.post("/post")
@@ -75,7 +76,7 @@ def post(body: PostIn, request: Request, db: Session = Depends(get_db),
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "summary is required")
     client = _client(db)
     try:
-        res = client.create_post(body.summary, body.cta_url)
+        res = client.create_post(body.summary, body.cta_url, image_url=body.image_url)
     except gbp.GBPError as e:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
     audit.record(db, action="gbp.post", actor_user_id=user.id, actor_email=user.email,

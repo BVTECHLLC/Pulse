@@ -146,14 +146,21 @@
         <h3 style="margin:0">📣 Auto-post queue <span class="pill" id="ap-state">off</span></h3>
         <label class="flex" style="margin:0;gap:6px;color:var(--muted)"><input type="checkbox" id="ap-enabled" style="width:auto" onchange="saveAutopost()"> Auto-publish ~once/day</label>
       </div>
-      <p class="muted" style="margin:4px 0 10px" id="ap-hint">Load a few posts and OpsPilot publishes the oldest one to LinkedIn about once a day — your feed stays alive on autopilot. Connect LinkedIn in Settings → Publishers.</p>
+      <p class="muted" style="margin:4px 0 10px" id="ap-hint">Load a few posts and OpsPilot publishes the oldest one on a cadence you set — your feed stays alive on autopilot.</p>
       <div class="grid2">
-        <label>Post text<textarea id="ap-body" rows="3" placeholder="Quick MSP security tip…" style="width:100%"></textarea></label>
-        <label>Link (optional)<input id="ap-link" placeholder="https://bvtech.org/blog/…"></label>
+        <label>Post text (keyword-rich = better SEO)<textarea id="ap-body" rows="3" placeholder="Top 5 ways El Campo small businesses stay secure in 2026 — managed IT, 24/7 monitoring, and backups from BVTech."></textarea></label>
+        <div>
+          <label>Link / call-to-action URL (optional)<input id="ap-link" placeholder="https://bvtech.org/contact"></label>
+          <label style="margin-top:8px">Image URL — public https JPG/PNG (great for Google Business)<input id="ap-image" placeholder="https://bvtech.org/img/post.jpg"></label>
+        </div>
+      </div>
+      <div class="flex" style="margin-top:8px;flex-wrap:wrap;gap:10px">
+        <label class="flex" style="margin:0;gap:5px;color:var(--muted)"><input type="checkbox" id="ap-ch-linkedin" checked style="width:auto"> LinkedIn <span id="ap-li-rdy" class="muted" style="font-size:11px"></span></label>
+        <label class="flex" style="margin:0;gap:5px;color:var(--muted)"><input type="checkbox" id="ap-ch-gbp" style="width:auto"> Google Business <span id="ap-gbp-rdy" class="muted" style="font-size:11px"></span></label>
       </div>
       <div class="flex" style="margin-top:8px"><button class="btn sm" onclick="queuePost()">Add to queue</button>
-        <input id="ap-gap" type="number" value="20" min="1" style="width:70px" title="min hours between posts">
-        <span class="muted" style="font-size:12px">min hours between posts</span>
+        <input id="ap-gap" type="number" value="168" min="1" style="width:70px" title="min hours between posts (168 = weekly)">
+        <span class="muted" style="font-size:12px">hours between posts (168 = weekly, 24 = daily)</span>
         <span class="muted" id="ap-msg" style="font-size:12px"></span></div>
       <table style="margin-top:10px"><thead><tr><th>Post</th><th>Status</th><th>When</th><th></th></tr></thead>
         <tbody id="t-autopost"></tbody></table>
@@ -2195,9 +2202,12 @@ async function loadAutopost(){
   document.getElementById('ap-gap').value=st.gap_hours||20;
   const pill=document.getElementById('ap-state');
   pill.textContent=st.enabled?'on':'off'; pill.className='pill'+(st.enabled?' ok':'');
-  document.getElementById('ap-hint').innerHTML=st.linkedin_ready
-    ? 'LinkedIn connected ✓ — queued posts publish about once a day automatically.'
-    : '⚠️ Connect LinkedIn in <b>Settings → Publishers</b> to enable publishing. Posts will queue until then.';
+  document.getElementById('ap-li-rdy').textContent=st.linkedin_ready?'(connected ✓)':'(connect in Settings)';
+  document.getElementById('ap-gbp-rdy').textContent=st.google_business_ready?'(connected ✓)':'(connect in Settings)';
+  const anyReady=st.linkedin_ready||st.google_business_ready;
+  document.getElementById('ap-hint').innerHTML=anyReady
+    ? 'Connected ✓ — queued posts publish automatically on your cadence (with the photo on Google Business).'
+    : '⚠️ Connect <b>LinkedIn</b> and/or <b>Google Business Profile</b> in <b>Settings</b> to enable publishing. Posts queue until then.';
   const rows=await api('/api/autopost')||[];
   document.getElementById('t-autopost').innerHTML=rows.length?rows.map(p=>
     `<tr><td>${esc((p.body||'').slice(0,80))}${(p.body||'').length>80?'…':''}</td>
@@ -2216,9 +2226,12 @@ async function saveAutopost(){
 async function queuePost(){
   const msg=document.getElementById('ap-msg'); const body=val('ap-body');
   if(!body){msg.textContent='Post text is required.';return;}
-  const r=await post('/api/autopost',{body,link:val('ap-link')||null,channels:['linkedin']});
+  const channels=[]; if(document.getElementById('ap-ch-linkedin').checked)channels.push('linkedin');
+  if(document.getElementById('ap-ch-gbp').checked)channels.push('google_business');
+  if(!channels.length){msg.textContent='Pick at least one channel.';return;}
+  const r=await post('/api/autopost',{body,link:val('ap-link')||null,image_url:val('ap-image')||null,channels});
   const j=await r.json().catch(()=>({}));
-  if(r.ok){msg.textContent='Queued ✓';document.getElementById('ap-body').value='';document.getElementById('ap-link').value='';loadAutopost();}
+  if(r.ok){msg.textContent='Queued ✓';['ap-body','ap-link','ap-image'].forEach(i=>document.getElementById(i).value='');loadAutopost();}
   else msg.textContent=j.detail||'Failed';
 }
 async function postNow(id){
