@@ -1389,7 +1389,18 @@ def main():
         assert ca_c.get("/api/integrations/status").status_code == 403
         print("Integration Hub: aggregate connector status + RBAC OK")
 
-    print("\n=== OpsPilot v0.50 SMOKE TEST PASSED ===")
+        # --- v0.51 automation outbound actions (email/LinkedIn) accepted + safe ---
+        rr = c.post("/api/automation/rules", json={"name": "crit-mail", "trigger": "alert.opened",
+                    "conditions": {}, "actions": [
+                        {"type": "send_email", "to": "oncall@bvtech.test", "subject": "Crit {hostname}", "body": "{message}"},
+                        {"type": "linkedin_post", "text": "Outage {hostname}"}]})
+        assert rr.status_code in (200, 201), rr.text
+        # an unknown action type is still rejected
+        assert c.post("/api/automation/rules", json={"name": "bad", "trigger": "alert.opened",
+                      "conditions": {}, "actions": [{"type": "run_nukes"}]}).status_code == 400
+        print("Automation: outbound email/LinkedIn actions validated + unknown rejected OK")
+
+    print("\n=== OpsPilot v0.51 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

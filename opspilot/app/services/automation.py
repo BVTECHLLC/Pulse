@@ -19,9 +19,9 @@ from sqlalchemy.orm import Session
 
 from ..models import (
     ACTION_ACK_ALERT, ACTION_ADD_NOTE, ACTION_ASSIGN, ACTION_CREATE_TICKET,
-    ACTION_NOTIFY, ACTION_SET_PRIORITY, Alert, AlertStatus, AutomationRule,
-    AutomationRun, Device, Notification, PRIORITIES, STAFF_ROLES, SupportTicket,
-    TicketComment, TicketStatus, User,
+    ACTION_LINKEDIN_POST, ACTION_NOTIFY, ACTION_SEND_EMAIL, ACTION_SET_PRIORITY,
+    Alert, AlertStatus, AutomationRule, AutomationRun, Device, Notification,
+    PRIORITIES, STAFF_ROLES, SupportTicket, TicketComment, TicketStatus, User,
 )
 from . import audit, sla
 
@@ -163,6 +163,71 @@ def _act_add_note(db: Session, action: dict, ctx: dict) -> str:
     return f"added internal note to ticket #{ticket.id}"
 
 
+# --------------------------------------------------------------------------- #
+# Outbound-comms actions — reach a configured integration (never a device).
+# They no-op gracefully (returning a "skipped: …" summary, not an error) when the
+# integration isn't set up, so a rule is safe to define before you connect it.
+# --------------------------------------------------------------------------- #
+def _interpolate(text: str, ctx: dict) -> str:
+    """Fill {hostname}/{client}/{message}/{subject}/{severity} from the context."""
+    if not text:
+        return text
+    rep = {
+        "{hostname}": str(ctx.get("hostname") or ""),
+        "{message}": str(ctx.get("message") or ""),
+        "{subject}": str(ctx.get("subject") or ""),
+        "{severity}": str(ctx.get("severity") or ""),
+        "{kind}": str(ctx.get("kind") or ""),
+    }
+    for k, v in rep.items():
+        text = text.replace(k, v)
+    return text
+
+
+def _act_send_email(db: Session, action: dict, ctx: dict) -> str:
+    to = action.get("to")
+    if not to:
+        return "send_email skipped (no 'to' configured)"
+    from . import m365, secure_config
+    conn = secure_config.get_platform(db, "m365_mailbox")
+    cfg = (conn.config if conn else None) or {}
+    if not secure_config.configured(cfg, ("tenant_id", "client_id", "client_secret")):
+        return "send_email skipped (M365 mailbox not configured)"
+    mailbox = cfg.get("mailbox")
+    if not mailbox:
+        return "send_email skipped (no default mailbox set)"
+    subject = _interpolate(action.get("subject") or "Pulse automation", ctx)
+    body = _interpolate(action.get("body") or _default_notify_message(ctx), ctx)
+    try:
+        graph = m365.GraphClient(
+            str(secure_config.get_secret(cfg, "tenant_id") or cfg.get("tenant_id")),
+            str(secure_config.get_secret(cfg, "client_id") or cfg.get("client_id")),
+            str(secure_config.get_secret(cfg, "client_secret")))
+        recipients = [a.strip() for a in str(to).split(",") if a.strip()]
+        graph.send_mail(str(mailbox), recipients, subject, body, html=False)
+    except m365.GraphError as e:
+        return f"send_email failed: {e}"
+    return f"emailed {to}"
+
+
+def _act_linkedin_post(db: Session, action: dict, ctx: dict) -> str:
+    text = _interpolate(action.get("text") or "", ctx)
+    if not text.strip():
+        return "linkedin_post skipped (no text configured)"
+    from . import publishers, secure_config
+    conn = secure_config.get_platform(db, "pub_linkedin")
+    cfg = (conn.config if conn else None) or {}
+    token = secure_config.get_secret(cfg, "access_token")
+    urn = secure_config.get_secret(cfg, "person_urn") or cfg.get("person_urn")
+    if not (token and urn):
+        return "linkedin_post skipped (LinkedIn not configured)"
+    try:
+        pid = publishers.post_linkedin(str(token), str(urn), text, action.get("url") or "")
+    except publishers.PublishError as e:
+        return f"linkedin_post failed: {e}"
+    return f"posted to LinkedIn ({pid})"
+
+
 _HANDLERS = {
     ACTION_CREATE_TICKET: _act_create_ticket,
     ACTION_ACK_ALERT: _act_ack_alert,
@@ -170,6 +235,8 @@ _HANDLERS = {
     ACTION_ASSIGN: _act_assign,
     ACTION_SET_PRIORITY: _act_set_priority,
     ACTION_ADD_NOTE: _act_add_note,
+    ACTION_SEND_EMAIL: _act_send_email,
+    ACTION_LINKEDIN_POST: _act_linkedin_post,
 }
 
 

@@ -597,17 +597,22 @@ TRIGGER_TICKET_CREATED = "ticket.created"
 TRIGGER_SLA_BREACHED = "ticket.sla_breached"
 AUTOMATION_TRIGGERS = (TRIGGER_ALERT_OPENED, TRIGGER_TICKET_CREATED, TRIGGER_SLA_BREACHED)
 
-# Safe, in-platform actions. NOTHING here touches an endpoint or runs code on a
-# device — actions only manipulate OpsPilot's own records.
+# Safe in-platform actions never touch an endpoint or run code on a device —
+# they only manipulate OpsPilot's own records. The "outbound comms" actions
+# (email/LinkedIn) reach configured integrations (not devices); they no-op
+# gracefully when the integration isn't set up.
 ACTION_CREATE_TICKET = "create_ticket"   # alert -> open a ticket
 ACTION_ACK_ALERT = "ack_alert"           # auto-acknowledge the alert
 ACTION_NOTIFY = "notify"                  # raise an in-app notification
 ACTION_ASSIGN = "assign"                  # assign ticket (explicit user or auto least-loaded)
 ACTION_SET_PRIORITY = "set_priority"      # bump/lower ticket priority
 ACTION_ADD_NOTE = "add_note"              # internal note on the ticket
+ACTION_SEND_EMAIL = "send_email"          # send mail via the M365 mailbox integration
+ACTION_LINKEDIN_POST = "linkedin_post"    # publish a post via the LinkedIn integration
 AUTOMATION_ACTIONS = (
     ACTION_CREATE_TICKET, ACTION_ACK_ALERT, ACTION_NOTIFY,
     ACTION_ASSIGN, ACTION_SET_PRIORITY, ACTION_ADD_NOTE,
+    ACTION_SEND_EMAIL, ACTION_LINKEDIN_POST,
 )
 
 

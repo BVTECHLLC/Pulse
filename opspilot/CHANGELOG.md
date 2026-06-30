@@ -1,5 +1,17 @@
 # BVTech OpsPilot — Changelog
 
+## v0.51.0 — Automation reaches across integrations (June 2026)
+- The automation engine gains **outbound-comms actions**: `send_email` (via the
+  M365 mailbox) and `linkedin_post` (via the LinkedIn integration) — so a rule can
+  now *act*, not just file records. Triggered by the same events (alert opened,
+  ticket created, SLA breach). `{hostname}/{message}/{severity}/{subject}`
+  placeholders are interpolated from the event.
+- Security boundary preserved: actions reach **configured integrations, never a
+  device/endpoint**, and **no-op gracefully** (run still succeeds, summary says
+  "skipped") when that integration isn't connected. Verified: dispatch with both
+  actions unconfigured → graceful skips + green run; interpolation; rule
+  validation accepts the new types and still rejects unknown ones.
+
 ## v0.50.0 — Integration Hub + safe key updater (June 2026)
 - **🔌 Integration Hub** on the Integrations tab — a live board of every platform
   connector (M365 mailbox, LinkedIn, GBP, Dialpad, RMM, prospecting, HubSpot,
