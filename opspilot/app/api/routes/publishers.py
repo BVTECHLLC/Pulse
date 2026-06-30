@@ -66,6 +66,8 @@ def all_settings(db: Session = Depends(get_db),
 class LinkedInIn(BaseModel):
     access_token: str | None = None
     person_urn: str | None = None
+    li_client_id: str | None = None       # LinkedIn app — enables one-click Connect
+    li_client_secret: str | None = None
 
 
 @router.put("/linkedin")
@@ -93,11 +95,14 @@ def post_linkedin(body: LinkedInPostIn, request: Request, db: Session = Depends(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Post text is required.")
     conn = secure_config.get_platform(db, LINKEDIN)
     cfg = (conn.config if conn else None) or {}
-    token = secure_config.get_secret(cfg, "access_token")
+    # Prefer a one-click OAuth-connected token (kept fresh automatically); fall
+    # back to a manually-pasted token. The person URN is auto-filled on connect.
+    from ...services import oauth as _oauth
+    token = _oauth.get_valid_token(db, "linkedin") or secure_config.get_secret(cfg, "access_token")
     urn = secure_config.get_secret(cfg, "person_urn") or cfg.get("person_urn")
     if not (token and urn):
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
-                            "LinkedIn not configured — add a token & person URN in Settings.")
+                            "LinkedIn not configured — connect with OAuth or add a token & URN in Settings.")
     try:
         post_id = publishers.post_linkedin(str(token), str(urn), body.text, body.url or "")
     except publishers.PublishError as e:

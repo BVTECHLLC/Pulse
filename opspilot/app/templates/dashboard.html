@@ -1016,6 +1016,19 @@
     </div>
 
     <div class="card" style="margin-bottom:16px">
+      <h3>🔗 One-click Connect <span class="pill">tokens self-refresh</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Authorize once and the token stays fresh automatically — no more pasting/expiring tokens. (Add the redirect URI shown to each provider's OAuth app.)</p>
+      <div id="oc-grid" class="grid cols-4"></div>
+      <div style="margin-top:10px">
+        <label>LinkedIn app (enables LinkedIn Connect) — client id / secret</label>
+        <div class="grid2"><input id="set-li-cid" placeholder="LinkedIn client ID"><input id="set-li-csecret" type="password" placeholder="LinkedIn client secret"></div>
+        <input id="oc-li-redirect" readonly onclick="this.select()" style="font-family:monospace;font-size:11px;margin-top:6px">
+        <div class="flex" style="margin-top:6px"><button class="btn sm" onclick="saveLinkedInApp()">Save LinkedIn app</button>
+          <span class="muted" id="oc-msg" style="font-size:12px"></span></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
       <h3>🟠 HubSpot <span class="pill" id="set-hs-pill">not configured</span></h3>
       <p class="muted" style="margin:4px 0 10px">Sync CRM contacts to HubSpot. Private-app token with crm.objects.contacts read/write.</p>
       <div class="grid2"><label>Private-app token<input id="set-hs-token" type="password" placeholder="(unchanged)"></label></div>
@@ -2414,6 +2427,24 @@ async function saveSSO(){
     setPill('set-sso-pill',a.length>0);['set-sso-mssecret','set-sso-gsecret'].forEach(i=>document.getElementById(i).value='');}
   else msg.textContent=j.detail||'Save failed';
 }
+async function loadConnections(){
+  const r=await api('/api/oauth/connections'); if(!r)return;
+  document.getElementById('oc-grid').innerHTML=(r.connections||[]).map(cn=>{
+    const btn=cn.connected?`<span class="badge ok">● connected</span>`
+      :(cn.app_configured?`<button class="btn sm" onclick="location.href='${cn.connect_url}'">Connect →</button>`
+        :`<span class="muted" style="font-size:11px">add app creds first</span>`);
+    return `<div class="card"><div style="font-weight:600;font-size:13px">${esc(cn.name)}</div>
+      ${cn.account?`<div class="muted" style="font-size:11px">${esc(cn.account)}</div>`:''}
+      <div style="margin-top:6px">${btn}</div></div>`;}).join('');
+  const li=(r.connections||[]).find(x=>x.key==='linkedin');
+  if(li)document.getElementById('oc-li-redirect').value=li.connect_url.replace('/connect','/callback');
+}
+async function saveLinkedInApp(){
+  const msg=document.getElementById('oc-msg'); msg.textContent='saving…';
+  const r=await put('/api/publishers/linkedin',{li_client_id:val('set-li-cid'),li_client_secret:val('set-li-csecret')});
+  if(r.ok){msg.textContent='Saved ✓ — click Connect above';document.getElementById('set-li-csecret').value='';loadConnections();}
+  else msg.textContent='Save failed';
+}
 async function saveHubspot(){
   const msg=document.getElementById('set-hs-msg'); msg.textContent='saving…';
   const r=await put('/api/hubspot/settings',{token:val('set-hs-token')}); const j=await r.json().catch(()=>({}));
@@ -2788,6 +2819,7 @@ async function loadSettings(){
     document.getElementById('set-gbp-acct').value=fv(gb.fields,'account_name');
     document.getElementById('set-gbp-loc').value=fv(gb.fields,'location_name');}
   await loadSSO();
+  await loadConnections();
 }
 async function saveMailboxCfg(){
   const msg=document.getElementById('set-mb-msg'); msg.textContent='saving…';

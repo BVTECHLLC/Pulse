@@ -1496,6 +1496,32 @@ def main():
         assert ca_c.put("/api/oauth/sso-settings", json={"google_client_id": "x"}).status_code == 403
         print("SSO: vault-driven providers + redirect URIs + RBAC OK")
 
+        # --- v0.56 one-click OAuth connect + self-refreshing tokens ---
+        cn = c.get("/api/oauth/connections").json()["connections"]
+        keys = {x["key"] for x in cn}
+        assert {"linkedin", "google_gbp", "quickbooks"} <= keys
+        # quickbooks + gbp app creds were configured earlier -> Connect available
+        byk = {x["key"]: x for x in cn}
+        assert byk["quickbooks"]["app_configured"] is True and byk["quickbooks"]["connected"] is False
+        assert byk["quickbooks"]["connect_url"].endswith("/api/oauth/quickbooks/connect")
+        # saving LinkedIn app creds lights up its Connect
+        c.put("/api/publishers/linkedin", json={"li_client_id": "lid", "li_client_secret": "lsec"})
+        cn2 = {x["key"]: x for x in c.get("/api/oauth/connections").json()["connections"]}
+        assert cn2["linkedin"]["app_configured"] is True
+        # self-refresh engine: a stored token is handed back / refreshed (offline)
+        from app.services import oauth as _oa, crypto as _cy
+        from app.core.db import SessionLocal as _SLo
+        from app.models import OAuthToken as _OT
+        from datetime import datetime as _d, timezone as _z, timedelta as _td
+        _odb = _SLo()
+        _odb.add(_OT(provider="google_gbp", access_token_enc=_cy.encrypt("AT"),
+                     expires_at=_d.now(_z.utc) + _td(hours=1)))
+        _odb.commit()
+        assert _oa.get_valid_token(_odb, "google_gbp") == "AT"
+        _odb.close()
+        assert ca_c.get("/api/oauth/connections").status_code == 403
+        print("One-click OAuth connect: providers + app-config gating + self-refresh engine + RBAC OK")
+
     print("\n=== OpsPilot v0.52 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":

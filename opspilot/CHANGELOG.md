@@ -1,5 +1,20 @@
 # BVTech OpsPilot — Changelog
 
+## v0.56.0 — One-click OAuth Connect + self-refreshing tokens (June 2026)
+- **Authorize once, never paste a token again.** New one-click **Connect** for
+  LinkedIn, Google Business Profile, and QuickBooks — built on the existing
+  PKCE OAuth framework, with each provider's app credentials read from the vault.
+- **Self-refresh forever:** `oauth.get_valid_token()` always hands back a valid
+  access token, refreshing on expiry **and persisting the rotated refresh token**
+  (critical for QuickBooks, which rotates every refresh) so a connection never
+  silently dies. On connect, LinkedIn's person URN is auto-filled from `userinfo`
+  and QuickBooks' realm id is captured — nothing left to type.
+- `GET /api/oauth/connections` (status + connect URLs), a **🔗 One-click Connect**
+  card in Settings (shows the redirect URI to register), and the LinkedIn
+  publisher now prefers the auto-refreshed OAuth token. Verified: token
+  passthrough/refresh + rotated-refresh persistence, provider registration +
+  scopes + LinkedIn no-PKCE, app-config gating, RBAC.
+
 ## v0.55.0 — Morning Briefing + scheduled digest email (June 2026)
 - A cross-business **"what needs attention" briefing** (`services/briefing.py`):
   active alerts, SLA breaches, failing integrations, offline devices, overdue

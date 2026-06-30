@@ -13,6 +13,7 @@ import base64
 import hashlib
 import json
 import secrets
+from datetime import datetime, timedelta, timezone
 from urllib import request as urlreq
 from urllib.parse import urlencode
 
@@ -137,9 +138,10 @@ def authorize_url(provider_key: str, *, state: str, code_challenge: str,
         "redirect_uri": redirect_uri,
         "scope": " ".join(p["scopes"]),
         "state": state,
-        "code_challenge": code_challenge,
-        "code_challenge_method": "S256",
     }
+    if not p.get("no_pkce"):              # LinkedIn's token endpoint rejects PKCE params
+        params["code_challenge"] = code_challenge
+        params["code_challenge_method"] = "S256"
     params.update(p.get("extra_authorize", {}))
     return f"{p['authorize_url']}?{urlencode(params)}"
 
@@ -156,14 +158,16 @@ def _post_form(url: str, data: dict) -> dict:
 def exchange_code(provider_key: str, *, code: str, code_verifier: str,
                   redirect_uri: str) -> dict:
     p = _PROVIDERS[provider_key]
-    return _post_form(p["token_url"], {
+    data = {
         "grant_type": "authorization_code",
         "code": code,
         "redirect_uri": redirect_uri,
         "client_id": p["client_id"],
         "client_secret": p["client_secret"],
-        "code_verifier": code_verifier,
-    })
+    }
+    if not p.get("no_pkce"):
+        data["code_verifier"] = code_verifier
+    return _post_form(p["token_url"], data)
 
 
 def refresh_token(provider_key: str, *, refresh: str) -> dict:
@@ -192,3 +196,104 @@ def fetch_email(provider_key: str, access_token: str) -> str | None:
         if info.get(f):
             return str(info[f]).lower()
     return None
+
+
+def fetch_userinfo(provider_key: str, access_token: str) -> dict:
+    """Raw userinfo payload (LinkedIn needs `sub` -> person URN)."""
+    p = _PROVIDERS.get(provider_key) or {}
+    url = p.get("userinfo_url")
+    if not url:
+        return {}
+    req = urlreq.Request(url, headers={"Authorization": f"Bearer {access_token}",
+                                       "Accept": "application/json"})
+    try:
+        with urlreq.urlopen(req, timeout=15) as r:
+            return json.loads(r.read().decode() or "{}")
+    except Exception:
+        return {}
+
+
+# --------------------------------------------------------------------------- #
+# Self-refreshing connections: store the OAuth token and ALWAYS hand back a
+# valid access token, refreshing (and persisting the rotated refresh token —
+# critical for QuickBooks, which rotates on every refresh) when it's expired.
+# This is what makes a connected integration "never expire again".
+# --------------------------------------------------------------------------- #
+def get_valid_token(db, provider: str) -> str | None:
+    """Return a fresh access token for a connected provider, refreshing on demand.
+    None if the provider was never connected."""
+    from ..models import OAuthToken
+    from . import crypto
+    row = (db.query(OAuthToken).filter(OAuthToken.provider == provider)
+           .order_by(OAuthToken.id.desc()).first())
+    if not row:
+        return None
+    now = datetime.now(timezone.utc)
+    exp = row.expires_at
+    if exp is not None and exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp is None or exp > now + timedelta(seconds=120):
+        return crypto.decrypt(row.access_token_enc)
+    # Expired — try to refresh (needs the provider registered + a refresh token).
+    refresh = crypto.decrypt(row.refresh_token_enc) if row.refresh_token_enc else None
+    if not refresh or not get_provider(provider):
+        return crypto.decrypt(row.access_token_enc)   # best effort
+    try:
+        tok = refresh_token(provider, refresh=refresh)
+    except Exception:
+        return crypto.decrypt(row.access_token_enc)
+    if not tok.get("access_token"):
+        return crypto.decrypt(row.access_token_enc)
+    row.access_token_enc = crypto.encrypt(tok["access_token"])
+    if tok.get("refresh_token"):                       # persist the ROTATED refresh token
+        row.refresh_token_enc = crypto.encrypt(tok["refresh_token"])
+    if tok.get("expires_in"):
+        row.expires_at = now + timedelta(seconds=int(tok["expires_in"]))
+    db.commit()
+    return tok["access_token"]
+
+
+def sync_connect_providers(db) -> None:
+    """Register OAuth *connect* providers (LinkedIn / Google / QuickBooks) using
+    each integration's app credentials from the vault, so one-click Connect works."""
+    from . import secure_config
+
+    def creds(prov, id_key="client_id", secret_key="client_secret"):
+        c = secure_config.get_platform(db, prov)
+        cfg = (c.config if c else None) or {}
+        return (secure_config.get_secret(cfg, id_key) or cfg.get(id_key),
+                secure_config.get_secret(cfg, secret_key), cfg)
+
+    li_id, li_secret, _ = creds("pub_linkedin", "li_client_id", "li_client_secret")
+    if li_id and li_secret:
+        register_provider("linkedin", {
+            "name": "LinkedIn",
+            "authorize_url": "https://www.linkedin.com/oauth/v2/authorization",
+            "token_url": "https://www.linkedin.com/oauth/v2/accessToken",
+            "userinfo_url": "https://api.linkedin.com/v2/userinfo",
+            "scopes": ["openid", "profile", "email", "w_member_social"],
+            "client_id": str(li_id), "client_secret": str(li_secret),
+            "no_pkce": True,
+        })
+    g_id, g_secret, _ = creds("gbp")
+    if g_id and g_secret:
+        register_provider("google_gbp", {
+            "name": "Google Business Profile",
+            "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+            "token_url": "https://oauth2.googleapis.com/token",
+            "scopes": ["https://www.googleapis.com/auth/business.manage"],
+            "client_id": str(g_id), "client_secret": str(g_secret),
+            "extra_authorize": {"access_type": "offline", "prompt": "consent"},
+        })
+    q_id, q_secret, qcfg = creds("quickbooks")
+    if q_id and q_secret:
+        sandbox = bool(qcfg.get("sandbox"))
+        register_provider("quickbooks", {
+            "name": "QuickBooks",
+            "authorize_url": "https://appcenter.intuit.com/connect/oauth2",
+            "token_url": "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+            "scopes": ["com.intuit.quickbooks.accounting"],
+            "client_id": str(q_id), "client_secret": str(q_secret),
+            "extra_authorize": {"access_type": "offline"},
+            "sandbox": sandbox,
+        })
