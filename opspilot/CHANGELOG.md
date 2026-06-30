@@ -1,5 +1,30 @@
 # BVTech OpsPilot — Changelog
 
+## v0.69.0 — Installer that actually works (and never lies) (July 2026)
+- **Fixed the "it says installed but no device shows up" bug.** The one-click
+  `deploy.cmd` used to `irm <portal>/install-exe.ps1 | iex` — but the portal is
+  behind Cloudflare, which served a **bot-challenge page** instead of the script,
+  so the install silently failed while the batch still printed "installed."
+- The double-click installer is now **fully self-contained**: it embeds the
+  install PowerShell directly (base64), so it **never fetches a script through
+  Cloudflare**. The standalone `.exe` is pulled from the **GitHub release**
+  (not behind the portal's Cloudflare), the download is **verified** (real
+  `MZ` executable, not an HTML challenge page), enrollment's **exit code is
+  checked**, and the installer reports the **real result** — loud failure with a
+  cause instead of a false success.
+- Same hardening across **all** installers (`install-exe.ps1`, `install.ps1`,
+  `install.sh`): GitHub-sourced downloads with retries + a browser User-Agent,
+  size/format checks, honest SUCCESS/ERROR exit codes. The agent (`v1.5.2`) now
+  sends a browser User-Agent on its API calls to reduce Cloudflare friction.
+- **Note:** if Cloudflare still challenges the agent's API, add a WAF **Skip**
+  rule for `/api/agent/*` and `/download/*` on `portal.bvtech.org` (Bot Fight
+  Mode / Browser Integrity Check) — the installer now tells you when this is the
+  cause instead of failing silently.
+- Verified offline (smoke): `deploy.cmd` is self-contained (no `irm|iex`), embeds
+  the token, decodes to pull the release `.exe` and fail loudly; `install-exe.ps1`
+  sources the `.exe` from GitHub, checks the MZ header, and honors the enroll exit
+  code.
+
 ## v0.68.0 — Fleet software inventory + patch compliance (July 2026)
 - **See your whole fleet's software at a glance.** A new **📦 Inventory** tab
   aggregates every agent-reported title across all devices — install count,

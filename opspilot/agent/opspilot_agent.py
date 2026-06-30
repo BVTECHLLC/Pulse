@@ -32,7 +32,7 @@ import time
 from pathlib import Path
 from urllib import request as urlreq
 
-AGENT_VERSION = "1.5.1"
+AGENT_VERSION = "1.5.2"
 
 
 def _normalize_url(u: str) -> str:
@@ -111,9 +111,16 @@ def _log(msg: str) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# A real browser User-Agent so Cloudflare "Bot Fight Mode" / Browser Integrity
+# Check is less likely to challenge the agent's API calls. (For a hard Managed
+# Challenge you still need a CF WAF skip rule on /api/agent/* — see docs.)
+_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36 OpsPilotAgent")
+
+
 def _post(path: str, body: dict, headers: dict | None = None) -> dict:
     data = json.dumps(body).encode()
-    h = {"Content-Type": "application/json"}
+    h = {"Content-Type": "application/json", "User-Agent": _UA, "Accept": "application/json"}
     h.update(headers or {})
     req = urlreq.Request(PULSE_URL.rstrip("/") + path, data=data, headers=h, method="POST")
     with urlreq.urlopen(req, timeout=30) as r:
@@ -121,7 +128,9 @@ def _post(path: str, body: dict, headers: dict | None = None) -> dict:
 
 
 def _get(path: str, headers: dict | None = None) -> dict:
-    req = urlreq.Request(PULSE_URL.rstrip("/") + path, headers=headers or {}, method="GET")
+    h = {"User-Agent": _UA, "Accept": "application/json"}
+    h.update(headers or {})
+    req = urlreq.Request(PULSE_URL.rstrip("/") + path, headers=h, method="GET")
     with urlreq.urlopen(req, timeout=30) as r:
         return json.loads(r.read().decode())
 

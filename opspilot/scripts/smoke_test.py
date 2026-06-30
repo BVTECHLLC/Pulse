@@ -937,21 +937,33 @@ def main():
         assert "winget" not in body and "pip" not in body and "python " not in body.lower()
         # install-exe drops a single-use token file so the boot task self-enrolls.
         assert "opspilot-enroll.json" in body
-        print("no-Python .exe installer OK")
+        # v0.69: pulls the .exe from the Cloudflare-free GitHub release, verifies the
+        # MZ header, checks the enroll exit code, and FAILS LOUDLY (no false success).
+        assert "releases/latest/download/opspilot-agent.exe" in body, "exe should come from GitHub release"
+        assert "0x4D" in body and "0x5A" in body, "should verify the MZ executable header"
+        assert "ENROLLMENT FAILED" in body and "$LASTEXITCODE" in body, "must report real enroll result"
+        print("no-Python .exe installer OK (GitHub-sourced + verified + honest)")
 
         # ============== v0.31: preconfigured ("preloaded") .cmd installer ==========
         dtok = c.post(f"/api/agent/enroll-token/{cid}").json()["enroll_token"]
         rcmd = c.get(f"/download/deploy.cmd?token={dtok}")
         assert rcmd.status_code == 200, rcmd.status_code
         cb = rcmd.text
-        # token baked in, hands off to install-exe.ps1, self-elevates, downloads as a file
-        assert dtok in cb, "enrollment token must be embedded in deploy.cmd"
-        assert "OPSPILOT_ENROLL_TOKEN" in cb
-        assert "install-exe.ps1?token=" in cb
+        # Self-contained: self-elevates, runs an EMBEDDED (base64) PowerShell — it must
+        # NOT fetch a script through Cloudflare (the old `irm … | iex` got challenged).
         assert "RunAs" in cb and "@echo off" in cb
+        assert "EncodedCommand" in cb and "irm " not in cb and "iex" not in cb, "deploy.cmd must be self-contained"
+        import base64 as _b64
+        enc=[l for l in cb.splitlines() if "EncodedCommand" in l][0].split("EncodedCommand ")[1].strip()
+        decoded=_b64.b64decode(enc).decode("utf-16-le")
+        # The embedded PS carries the token, pulls the .exe from the GitHub release, and fails loudly.
+        assert dtok in decoded, "enrollment token must be embedded in deploy.cmd"
+        assert "opspilot-agent.exe" in decoded and "ENROLLMENT FAILED" in decoded
+        # honest result reporting in the batch wrapper
+        assert "INSTALL DID NOT COMPLETE" in cb and "installed and enrolled" in cb
         assert "attachment" in rcmd.headers.get("content-disposition", "")
         assert "bvtech-opspilot-install.cmd" in rcmd.headers.get("content-disposition", "")
-        print("preconfigured .cmd installer OK (token baked in)")
+        print("preconfigured .cmd installer OK (self-contained, honest, token baked in)")
 
         # HTML pages must be uncacheable so deploys are visible immediately (v0.17.1).
         for pth in ("/", "/dashboard", "/portal", "/signup"):
@@ -1869,7 +1881,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.68 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.69 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
