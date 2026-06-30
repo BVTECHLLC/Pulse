@@ -770,6 +770,18 @@ def main():
         assert ca_c.post("/api/remediation/rules", json={"name":"x","alert_kind":"device_offline","script_id":sc_id}).status_code==403
         print("auto-remediation: alert→approved fix-script + dedup + queue + RBAC OK")
 
+        # ===================== v0.66: client portal data contract =====================
+        # The polished self-service portal reads these AS THE CLIENT — lock the shape.
+        assert c.get("/portal").status_code==200          # the portal shell renders
+        pg=ca_c.get(f"/api/posture/{cid}").json()         # own security grade
+        assert pg["grade"] in ("A","B","C","D","F") and "domains" in pg, pg
+        cag=ca_c.get("/api/billing/aging").json()         # own balance due
+        assert "total" in cag and all(r["client_id"]==cid for r in cag["invoices"]), cag
+        cinv=ca_c.get("/api/invoices").json()             # invoices carry a balance
+        assert cinv and all(("balance" in i) for i in cinv), cinv
+        assert all(i["status"]!="draft" for i in cinv)    # clients never see drafts
+        print("client portal data: own posture grade + balance + invoice balances + RBAC OK")
+
         # ===================== v0.60: power dialer + call coaching =====================
         from app.services import power_dialer as _pd
         _orig_caller = _pd.CALLER
@@ -1796,7 +1808,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.65 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.66 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
