@@ -105,6 +105,12 @@ def normalize_post(post: dict) -> dict:
     slug = post.get("slug") or slugify(title)
     pub = post.get("date") or _date.today().isoformat()
     desc = (post.get("description") or _excerpt(body)).strip()
+    # Site/brand are overridable per post so the SAME renderer publishes correctly
+    # to bvtech.org OR jordanpolasek.com (defaults keep BVTech behavior intact).
+    site = (post.get("site") or SITE).rstrip("/")
+    org = post.get("org") or "BVTech LLC"
+    author_url = post.get("author_url") or AUTHOR_URL
+    og_image = post.get("og_image") or f"{site}/assets/img/og-image.jpg"
     return {
         "title": title,
         "slug": slug,
@@ -114,27 +120,33 @@ def normalize_post(post: dict) -> dict:
         "author": post.get("author") or AUTHOR,
         "kind": post.get("kind") or "blog",   # blog | advisory
         "body_html": markdown_lite(body),
-        "url": f"{SITE}/blog/{slug}.html",
+        "site": site,
+        "org": org,
+        "author_url": author_url,
+        "og_image": og_image,
+        "url": f"{site}/blog/{slug}.html",
     }
 
 
 def _schema_blocks(p: dict) -> str:
     import json
+    site = p.get("site", SITE)
+    org = p.get("org", "BVTech LLC")
     breadcrumb = {"@context": "https://schema.org", "@type": "BreadcrumbList",
                   "itemListElement": [
-                      {"@type": "ListItem", "position": 1, "name": "Home", "item": f"{SITE}/"},
-                      {"@type": "ListItem", "position": 2, "name": "Blog", "item": f"{SITE}/blog/"},
+                      {"@type": "ListItem", "position": 1, "name": "Home", "item": f"{site}/"},
+                      {"@type": "ListItem", "position": 2, "name": "Blog", "item": f"{site}/blog/"},
                       {"@type": "ListItem", "position": 3, "name": p["title"]}]}
     article = {"@context": "https://schema.org", "@type": "BlogPosting",
                "headline": p["title"],
-               "author": {"@type": "Person", "name": p["author"], "url": AUTHOR_URL,
-                          "@id": f"{SITE}/#founder"},
-               "publisher": {"@type": "Organization", "name": "BVTech LLC", "url": SITE,
-                             "@id": f"{SITE}/#org",
-                             "logo": {"@type": "ImageObject", "url": f"{SITE}/assets/img/logo.png"}},
+               "author": {"@type": "Person", "name": p["author"], "url": p.get("author_url", AUTHOR_URL),
+                          "@id": f"{site}/#founder"},
+               "publisher": {"@type": "Organization", "name": org, "url": site,
+                             "@id": f"{site}/#org",
+                             "logo": {"@type": "ImageObject", "url": f"{site}/assets/img/logo.png"}},
                "url": p["url"], "mainEntityOfPage": p["url"],
                "datePublished": p["date"], "dateModified": p["date"],
-               "image": OG_IMAGE, "inLanguage": "en",
+               "image": p.get("og_image", OG_IMAGE), "inLanguage": "en",
                "description": p["description"]}
     if p["keywords"]:
         article["keywords"] = p["keywords"]
@@ -198,7 +210,7 @@ _STANDALONE = """<!doctype html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{title} | {author} | BVTech LLC</title>
+<title>{title} | {author} | {org}</title>
 <meta name="description" content="{desc_attr}">
 <meta name="author" content="{author}">
 <link rel="canonical" href="{url}">
@@ -207,7 +219,7 @@ _STANDALONE = """<!doctype html>
 <meta property="og:title" content="{title_attr}">
 <meta property="og:description" content="{desc_attr}">
 <meta property="og:url" content="{url}">
-<meta property="og:site_name" content="BVTech LLC">
+<meta property="og:site_name" content="{org}">
 <meta property="og:image" content="{og_image}">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -248,7 +260,7 @@ color:var(--muted);font-size:13px;display:flex;justify-content:space-between;fle
 </head>
 <body>
 <header class="site-head">
-<a href="/" class="logo"><span>BV</span>Tech LLC</a>
+<a href="/" class="logo">{logo_html}</a>
 <a href="/book/" class="cta">Book a Call</a>
 </header>
 <main class="article-body">
@@ -259,24 +271,35 @@ color:var(--muted);font-size:13px;display:flex;justify-content:space-between;fle
 {body_html}
 </main>
 <footer class="site-foot">
-<span>© {year} BVTech LLC · El Campo, TX</span>
-<span><a href="/">bvtech.org</a></span>
+<span>© {year} {org} · El Campo, TX</span>
+<span><a href="/">{site_host}</a></span>
 </footer>
 </body>
 </html>
 """
 
 
+def _logo_html(org: str) -> str:
+    """Render the wordmark with the first two letters accented (e.g. 'BV'Tech)."""
+    o = html.escape(org)
+    if len(org) > 2:
+        return f"<span>{html.escape(org[:2])}</span>{html.escape(org[2:])}"
+    return o
+
+
 def render_standalone(post: dict) -> str:
     p = normalize_post(post)
     dateline = _date.fromisoformat(p["date"]).strftime("%B %-d, %Y")
     tag = "Security Advisory" if p["kind"] == "advisory" else "Insights"
+    site_host = re.sub(r"^https?://", "", p["site"]).rstrip("/")
     return _STANDALONE.format(
         title=html.escape(p["title"]),
         title_attr=html.escape(p["title"], quote=True),
         desc_attr=html.escape(p["description"], quote=True),
         author=html.escape(p["author"]),
-        url=p["url"], og_image=OG_IMAGE, schema=_schema_blocks(p),
+        org=html.escape(p["org"]), site_host=html.escape(site_host),
+        logo_html=_logo_html(p["org"]),
+        url=p["url"], og_image=p["og_image"], schema=_schema_blocks(p),
         dateline=dateline, tag=tag, body_html=p["body_html"],
         year=_date.fromisoformat(p["date"]).year,
     )

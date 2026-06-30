@@ -82,6 +82,14 @@ def _load_post(args) -> dict:
         data["slug"] = args.slug
     if args.body_file:
         data["body"] = Path(args.body_file).read_text(encoding="utf-8")
+    # Site/brand overrides so this publishes correctly to bvtech.org OR
+    # jordanpolasek.com (CLI flag wins over any value in the infile).
+    if args.site:
+        data["site"] = args.site
+    if args.org:
+        data["org"] = args.org
+    if args.author_url:
+        data["author_url"] = args.author_url
     if not data.get("title"):
         print("error: a title is required (via --title or --infile)", file=sys.stderr)
         sys.exit(2)
@@ -102,6 +110,9 @@ def main() -> int:
     ap.add_argument("--keywords")
     ap.add_argument("--slug")
     ap.add_argument("--blog-subdir", default="blog", help="posts dir within the repo")
+    ap.add_argument("--site", help="canonical site base, e.g. https://jordanpolasek.com")
+    ap.add_argument("--org", help="brand/org name shown on the page, e.g. 'Jordan Polasek'")
+    ap.add_argument("--author-url", dest="author_url", help="author profile URL for schema")
     ap.add_argument("--git", action="store_true", help="commit & push after writing")
     ap.add_argument("--branch", default="main")
     ap.add_argument("--dry-run", action="store_true", help="render but don't write")
