@@ -18,7 +18,7 @@ from ...models import (
     Alert, AlertStatus, Asset, Client, Contract, Device, License, Project,
     ProjectStatus, ProjectTask, SupportTicket, TicketStatus, TimeEntry, User,
 )
-from ...services import security, sla
+from ...services import posture, security, sla
 from .contracts import monthly_value
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
@@ -88,6 +88,7 @@ def _build_summary(db: Session, client: Client, now: datetime) -> dict:
         "patch": {"compliance_pct": patch_compliance, "pending_total": pending_patches},
         "alerts": alert_counts,
         "security": security.scorecard(db, client_id),
+        "posture": posture.scorecard(db, client_id, now),
         "tickets": {"total": len(tickets), "open": len(open_tickets),
                     "resolved": resolved, "sla_breached": breached},
         "projects": {"total": len(projects), "active": active_projects,
@@ -125,6 +126,8 @@ def summary_csv(s: dict) -> str:
         ("Active alerts", s["alerts"]["total"]),
         ("Critical alerts", s["alerts"]["critical"]),
         ("Security score", s["security"].get("score")),
+        ("Posture grade", s.get("posture", {}).get("grade")),
+        ("Posture score", s.get("posture", {}).get("score")),
         ("Tickets total", s["tickets"]["total"]),
         ("Tickets open", s["tickets"]["open"]),
         ("Tickets resolved", s["tickets"]["resolved"]),

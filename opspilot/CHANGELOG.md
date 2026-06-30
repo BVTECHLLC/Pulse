@@ -1,5 +1,28 @@
 # BVTech OpsPilot — Changelog
 
+## v0.64.0 — Client security scorecard (A–F posture, client-shareable) (June 2026)
+- **One graded posture report per client.** Rolls the data Pulse already collects
+  into a single **A–F grade** across four domains, each scored 0–100:
+  **Endpoints** (% online · % AV/EDR-protected · avg health), **Patching**
+  (% fully patched · pending updates), **Identity** (Microsoft 365 Secure Score +
+  risky sign-ins), and **Threats** (open security findings, weighted).
+- **Fair by design:** a domain with no data (e.g. no M365 tenant linked) is
+  *excluded* from the weighting, not scored zero — so a small client isn't
+  unfairly graded. The overall is the weighted average of whatever's present,
+  with **plain-English recommendations** generated from the gaps.
+- **Portfolio view + drill-down.** `GET /api/posture` lists every client graded
+  **riskiest-first** (staff); `GET /api/posture/{id}` returns the full breakdown
+  (staff, or that client's own users). A **🛡️ Security Scorecards** card in the
+  Security tab shows the portfolio with per-domain grades and a click-through
+  breakdown, and the **client QBR report + CSV** now carry the posture grade so
+  it's client-shareable.
+- `services/posture.py` (pure read-only aggregation; reuses `services/security`
+  for the threats domain). No schema change.
+- Verified offline (smoke + unit): domains score and grade correctly, empty
+  domains are excluded, recommendations fire on real gaps, the portfolio sorts
+  worst-first, the report/CSV expose the grade, and a client sees only their own
+  scorecard — not the portfolio or another client's (RBAC).
+
 ## v0.63.0 — Finance cockpit: the money picture in one view (June 2026)
 - **A revenue cockpit at the top of Billing.** One call pulls the whole money
   picture together: **collected this month / last 30 days / all-time**,
