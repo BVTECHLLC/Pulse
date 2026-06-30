@@ -1349,7 +1349,19 @@ def main():
         assert rejected, "unauthenticated operator should be rejected"
         print("Remote desktop: WebRTC signaling relay + auth + session lifecycle + RBAC OK")
 
-    print("\n=== OpsPilot v0.47 SMOKE TEST PASSED ===")
+        # --- v0.48 QuickBooks: settings (masked) + gating + RBAC ---
+        assert c.get("/api/quickbooks/settings").json()["configured"] is False
+        assert c.post("/api/quickbooks/test").status_code == 503  # not configured
+        sv = c.put("/api/quickbooks/settings", json={"client_id": "qcid", "client_secret": "qsec",
+                   "refresh_token": "qref", "realm_id": "R-99", "sandbox": True}).json()
+        assert sv["configured"] is True
+        qs = c.get("/api/quickbooks/settings").json()
+        assert qs["sandbox"] is True and qs["fields"]["client_secret"]["value"] is None
+        assert qs["fields"]["refresh_token"]["value"] is None
+        assert ca_c.get("/api/quickbooks/settings").status_code == 403
+        print("QuickBooks: encrypted/masked creds + gating + RBAC OK")
+
+    print("\n=== OpsPilot v0.48 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
