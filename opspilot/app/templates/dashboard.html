@@ -604,6 +604,25 @@
     <div class="card" style="margin-top:16px"><h3>Deployments</h3><table>
       <thead><tr><th>#</th><th>Script</th><th>Device</th><th>By</th><th>Status</th><th>Exit</th><th></th></tr></thead>
       <tbody id="t-deployments"></tbody></table></div>
+
+    <div class="card" style="margin-top:16px">
+      <h3 style="margin-top:0">🤖 Auto-Remediation <span class="pill">detect → fix</span></h3>
+      <p class="muted" style="margin:4px 0 10px">When an alert opens on a device, automatically queue an <b>enabled</b> fix-script on that device. Safety rails: the script must be enabled, with a per-device cooldown + daily cap so a flapping alert can't hammer an endpoint. Every run is an approved, audited deployment.</p>
+      <div class="flex" style="flex-wrap:wrap;gap:8px;align-items:flex-end">
+        <label style="margin:0">Name<input id="rem-name" placeholder="Restart agent when offline" style="min-width:200px"></label>
+        <label style="margin:0">When alert<select id="rem-kind" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:8px;color:var(--ink)"></select></label>
+        <label style="margin:0">Run script<select id="rem-script" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:8px;color:var(--ink)"></select></label>
+        <label style="margin:0">Cooldown min<input id="rem-cool" type="number" value="60" style="width:80px"></label>
+        <label style="margin:0">Max/day<input id="rem-max" type="number" value="3" style="width:70px"></label>
+        <button class="btn sm" onclick="createRemRule()">Add rule</button>
+      </div>
+      <div class="muted" id="rem-msg" style="font-size:12px;margin-top:6px"></div>
+      <table style="margin-top:10px"><thead><tr><th>Rule</th><th>On alert</th><th>Script</th><th>Cooldown</th><th>Max/day</th><th>Fired</th><th>Enabled</th><th></th></tr></thead>
+        <tbody id="t-rem-rules"></tbody></table>
+      <h4 style="margin:14px 0 4px">Recent auto-fixes</h4>
+      <table><thead><tr><th>#</th><th>Script</th><th>Device</th><th>Status</th><th>Reason</th><th>When</th></tr></thead>
+        <tbody id="t-rem-recent"></tbody></table>
+    </div>
   </section>
 
   <section id="network" class="hidden">
@@ -1644,13 +1663,51 @@ async function setSignup(id,st){await patch(`/api/signup-requests/${id}`,{status
 // ---- Scripts & deployments ----
 async function loadScripts(){
   const scripts=await api('/api/scripts');if(!scripts)return;
+  window._SCRIPTS=scripts;
   document.getElementById('t-scripts').innerHTML=scripts.map(s=>
     `<tr><td>${esc(s.name)}</td><td class="muted">${esc(s.language)}</td>
      <td>${sevBadge(s.risk_level==='high'?'high':(s.risk_level==='low'?'low':'medium'))}</td>
      <td><button class="btn sm ${s.enabled?'':'ghost'}" onclick="toggleScript(${s.id},${!s.enabled})">${s.enabled?'on':'off'}</button></td>
      <td>${s.enabled?`<button class="btn sm" onclick="deployScript(${s.id},'${esc(s.name)}')">deploy</button>`:'<span class="muted">enable first</span>'}</td></tr>`).join('')
     ||'<tr><td colspan=5 class="muted">Library is empty.</td></tr>';
+  loadRemediation();
 }
+const ALERT_KIND_LABEL={device_offline:'Device offline',disk_full:'Disk full',high_cpu:'High CPU',
+  high_ram:'High RAM',antivirus_off:'Antivirus off',patch_behind:'Patches behind',low_health:'Low health'};
+async function loadRemediation(){
+  const [kinds,rules,recent]=await Promise.all([
+    api('/api/remediation/alert-kinds'),api('/api/remediation/rules'),api('/api/remediation/recent')]);
+  if(kinds){const sel=document.getElementById('rem-kind');
+    sel.innerHTML=kinds.alert_kinds.map(k=>`<option value="${k}">${ALERT_KIND_LABEL[k]||k}</option>`).join('');}
+  const scripts=(window._SCRIPTS||[]).filter(s=>s.enabled);
+  const ssel=document.getElementById('rem-script');
+  ssel.innerHTML=scripts.length?scripts.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join(''):'<option value="">— enable a script first —</option>';
+  if(rules)document.getElementById('t-rem-rules').innerHTML=rules.length?rules.map(r=>
+    `<tr><td>${esc(r.name)}</td><td>${ALERT_KIND_LABEL[r.alert_kind]||r.alert_kind}</td>
+      <td>${esc(r.script_name||r.script_id)}</td><td>${r.cooldown_minutes}m</td><td>${r.max_per_day}</td><td>${r.fire_count||0}</td>
+      <td><button class="btn sm ${r.enabled?'':'ghost'}" onclick="toggleRemRule(${r.id},${!r.enabled})">${r.enabled?'on':'off'}</button></td>
+      <td><button class="btn sm ghost" onclick="deleteRemRule(${r.id})">✕</button></td></tr>`).join('')
+    :'<tr><td colspan=8 class="muted">No rules yet. Add one above to auto-fix alerts.</td></tr>';
+  if(recent)document.getElementById('t-rem-recent').innerHTML=recent.length?recent.map(x=>
+    `<tr><td>#${x.deployment_id}</td><td>${esc(x.script)}</td><td>${esc(CLIENTS[x.client_id]||'')} dev ${x.device_id}</td>
+      <td><span class="badge ${x.status==='succeeded'?'ok':(x.status==='failed'?'bad':'warn')}">${esc(x.status)}</span></td>
+      <td class="muted" style="font-size:12px">${esc(x.reason||'')}</td><td class="muted" style="font-size:12px">${ago(x.created_at)}</td></tr>`).join('')
+    :'<tr><td colspan=6 class="muted">No auto-fixes have fired yet.</td></tr>';
+}
+async function createRemRule(){
+  const msg=document.getElementById('rem-msg');
+  const name=val('rem-name'),script_id=parseInt(document.getElementById('rem-script').value);
+  if(!name||!script_id){msg.textContent='Name + an enabled script are required.';return;}
+  const r=await post('/api/remediation/rules',{name,alert_kind:document.getElementById('rem-kind').value,
+    script_id,cooldown_minutes:parseInt(val('rem-cool')||'60'),max_per_day:parseInt(val('rem-max')||'3')});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Rule added ✓';document.getElementById('rem-name').value='';loadRemediation();}
+  else msg.textContent=j.detail||'Failed (owner only).';
+}
+async function toggleRemRule(id,en){await patch(`/api/remediation/rules/${id}`,{enabled:en});loadRemediation();}
+async function deleteRemRule(id){if(!confirm('Delete this rule?'))return;
+  const r=await fetch(`/api/remediation/rules/${id}`,{method:'DELETE'});
+  if(!r.ok)alert('Only an owner can delete rules.');loadRemediation();}
 async function createScript(){
   const msg=document.getElementById('scr-msg');msg.textContent='';
   const name=document.getElementById('scr-name').value.trim();

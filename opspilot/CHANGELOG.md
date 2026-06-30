@@ -1,5 +1,28 @@
 # BVTech OpsPilot — Changelog
 
+## v0.65.0 — Auto-remediation: detect → fix, automatically (June 2026)
+- **Close the loop without a human in the middle.** Define a **remediation rule**
+  ("when **device_offline** on this client, run **Restart-Agent**") and when a
+  matching monitoring alert opens, Pulse queues an **already-approved**
+  deployment of that script on the affected device. The native agent pulls it on
+  its next check-in, runs it, and reports the exit code + output back.
+- **Real safety rails** (this is remote execution): the target script must be
+  **enabled** (a disabled script never auto-runs), a **per-device + per-script
+  cooldown** stops a flapping alert from re-firing instantly, and a **daily cap**
+  stops a stuck condition from hammering the box. Every auto-run is an approved,
+  audited, tagged deployment — and an active alert never re-fires (no spam).
+- Rules can target one client or all; they only ever run on the device the alert
+  is about. `services/auto_remediation.py` (cooldown/cap/enabled-guard, hooked
+  into both the agent check-in and the `run-checks` sweep), `routes/remediation.py`
+  (rule CRUD + `/recent` + `/alert-kinds`, staff-gated), new `remediation_rules`
+  table (migration `f6a7b8c9d0e2` + startup self-heal), and an **🤖
+  Auto-Remediation** card in the Scripts tab (rule builder + recent auto-fixes).
+- Verified offline (smoke + unit): an enabled rule fires once on a fresh offline
+  alert and queues an APPROVED deployment (version-snapshotted) into the device's
+  command queue; a disabled-script rule never fires; cooldown + daily-cap + next-
+  day reset all hold; an already-active alert doesn't re-fire; clients can't see
+  or create rules (RBAC). Migration up/down/up clean.
+
 ## v0.64.0 — Client security scorecard (A–F posture, client-shareable) (June 2026)
 - **One graded posture report per client.** Rolls the data Pulse already collects
   into a single **A–F grade** across four domains, each scored 0–100:

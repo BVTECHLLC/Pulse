@@ -1201,3 +1201,33 @@ class DialEntry(Base):
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     dialed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+# --------------------------------------------------------------------------- #
+# v0.65 — Auto-remediation: alert kind -> run a script on the affected device
+# --------------------------------------------------------------------------- #
+# The alert kinds that can trigger an automatic remediation script.
+REMEDIABLE_ALERT_KINDS = (
+    ALERT_OFFLINE, ALERT_DISK_FULL, ALERT_HIGH_CPU, ALERT_HIGH_RAM,
+    ALERT_AV_OFF, ALERT_PATCH_BEHIND, ALERT_LOW_HEALTH,
+)
+
+
+class RemediationRule(Base):
+    """When an alert of `alert_kind` opens on a device, automatically queue an
+    APPROVED run of `script_id` on that device — with a per-device cooldown and a
+    daily cap so a flapping alert can't hammer an endpoint. The target script must
+    be ENABLED for the rule to fire (a disabled script never auto-runs)."""
+    __tablename__ = "remediation_rules"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    alert_kind: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    script_id: Mapped[int] = mapped_column(ForeignKey("scripts.id"), nullable=False)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)  # None = all clients
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    cooldown_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    max_per_day: Mapped[int] = mapped_column(Integer, default=3)
+    last_fired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fire_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
