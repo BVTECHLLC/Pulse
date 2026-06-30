@@ -56,8 +56,13 @@ def _update_sitemap(repo: Path, meta: dict) -> bool:
     return True
 
 
-def _newest_skeleton(blog_dir: Path) -> str | None:
-    posts = [p for p in blog_dir.glob("*.html") if p.name not in ("index.html",)]
+def _newest_skeleton(repo: Path, glob: str) -> str | None:
+    """Newest existing post to clone for pixel-parity. `glob` is relative to the
+    repo root so it works for both 'blog/*.html' (bvtech.org) and '*/index.html'
+    (jordanpolasek.com's per-post folders). Skips obvious non-post pages."""
+    skip_dirs = {"", ".", "blog", "about-jordan-polasek", "certifications", "book", "contact"}
+    posts = [p for p in repo.glob(glob)
+             if p.is_file() and not (p.name == "index.html" and p.parent.name in skip_dirs)]
     if not posts:
         return None
     newest = max(posts, key=lambda p: p.stat().st_mtime)
@@ -113,6 +118,14 @@ def main() -> int:
     ap.add_argument("--site", help="canonical site base, e.g. https://jordanpolasek.com")
     ap.add_argument("--org", help="brand/org name shown on the page, e.g. 'Jordan Polasek'")
     ap.add_argument("--author-url", dest="author_url", help="author profile URL for schema")
+    ap.add_argument("--skeleton-glob", dest="skeleton_glob",
+                    help="glob (repo-relative) for the post to clone; "
+                         "default 'blog/*.html'. JP folders: '*/index.html'")
+    ap.add_argument("--post-path", choices=["blog-file", "slug-folder"], default="blog-file",
+                    help="blog-file -> blog/<slug>.html (bvtech.org); "
+                         "slug-folder -> <slug>/index.html (jordanpolasek.com)")
+    ap.add_argument("--content-class",
+                    help="content-wrapper class to transplant into (e.g. 'content' for JP)")
     ap.add_argument("--git", action="store_true", help="commit & push after writing")
     ap.add_argument("--branch", default="main")
     ap.add_argument("--dry-run", action="store_true", help="render but don't write")
@@ -122,21 +135,26 @@ def main() -> int:
     if not repo.is_dir():
         print(f"error: repo path {repo} does not exist", file=sys.stderr)
         return 3
-    # Create blog/ if the site repo doesn't have it yet (fresh repo): the post
-    # still publishes (standalone template) and the dir is created on first use.
-    blog_dir = repo / args.blog_subdir
-    blog_dir.mkdir(parents=True, exist_ok=True)
 
     post = _load_post(args)
-    skeleton = _newest_skeleton(blog_dir)
+    post["path_style"] = args.post_path   # drives the canonical URL convention
+    glob = args.skeleton_glob or (f"{args.blog_subdir}/*.html")
+    skeleton = _newest_skeleton(repo, glob)
+    content_classes = (args.content_class,) if args.content_class else None
     try:
-        html = cs.render(post, skeleton_html=skeleton)
+        html = cs.render(post, skeleton_html=skeleton, content_classes=content_classes)
         meta = cs.normalize_post(post)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
 
-    out = blog_dir / f"{meta['slug']}.html"
+    # Where the post file lands: bvtech.org uses blog/<slug>.html; jordanpolasek.com
+    # uses per-post folders <slug>/index.html (matches its existing posts + URLs).
+    if args.post_path == "slug-folder":
+        out = repo / meta["slug"] / "index.html"
+    else:
+        out = repo / args.blog_subdir / f"{meta['slug']}.html"
+    out.parent.mkdir(parents=True, exist_ok=True)
     mode = "clone (pixel-perfect)" if skeleton else "standalone"
     if args.dry_run:
         print(f"[dry-run] would write {out} ({len(html)} bytes, {mode})")
