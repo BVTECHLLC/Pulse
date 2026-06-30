@@ -36,11 +36,14 @@ def _post(secret_key: str, path: str, form: dict) -> dict:
         raise StripeError(f"Stripe request failed: {e}")
 
 
-def checkout_session_form(invoice, success_url: str, cancel_url: str) -> dict:
-    """Build the form for a one-line Checkout Session that charges the invoice total."""
-    amount_cents = int(round(float(invoice.total or 0) * 100))
+def checkout_session_form(invoice, success_url: str, cancel_url: str,
+                          amount: float | None = None) -> dict:
+    """Build the form for a one-line Checkout Session. Charges `amount` (the
+    remaining balance) when given, else the full invoice total."""
+    charge = float(amount) if amount is not None else float(invoice.total or 0)
+    amount_cents = int(round(charge * 100))
     if amount_cents <= 0:
-        raise StripeError("invoice total must be greater than zero")
+        raise StripeError("amount to charge must be greater than zero")
     label = f"Invoice {invoice.number or invoice.id}"
     return {
         "mode": "payment",
@@ -55,8 +58,9 @@ def checkout_session_form(invoice, success_url: str, cancel_url: str) -> dict:
     }
 
 
-def create_checkout(secret_key: str, invoice, success_url: str, cancel_url: str) -> dict:
-    form = checkout_session_form(invoice, success_url, cancel_url)
+def create_checkout(secret_key: str, invoice, success_url: str, cancel_url: str,
+                    amount: float | None = None) -> dict:
+    form = checkout_session_form(invoice, success_url, cancel_url, amount=amount)
     res = _post(secret_key, "checkout/sessions", form)
     return {"id": res.get("id"), "url": res.get("url")}
 

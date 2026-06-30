@@ -630,6 +630,31 @@ def main():
         assert ca_c.get("/api/payments/methods/settings").status_code==403
         print("multi-method payments (PayPal/Venmo/CashApp/wire/check + prefill + RBAC) OK")
 
+        # ===================== v0.61: payments & balance tracking =====================
+        pay0=c.get(f"/api/invoices/{inv_id}/payments").json()
+        assert abs(pay0["balance"]-1500)<0.01 and pay0["amount_paid"]==0, pay0
+        # Partial payment → balance shrinks, invoice still open, pay links re-price.
+        rp=c.post(f"/api/invoices/{inv_id}/payments", json={"amount":500,"method":"check","reference":"1042"})
+        assert rp.status_code==201 and abs(rp.json()["balance"]-1000)<0.01 and not rp.json()["fully_paid"], rp.text
+        opt_bal=c.get(f"/api/payments/invoices/{inv_id}/options").json()
+        assert abs(opt_bal["balance"]-1000)<0.01 and opt_bal["paid"] is False, opt_bal
+        pp=[o for o in opt_bal["options"] if o["key"]=="paypal"][0]
+        assert "1000.00" in pp["url"], pp   # link now bills the remaining balance
+        # Validation: non-positive amount + unknown method rejected.
+        assert c.post(f"/api/invoices/{inv_id}/payments", json={"amount":0,"method":"cash"}).status_code==400
+        assert c.post(f"/api/invoices/{inv_id}/payments", json={"amount":10,"method":"bitcoin"}).status_code==400
+        # Pay the rest → auto-reconciles to PAID, balance zero, options close out.
+        rp2=c.post(f"/api/invoices/{inv_id}/payments", json={"amount":1000,"method":"bank_wire"}).json()
+        assert rp2["fully_paid"] and rp2["status"]=="paid" and rp2["balance"]==0.0, rp2
+        opt_paid=c.get(f"/api/payments/invoices/{inv_id}/options").json()
+        assert opt_paid["paid"] is True and opt_paid["options"]==[] and opt_paid["stripe"] is False, opt_paid
+        # Ledger lists both payments; invoice now reads paid with zero balance.
+        pl=c.get(f"/api/invoices/{inv_id}/payments").json()
+        assert len(pl["payments"])==2 and pl["balance"]==0.0 and pl["status"]=="paid", pl
+        # RBAC: clients can't record payments.
+        assert ca_c.post(f"/api/invoices/{inv_id}/payments", json={"amount":5,"method":"cash"}).status_code==403
+        print("payments & balance: partial→balance, link re-price, auto-reconcile, ledger + RBAC OK")
+
         # ===================== v0.60: power dialer + call coaching =====================
         from app.services import power_dialer as _pd
         _orig_caller = _pd.CALLER
@@ -1656,7 +1681,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.60 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.61 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

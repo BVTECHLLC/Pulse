@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from ...core.db import get_db
 from ...core.deps import current_user, is_staff, require_roles
 from ...models import Invoice, InvoiceStatus, Role, User
-from ...services import audit, payment_methods, secure_config, stripe_pay
+from ...services import audit, billing_payments, payment_methods, secure_config, stripe_pay
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
@@ -109,8 +109,11 @@ def invoice_pay_options(invoice_id: int, db: Session = Depends(get_db),
         if inv.client_id != user.client_id or inv.status == InvoiceStatus.DRAFT:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
 
-    paid = inv.status == InvoiceStatus.PAID
-    ctx = {"id": inv.id, "number": inv.number, "total": inv.total, "currency": inv.currency}
+    amount_paid = billing_payments.amount_paid(db, inv.id)
+    bal = billing_payments.balance(inv, amount_paid)
+    paid = inv.status == InvoiceStatus.PAID or bal <= 0
+    # Pay links bill the REMAINING balance (partial payments shrink it).
+    ctx = {"id": inv.id, "number": inv.number, "total": bal, "currency": inv.currency}
 
     # Stripe (card) shows as a checkout button when the secret key is present.
     stripe_conn = secure_config.get_platform(db, PROVIDER)
@@ -119,12 +122,13 @@ def invoice_pay_options(invoice_id: int, db: Session = Depends(get_db),
 
     mconn = secure_config.get_platform(db, METHODS_PROVIDER)
     mcfg = (mconn.config if mconn else None) or {}
-    options = payment_methods.pay_options(mcfg, ctx)
+    options = [] if paid else payment_methods.pay_options(mcfg, ctx)
 
     return {"invoice_id": inv.id, "number": inv.number, "total": inv.total,
+            "amount_paid": round(amount_paid, 2), "balance": round(max(bal, 0.0), 2),
             "currency": inv.currency, "status": inv.status.value, "paid": paid,
-            "stripe": stripe_on, "note": (mcfg.get("methods_note") or "").strip(),
-            "options": options}
+            "stripe": stripe_on and not paid,
+            "note": (mcfg.get("methods_note") or "").strip(), "options": options}
 
 
 @router.post("/invoices/{invoice_id}/checkout")
@@ -141,10 +145,14 @@ def create_checkout(invoice_id: int, request: Request, db: Session = Depends(get
     if not secret:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
                             "Stripe not configured — add your secret key in Settings → Payments.")
+    bal = billing_payments.balance(inv, billing_payments.amount_paid(db, inv.id))
+    if bal <= 0:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Invoice has no remaining balance")
     base = _base_url(request)
     try:
         sess = stripe_pay.create_checkout(str(secret), inv,
-                                          f"{base}/dashboard?paid={inv.id}", f"{base}/dashboard")
+                                          f"{base}/dashboard?paid={inv.id}", f"{base}/dashboard",
+                                          amount=bal)
     except stripe_pay.StripeError as e:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
     audit.record(db, action="stripe.checkout", actor_user_id=user.id, actor_email=user.email,
@@ -174,12 +182,16 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         inv_id = stripe_pay.invoice_id_from_event(event)
         if inv_id:
             inv = db.get(Invoice, inv_id)
-            if inv and inv.status != InvoiceStatus.PAID:
-                inv.status = InvoiceStatus.PAID
-                inv.paid_at = datetime.now(timezone.utc)
-                db.commit()
+            if inv and inv.status != InvoiceStatus.VOID:
+                # Record the card payment (idempotent on the Stripe object id) and
+                # let the ledger reconcile the invoice to paid.
+                obj = (event.get("data") or {}).get("object") or {}
+                ref = obj.get("id") or obj.get("payment_intent")
+                amt = obj.get("amount_total")
+                amount = round(amt / 100.0, 2) if isinstance(amt, (int, float)) else None
+                res = billing_payments.reconcile_from_external(db, inv, amount, "card", ref)
                 audit.record(db, action="stripe.invoice_paid", target_type="invoice",
                              target_id=str(inv.id), client_id=inv.client_id, ip=_ip(request),
-                             detail=f"event={etype}")
-                return {"ok": True, "invoice_paid": inv.id}
+                             detail=f"event={etype} balance={(res or {}).get('balance')}")
+                return {"ok": True, "invoice_paid": inv.id, "reconciled": bool(res)}
     return {"ok": True, "ignored": etype}
