@@ -44,15 +44,15 @@ git -C "$BV_WEBSITE_REPO" pull --ff-only origin main || true
 cd "$PULSE_REPO"
 PROMPT="$(cat automation/bvtech_persona.md; echo; echo '---'; echo; cat automation/daily_blog_prompt.md)"
 
-# Headless Claude Code. It will web-search a current story, write the post, and
-# run scripts/publish_post.py to publish. Tools are limited to what it needs.
-#   --print            : non-interactive, print result and exit
-#   --permission-mode  : acceptEdits so it can write files + run the publish step unattended
-# If your CLI version differs, see automation/SETUP.md for the exact flags.
-claude --print \
-  --permission-mode acceptEdits \
-  --allowedTools "WebSearch,WebFetch,Read,Write,Edit,Bash" \
-  "$PROMPT" || echo "claude run returned non-zero"
+# Headless Claude Code: web-search today's story, write the post, run
+# scripts/publish_post.py to publish. In cron there's no one to approve prompts,
+# so we bypass permissions (the prompt + repo scope constrain what it does).
+#   -p / --print            : non-interactive, print result and exit
+#   --permission-mode bypassPermissions : run unattended (no approval prompts)
+# This flag set is stable across Claude Code 2.x. If your build differs, run
+# `claude --help` and adjust this one line.
+claude -p "$PROMPT" --permission-mode bypassPermissions \
+  || echo "claude run returned non-zero (safety-net publish below will still try)"
 
 # ---- Safety-net publish: if Claude wrote today.json but didn't push, do it. -- #
 TODAY_JSON="automation/out/today.json"

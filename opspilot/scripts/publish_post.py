@@ -108,10 +108,13 @@ def main() -> int:
     args = ap.parse_args()
 
     repo = Path(args.repo).resolve()
-    blog_dir = repo / args.blog_subdir
-    if not blog_dir.is_dir():
-        print(f"error: {blog_dir} not found — is --repo the website checkout?", file=sys.stderr)
+    if not repo.is_dir():
+        print(f"error: repo path {repo} does not exist", file=sys.stderr)
         return 3
+    # Create blog/ if the site repo doesn't have it yet (fresh repo): the post
+    # still publishes (standalone template) and the dir is created on first use.
+    blog_dir = repo / args.blog_subdir
+    blog_dir.mkdir(parents=True, exist_ok=True)
 
     post = _load_post(args)
     skeleton = _newest_skeleton(blog_dir)

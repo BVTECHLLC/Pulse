@@ -38,11 +38,13 @@ else
   bad "pulse repo missing automation/ or scripts/publish_post.py at $PULSE_REPO"
 fi
 
-# 4) Website repo present, is a git repo, has blog/
-if [ -d "$BV_WEBSITE_REPO/.git" ] && [ -d "$BV_WEBSITE_REPO/blog" ]; then
-  pass "website repo OK ($BV_WEBSITE_REPO, $(ls "$BV_WEBSITE_REPO"/blog/*.html 2>/dev/null | wc -l) posts)"
+# 4) Website repo present + is a git checkout (blog/ is created on first publish)
+if [ -d "$BV_WEBSITE_REPO/.git" ]; then
+  n=$(ls "$BV_WEBSITE_REPO"/blog/*.html 2>/dev/null | wc -l)
+  pass "website repo OK ($BV_WEBSITE_REPO, $n posts)"
+  [ "$n" -eq 0 ] && echo "     ⚠️  note: repo has no blog posts yet — push your V107 site so the homepage exists and posts get pixel-perfect templates."
 else
-  bad "website repo not found / not a git checkout / no blog/ at $BV_WEBSITE_REPO"
+  bad "website repo not found / not a git checkout at $BV_WEBSITE_REPO"
 fi
 
 # 5) GitLab push access (read test via deploy key — doesn't push anything)
