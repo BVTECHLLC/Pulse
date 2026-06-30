@@ -187,6 +187,14 @@ def run_checks(db: Session = Depends(get_db),
     # Run any due scheduled automation rules (v0.53) — time-based automations.
     scheduled = automation.run_scheduled(db, now)
 
+    # Recurring billing (v0.58): auto-generate invoices for due contracts.
+    from ...services import recurring_billing
+    recurring = []
+    try:
+        recurring = recurring_billing.generate_due(db, now)
+    except Exception:
+        pass
+
     # Deliver any due scheduled client reports (v0.20).
     reports = scheduled_reports.send_due(db, now)
 
@@ -205,7 +213,7 @@ def run_checks(db: Session = Depends(get_db),
                         f"escalated={escalated} reports_sent={reports['reports_sent']}")
     return {"offline": sweep, "sla_breaches_fired": sla_fired, "escalated": escalated,
             "reports": reports, "health_checked": (health or {}).get("checked", 0),
-            "scheduled_fired": len(scheduled)}
+            "scheduled_fired": len(scheduled), "recurring_invoices": len(recurring)}
 
 
 # --------------------------------------------------------------------------- #

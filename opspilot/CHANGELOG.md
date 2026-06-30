@@ -1,5 +1,40 @@
 # BVTech OpsPilot — Changelog
 
+## v0.59.0 — Pay any way: PayPal, Venmo, Cash App, Zelle, wire, check, QuickBooks (June 2026)
+- **Hand clients every way to pay, right on the invoice.** Configure each rail
+  once in **Settings → Payment Methods** and it renders automatically on every
+  invoice the client opens, with the **amount and invoice number pre-filled** into
+  each pay link:
+  - **PayPal** (PayPal.me deep link, or email instructions), **Venmo**, **Cash App**
+    — one-tap deep links to `paypal.me` / `venmo.com` / `cash.app` for the exact total.
+  - **Zelle**, **Bank wire / ACH** (beneficiary + routing/account), **Check by mail**
+    (payee + address) — clean printed instructions on the invoice.
+  - **QuickBooks** pay link/note, plus a fully **custom** rail (label + URL or
+    instructions) for anything else (Wise, crypto, …).
+  - **Card via Stripe** still shows its secure-checkout button alongside the rest.
+- A method only goes **live once its required fields are set**, so clients never
+  see a half-configured option. Wire/Zelle/PayPal details are shown (not masked) —
+  they're meant for the payer. `services/payment_methods.py` (pure link/instruction
+  builders), `GET /api/payments/invoices/{id}/options` (invoice-scoped, same access
+  control as the invoice itself), `PUT /api/payments/methods/settings` (OWNER).
+- Verified offline (smoke): empty config offers nothing; configuring PayPal/Venmo/
+  Cash App/wire lights them up with the **$1,500.00 total + `Invoice INV-…` memo
+  pre-filled**; partial saves don't wipe other rails; clients can read their own
+  invoice's options but **cannot** configure methods (RBAC).
+
+## v0.58.0 — Recurring auto-invoicing: contracts bill themselves (June 2026)
+- **Set it and forget it.** Flag a service contract **Auto-invoice** and Pulse
+  generates a **draft invoice** for the contract amount every period (monthly /
+  quarterly / annual) on the scheduler tick — no more manual re-keying.
+- Deduped via `contracts.last_invoiced_at` (a guard slightly under the nominal
+  period) so a contract bills **about once per period, exactly once** even though
+  the tick runs continuously. `services/recurring_billing.py` (pure date logic),
+  wired into `POST /api/automation/run-checks`, plus a manual **`POST
+  /api/contracts/run-recurring`** (OWNER) to bill on demand.
+- Verified offline (smoke + unit): only a due contract bills; a contract invoiced
+  5 days ago is skipped; an immediate second run creates nothing; a never-billed
+  contract bills once and `last_invoiced_at` is stamped; RBAC enforced.
+
 ## v0.57.0 — Stripe payments: clients pay invoices online, auto-reconcile (June 2026)
 - A **💳 Pay link** on any sent invoice creates a **Stripe Checkout Session** for
   the invoice total; the client pays online and the invoice **auto-marks paid**

@@ -577,6 +577,59 @@ def main():
         assert all(ct["client_id"]==cid for ct in ca_c.get("/api/contracts").json())
         print("client report (enriched QBR + CSV export) + RBAC OK")
 
+        # ===================== v0.58: recurring auto-invoicing =====================
+        # Flag the Managed IT contract for auto-invoicing, then run the generator.
+        mi=[ct for ct in c.get("/api/contracts").json() if ct["name"]=="Managed IT"][0]
+        assert mi["auto_invoice"] is False and mi["last_invoiced_at"] is None, mi
+        c.patch(f"/api/contracts/{mi['id']}", json={"auto_invoice":True})
+        mi2=[ct for ct in c.get("/api/contracts").json() if ct["name"]=="Managed IT"][0]
+        assert mi2["auto_invoice"] is True, mi2
+        before=len(c.get("/api/invoices").json())
+        run=c.post("/api/contracts/run-recurring").json()
+        assert run["ok"] and len(run["created"])==1, run
+        assert run["created"][0]["contract"]=="Managed IT" and abs(run["created"][0]["total"]-1500)<0.01, run
+        after=len(c.get("/api/invoices").json())
+        assert after==before+1, (before, after)
+        # Dedup: a second immediate run creates nothing (last_invoiced_at guard).
+        run2=c.post("/api/contracts/run-recurring").json()
+        assert run2["ok"] and len(run2["created"])==0, run2
+        mi3=[ct for ct in c.get("/api/contracts").json() if ct["name"]=="Managed IT"][0]
+        assert mi3["last_invoiced_at"] is not None, mi3
+        # Non-owner cannot trigger recurring billing.
+        assert ca_c.post("/api/contracts/run-recurring").status_code==403
+        print("recurring auto-invoicing (generate + dedup + RBAC) OK")
+
+        # ===================== v0.59: multi-method payments =====================
+        inv_id=run["created"][0]["invoice_id"]   # the auto-generated Managed IT invoice
+        # Nothing configured yet -> only Stripe flag (maybe) + no manual options.
+        opt0=c.get(f"/api/payments/invoices/{inv_id}/options").json()
+        assert opt0["options"]==[] and abs(opt0["total"]-1500)<0.01, opt0
+        # Configure several rails (partial save semantics: only sent fields).
+        pm=c.put("/api/payments/methods/settings", json={"fields":{
+            "paypal_handle":"bvtechllc","venmo_handle":"@BVTech-LLC","cashapp_cashtag":"$BVTech",
+            "bank_routing":"111000025","bank_account":"1234567890","bank_name":"First Natl",
+            "methods_note":"Thanks for your business!"}}).json()
+        assert set(pm["enabled"])>={"paypal","venmo","cashapp","bank_wire"}, pm
+        # Settings round-trip: plain (non-secret) fields echo back for the UI.
+        ms=c.get("/api/payments/methods/settings").json()
+        assert ms["fields"]["paypal_handle"]["value"]=="bvtechllc", ms["fields"].get("paypal_handle")
+        assert "bank_account" in ms["fields"]  # wire details shown (meant for the payer)
+        # The invoice now offers all configured rails, amount pre-filled into links.
+        opt=c.get(f"/api/payments/invoices/{inv_id}/options").json()
+        keys={o["key"]:o for o in opt["options"]}
+        assert {"paypal","venmo","cashapp","bank_wire"}<=set(keys), list(keys)
+        assert "1500.00" in keys["paypal"]["url"] and "paypalme/bvtechllc" in keys["paypal"]["url"], keys["paypal"]
+        assert keys["bank_wire"]["kind"]=="instructions", keys["bank_wire"]
+        assert opt["note"]=="Thanks for your business!", opt
+        # Partial update keeps prior fields (don't wipe paypal by omitting it).
+        c.put("/api/payments/methods/settings", json={"fields":{"check_payee":"BVTech LLC","check_address":"PO Box 1"}})
+        ms2=c.get("/api/payments/methods/settings").json()
+        assert ms2["fields"]["paypal_handle"]["value"]=="bvtechllc" and "check" in ms2["enabled"], ms2["enabled"]
+        # RBAC: clients can read THEIR invoice options but cannot configure methods.
+        assert ca_c.put("/api/payments/methods/settings", json={"fields":{"paypal_handle":"x"}}).status_code==403
+        assert ca_c.get("/api/payments/methods/settings").status_code==403
+        print("multi-method payments (PayPal/Venmo/CashApp/wire/check + prefill + RBAC) OK")
+
         # ===================== v0.15: Notification channels =====================
         import threading
         from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -1549,7 +1602,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.52 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.59 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

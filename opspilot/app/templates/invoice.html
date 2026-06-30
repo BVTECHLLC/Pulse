@@ -12,6 +12,11 @@
   .inv-head{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px}
   .inv-total{font-size:28px;font-weight:800;color:var(--ink)}
   .right{text-align:right}
+  .pay-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+  .pay-card{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--card)}
+  .pay-h{font-weight:700;margin-bottom:6px}
+  .pay-row{display:flex;justify-content:space-between;gap:10px;padding:3px 0;font-size:13px;border-bottom:1px dashed var(--line)}
+  .pay-row b{text-align:right;word-break:break-word}
 </style>
 </head>
 <body>
@@ -55,7 +60,47 @@ async function load(){
       <div class="muted">Tax (${i.tax_rate||0}%): ${money(i.tax_amount,i.currency)}</div>
       <div class="inv-total" style="margin-top:6px">Total: ${money(i.total,i.currency)}</div>
     </div>
-    ${i.notes?`<p class="muted" style="margin-top:18px">${esc(i.notes)}</p>`:''}`;
+    ${i.notes?`<p class="muted" style="margin-top:18px">${esc(i.notes)}</p>`:''}
+    <div id="paybox"></div>`;
+  loadPay(i);
+}
+
+async function loadPay(i){
+  const box=document.getElementById('paybox'); if(!box) return;
+  let p; try{ const r=await fetch(`/api/payments/invoices/${ID}/options`); if(!r.ok) return; p=await r.json(); }catch(e){ return; }
+  if(p.paid){ box.innerHTML=`<div class="noprint" style="margin-top:22px;padding:14px;border:1px solid var(--line);border-radius:12px;background:rgba(34,197,94,.08)"><b>✓ Paid in full.</b> Thank you!</div>`; return; }
+  const cards=[];
+  if(p.stripe){
+    cards.push(`<div class="pay-card"><div class="pay-h">💳 Pay by Card</div>
+      <p class="muted" style="margin:4px 0 10px;font-size:13px">Secure online checkout — Visa, Mastercard, Amex.</p>
+      <button class="btn" id="pay-stripe" onclick="payStripe(this)">Pay ${money(p.total,p.currency)} now</button></div>`);
+  }
+  (p.options||[]).forEach(o=>{
+    let body='';
+    if(o.kind==='link'){
+      body=`<a class="btn" target="_blank" rel="noopener noreferrer" href="${esc(o.url)}">${esc(o.button||('Pay with '+o.label))}</a>`;
+    }else{
+      const rows=(o.instructions||[]).map(x=>`<div class="pay-row"><span class="muted">${esc(x.label)}</span><b>${esc(x.value)}</b></div>`).join('');
+      body=`${rows}${o.note?`<p class="muted" style="margin:8px 0 0;font-size:12px">${esc(o.note)}</p>`:''}`;
+    }
+    cards.push(`<div class="pay-card"><div class="pay-h">${esc(o.emoji||'•')} ${esc(o.label)}</div>${body}</div>`);
+  });
+  if(!cards.length){ return; }
+  box.innerHTML=`<div class="noprint" style="margin-top:24px">
+    <h3 style="margin:0 0 4px">Pay this invoice</h3>
+    ${p.note?`<p class="muted" style="margin:0 0 12px;font-size:13px">${esc(p.note)}</p>`:''}
+    <div class="pay-grid">${cards.join('')}</div></div>`;
+}
+
+async function payStripe(btn){
+  btn.disabled=true; const old=btn.textContent; btn.textContent='Redirecting…';
+  try{
+    const r=await fetch(`/api/payments/invoices/${ID}/checkout`,{method:'POST',headers:{'Content-Type':'application/json'}});
+    const j=await r.json().catch(()=>({}));
+    if(j.url){ location.href=j.url; return; }
+    alert(j.detail||'Could not start card checkout.');
+  }catch(e){ alert('Could not start card checkout.'); }
+  btn.disabled=false; btn.textContent=old;
 }
 load();
 </script>
