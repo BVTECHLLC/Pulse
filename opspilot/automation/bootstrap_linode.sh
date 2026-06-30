@@ -26,7 +26,13 @@ echo "== BVTech Linode bootstrap =="
 # is auto-mapped). The GitLab deploy token goes in a clean shell file so we
 # never touch/append to your JSON.
 miss=0
-[ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "  ❌ ANTHROPIC_API_KEY/anthropic_key not found in $ENV_FILE"; miss=1; }
+if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+  echo "  ❌ Anthropic key not found in $ENV_FILE (looked for anthropic_key/ANTHROPIC_API_KEY/etc)"
+  echo "     Here are the key names actually in your file (values hidden):"
+  bvtech_env_keys "$ENV_FILE"
+  echo "     → tell Claude that exact key name, or rename it to \"anthropic_key\"."
+  miss=1
+fi
 [ -n "${BV_GL_USER:-}" ]  || { echo "  ❌ BV_GL_USER missing  — GitLab deploy-token USERNAME"; miss=1; }
 [ -n "${BV_GL_TOKEN:-}" ] || { echo "  ❌ BV_GL_TOKEN missing — GitLab deploy-token VALUE"; miss=1; }
 if [ "$miss" != 0 ]; then
