@@ -1,5 +1,26 @@
 # BVTech OpsPilot — Changelog
 
+## v0.68.0 — Fleet software inventory + patch compliance (July 2026)
+- **See your whole fleet's software at a glance.** A new **📦 Inventory** tab
+  aggregates every agent-reported title across all devices — install count,
+  client spread, version count, publisher — with search. Click a title to see
+  **exactly which devices run it** (instant vulnerability response: "who's on
+  OpenSSL 3.0.1?").
+- **Patch compliance, fleet-wide.** A rollup of **% compliant, devices reporting,
+  total pending, and critical-pending**, plus **compliance by client**, the
+  **worst-offending devices**, and the **most-common pending updates** (by KB,
+  with device spread). Pairs with auto-remediation — add a `patch_behind` rule to
+  auto-fix the laggards.
+- `services/inventory.py` (read-only aggregation over `device_software` /
+  `device_patches`), `routes/inventory.py`: `GET /api/inventory/software`,
+  `GET /api/inventory/software/devices`, `GET /api/inventory/patches` (patch
+  rollup staff-only; software scoped to the caller's client for client users).
+  **No schema change.**
+- Verified offline (smoke + unit): titles aggregate with correct device/version/
+  client counts; the device drill-down finds machines running a title; the patch
+  rollup computes compliance %, severity mix, worst devices, and top pending
+  updates; client software is self-scoped and the patch rollup is staff-only (RBAC).
+
 ## v0.67.0 — Posture trend + grade-drop alerting (July 2026)
 - **Catch a slipping client before the QBR.** The scheduler now **snapshots every
   client's security scorecard ~daily**, and the moment a client's grade **slips
