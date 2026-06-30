@@ -599,7 +599,11 @@ class KBArticle(Base):
 TRIGGER_ALERT_OPENED = "alert.opened"
 TRIGGER_TICKET_CREATED = "ticket.created"
 TRIGGER_SLA_BREACHED = "ticket.sla_breached"
-AUTOMATION_TRIGGERS = (TRIGGER_ALERT_OPENED, TRIGGER_TICKET_CREATED, TRIGGER_SLA_BREACHED)
+# A time-based trigger: the rule's `conditions` hold the schedule, e.g.
+# {"every":"day","at":"09:00","tz":"America/Chicago"}. Fired by the run-checks tick.
+TRIGGER_SCHEDULE = "schedule"
+AUTOMATION_TRIGGERS = (TRIGGER_ALERT_OPENED, TRIGGER_TICKET_CREATED,
+                       TRIGGER_SLA_BREACHED, TRIGGER_SCHEDULE)
 
 # Safe in-platform actions never touch an endpoint or run code on a device —
 # they only manipulate OpsPilot's own records. The "outbound comms" actions

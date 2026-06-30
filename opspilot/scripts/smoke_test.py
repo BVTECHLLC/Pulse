@@ -1400,6 +1400,22 @@ def main():
                       "conditions": {}, "actions": [{"type": "run_nukes"}]}).status_code == 400
         print("Automation: outbound email/LinkedIn actions validated + unknown rejected OK")
 
+        # --- v0.53 scheduled automations (time-based trigger) ---
+        sr = c.post("/api/automation/rules", json={"name": "daily-sched", "trigger": "schedule",
+                    "conditions": {"every": "day", "at": "00:00", "tz": "UTC"},
+                    "actions": [{"type": "notify", "message": "scheduled daily"}]})
+        assert sr.status_code in (200, 201), sr.text
+        from app.services import automation as _A
+        from app.core.db import SessionLocal as _SL2
+        from datetime import datetime as _dt2, timezone as _tz2
+        _sdb = _SL2()
+        fired = _A.run_scheduled(_sdb, _dt2(2030, 1, 1, 12, 0, tzinfo=_tz2.utc))
+        assert any(x["rule_name"] == "daily-sched" for x in fired), fired
+        again = _A.run_scheduled(_sdb, _dt2(2030, 1, 1, 13, 0, tzinfo=_tz2.utc))  # same day
+        assert not any(x["rule_name"] == "daily-sched" for x in again), "scheduled rule re-fired same day"
+        _sdb.close()
+        print("Scheduled automations: time-based trigger fires once/period + dedup OK")
+
         # --- v0.52 integration health watchdog ---
         # /status carries health fields; the live-check endpoint is OWNER/TECH only.
         sj = c.get("/api/integrations/status").json()
