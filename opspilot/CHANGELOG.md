@@ -1,5 +1,12 @@
 # BVTech OpsPilot — Changelog
 
+## v0.40.0 — SLA performance analytics (June 2026)
+- `GET /api/analytics/sla-performance?days=90` — the metrics MSPs report on:
+  **response & resolution SLA attainment %**, **avg response/resolution time**,
+  and a **per-priority breakdown**, over a rolling window. Tenant-scoped read
+  model (`services/analytics.py`), feeds QBRs. Verified: attainment math,
+  averages, by-priority, scoping.
+
 ## v0.39.0 — Maintenance windows: suppress alerts during planned work (June 2026)
 - Schedule a **maintenance window** (per-device or whole-client) and the
   monitoring engine **suppresses all alerting** inside it — patching, reboots and

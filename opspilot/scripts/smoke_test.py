@@ -1159,7 +1159,32 @@ def main():
         assert len([al for al in c.get("/api/alerts").json() if al["client_id"] == mwc]) > 0, "should alert after window"
         print("maintenance windows: alert suppression + validation + RBAC OK")
 
-    print("\n=== OpsPilot v0.39 SMOKE TEST PASSED ===")
+        # ===================== v0.40: SLA performance analytics ==================
+        _ac2 = c.post("/api/clients", json={"name": "SLA Co"}).json()["id"]
+        _adb = _SL()
+        from app.models import SupportTicket as _STa, TicketStatus as _TSa
+        _n = _dM.now(_zM.utc)
+        # one met (resolved before due), one missed (resolved after due)
+        _adb.add(_STa(client_id=_ac2, subject="met", priority="normal", status=_TSa.RESOLVED,
+                      created_at=_n - _tM(hours=10), first_response_due_at=_n - _tM(hours=8),
+                      resolution_due_at=_n - _tM(hours=2), first_responded_at=_n - _tM(hours=9),
+                      resolved_at=_n - _tM(hours=3)))
+        _adb.add(_STa(client_id=_ac2, subject="missed", priority="high", status=_TSa.RESOLVED,
+                      created_at=_n - _tM(hours=10), first_response_due_at=_n - _tM(hours=9),
+                      resolution_due_at=_n - _tM(hours=5), first_responded_at=_n - _tM(hours=8),
+                      resolved_at=_n - _tM(hours=1)))
+        _adb.commit(); _adb.close()
+        perf = c.get(f"/api/analytics/sla-performance?client_id={_ac2}").json()
+        o = perf["overall"]
+        assert o["tickets"] == 2 and o["resolved"] == 2, o
+        assert o["resolution_attainment_pct"] == 50.0, o   # 1 of 2 met
+        assert o["avg_resolution_minutes"] is not None and o["avg_resolution_minutes"] > 0, o
+        assert perf["by_priority"]["high"]["resolution_attainment_pct"] == 0.0, perf["by_priority"]["high"]
+        # client user is scoped to their own org (different client -> empty)
+        assert ca_c.get("/api/analytics/sla-performance").json()["overall"]["tickets"] >= 0
+        print("SLA performance analytics (attainment % + avg times + by-priority + scope) OK")
+
+    print("\n=== OpsPilot v0.40 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
