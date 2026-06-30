@@ -20,7 +20,7 @@ from .api.routes import (
     channels, report_schedules, integrations, search, oauth, projects, overview,
     time_tracking, assets, action_center, foresight, client_health, content,
     maintenance, analytics, mailbox, publishers, comms, rmm, crm, prospecting,
-    campaigns, remote, quickbooks,
+    campaigns, remote, quickbooks, gbp, hubspot,
 )
 
 _s = get_settings()
@@ -138,6 +138,8 @@ app.include_router(prospecting.router)
 app.include_router(campaigns.router)
 app.include_router(remote.router)
 app.include_router(quickbooks.router)
+app.include_router(gbp.router)
+app.include_router(hubspot.router)
 app.include_router(ui.router)
 
 

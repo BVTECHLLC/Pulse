@@ -954,6 +954,31 @@
     </div>
 
     <div class="card" style="margin-bottom:16px">
+      <h3>🟠 HubSpot <span class="pill" id="set-hs-pill">not configured</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Sync CRM contacts to HubSpot. Private-app token with crm.objects.contacts read/write.</p>
+      <div class="grid2"><label>Private-app token<input id="set-hs-token" type="password" placeholder="(unchanged)"></label></div>
+      <div class="flex" style="margin-top:10px"><button class="btn sm" onclick="saveHubspot()">Save</button>
+        <button class="btn sm ghost" onclick="testHubspot()">Test connection</button>
+        <span class="muted" id="set-hs-msg" style="font-size:12px"></span></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h3>📍 Google Business Profile <span class="pill" id="set-gbp-pill">not configured</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Publish updates to your Google listing. OAuth client + refresh token + account/location names.</p>
+      <div class="grid2">
+        <label>Client ID<input id="set-gbp-cid" placeholder="(unchanged)"></label>
+        <label>Client secret<input id="set-gbp-secret" type="password" placeholder="(unchanged)"></label>
+        <label>Refresh token<input id="set-gbp-refresh" type="password" placeholder="(unchanged)"></label>
+        <label>Account name<input id="set-gbp-acct" placeholder="accounts/123"></label>
+        <label>Location name<input id="set-gbp-loc" placeholder="locations/456"></label>
+      </div>
+      <div class="flex" style="margin-top:10px"><button class="btn sm" onclick="saveGbp()">Save</button>
+        <input id="set-gbp-text" placeholder="post an update now…" style="flex:1;min-width:160px">
+        <button class="btn sm ghost" onclick="postGbp()">Post now</button>
+        <span class="muted" id="set-gbp-msg" style="font-size:12px"></span></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
       <h3>🔎 Prospecting (Google Places) <span class="pill" id="set-gp-pill">not configured</span></h3>
       <p class="muted" style="margin:4px 0 10px">Find &amp; score real local businesses as CRM leads. Needs a Google API key with Places API enabled.</p>
       <div class="grid2"><label>Google API key<input id="set-gp-key" type="password" placeholder="(unchanged)"></label></div>
@@ -2280,6 +2305,34 @@ async function runProspect(){
   if(r.ok){msg.textContent=`Found ${j.found}, added ${j.created} new leads (${j.skipped_existing} already in pipeline).`;loadCrm();}
   else msg.textContent=j.detail||'Prospecting failed';
 }
+async function saveHubspot(){
+  const msg=document.getElementById('set-hs-msg'); msg.textContent='saving…';
+  const r=await put('/api/hubspot/settings',{token:val('set-hs-token')}); const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Saved ✓';setPill('set-hs-pill',j.configured);document.getElementById('set-hs-token').value='';}
+  else msg.textContent=j.detail||'Save failed';
+}
+async function testHubspot(){
+  const msg=document.getElementById('set-hs-msg'); msg.textContent='testing…';
+  const r=await post('/api/hubspot/test'); const j=await r.json().catch(()=>({}));
+  msg.textContent=r.ok?'Connected ✓':(j.detail||'Test failed');
+}
+async function saveGbp(){
+  const msg=document.getElementById('set-gbp-msg'); msg.textContent='saving…';
+  const r=await put('/api/gbp/settings',{client_id:val('set-gbp-cid'),client_secret:val('set-gbp-secret'),
+    refresh_token:val('set-gbp-refresh'),account_name:val('set-gbp-acct'),location_name:val('set-gbp-loc')});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Saved ✓';setPill('set-gbp-pill',j.configured);
+    ['set-gbp-secret','set-gbp-refresh'].forEach(i=>document.getElementById(i).value='');}
+  else msg.textContent=j.detail||'Save failed';
+}
+async function postGbp(){
+  const msg=document.getElementById('set-gbp-msg'); const t=val('set-gbp-text');
+  if(!t){msg.textContent='Enter an update.';return;}
+  msg.textContent='posting…';
+  const r=await post('/api/gbp/post',{summary:t}); const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Posted to Google ✓';document.getElementById('set-gbp-text').value='';}
+  else msg.textContent=j.detail||'Post failed';
+}
 async function saveQbo(){
   const msg=document.getElementById('set-qb-msg'); msg.textContent='saving…';
   const r=await put('/api/quickbooks/settings',{client_id:val('set-qb-cid'),client_secret:val('set-qb-secret'),
@@ -2373,8 +2426,10 @@ async function crmOpen(id){
       ${a.body?`<div class="muted" style="font-size:12px;white-space:pre-wrap">${esc(a.body)}</div>`:''}</div>`).join('')
     ||'<p class="muted">No activity yet.</p>';
   d.innerHTML=`<div class="flex" style="justify-content:space-between"><h3 style="margin:0">${esc(c.name)}</h3>
-      ${c.client_id?`<span class="badge ok">client #${c.client_id}</span>`
-        :`<button class="btn sm" onclick="crmConvert(${c.id})">Convert to client</button>`}</div>
+      <div class="flex">${c.client_id?`<span class="badge ok">client #${c.client_id}</span>`
+        :`<button class="btn sm" onclick="crmConvert(${c.id})">Convert to client</button>`}
+        <button class="btn sm ghost" onclick="crmPushHubspot(${c.id})">↗ HubSpot</button></div></div>
+    <span id="crm-hs-msg" class="muted" style="font-size:12px"></span>
     <p class="muted" style="margin:4px 0;font-size:12px">${esc(c.company||'')} ${c.title?'· '+esc(c.title):''}<br>
       ${esc(c.email||'')} ${c.phone?'· '+esc(c.phone):''}</p>
     <div class="flex" style="margin:8px 0">
@@ -2394,6 +2449,12 @@ async function crmStatus(id,status){await patch(`/api/crm/contacts/${id}`,{statu
 async function crmLog(id){
   const body={type:document.getElementById('crm-act-type').value,subject:val('crm-act-subj'),body:val('crm-act-body')};
   const r=await post(`/api/crm/contacts/${id}/activity`,body); if(r.ok){crmOpen(id);loadCrm();}
+}
+async function crmPushHubspot(id){
+  const msg=document.getElementById('crm-hs-msg'); if(msg)msg.textContent='pushing…';
+  const r=await post(`/api/hubspot/contacts/${id}/push`); const j=await r.json().catch(()=>({}));
+  if(msg)msg.textContent=r.ok?`Synced to HubSpot ✓ (${j.hubspot_id})`:(j.detail||'HubSpot not configured');
+  if(r.ok)crmOpen(id);
 }
 async function crmConvert(id){
   if(!confirm('Convert this contact into a managed client?'))return;
@@ -2553,6 +2614,11 @@ async function loadSettings(){
   if(qb){setPill('set-qb-pill',qb.configured);
     document.getElementById('set-qb-realm').value=fv(qb.fields,'realm_id');
     document.getElementById('set-qb-sandbox').checked=!!qb.sandbox;}
+  const hs=await api('/api/hubspot/settings'); if(hs)setPill('set-hs-pill',hs.configured);
+  const gb=await api('/api/gbp/settings');
+  if(gb){setPill('set-gbp-pill',gb.configured);
+    document.getElementById('set-gbp-acct').value=fv(gb.fields,'account_name');
+    document.getElementById('set-gbp-loc').value=fv(gb.fields,'location_name');}
 }
 async function saveMailboxCfg(){
   const msg=document.getElementById('set-mb-msg'); msg.textContent='saving…';
