@@ -266,11 +266,24 @@ def main():
         _bt.first_response_due_at=_d3.now(_z3.utc)-_t3(hours=2)
         _bt.resolution_due_at=_d3.now(_z3.utc)-_t3(hours=2)
         _bt.sla_breach_alerted=False; _db2.commit(); _db2.close()
+        from app.models import PRIORITIES
         rc=c.post("/api/automation/run-checks").json()
         assert rc["sla_breaches_fired"]>=1, rc
         assert any("SLA breached" in n["message"] for n in c.get("/api/notifications").json())
+        # v0.38: built-in escalation runs on breach (ntid is already 'urgent' -> the
+        # note records the top-priority cap rather than bumping).
+        assert "escalated" in rc, rc
+        assert any("auto-escalated" in cm["body"] for cm in c.get(f"/api/tickets/{ntid}/comments").json())
         assert c.post("/api/automation/run-checks").json()["sla_breaches_fired"]==0, "breach re-fired (no dedup)"
-        print("run-checks SLA breach + dedup OK:", rc)
+        # priority-bump path: a normal-priority breached ticket gets bumped one level.
+        _eid=c.post("/api/tickets", json={"client_id":cid,"subject":"Escalate me","priority":"normal"}).json()["id"]
+        _ed=_SL(); _e=_ed.get(_ST,_eid)
+        _e.first_response_due_at=_d3.now(_z3.utc)-_t3(hours=3)
+        _e.resolution_due_at=_d3.now(_z3.utc)-_t3(hours=2); _ed.commit(); _ed.close()
+        rc3=c.post("/api/automation/run-checks").json()
+        assert rc3["escalated"]>=1, rc3
+        assert c.get(f"/api/tickets/{_eid}").json()["priority"]=="high", "normal should bump to high"
+        print("run-checks SLA breach + escalation (note + priority bump) + dedup OK")
 
         # Notifications: unread filter + mark read.
         unread=c.get("/api/notifications?unread_only=true").json()
@@ -1117,7 +1130,7 @@ def main():
         assert c.delete(f"/api/assets/{a1['id']}").status_code==204
         print("asset management (CMDB + warranty + filters + RBAC + search) OK")
 
-    print("\n=== OpsPilot v0.37 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.38 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

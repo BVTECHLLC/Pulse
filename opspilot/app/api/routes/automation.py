@@ -167,12 +167,18 @@ def run_checks(db: Session = Depends(get_db),
     open_tickets = (db.query(SupportTicket)
                     .filter(SupportTicket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS]))
                     .all())
+    from ...services import sla_escalation
     sla_fired = 0
+    escalated = 0
     for t in open_tickets:
         s = sla.evaluate(t, now)
         if s["breached"] and not t.sla_breach_alerted:
             t.sla_breach_alerted = True
-            db.commit()  # persist the flag before dispatch (which commits its own work)
+            # Built-in escalation: bump priority + internal note + notification.
+            esc = sla_escalation.escalate(db, t, now)
+            if esc["priority_bumped"]:
+                escalated += 1
+            db.commit()  # persist the flag + escalation before custom rules dispatch
             ctx = automation.build_ticket_context(t)
             ctx["breach"] = True
             automation.dispatch(db, "ticket.sla_breached", ctx)
@@ -184,8 +190,9 @@ def run_checks(db: Session = Depends(get_db),
     audit.record(db, action="automation.run_checks", actor_user_id=user.id, actor_email=user.email,
                  actor_role=user.role.value, target_type="automation", ip=None,
                  detail=f"offline_opened={sweep['offline_opened']} sla_breaches_fired={sla_fired} "
-                        f"reports_sent={reports['reports_sent']}")
-    return {"offline": sweep, "sla_breaches_fired": sla_fired, "reports": reports}
+                        f"escalated={escalated} reports_sent={reports['reports_sent']}")
+    return {"offline": sweep, "sla_breaches_fired": sla_fired, "escalated": escalated,
+            "reports": reports}
 
 
 # --------------------------------------------------------------------------- #

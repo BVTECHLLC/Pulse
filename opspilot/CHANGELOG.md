@@ -1,5 +1,14 @@
 # BVTech OpsPilot — Changelog
 
+## v0.38.0 — SLA breach auto-escalation (June 2026)
+- When a ticket newly breaches its SLA, the run-checks tick now **escalates** it,
+  not just flags it: bumps priority one level (low→normal→high→urgent, capped),
+  posts an **internal note** documenting the breach, and raises a **critical
+  notification** (in-app + channel fan-out). De-duplicated per breach.
+- Deliberately does NOT re-stamp SLA targets on escalation (the ticket stays
+  breached — no clock-resetting). `services/sla_escalation.py`; wired into
+  `/api/automation/run-checks` (returns `escalated` count). Verified end-to-end.
+
 ## v0.37.0 — Bulk alert triage (June 2026)
 - Triage an alert storm in one click: select alerts (or "select all") on the
   Alerts tab and **Ack** or **Resolve** them in bulk.
