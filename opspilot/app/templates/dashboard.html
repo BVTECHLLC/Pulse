@@ -679,6 +679,13 @@
     <tbody id="t-licenses"></tbody></table></div></section>
 
   <section id="integrations" class="hidden">
+    <div class="card" style="margin-bottom:16px">
+      <div class="flex" style="justify-content:space-between;align-items:center;flex-wrap:wrap">
+        <div><b>🔌 Integration Hub.</b> <span class="muted" id="ih-summary">Loading connector status…</span></div>
+        <button class="btn sm ghost" onclick="loadIntegHub()">Refresh</button>
+      </div>
+      <div id="ih-grid" class="grid cols-4" style="margin-top:12px"></div>
+    </div>
     <div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
       <div><b>Build on Pulse.</b> <span class="muted">API keys, webhooks, and inbound ingest let you connect anything.</span></div>
       <a class="btn sm" href="/developers" target="_blank">Open Developer Hub →</a>
@@ -2028,9 +2035,24 @@ document.addEventListener('keydown',e=>{
 
 // ---- Integrations ----
 async function loadIntegrations(){
-  await Promise.all([loadApiKeys(),loadWebhooks(),loadInbound(),loadCatalog(),loadConnections(),loadOAuth()]);
+  await Promise.all([loadIntegHub(),loadApiKeys(),loadWebhooks(),loadInbound(),loadCatalog(),loadConnections(),loadOAuth()]);
   const sel=document.getElementById('in-client');
   if(sel)sel.innerHTML=Object.entries(CLIENTS||{}).map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('');
+}
+async function loadIntegHub(){
+  const r=await api('/api/integrations/status'); if(!r)return;
+  document.getElementById('ih-summary').innerHTML=
+    `<b style="color:var(--ok)">${r.connected}</b> of ${r.total} connectors live. `+
+    (r.connected<r.total?`<span class="muted">Click a greyed tile to set it up.</span>`:`<span style="color:var(--ok)">Everything's connected 🎉</span>`);
+  document.getElementById('ih-grid').innerHTML=(r.integrations||[]).map(i=>{
+    const on=i.configured;
+    return `<div class="card" style="cursor:pointer;border-color:${on?'var(--ok)':'var(--line)'};opacity:${on?1:.7}"
+       onclick="tab('${i.tab}')" title="${on?'Connected':'Not configured — click to set up'}">
+      <div style="font-size:20px">${i.icon}</div>
+      <div style="font-weight:600;font-size:13px;margin-top:4px">${esc(i.name)}</div>
+      <div class="muted" style="font-size:11px">${esc(i.category)}</div>
+      <div style="margin-top:6px"><span class="badge ${on?'ok':'bad'}">${on?'● connected':'○ not set up'}</span></div>
+    </div>`;}).join('');
 }
 async function loadOAuth(){
   const prov=await api('/api/oauth/providers');

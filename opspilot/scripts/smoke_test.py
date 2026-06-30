@@ -1377,7 +1377,19 @@ def main():
         assert ca_c.get("/api/gbp/settings").status_code == 403
         print("HubSpot + Google Business Profile: encrypted/masked creds + gating + RBAC OK")
 
-    print("\n=== OpsPilot v0.49 SMOKE TEST PASSED ===")
+        # --- v0.50 Integration Hub status board ---
+        st = c.get("/api/integrations/status").json()
+        assert st["total"] >= 8 and "connected" in st
+        byk = {i["key"]: i for i in st["integrations"]}
+        # we configured these earlier in this run -> should read connected
+        assert byk["hubspot"]["configured"] is True and byk["quickbooks"]["configured"] is True
+        assert byk["m365_mailbox"]["configured"] is True and byk["dialpad"]["configured"] is True
+        # gbp configured earlier too; a never-touched one stays not-configured shape
+        assert all({"key", "name", "category", "icon", "tab", "configured"} <= set(i) for i in st["integrations"])
+        assert ca_c.get("/api/integrations/status").status_code == 403
+        print("Integration Hub: aggregate connector status + RBAC OK")
+
+    print("\n=== OpsPilot v0.50 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
