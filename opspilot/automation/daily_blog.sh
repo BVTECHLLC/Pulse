@@ -13,13 +13,25 @@ PULSE_REPO="${PULSE_REPO:-/srv/pulse/opspilot}"
 export BV_WEBSITE_REPO="${BV_WEBSITE_REPO:-/srv/bvtech-website-new}"
 LOG_DIR="${LOG_DIR:-/var/log/bvtech}"
 LOCK="/tmp/bvtech-daily.lock"
-# ANTHROPIC_API_KEY must be exported (in the env file or the environment).
-[ -f /etc/bvtech-daily.env ] && . /etc/bvtech-daily.env
+# Secrets (ANTHROPIC_API_KEY, optional repo-path overrides) come from the box's
+# protected env file. We source whichever exists; agent.env is the canonical one.
+# NOTE: never echo these values — `set +x` stays off and we only reference $VARS.
+for envf in /etc/bvtech/agent.env /etc/bvtech-daily.env; do
+  [ -f "$envf" ] && set -a && . "$envf" && set +a
+done
 
 mkdir -p "$LOG_DIR" "$PULSE_REPO/automation/out"
 LOG="$LOG_DIR/daily-$(date +%F).log"
 exec >>"$LOG" 2>&1
 echo "===== $(date -Is) daily_blog start ====="
+
+# Preflight: fail loudly (without leaking the key) if the essentials are missing.
+if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+  echo "FATAL: ANTHROPIC_API_KEY not set (expected in /etc/bvtech/agent.env)"; exit 1
+fi
+for d in "$PULSE_REPO/automation" "$BV_WEBSITE_REPO/blog"; do
+  [ -d "$d" ] || { echo "FATAL: missing directory $d — check PULSE_REPO/BV_WEBSITE_REPO"; exit 1; }
+done
 
 # Single-instance guard.
 exec 9>"$LOCK"
