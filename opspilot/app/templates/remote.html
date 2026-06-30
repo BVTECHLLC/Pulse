@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ app_name }} — Remote Desktop</title>
+<link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/css/pulse.css">
+<style>
+  .rd-wrap{max-width:1200px;margin:0 auto;padding:16px}
+  .rd-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+  .rd-stage{background:#05080f;border:1px solid var(--line);border-radius:12px;overflow:hidden;position:relative;aspect-ratio:16/9}
+  .rd-stage video{width:100%;height:100%;object-fit:contain;background:#000;display:block;outline:none}
+  .rd-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;color:var(--muted);text-align:center;padding:20px}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+</style>
+</head>
+<body>
+<div class="rd-wrap">
+  <div class="rd-bar">
+    <a class="lockup" href="/dashboard"><img src="/static/img/mark.svg" alt="BVTech OpsPilot" style="height:30px">
+      <span class="wm"><b>BVTech</b> OpsPilot · Remote Desktop</span></a>
+    <div class="flex">
+      <span class="pill" id="rd-status"><span class="dot" style="background:var(--warn)"></span> connecting…</span>
+      <label style="margin:0"><input type="checkbox" id="rd-control" style="width:auto" checked> control</label>
+      <button class="btn sm" onclick="rdFull()">Fullscreen</button>
+      <button class="btn sm ghost" onclick="rdEnd()">End session</button>
+    </div>
+  </div>
+  <div class="rd-stage" id="rd-stage">
+    <video id="rd-video" autoplay playsinline tabindex="0"></video>
+    <div class="rd-overlay" id="rd-overlay">
+      <h3>Waiting for the endpoint to connect…</h3>
+      <p class="muted">The agent joins this session on its next check-in. Keep this tab open.</p>
+    </div>
+  </div>
+  <p class="muted" style="font-size:12px;margin-top:10px">Peer-to-peer (WebRTC) · signaling relayed by Pulse · session is encrypted end-to-end by the browser/agent.</p>
+</div>
+<script>
+const TOKEN = {{ token|tojson }};
+const STAGE = document.getElementById('rd-stage');
+const VIDEO = document.getElementById('rd-video');
+const OVERLAY = document.getElementById('rd-overlay');
+function setStatus(txt, color){document.getElementById('rd-status').innerHTML=`<span class="dot" style="background:${color}"></span> ${txt}`;}
+
+let pc=null, ws=null, inputCh=null;
+const ICE = {iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
+
+function wsUrl(){
+  const proto = location.protocol==='https:'?'wss':'ws';
+  return `${proto}://${location.host}/api/remote/ws/${encodeURIComponent(TOKEN)}?role=operator`;
+}
+function send(obj){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(obj)); }
+
+function newPeer(){
+  pc = new RTCPeerConnection(ICE);
+  pc.onicecandidate = e => { if(e.candidate) send({type:'candidate', candidate:e.candidate}); };
+  pc.ontrack = e => { VIDEO.srcObject = e.streams[0]; OVERLAY.style.display='none'; setStatus('live','var(--ok)'); };
+  pc.onconnectionstatechange = () => {
+    if(pc.connectionState==='connected') setStatus('live','var(--ok)');
+    if(['disconnected','failed','closed'].includes(pc.connectionState)) setStatus(pc.connectionState,'var(--bad)');
+  };
+  // The agent (screen owner) opens the input data channel; we receive it.
+  pc.ondatachannel = e => { inputCh = e.channel; };
+}
+
+async function onSignal(msg){
+  if(msg.type==='relay.ready'){ setStatus(msg.peer_present?'endpoint present':'waiting for endpoint', msg.peer_present?'var(--ok)':'var(--warn)'); return; }
+  if(msg.type==='relay.peer-joined'){ setStatus('endpoint connecting…','var(--warn)'); return; }
+  if(msg.type==='relay.peer-left'){ setStatus('endpoint left','var(--bad)'); OVERLAY.style.display='flex'; return; }
+  if(msg.type==='offer'){
+    if(!pc) newPeer();
+    await pc.setRemoteDescription(msg.sdp);
+    const ans = await pc.createAnswer();
+    await pc.setLocalDescription(ans);
+    send({type:'answer', sdp:pc.localDescription});
+  } else if(msg.type==='answer'){
+    if(pc) await pc.setRemoteDescription(msg.sdp);
+  } else if(msg.type==='candidate'){
+    try{ if(pc) await pc.addIceCandidate(msg.candidate); }catch(e){}
+  }
+}
+
+function connect(){
+  ws = new WebSocket(wsUrl());
+  ws.onopen = () => setStatus('signaling…','var(--warn)');
+  ws.onclose = () => setStatus('disconnected','var(--bad)');
+  ws.onerror = () => setStatus('signaling error','var(--bad)');
+  ws.onmessage = ev => { let m; try{ m=JSON.parse(ev.data); }catch(e){ return; } onSignal(m); };
+}
+
+// ---- input forwarding (mouse + keyboard) over the agent's data channel ----
+function sendInput(o){ if(inputCh&&inputCh.readyState==='open'&&document.getElementById('rd-control').checked) inputCh.send(JSON.stringify(o)); }
+function relPos(e){ const r=VIDEO.getBoundingClientRect(); return {x:(e.clientX-r.left)/r.width, y:(e.clientY-r.top)/r.height}; }
+VIDEO.addEventListener('mousemove', e=>{ const p=relPos(e); sendInput({t:'move',x:p.x,y:p.y}); });
+VIDEO.addEventListener('mousedown', e=>{ const p=relPos(e); sendInput({t:'down',x:p.x,y:p.y,b:e.button}); });
+VIDEO.addEventListener('mouseup',   e=>{ const p=relPos(e); sendInput({t:'up',x:p.x,y:p.y,b:e.button}); e.preventDefault(); });
+VIDEO.addEventListener('contextmenu', e=>e.preventDefault());
+VIDEO.addEventListener('wheel', e=>{ sendInput({t:'scroll',dy:e.deltaY}); e.preventDefault(); }, {passive:false});
+VIDEO.addEventListener('keydown', e=>{ sendInput({t:'key',key:e.key,code:e.code,down:true}); e.preventDefault(); });
+VIDEO.addEventListener('keyup',   e=>{ sendInput({t:'key',key:e.key,code:e.code,down:false}); e.preventDefault(); });
+
+function rdFull(){ if(STAGE.requestFullscreen) STAGE.requestFullscreen(); }
+async function rdEnd(){ try{ await fetch(`/api/remote/sessions/${encodeURIComponent(TOKEN)}/close`,{method:'POST'}); }catch(e){}
+  if(pc)pc.close(); if(ws)ws.close(); setStatus('ended','var(--bad)'); OVERLAY.innerHTML='<h3>Session ended.</h3>'; OVERLAY.style.display='flex'; }
+
+connect();
+</script>
+</body>
+</html>

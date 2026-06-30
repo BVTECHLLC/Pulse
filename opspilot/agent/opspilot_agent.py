@@ -444,6 +444,49 @@ def _process_jobs(headers: dict) -> None:
             print(f"  failed to report job #{job['id']}: {e}")
 
 
+# Tokens of remote sessions we've already handled, so we don't double-connect.
+_REMOTE_SEEN: set[str] = set()
+_REMOTE_WARNED = False
+
+
+def _process_remote(conf: dict, headers: dict) -> None:
+    """Pick up pending remote-desktop sessions and serve each (native WebRTC).
+    Each session runs in its own thread so telemetry keeps flowing."""
+    global _REMOTE_WARNED
+    try:
+        res = _get("/api/agent/remote-sessions", headers)
+    except Exception:
+        return
+    sessions = res.get("sessions", [])
+    if not sessions:
+        return
+    try:
+        import opspilot_remote
+    except Exception:
+        try:
+            from . import opspilot_remote  # type: ignore
+        except Exception:
+            opspilot_remote = None  # type: ignore
+    if opspilot_remote is None:
+        return
+    ok, why = opspilot_remote.is_available()
+    if not ok:
+        if not _REMOTE_WARNED:
+            _log(f"remote desktop requested but {why}")
+            _REMOTE_WARNED = True
+        return
+    import threading
+    for s in sessions:
+        tok = s.get("token")
+        if not tok or tok in _REMOTE_SEEN:
+            continue
+        _REMOTE_SEEN.add(tok)
+        _log(f"remote: starting session {tok[:8]}…")
+        threading.Thread(target=opspilot_remote.run_session,
+                         args=(PULSE_URL, tok, conf["enroll_id"], conf["agent_key"], _log),
+                         daemon=True).start()
+
+
 # --------------------------------------------------------------------------- #
 # Network diagnostics (v0.12) — READ-ONLY local probes the agent runs on the
 # client's LAN and reports. No system changes; safe to run by default.
@@ -525,6 +568,7 @@ def run_loop(enable_scripts: bool = False) -> None:
             res = _post("/api/agent/checkin", collect(), headers)
             interval = int(res.get("interval_sec", interval))
             _process_diagnostics(headers)  # read-only; always processed
+            _process_remote(conf, headers)  # serve any pending remote-desktop sessions
             if enable_scripts:
                 _process_jobs(headers)
             # Software inventory + patch scan are heavier; first cycle then ~every 6h.

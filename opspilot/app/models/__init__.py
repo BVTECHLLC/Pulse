@@ -1042,6 +1042,24 @@ class CrmContact(Base):
     last_touch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class RemoteSession(Base):
+    """A native remote-desktop session between an operator (browser) and a device
+    (agent), brokered by Pulse's WebRTC signaling relay. The token is the shared
+    secret both peers join the relay with; status tracks the lifecycle."""
+    __tablename__ = "remote_sessions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), index=True, nullable=False)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending|connected|closed|expired
+    operator_user_id: Mapped[int | None] = mapped_column(Integer)
+    operator_email: Mapped[str | None] = mapped_column(String(200))
+    agent_connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    operator_connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class CrmActivity(Base):
     """One timeline entry against a contact (note, email, call, sms, meeting,
     status change). The CRM's audit trail of every touch."""

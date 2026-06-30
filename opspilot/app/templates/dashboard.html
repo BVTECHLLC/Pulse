@@ -1526,6 +1526,11 @@ async function showPatches(devId, host){
     ||'<tr><td colspan=3 style="color:var(--ok)">Up to date — no pending patches reported.</td></tr>';
 }
 
+async function deviceRemote(devId){
+  const r=await post(`/api/remote/sessions/${devId}`); const j=await r.json().catch(()=>({}));
+  if(r.ok&&j.viewer_url){window.open(j.viewer_url,'_blank');}
+  else alert(j.detail||'Could not start remote session (OWNER only).');
+}
 let _conDev=null;
 async function deviceConsole(devId, host){
   _conDev=devId;
@@ -2615,7 +2620,8 @@ async function load(){
      <td class="flex"><button class="btn sm" onclick="showSoftware(${d.id},'${esc(d.hostname)}')">Software</button>
        <button class="btn sm" onclick="showPatches(${d.id},'${esc(d.hostname)}')">Patches</button>
        <button class="btn sm" onclick="showMetrics(${d.id},'${esc(d.hostname)}')">Metrics</button>
-       <button class="btn sm" onclick="deviceConsole(${d.id},'${esc(d.hostname)}')">⌨ Console</button></td></tr>`;}).join('')
+       <button class="btn sm" onclick="deviceConsole(${d.id},'${esc(d.hostname)}')">⌨ Console</button>
+       <button class="btn sm" onclick="deviceRemote(${d.id})">🖥 Remote</button></td></tr>`;}).join('')
     ||'<tr><td colspan=10 class="muted">No devices enrolled yet.</td></tr>';
 
   document.getElementById('t-licenses').innerHTML=licenses.map(l=>
