@@ -32,7 +32,7 @@ import time
 from pathlib import Path
 from urllib import request as urlreq
 
-AGENT_VERSION = "1.4.0"
+AGENT_VERSION = "1.5.0"
 
 
 def _normalize_url(u: str) -> str:
@@ -45,7 +45,7 @@ def _normalize_url(u: str) -> str:
 
 
 PULSE_URL = _normalize_url(os.environ.get("PULSE_URL", "https://portal.bvtech.org"))
-CHECKIN_INTERVAL = 300  # seconds; server can override
+CHECKIN_INTERVAL = 60  # seconds; server can override (live-feel default)
 INVENTORY_INTERVAL = 6 * 3600  # software inventory cadence (seconds)
 
 if os.name == "nt":
@@ -106,7 +106,8 @@ def _save_conf(conf: dict) -> None:
 # Telemetry collectors. Use psutil if present; otherwise degrade gracefully.
 # --------------------------------------------------------------------------- #
 def collect() -> dict:
-    snap: dict = {"logged_in_user": _current_user()}
+    snap: dict = {"logged_in_user": _current_user(),
+                  "agent_version": AGENT_VERSION, "platform": _platform()}
     try:
         import psutil  # optional
         snap["cpu_pct"] = psutil.cpu_percent(interval=1)
@@ -117,6 +118,14 @@ def collect() -> dict:
     snap["av_status"] = _av_status()
     snap["patch_status"] = _patch_status()
     return snap
+
+
+def _platform() -> str:
+    if os.name == "nt":
+        return "windows"
+    if sys.platform == "darwin":
+        return "darwin"
+    return "linux"
 
 
 def _current_user() -> str:
@@ -357,6 +366,19 @@ def enroll(token: str) -> dict:
     raise SystemExit(1)
 
 
+def submit_ticket(subject: str, body: str = "") -> dict:
+    """File a support ticket from this endpoint (uses the saved enrollment)."""
+    conf = _load_conf()
+    if not conf:
+        print("Not enrolled yet — can't submit a ticket. Enroll this device first.")
+        raise SystemExit(1)
+    headers = {"X-Enroll-Id": conf["enroll_id"], "X-Agent-Key": conf["agent_key"]}
+    res = _post("/api/agent/ticket", {"subject": subject, "body": body}, headers)
+    _log(f"Submitted support ticket #{res.get('ticket_id')}: {subject}")
+    print(f"Ticket #{res.get('ticket_id')} submitted to BVTech OpsPilot. We'll be in touch.")
+    return res
+
+
 def _serial() -> str | None:
     if os.name != "nt":
         return None
@@ -491,12 +513,10 @@ def run_loop(enable_scripts: bool = False) -> None:
     print(_BANNER)
     _log(f"Agent v{AGENT_VERSION} running. Reporting to {PULSE_URL} every {interval}s.")
     if enable_scripts:
-        print("=" * 64)
-        print("  REMOTE SCRIPT EXECUTION IS ENABLED for this agent.")
-        print("  It will run ONLY scripts an OpsPilot owner approved for THIS")
-        print("  device, and report the results. Disable by restarting without")
-        print("  --enable-remote-scripts.")
-        print("=" * 64)
+        print("  Remote commands: ON (runs ONLY owner-approved jobs for THIS device;"
+              " pass --no-remote-scripts to disable).")
+    else:
+        print("  Remote commands: OFF (--no-remote-scripts).")
     print("  Network diagnostics: ON (read-only probes; ping/dns/port/traceroute/discovery).")
     print("  Software inventory + patch scan: ON (read-only; refreshed ~every 6h).")
     last_inventory = 0.0
@@ -647,7 +667,40 @@ def _consume_token_files() -> None:
 if __name__ == "__main__":
     _take_url_flag()
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    enable_scripts = "--enable-remote-scripts" in sys.argv
+    # Remote command execution is ON by default — but the server only ever hands
+    # back jobs an OpsPilot OWNER explicitly approved for THIS device, so there is
+    # no ad-hoc command channel. Pass --no-remote-scripts to opt out entirely.
+    enable_scripts = "--no-remote-scripts" not in sys.argv
+
+    # `submit-ticket "<subject>" ["<body>"]` — file a ticket from this endpoint.
+    if args and args[0] == "submit-ticket":
+        _apply_saved_url()
+        subject = args[1] if len(args) > 1 else ""
+        bodytext = args[2] if len(args) > 2 else ""
+        while not subject:
+            try:
+                subject = input("Subject: ").strip()
+            except EOFError:
+                sys.exit(1)
+        if not bodytext:
+            try:
+                bodytext = input("Describe the issue (optional): ").strip()
+            except EOFError:
+                bodytext = ""
+        submit_ticket(subject, bodytext)
+        sys.exit(0)
+
+    # `status` — show enrollment + where we report.
+    if args and args[0] == "status":
+        _apply_saved_url()
+        conf = _load_conf()
+        print(_BANNER)
+        if conf:
+            print(f"  Enrolled ✓  device_id={conf.get('device_id')}  ->  {conf.get('url', PULSE_URL)}")
+            print(f"  Agent v{AGENT_VERSION} · config: {CONF_FILE}")
+        else:
+            print(f"  Not enrolled. Run:  opspilot-agent enroll <TOKEN>")
+        sys.exit(0)
 
     if args and args[0] == "enroll" and len(args) == 2:
         # Enroll, then keep running so the device starts reporting immediately
@@ -691,5 +744,7 @@ if __name__ == "__main__":
         print(_BANNER)
         print(f"  v{AGENT_VERSION} · reporting to {PULSE_URL}\n")
         print("Usage:\n  opspilot-agent enroll <ENROLLMENT_TOKEN> [--url https://portal.bvtech.org]\n"
-              "  opspilot-agent run [--enable-remote-scripts] [--url https://portal.bvtech.org]\n\n"
+              "  opspilot-agent run [--no-remote-scripts] [--url https://portal.bvtech.org]\n"
+              "  opspilot-agent submit-ticket \"<subject>\" [\"<details>\"]\n"
+              "  opspilot-agent status\n\n"
               "Tip: just double-click the agent and paste your enrollment token when prompted.")

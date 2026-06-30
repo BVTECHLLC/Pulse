@@ -89,6 +89,12 @@ class CheckinIn(BaseModel):
     av_status: str | None = None
     patch_status: str | None = None
     ip: str | None = None
+    agent_version: str | None = None
+    platform: str | None = None
+
+
+# Live-feel default check-in cadence (seconds). The agent honors interval_sec.
+CHECKIN_INTERVAL_SEC = 60
 
 
 def _health_score(c: CheckinIn) -> int:
@@ -121,6 +127,10 @@ def checkin(body: CheckinIn, request: Request,
     dev.av_status = body.av_status
     dev.patch_status = body.patch_status
     dev.ip = body.ip or _ip(request)
+    if body.agent_version:
+        dev.agent_version = body.agent_version[:40]
+    if body.platform:
+        dev.platform = body.platform[:40]
     dev.health_score = _health_score(body)
     dev.last_checkin = datetime.now(timezone.utc)
 
@@ -137,7 +147,104 @@ def checkin(body: CheckinIn, request: Request,
     # Fire automation for each newly-opened alert (after commit so ids exist).
     for alert in new_alerts:
         automation.dispatch(db, "alert.opened", automation.build_alert_context(alert, dev))
-    return {"ok": True, "interval_sec": 300}
+    return {"ok": True, "interval_sec": CHECKIN_INTERVAL_SEC}
+
+
+# --- Agent: end-user submits a support ticket from this device --------------
+class AgentTicketIn(BaseModel):
+    subject: str
+    body: str | None = None
+    priority: str | None = "normal"
+
+
+@router.post("/ticket", status_code=201)
+def agent_ticket(body: AgentTicketIn, request: Request,
+                 x_enroll_id: str = Header(...), x_agent_key: str = Header(...),
+                 db: Session = Depends(get_db)):
+    """The person at the endpoint can raise a ticket straight from the agent. The
+    ticket is filed against the device's client and shows the originating host."""
+    from ...models import SupportTicket, TicketStatus  # local import avoids cycle
+    from ...services import events, sla
+    dev = _auth_device(db, x_enroll_id, x_agent_key)
+    subject = (body.subject or "").strip()[:200]
+    if not subject:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "subject is required")
+    pri = (body.priority or "normal").lower()
+    if pri not in ("low", "normal", "high", "urgent"):
+        pri = "normal"
+    text = (body.body or "").strip()
+    text = f"[from device: {dev.hostname}] {text}".strip()
+    t = SupportTicket(client_id=dev.client_id, subject=subject, body=text,
+                      priority=pri, status=TicketStatus.OPEN)
+    db.add(t)
+    db.flush()
+    try:
+        sla.stamp_due_dates(db, t)   # apply SLA targets like any other ticket
+    except Exception:
+        pass
+    db.commit()
+    events.emit(db, "ticket.created", {"id": t.id, "client_id": dev.client_id,
+                "subject": subject, "priority": pri, "source": "agent"},
+                client_id=dev.client_id)
+    audit.record(db, action="agent.ticket", target_type="ticket", target_id=str(t.id),
+                 client_id=dev.client_id, ip=_ip(request), detail=f"host={dev.hostname}")
+    return {"ok": True, "ticket_id": t.id}
+
+
+# --------------------------------------------------------------------------- #
+# Staff: push a command to a device (v0.46). Creates an APPROVED deployment the
+# agent picks up on its next poll, runs, and reports output back. OWNER-only and
+# audited — this is real remote command execution, so it is deliberately gated.
+# --------------------------------------------------------------------------- #
+class RunCommandIn(BaseModel):
+    command: str
+    language: str = "powershell"   # powershell|bash|cmd|python
+
+
+@router.post("/devices/{device_id}/run-command", status_code=201)
+def run_command(device_id: int, body: RunCommandIn, request: Request,
+                db: Session = Depends(get_db),
+                user: User = Depends(require_roles(Role.OWNER))):
+    dev = db.get(Device, device_id)
+    if not dev:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    cmd = (body.command or "").strip()
+    if not cmd:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "command is required")
+    if body.language not in ("powershell", "bash", "cmd", "python"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "unsupported language")
+    dep = ScriptDeployment(
+        script_id=None, script_name="ad-hoc command", script_version=0,
+        language=body.language, content=cmd, device_id=dev.id, client_id=dev.client_id,
+        status=DeploymentStatus.APPROVED, reason="ad-hoc console command",
+        consent_ack=True, requested_by_user_id=user.id, requested_by_email=user.email,
+        approved_by_user_id=user.id, approved_by_email=user.email,
+        approved_at=datetime.now(timezone.utc),
+    )
+    db.add(dep)
+    db.commit()
+    audit.record(db, action="agent.run_command", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="device", target_id=str(dev.id),
+                 client_id=dev.client_id, ip=_ip(request), detail=f"{body.language}: {cmd[:120]}")
+    return {"ok": True, "deployment_id": dep.id, "status": dep.status.value}
+
+
+@router.get("/devices/{device_id}/commands")
+def device_commands(device_id: int, limit: int = 20, db: Session = Depends(get_db),
+                    user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Recent command deployments for a device (so the console can show output)."""
+    dev = db.get(Device, device_id)
+    if not dev:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    rows = (db.query(ScriptDeployment)
+            .filter(ScriptDeployment.device_id == device_id)
+            .order_by(ScriptDeployment.created_at.desc()).limit(min(limit, 100)).all())
+    return {"commands": [{
+        "id": d.id, "language": d.language, "content": d.content, "status": d.status.value,
+        "exit_code": d.exit_code, "output": d.output,
+        "created_at": d.created_at.isoformat() if d.created_at else None,
+        "completed_at": d.completed_at.isoformat() if d.completed_at else None,
+    } for d in rows]}
 
 
 # --------------------------------------------------------------------------- #

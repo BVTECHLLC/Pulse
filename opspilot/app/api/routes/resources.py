@@ -72,14 +72,24 @@ def list_devices(client_id: int | None = None, db: Session = Depends(get_db),
             q = q.filter(Device.client_id == client_id)
     else:
         q = q.filter(Device.client_id == user.client_id)
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    # Online if seen within 3 check-in intervals (agent reports ~every 60s).
+    online_cutoff = now - timedelta(seconds=180)
     out = []
     for d in q.order_by(Device.hostname).all():
+        lc = d.last_checkin
+        if lc is not None and lc.tzinfo is None:
+            lc = lc.replace(tzinfo=timezone.utc)
         out.append({
             "id": d.id, "client_id": d.client_id, "hostname": d.hostname,
             "os": d.os, "ip": d.ip, "cpu_pct": d.cpu_pct, "ram_pct": d.ram_pct,
             "disk_pct": d.disk_pct, "av_status": d.av_status, "patch_status": d.patch_status,
             "patches_pending": d.patches_pending, "health_score": d.health_score,
             "last_checkin": d.last_checkin.isoformat() if d.last_checkin else None,
+            "agent_version": d.agent_version, "platform": d.platform,
+            "logged_in_user": d.logged_in_user,
+            "online": bool(lc and lc >= online_cutoff),
         })
     return out
 

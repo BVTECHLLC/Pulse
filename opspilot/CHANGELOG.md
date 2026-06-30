@@ -1,5 +1,25 @@
 # BVTech OpsPilot — Changelog
 
+## v0.46.0 — Real endpoint RMM: live status, push-command console, endpoint tickets (June 2026)
+- **Proved the agent works on both sides** with a live end-to-end harness
+  (`scripts/agent_e2e.py`): starts the real server, runs the actual agent process
+  → enroll → telemetry → push-command → ticket, asserting the device appears with
+  data. (A real-world "installed but no device" is almost always a failed `.exe`
+  download or expired token failing silently — the round-trip itself is correct.)
+- **Live status**: agent reports `agent_version` + `platform`; check-in cadence
+  dropped to **~60s**; `/api/devices` now returns `online`, version, platform, and
+  the logged-in user. Devices tab shows an online dot, version, user.
+- **Remote console (push commands)**: OWNER can run a command on a device
+  (`POST /api/agent/devices/{id}/run-command`) — it becomes an approved job the
+  agent runs and reports output back (`/commands`). New ⌨ Console modal on the
+  Devices tab. Command execution is now **on by default** in the agent (still only
+  ever runs owner-approved jobs; `--no-remote-scripts` to disable).
+- **Endpoint tickets**: the person at the PC can file a ticket from the agent
+  (`opspilot-agent submit-ticket "…"` → `POST /api/agent/ticket`), tagged with the
+  host and SLA-stamped like any ticket. Agent gains `submit-ticket` + `status`.
+- Verified end-to-end (live harness) **and** in the smoke suite: version/online,
+  endpoint ticket, full push-command loop, OWNER-only gating. Migration up/down/up.
+
 ## v0.45.0 — Campaigns: email + SMS outreach to the CRM (June 2026)
 - **Email campaigns** via the M365 mailbox and **SMS campaigns** via Dialpad,
   targeting a slice of the CRM pipeline (by status / market / explicit ids).
