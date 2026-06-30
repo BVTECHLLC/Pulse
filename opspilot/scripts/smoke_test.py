@@ -1289,7 +1289,35 @@ def main():
         assert ca_c.post("/api/campaigns/email", json={"subject": "x", "body": "y"}).status_code == 403
         print("Campaigns: email/SMS compliance gating + dry-run + RBAC OK")
 
-    print("\n=== OpsPilot v0.45 SMOKE TEST PASSED ===")
+        # --- v0.46 RMM agent: version/online, endpoint ticket, push-command loop ---
+        dev_id = ent["device_id"]
+        a.post("/api/agent/checkin", headers=hdr,
+               json={"cpu_pct": 5, "disk_pct": 40, "agent_version": "1.5.0", "platform": "windows"})
+        row = next(d for d in c.get("/api/devices").json() if d["id"] == dev_id)
+        assert row["agent_version"] == "1.5.0" and row["platform"] == "windows" and row["online"] is True, row
+        # endpoint user submits a ticket from the agent
+        tk = a.post("/api/agent/ticket", headers=hdr,
+                    json={"subject": "Endpoint says hi", "body": "from the PC"})
+        assert tk.status_code == 201, tk.text
+        assert any(t["subject"] == "Endpoint says hi" for t in c.get("/api/tickets").json())
+        # OWNER pushes a command -> APPROVED deployment -> agent pulls -> reports result
+        rc = c.post(f"/api/agent/devices/{dev_id}/run-command",
+                    json={"command": "Get-Date", "language": "powershell"})
+        assert rc.status_code == 201, rc.text
+        dep_id = rc.json()["deployment_id"]
+        jobs = a.get("/api/agent/jobs", headers=hdr).json()["jobs"]
+        assert any(j["id"] == dep_id for j in jobs), "agent did not receive the pushed command"
+        a.post(f"/api/agent/jobs/{dep_id}/result", headers=hdr,
+               json={"exit_code": 0, "output": "Tuesday"})
+        cmds = c.get(f"/api/agent/devices/{dev_id}/commands").json()["commands"]
+        done = next(x for x in cmds if x["id"] == dep_id)
+        assert done["status"] == "succeeded" and done["output"] == "Tuesday", done
+        # run-command is OWNER-only
+        assert ca_c.post(f"/api/agent/devices/{dev_id}/run-command",
+                         json={"command": "x"}).status_code == 403
+        print("RMM agent: version/online + endpoint ticket + push-command loop + RBAC OK")
+
+    print("\n=== OpsPilot v0.46 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

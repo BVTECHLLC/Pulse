@@ -102,6 +102,8 @@ class Device(Base):
     patches_pending: Mapped[int | None] = mapped_column(Integer)  # count of pending updates
     health_score: Mapped[int | None] = mapped_column(Integer)  # 0-100
     last_checkin: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    agent_version: Mapped[str | None] = mapped_column(String(40))   # reported by the agent
+    platform: Mapped[str | None] = mapped_column(String(40))        # windows|darwin|linux
     # agent linkage
     enroll_id: Mapped[str | None] = mapped_column(String(64), index=True)
     agent_key_hash: Mapped[str | None] = mapped_column(String(512))
