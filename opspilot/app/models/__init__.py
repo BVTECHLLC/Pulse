@@ -453,6 +453,21 @@ class AlertPolicy(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
+class MaintenanceWindow(Base):
+    """A planned window during which monitoring alerts are suppressed so a known
+    maintenance (patching, reboots, migrations) doesn't page anyone. Scope:
+    device_id set = that device only; device_id NULL = the whole client."""
+    __tablename__ = "maintenance_windows"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id"), index=True)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    reason: Mapped[str | None] = mapped_column(String(300))
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
 class TicketComment(Base):
     """A threaded reply on a support ticket. `internal=True` comments are staff
     notes never shown to client users; client-visible comments form the

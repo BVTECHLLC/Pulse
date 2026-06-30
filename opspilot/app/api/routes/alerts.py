@@ -126,6 +126,49 @@ def resolve_alert(alert_id: int, request: Request, db: Session = Depends(get_db)
     return {"ok": True, "status": a.status.value}
 
 
+class BulkAlertAction(BaseModel):
+    ids: list[int]
+    action: str   # "ack" | "resolve"
+
+
+@router.post("/alerts/bulk")
+def bulk_alert_action(body: BulkAlertAction, request: Request, db: Session = Depends(get_db),
+                      user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Acknowledge or resolve many alerts in one call — triage a storm in one
+    click. Skips already-resolved (ack) and missing ids; returns per-id results."""
+    if body.action not in ("ack", "resolve"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "action must be 'ack' or 'resolve'")
+    if not body.ids:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no ids given")
+    now = datetime.now(timezone.utc)
+    changed, skipped = [], []
+    for aid in body.ids[:500]:
+        a = db.get(Alert, aid)
+        if not a:
+            skipped.append(aid); continue
+        if body.action == "ack":
+            if a.status == AlertStatus.RESOLVED:
+                skipped.append(aid); continue
+            a.status = AlertStatus.ACKNOWLEDGED
+            a.acknowledged_at = now
+            a.acknowledged_by_user_id = user.id
+        else:  # resolve
+            if a.status == AlertStatus.RESOLVED:
+                skipped.append(aid); continue
+            a.status = AlertStatus.RESOLVED
+            a.resolved_at = now
+            a.auto_resolved = False
+        changed.append(aid)
+    if changed:
+        db.commit()
+        audit.record(db, action=f"alert.bulk_{body.action}", actor_user_id=user.id,
+                     actor_email=user.email, actor_role=user.role.value, target_type="alert",
+                     target_id=",".join(map(str, changed))[:80], ip=_ip(request),
+                     detail=f"{len(changed)} alerts {body.action}'d")
+    return {"action": body.action, "changed": changed, "skipped": skipped,
+            "changed_count": len(changed)}
+
+
 # --------------------------------------------------------------------------- #
 # Offline sweep (staff / scheduler)
 # --------------------------------------------------------------------------- #

@@ -128,7 +128,12 @@ Write-Host "Installing BVTech OpsPilot standalone agent from $PULSE_URL ..."
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 Invoke-WebRequest -Uri "$PULSE_URL/download/agent.exe" -OutFile $exe
 $env:PULSE_URL = $PULSE_URL
-if ($TOKEN -ne "") {{ & $exe enroll $TOKEN --url $PULSE_URL }}
+if ($TOKEN -ne "") {{
+  # Drop a single-use token file beside the exe so the boot task self-enrolls
+  # even if this direct enroll is interrupted (the agent deletes it after use).
+  @{{ token = $TOKEN; url = $PULSE_URL }} | ConvertTo-Json | Set-Content -Encoding ascii "$dest\\opspilot-enroll.json"
+  & $exe enroll $TOKEN --url $PULSE_URL
+}}
 # Auto-start at boot via Scheduled Task (SYSTEM), and start it now.
 $action = "cmd /c set PULSE_URL=$PULSE_URL && `"$exe`" run"
 schtasks /Create /TN "BVTechOpsPilot" /TR $action /SC ONSTART /RU SYSTEM /F | Out-Null
@@ -136,6 +141,44 @@ Start-Process -WindowStyle Hidden $exe -ArgumentList "run --url $PULSE_URL"
 Write-Host "BVTech OpsPilot standalone agent installed and reporting to $PULSE_URL."
 """
     return script
+
+
+@router.get("/deploy.cmd", response_class=PlainTextResponse)
+def deploy_cmd(request: Request, token: str = ""):
+    """Preconfigured ("preloaded") one-file installer: a Windows batch file with
+    the client's enrollment token baked in. The client just double-clicks it —
+    no copy-paste, no token to enter. It self-elevates to Administrator, then
+    hands off to the proven install-exe.ps1 (downloads the standalone .exe,
+    enrolls with the embedded token, and registers the boot Scheduled Task).
+    Generated per-client from the dashboard's Deploy Agent card."""
+    base = _base_url(request)
+    # Batch needs the literal token; install-exe.ps1 does the real work.
+    script = (
+        "@echo off\r\n"
+        "REM BVTech OpsPilot - preconfigured agent installer (just double-click)\r\n"
+        f"REM Portal: {base}\r\n"
+        "setlocal\r\n"
+        f'set "PULSE_URL={base}"\r\n'
+        f'set "OPSPILOT_ENROLL_TOKEN={token}"\r\n'
+        "echo Installing BVTech OpsPilot agent (this computer will connect to %PULSE_URL%) ...\r\n"
+        "REM Self-elevate to Administrator if needed.\r\n"
+        'net session >nul 2>&1\r\n'
+        "if %errorlevel% NEQ 0 (\r\n"
+        "  echo Requesting administrator rights...\r\n"
+        "  powershell -NoProfile -Command \"Start-Process -Verb RunAs -FilePath '%~f0'\"\r\n"
+        "  exit /b\r\n"
+        ")\r\n"
+        "powershell -ExecutionPolicy Bypass -NoProfile -Command "
+        f"\"irm '{base}/download/install-exe.ps1?token={token}' | iex\"\r\n"
+        "echo.\r\n"
+        "echo BVTech OpsPilot agent installed. This window can be closed.\r\n"
+        "pause\r\n"
+    )
+    return PlainTextResponse(
+        script,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": 'attachment; filename="bvtech-opspilot-install.cmd"'},
+    )
 
 
 @router.get("/install.ps1", response_class=PlainTextResponse)

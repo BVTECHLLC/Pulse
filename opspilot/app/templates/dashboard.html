@@ -27,8 +27,20 @@
 </div>
 
 <div class="wrap">
+  <!-- Command Palette (⌘K / Ctrl+K) -->
+  <div id="cmdk" class="hidden" style="position:fixed;inset:0;z-index:200;background:rgba(4,8,20,.6);backdrop-filter:blur(3px)" onclick="if(event.target===this)closeCmdk()">
+    <div style="max-width:620px;margin:10vh auto 0;background:#0c1430;border:1px solid var(--brand,#6c5ce7);border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.6);overflow:hidden">
+      <input id="cmdk-input" placeholder="Type a command, jump to a section, or search…" autocomplete="off"
+        oninput="cmdkFilter()" onkeydown="cmdkKey(event)"
+        style="width:100%;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--ink);padding:16px 18px;font-size:15px;outline:none">
+      <div id="cmdk-list" style="max-height:54vh;overflow:auto;padding:6px"></div>
+      <div class="muted" style="padding:8px 14px;border-top:1px solid var(--line);font-size:11px">↑↓ navigate · ↵ run · esc close · ⌘K / Ctrl-K anytime</div>
+    </div>
+  </div>
+
   <div class="nav">
     <a class="active" data-tab="overview" onclick="tab('overview')">Overview</a>
+    <a data-tab="action" onclick="tab('action')">⚡ Action Center</a>
     <a data-tab="clients" onclick="tab('clients')">Clients</a>
     <a data-tab="devices" onclick="tab('devices')">Devices</a>
     <a data-tab="assets" onclick="tab('assets')">Assets</a>
@@ -42,6 +54,7 @@
     <a data-tab="scripts" onclick="tab('scripts')">Scripts</a>
     <a data-tab="network" onclick="tab('network')">Network</a>
     <a data-tab="kb" onclick="tab('kb')">Knowledge Base</a>
+    <a data-tab="content" onclick="tab('content')">✍️ Content Studio</a>
     <a data-tab="licenses" onclick="tab('licenses')">Licenses</a>
     <a data-tab="integrations" onclick="tab('integrations')">Integrations</a>
     <a data-tab="audit" onclick="tab('audit')">Audit Log</a>
@@ -52,6 +65,14 @@
       <div><b>Command Center</b> <span class="muted" id="ov-ts">live</span></div>
       <label class="flex" style="margin:0;font-size:12px;color:var(--muted)">
         <input type="checkbox" id="ov-auto" checked style="width:auto" onchange="toggleOvAuto()"> auto-refresh</label>
+    </div>
+    <div class="card" style="margin-bottom:16px;display:flex;align-items:center;gap:20px;cursor:pointer;border-color:var(--brand,#6c5ce7)" onclick="tab('action')">
+      <div id="ops-gauge" style="width:78px;height:78px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;flex-shrink:0;background:#0c1430">—</div>
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:15px">Ops Score <span class="pill">⚡ Action Center</span></div>
+        <div class="muted" id="ops-line" style="margin-top:4px">Loading what needs attention…</div>
+      </div>
+      <div id="ops-chips" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"></div>
     </div>
     <div class="grid cols-4" style="margin-bottom:16px">
       <div class="card"><h3>Devices Online</h3><div class="stat" id="ov-online">—</div>
@@ -92,7 +113,69 @@
     </div>
   </section>
 
+  <section id="action" class="hidden">
+    <div class="card" style="margin-bottom:16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+      <div id="ac-gauge" style="width:96px;height:96px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;background:#0c1430">
+        <span style="font-size:30px;font-weight:800" id="ac-score">—</span><span class="muted" style="font-size:10px">OPS SCORE</span></div>
+      <div style="flex:1;min-width:200px">
+        <div style="font-weight:700;font-size:16px">Action Center <span class="pill">what to do next, ranked</span></div>
+        <div class="muted" id="ac-summary" style="margin-top:4px">Loading…</div>
+      </div>
+      <div class="flex" style="margin:0;gap:8px;flex-wrap:wrap">
+        <select id="ac-client" onchange="loadActionCenter()" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:9px;color:var(--ink)"></select>
+        <select id="ac-sev" onchange="renderAC()" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:9px;color:var(--ink)">
+          <option value="">All severities</option><option value="critical">Critical</option>
+          <option value="high">High+</option><option value="medium">Medium+</option></select>
+        <button class="btn sm ghost" onclick="loadActionCenter()">Refresh</button>
+      </div>
+    </div>
+    <div id="ac-list"><div class="card muted">Loading…</div></div>
+  </section>
+
+  <section id="content" class="hidden">
+    <div class="card" style="margin-bottom:16px">
+      <h3>Content Studio <span class="pill">publish to BVTech.org</span></h3>
+      <p class="muted" style="margin:4px 0 12px">Write a security advisory or blog post; preview it exactly as it'll appear on bvtech.org, then stage it for publish. Output is on-brand HTML with full SEO + schema. (No client data is ever included — these are public articles.)</p>
+      <div class="grid cols-2" style="gap:14px">
+        <div>
+          <label>Title</label>
+          <input id="ct-title" placeholder="Patch Tuesday June 2026 — Two Zero-Days Under Active Attack">
+          <div class="flex" style="margin-top:10px;gap:10px">
+            <div style="flex:1"><label>Type</label>
+              <select id="ct-kind" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:11px;color:var(--ink)">
+                <option value="advisory">Security Advisory</option><option value="blog">Blog / Insights</option></select></div>
+            <div style="flex:2"><label>Keywords (SEO, comma-sep)</label>
+              <input id="ct-keywords" placeholder="CVE, zero-day, Texas SMB, BVTech"></div>
+          </div>
+          <label style="margin-top:10px">Body <span class="muted">(markdown-lite: ## heading, - bullet, &gt; callout, **bold**, [link](url))</span></label>
+          <textarea id="ct-body" rows="14" placeholder="Microsoft shipped **74 fixes** today...&#10;&#10;## What to do&#10;Patch now.&#10;&#10;- Update endpoints&#10;- Verify backups" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink);font-family:ui-monospace,monospace;font-size:13px;resize:vertical"></textarea>
+          <div class="flex" style="margin-top:12px;gap:10px">
+            <button class="btn" onclick="ctPreview()">Preview</button>
+            <button class="btn ghost" onclick="ctStage()">Stage for publish</button>
+          </div>
+          <div class="muted" id="ct-msg" style="margin-top:10px;font-size:13px"></div>
+        </div>
+        <div>
+          <label>Live preview <span class="muted">— exactly as it publishes</span></label>
+          <iframe id="ct-frame" style="width:100%;height:560px;border:1px solid var(--line);border-radius:12px;background:#0E0D2C"></iframe>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="clients" class="hidden">
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+        <div id="ch-gauge" style="width:74px;height:74px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;background:#0c1430">
+          <span style="font-size:24px;font-weight:800" id="ch-portfolio">—</span><span class="muted" style="font-size:9px">PORTFOLIO</span></div>
+        <div style="flex:1;min-width:180px">
+          <div style="font-weight:700">Client Health <span class="pill">explainable score · churn radar</span></div>
+          <div class="muted" id="ch-summary" style="margin-top:3px">Loading client health…</div>
+        </div>
+        <button class="btn sm ghost" onclick="loadClientHealth()">Refresh</button>
+      </div>
+      <div id="ch-board" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin-top:14px"></div>
+    </div>
     <div class="card" style="margin-bottom:16px">
       <h3>Add Client</h3>
       <div class="flex">
@@ -120,9 +203,15 @@
         <div class="card" style="background:#0a1228;border-color:var(--brand,#6c5ce7)">
           <label><b>Enrollment token</b> <span class="pill">valid 72h</span></label>
           <input id="ag-token" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
+          <p style="margin:10px 0 0">
+            <a id="ag-deploy" class="btn" href="#" download style="text-decoration:none">⬇ Download ready-to-run installer (.cmd)</a>
+            <span class="pill">token baked in · zero copy-paste</span></p>
+          <p class="muted" style="margin:6px 0 0">
+            <b>Truly the easiest:</b> send this file to the client. They double-click it — it self-elevates,
+            downloads the agent, enrolls with the token already inside, and starts reporting. Nothing to type.</p>
           <p class="muted" style="margin:8px 0 0">
-            <b>Easiest:</b> <a href="/download/agent.exe">download the Windows .exe</a>, double-click it,
-            and paste this token when it asks. The computer shows up here within a minute.</p>
+            Prefer the bare .exe? <a href="/download/agent.exe">Download it</a>, double-click,
+            and paste the token above when it asks.</p>
           <label style="margin-top:8px">Already downloaded the .exe? Run this in its folder (PowerShell):</label>
           <input id="ag-bare" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
         </div>
@@ -189,16 +278,46 @@
         <div class="flex">
           <label class="flex" style="margin:0;font-size:13px;color:var(--muted)">
             <input type="checkbox" id="a-show-resolved" style="width:auto" onchange="loadAlerts()"> show resolved</label>
+          <button class="btn sm ghost" id="a-bulk-ack" onclick="bulkAlerts('ack')" disabled>Ack selected</button>
+          <button class="btn sm ghost" id="a-bulk-res" onclick="bulkAlerts('resolve')" disabled>Resolve selected</button>
           <button class="btn sm" onclick="runSweep()">Run offline sweep</button>
         </div>
       </div>
       <table>
-        <thead><tr><th>Severity</th><th>Device</th><th>Alert</th><th>Detail</th><th>Status</th><th>First seen</th><th></th></tr></thead>
+        <thead><tr><th style="width:28px"><input type="checkbox" id="a-all" style="width:auto" onchange="acToggleAll(this)"></th><th>Severity</th><th>Device</th><th>Alert</th><th>Detail</th><th>Status</th><th>First seen</th><th></th></tr></thead>
         <tbody id="t-alerts"></tbody></table>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="flex" style="justify-content:space-between;margin-bottom:8px">
+        <h3 style="margin:0">🔧 Maintenance Windows <span class="pill">suppress alerts during planned work</span></h3>
+      </div>
+      <div class="flex" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <div><label style="font-size:11px">Client</label>
+          <select id="mw-client" style="background:#0c1430;border:1px solid var(--line);border-radius:8px;padding:8px;color:var(--ink)"></select></div>
+        <div><label style="font-size:11px">Start</label>
+          <input id="mw-start" type="datetime-local" style="background:#0c1430;border:1px solid var(--line);border-radius:8px;padding:7px;color:var(--ink)"></div>
+        <div><label style="font-size:11px">End</label>
+          <input id="mw-end" type="datetime-local" style="background:#0c1430;border:1px solid var(--line);border-radius:8px;padding:7px;color:var(--ink)"></div>
+        <div style="flex:1;min-width:120px"><label style="font-size:11px">Reason</label>
+          <input id="mw-reason" placeholder="Patching / reboot"></div>
+        <button class="btn sm" onclick="mwCreate()">Schedule</button>
+      </div>
+      <div class="muted err" id="mw-msg" style="margin-top:6px"></div>
+      <table style="margin-top:10px"><thead><tr><th>Client</th><th>Scope</th><th>Window</th><th>State</th><th></th></tr></thead>
+      <tbody id="t-mw"><tr><td colspan=5 class="muted">No maintenance windows.</td></tr></tbody></table>
     </div>
   </section>
 
   <section id="tickets" class="hidden">
+    <div class="card" style="margin-bottom:14px">
+      <div class="flex" style="justify-content:space-between"><h3 style="margin:0">SLA Performance <span class="pill">last 90 days</span></h3></div>
+      <div class="grid cols-4" style="margin-top:10px">
+        <div class="card" style="margin:0"><h3>Response SLA</h3><div class="stat" id="sla-resp">—</div><div class="stat sub" id="sla-resp-sub">—</div></div>
+        <div class="card" style="margin:0"><h3>Resolution SLA</h3><div class="stat" id="sla-reso">—</div><div class="stat sub" id="sla-reso-sub">—</div></div>
+        <div class="card" style="margin:0"><h3>Avg Response</h3><div class="stat" id="sla-respt">—</div></div>
+        <div class="card" style="margin:0"><h3>Avg Resolution</h3><div class="stat" id="sla-resot">—</div></div>
+      </div>
+    </div>
     <div class="flex" style="margin-bottom:10px">
       <label class="flex" style="margin:0;font-size:13px;color:var(--muted)">
         <input type="checkbox" id="tk-mine" style="width:auto" onchange="loadTickets()"> assigned to me</label>
@@ -646,7 +765,8 @@ async function loadAlerts(){
   const al=await api('/api/alerts'+(showRes?'?status_filter=resolved':''));
   if(!al)return;
   document.getElementById('t-alerts').innerHTML=al.map(a=>
-    `<tr><td><span class="sev ${a.severity}">${a.severity}</span></td>
+    `<tr><td>${a.status==='resolved'?'':`<input type="checkbox" class="a-chk" value="${a.id}" style="width:auto" onchange="acSyncBulk()">`}</td>
+     <td><span class="sev ${a.severity}">${a.severity}</span></td>
      <td>${esc(a.hostname||'—')}</td><td>${esc(a.kind)}</td>
      <td class="muted">${esc(a.message)}</td>
      <td><span class="badge ${a.status==='resolved'?'ok':(a.status==='acknowledged'?'warn':'bad')}">${a.status}</span></td>
@@ -654,10 +774,50 @@ async function loadAlerts(){
      <td class="flex">${a.status==='resolved'?'':
         `${a.status==='active'?`<button class="btn sm ghost" onclick="ackAlert(${a.id})">Ack</button>`:''}
          <button class="btn sm" onclick="resolveAlert(${a.id})">Resolve</button>`}</td></tr>`).join('')
-    ||`<tr><td colspan=7 class="muted">No ${showRes?'resolved':'active'} alerts.</td></tr>`;
+    ||`<tr><td colspan=8 class="muted">No ${showRes?'resolved':'active'} alerts.</td></tr>`;
+  const aa=document.getElementById('a-all'); if(aa)aa.checked=false; acSyncBulk();
+}
+function acCheckedIds(){return [...document.querySelectorAll('.a-chk:checked')].map(c=>parseInt(c.value));}
+function acSyncBulk(){const n=acCheckedIds().length;
+  ['a-bulk-ack','a-bulk-res'].forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=!n;});
+  const ack=document.getElementById('a-bulk-ack'); if(ack)ack.textContent=n?`Ack selected (${n})`:'Ack selected';
+  const res=document.getElementById('a-bulk-res'); if(res)res.textContent=n?`Resolve selected (${n})`:'Resolve selected';}
+function acToggleAll(box){document.querySelectorAll('.a-chk').forEach(c=>c.checked=box.checked);acSyncBulk();}
+async function bulkAlerts(action){
+  const ids=acCheckedIds(); if(!ids.length)return;
+  const r=await fetch('/api/alerts/bulk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,action})});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){loadAlerts();refreshBadges();}else{alert(j.detail||'Bulk action failed');}
 }
 async function ackAlert(id){await post(`/api/alerts/${id}/ack`);loadAlerts();refreshBadges();}
 async function resolveAlert(id){await post(`/api/alerts/${id}/resolve`);loadAlerts();refreshBadges();}
+// ---- Maintenance windows ----
+async function loadMaint(){
+  const sel=document.getElementById('mw-client');
+  if(sel&&!sel.options.length)sel.innerHTML=Object.entries(CLIENTS).map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('');
+  const rows=await api('/api/maintenance-windows'); if(!rows)return;
+  const stColor={active:'bad',scheduled:'warn',ended:''};
+  document.getElementById('t-mw').innerHTML=rows.map(w=>
+    `<tr><td>${esc(CLIENTS[w.client_id]||w.client_id)}</td>
+     <td>${w.device_id?('device #'+w.device_id):'whole client'}</td>
+     <td class="muted" style="font-size:12px">${new Date(w.starts_at).toLocaleString()} → ${new Date(w.ends_at).toLocaleString()}</td>
+     <td><span class="badge ${stColor[w.state]||''}">${w.state}</span></td>
+     <td><button class="btn sm ghost" onclick="mwDelete(${w.id})">Delete</button></td></tr>`).join('')
+    ||'<tr><td colspan=5 class="muted">No maintenance windows.</td></tr>';
+}
+async function mwCreate(){
+  const msg=document.getElementById('mw-msg'); msg.textContent='';
+  const cid=document.getElementById('mw-client').value;
+  const s=document.getElementById('mw-start').value, e=document.getElementById('mw-end').value;
+  if(!cid||!s||!e){msg.textContent='Pick a client, start and end.';return;}
+  const body={client_id:parseInt(cid),starts_at:new Date(s).toISOString(),ends_at:new Date(e).toISOString(),
+    reason:document.getElementById('mw-reason').value||null};
+  const r=await fetch('/api/maintenance-windows',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){document.getElementById('mw-reason').value='';loadMaint();}
+  else msg.textContent=j.detail||'Could not schedule window';
+}
+async function mwDelete(id){const r=await fetch('/api/maintenance-windows/'+id,{method:'DELETE'});if(r.ok)loadMaint();}
 async function runSweep(){const r=await post('/api/monitoring/sweep');const j=await r.json();
   alert(`Swept ${j.devices_checked} device(s); opened ${j.offline_opened} offline alert(s).`);loadAlerts();refreshBadges();}
 
@@ -676,6 +836,18 @@ function slaBadge(s){
   return '<span class="badge ok">on track</span>';
 }
 function fmtMins(m){if(m==null)return '—';const h=Math.floor(m/60),mm=m%60;return (h?h+'h ':'')+mm+'m';}
+function fmtDur(m){if(m==null)return '—';if(m<60)return Math.round(m)+'m';if(m<1440)return (m/60).toFixed(1)+'h';return (m/1440).toFixed(1)+'d';}
+async function loadSlaPerf(){
+  const p=await api('/api/analytics/sla-performance'); if(!p)return;const o=p.overall;
+  const col=v=>v==null?'var(--muted)':(v>=90?'var(--ok)':v>=75?'var(--warn)':'var(--bad)');
+  const set=(id,v,unit='%')=>{const e=document.getElementById(id);if(e){e.textContent=v==null?'—':v+unit;if(unit==='%')e.style.color=col(v);}};
+  set('sla-resp',o.response_attainment_pct);set('sla-reso',o.resolution_attainment_pct);
+  const sub=(id,n,d)=>{const e=document.getElementById(id);if(e)e.textContent=`${n}/${d} on target`;};
+  sub('sla-resp-sub',o.response_met!=null?Math.round((o.response_attainment_pct||0)/100*o.responded):o.responded,o.responded);
+  sub('sla-reso-sub',Math.round((o.resolution_attainment_pct||0)/100*o.resolved),o.resolved);
+  document.getElementById('sla-respt').textContent=fmtDur(o.avg_response_minutes);
+  document.getElementById('sla-resot').textContent=fmtDur(o.avg_resolution_minutes);
+}
 async function loadTickets(){
   const params=[];
   if(document.getElementById('tk-mine').checked)params.push('mine=true');
@@ -1073,6 +1245,7 @@ async function genAgent(){
   if(!r.ok){alert(j.detail||'Failed to generate token');return;}
   const base=location.origin, raw=j.enroll_token, tok=encodeURIComponent(raw);
   document.getElementById('ag-token').value=raw;
+  document.getElementById('ag-deploy').href=`${base}/download/deploy.cmd?token=${tok}`;
   document.getElementById('ag-bare').value=`.\\opspilot-agent.exe enroll ${raw} --url ${base}`;
   document.getElementById('ag-exe').value=`powershell -ExecutionPolicy Bypass -c "irm '${base}/download/install-exe.ps1?token=${tok}' | iex"`;
   document.getElementById('ag-win').value=`powershell -ExecutionPolicy Bypass -c "irm '${base}/download/install.ps1?token=${tok}' | iex"`;
@@ -1257,7 +1430,129 @@ async function loadOverview(){
 function toggleOvAuto(){
   const on=document.getElementById('ov-auto').checked;
   if(OV_TIMER){clearInterval(OV_TIMER);OV_TIMER=null;}
-  if(on)OV_TIMER=setInterval(loadOverview,30000);
+  if(on)OV_TIMER=setInterval(()=>{loadOverview();loadActionCenter();},30000);
+}
+
+// ---- Action Center (the "what to do next" brain) ----
+let AC_DATA=null, AC_CLIENT_FILLED=false;
+const SEV_RANK={critical:3,high:2,medium:1,low:0};
+function opsColor(s){return s>=85?'var(--ok,#2ecc71)':(s>=60?'var(--warn,#f1c40f)':'var(--bad,#e74c3c)');}
+function sevColor(s){return {critical:'var(--bad,#e74c3c)',high:'#e67e22',medium:'var(--warn,#f1c40f)',low:'#7f8fa6'}[s]||'#7f8fa6';}
+async function loadActionCenter(){
+  // staff get a per-client filter; populate once from CLIENTS.
+  const sel=document.getElementById('ac-client');
+  if(sel&&!AC_CLIENT_FILLED&&Object.keys(CLIENTS).length){
+    sel.innerHTML='<option value="">All clients</option>'+Object.entries(CLIENTS).map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('');
+    AC_CLIENT_FILLED=true;
+  }
+  const cid=sel?sel.value:'';
+  const data=await api('/api/action-center'+(cid?`?client_id=${cid}`:''));
+  if(!data)return;
+  AC_DATA=data;
+  // overview hero
+  const g=document.getElementById('ops-gauge');
+  if(g){g.textContent=data.ops_score;g.style.boxShadow=`inset 0 0 0 4px ${opsColor(data.ops_score)}`;}
+  const ol=document.getElementById('ops-line');
+  if(ol)ol.textContent=data.total?`${data.total} item${data.total>1?'s':''} need attention — click to triage`:'All clear — nothing needs attention 🎉';
+  const chips=document.getElementById('ops-chips');
+  if(chips)chips.innerHTML=['critical','high','medium','low'].filter(s=>data.counts[s]).map(s=>
+    `<span class="badge" style="background:${sevColor(s)};color:#0b1020;font-weight:700">${data.counts[s]} ${s}</span>`).join('')||'<span class="badge ok">clear</span>';
+  renderAC();
+}
+function renderAC(){
+  const data=AC_DATA; if(!data)return;
+  document.getElementById('ac-score').textContent=data.ops_score;
+  const ag=document.getElementById('ac-gauge');
+  if(ag)ag.style.boxShadow=`inset 0 0 0 5px ${opsColor(data.ops_score)}`;
+  document.getElementById('ac-summary').textContent=data.total?
+    `${data.counts.critical} critical · ${data.counts.high} high · ${data.counts.medium} medium · ${data.counts.low} low`:
+    'Everything is healthy — no actions right now. 🎉';
+  const minRank=SEV_RANK[document.getElementById('ac-sev').value]??-1;
+  const items=data.items.filter(i=>SEV_RANK[i.severity]>=minRank);
+  const box=document.getElementById('ac-list');
+  AC_INDEX={}; items.forEach(i=>AC_INDEX[i.id]=i);
+  if(!items.length){box.innerHTML='<div class="card muted">Nothing matches this filter. 🎉</div>';return;}
+  box.innerHTML=items.map(i=>`
+    <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:14px;border-left:4px solid ${sevColor(i.severity)}">
+      <div style="width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;background:${sevColor(i.severity)};color:#0b1020;flex-shrink:0;cursor:pointer" onclick="acJump('${esc(i.link)}')">${i.score}</div>
+      <div style="flex:1;min-width:0;cursor:pointer" onclick="acJump('${esc(i.link)}')">
+        <div style="font-weight:600">${esc(i.title)}</div>
+        <div class="muted" style="font-size:12px;margin-top:2px">${esc(i.detail)}</div>
+        <div class="muted" style="font-size:12px;margin-top:3px">→ ${esc(i.action)}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+        <div class="badge" style="background:${sevColor(i.severity)};color:#0b1020;font-weight:700">${i.severity}</div>
+        <div class="muted" style="font-size:11px">${esc(i.client_name)}</div>
+        <button class="btn sm ghost" title="Create a ticket from this item" onclick="acCreateTicket('${esc(i.id)}',this)">+ Ticket</button>
+      </div>
+    </div>`).join('');
+}
+let AC_INDEX={};
+async function acCreateTicket(id,btn){
+  const i=AC_INDEX[id]; if(!i)return;
+  if(btn){btn.disabled=true;btn.textContent='…';}
+  const r=await fetch('/api/action-center/create-ticket',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({client_id:i.client_id,title:i.title,detail:i.detail,severity:i.severity,link:i.link,kind:i.kind,entity_type:i.entity_type,entity_id:String(i.entity_id)})});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){if(btn){btn.textContent='✓ #'+j.id;btn.style.color='var(--ok)';}
+    if(typeof loadTickets==='function')loadTickets();}
+  else{if(btn){btn.disabled=false;btn.textContent='+ Ticket';}alert(j.detail||'Could not create ticket');}
+}
+// ---- Content Studio (compose + preview + stage for BVTech.org) ----
+function ctPost(){return {title:document.getElementById('ct-title').value.trim(),
+  kind:document.getElementById('ct-kind').value,
+  keywords:document.getElementById('ct-keywords').value.trim(),
+  body:document.getElementById('ct-body').value};}
+async function ctPreview(){
+  const p=ctPost(); const msg=document.getElementById('ct-msg');
+  if(!p.title){msg.textContent='Add a title first.';return;}
+  msg.textContent='Rendering…';
+  const r=await fetch('/api/content/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+  if(!r.ok){msg.textContent='Preview failed ('+r.status+').';return;}
+  const htmlText=await r.text();
+  const blob=new Blob([htmlText],{type:'text/html'});
+  document.getElementById('ct-frame').src=URL.createObjectURL(blob);
+  msg.textContent='Previewing. This is exactly how it will publish.';
+}
+async function ctStage(){
+  const p=ctPost(); const msg=document.getElementById('ct-msg');
+  if(!p.title){msg.textContent='Add a title first.';return;}
+  const r=await fetch('/api/content/stage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){msg.textContent=j.detail||'Stage failed.';return;}
+  msg.innerHTML=`Staged ✓ → publishes to <b>${esc(j.publish_path)}</b> at <b>${esc(j.url)}</b>. (Deploy step pushes it live.)`;
+}
+
+// ---- Client Health board (explainable score + churn radar) ----
+function healthColor(s){return s>=85?'var(--ok,#2ecc71)':(s>=70?'var(--warn,#f1c40f)':'var(--bad,#e74c3c)');}
+function riskPill(r){const c={healthy:'ok',watch:'warn',high:'bad'}[r]||'';return `<span class="badge ${c}">${r}</span>`;}
+async function loadClientHealth(){
+  const data=await api('/api/clients/health'); if(!data)return;
+  const g=document.getElementById('ch-gauge'), pf=document.getElementById('ch-portfolio');
+  if(pf)pf.textContent=data.portfolio_score??'—';
+  if(g&&data.portfolio_score!=null)g.style.boxShadow=`inset 0 0 0 4px ${healthColor(data.portfolio_score)}`;
+  const sm=document.getElementById('ch-summary');
+  if(sm)sm.textContent=data.count?`${data.count} client${data.count>1?'s':''} · ${data.at_risk} at risk of churn`:'No clients yet.';
+  const board=document.getElementById('ch-board');
+  if(!board)return;
+  board.innerHTML=(data.clients||[]).map(c=>`
+    <div class="card" style="margin:0;border-left:4px solid ${healthColor(c.score)};cursor:pointer" onclick="tab('clients')">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <b>${esc(c.client_name)}</b>
+        <span style="font-size:22px;font-weight:800;color:${healthColor(c.score)}">${c.score}<span class="muted" style="font-size:12px"> ${c.grade}</span></span>
+      </div>
+      <div style="margin:4px 0">${riskPill(c.risk)}</div>
+      <div class="muted" style="font-size:12px">${c.factors.length?esc(c.factors.slice(0,3).join(' · ')):'All metrics healthy ✓'}</div>
+    </div>`).join('')||'<div class="muted">No clients yet.</div>';
+}
+function acJump(link){
+  // link looks like '#tickets/123' or '#devices/4' or '#billing'
+  const m=(link||'').replace(/^#/,'').split('/');
+  const name=m[0], id=m[1];
+  const known=['overview','action','clients','devices','assets','alerts','tickets','time','projects','billing','automation','security','scripts','network','kb','licenses','integrations','audit'];
+  if(!known.includes(name)){tab('action');return;}
+  tab(name);
+  if(name==='tickets'&&id&&typeof openTicket==='function')openTicket(parseInt(id));
 }
 
 // ---- Projects / Kanban ----
@@ -1349,6 +1644,68 @@ document.addEventListener('keydown',e=>{
   if(e.key==='/'&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'){
     e.preventDefault();document.getElementById('gsearch').focus();}});
 document.addEventListener('click',e=>{if(!e.target.closest('#gsearch')&&!e.target.closest('#gsearch-results'))closeSearch();});
+
+// ---- Command Palette (⌘K / Ctrl+K) — power-user nav + quick actions ----
+const CMDK_NAV=['overview','action','clients','devices','assets','alerts','tickets','time','projects','billing','automation','security','scripts','network','kb','licenses','integrations','audit'];
+const CMDK_LABEL={overview:'Overview',action:'⚡ Action Center',clients:'Clients',devices:'Devices',assets:'Assets',alerts:'Alerts',tickets:'Tickets',time:'Time',projects:'Projects',billing:'Billing',automation:'Automation',security:'Security',scripts:'Scripts',network:'Network',kb:'Knowledge Base',licenses:'Licenses',integrations:'Integrations',audit:'Audit Log'};
+function cmdkCommands(){
+  const cmds=CMDK_NAV.map(t=>({icon:'→',label:'Go to '+CMDK_LABEL[t],hint:'navigate',run:()=>tab(t)}));
+  cmds.push(
+    {icon:'⚡',label:'Open Action Center',hint:'triage',run:()=>{tab('action');loadActionCenter();}},
+    {icon:'🩺',label:'View Client Health board',hint:'health',run:()=>{tab('clients');loadClientHealth();}},
+    {icon:'🔮',label:'Show predictive risks (Foresight)',hint:'predict',run:()=>{tab('action');document.getElementById('ac-sev').value='high';loadActionCenter();}},
+    {icon:'🖥️',label:'Deploy an agent / generate installer',hint:'onboard',run:()=>tab('devices')},
+    {icon:'➕',label:'Add a client',hint:'create',run:()=>{tab('clients');const e=document.getElementById('cl-name');if(e)e.focus();}},
+    {icon:'🧹',label:'Run monitoring sweep now',hint:'rmm',run:()=>{if(typeof runSweep==='function')runSweep();}},
+    {icon:'🔄',label:'Refresh everything',hint:'reload',run:()=>load()},
+  );
+  return cmds;
+}
+let CMDK_ITEMS=[], CMDK_SEL=0, _cmdkTimer=null;
+function openCmdk(){
+  document.getElementById('cmdk').classList.remove('hidden');
+  const i=document.getElementById('cmdk-input');i.value='';i.focus();
+  cmdkFilter();
+}
+function closeCmdk(){document.getElementById('cmdk').classList.add('hidden');}
+function cmdkRender(){
+  const box=document.getElementById('cmdk-list');
+  box.innerHTML=CMDK_ITEMS.map((it,idx)=>
+    `<div class="cmdk-row" data-i="${idx}" onclick="cmdkRun(${idx})"
+       style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:9px;cursor:pointer;${idx===CMDK_SEL?'background:rgba(108,92,231,.25)':''}">
+       <span style="width:22px;text-align:center">${it.icon||'•'}</span>
+       <span style="flex:1">${esc(it.label)}</span>
+       <span class="pill" style="font-size:10px">${esc(it.hint||'')}</span></div>`).join('')
+    ||'<div class="muted" style="padding:12px">No matches.</div>';
+}
+function cmdkFilter(){
+  const q=document.getElementById('cmdk-input').value.trim().toLowerCase();
+  const cmds=cmdkCommands().filter(c=>!q||c.label.toLowerCase().includes(q));
+  CMDK_ITEMS=cmds.slice(0,8); CMDK_SEL=0; cmdkRender();
+  // Live entity search merged in (debounced).
+  clearTimeout(_cmdkTimer);
+  if(q.length>=2){
+    _cmdkTimer=setTimeout(async()=>{
+      const r=await fetch('/api/search?q='+encodeURIComponent(q)).catch(()=>null);
+      const j=r?await r.json().catch(()=>({results:[]})):{results:[]};
+      const hits=(j.results||[]).slice(0,6).map(x=>({icon:'🔎',label:x.label,hint:x.type,
+        run:()=>gsJump(x.tab,x.type,x.id)}));
+      // keep top commands, append search hits
+      CMDK_ITEMS=cmds.slice(0,5).concat(hits); CMDK_SEL=0; cmdkRender();
+    },180);
+  }
+}
+function cmdkRun(i){const it=CMDK_ITEMS[i];if(it){closeCmdk();it.run();}}
+function cmdkKey(e){
+  if(e.key==='Escape'){closeCmdk();return;}
+  if(e.key==='ArrowDown'){e.preventDefault();CMDK_SEL=Math.min(CMDK_SEL+1,CMDK_ITEMS.length-1);cmdkRender();}
+  else if(e.key==='ArrowUp'){e.preventDefault();CMDK_SEL=Math.max(CMDK_SEL-1,0);cmdkRender();}
+  else if(e.key==='Enter'){e.preventDefault();cmdkRun(CMDK_SEL);}
+}
+document.addEventListener('keydown',e=>{
+  if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){e.preventDefault();
+    const open=!document.getElementById('cmdk').classList.contains('hidden');
+    open?closeCmdk():openCmdk();}});
 
 // ---- Integrations ----
 async function loadIntegrations(){
@@ -1673,7 +2030,7 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations(),loadProjects(),loadOverview(),loadTime(),loadAssets()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations(),loadProjects(),loadOverview(),loadTime(),loadAssets(),loadActionCenter(),loadClientHealth(),loadMaint(),loadSlaPerf()]);
   toggleOvAuto();   // start the command-center live refresh
 }
 load();

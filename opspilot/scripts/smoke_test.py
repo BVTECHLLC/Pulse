@@ -48,6 +48,25 @@ def main():
         assert summ["acknowledged"]>=1 and summ["critical"]>=1, summ
         print("alert ack OK; summary:", {k:summ[k] for k in ("total","critical","acknowledged")})
 
+        # v0.37: bulk ack/resolve on a few throwaway alerts (kept separate from the
+        # device's monitoring alerts so the auto-resolve test below is unaffected).
+        from app.core.db import SessionLocal as _SLb
+        from app.models import Alert as _Al, AlertSeverity as _Sev, AlertStatus as _ASt
+        _db = _SLb()
+        _bids = []
+        for _i in range(3):
+            _a = _Al(client_id=cid, kind="bulk_test", severity=_Sev.WARNING,
+                     status=_ASt.ACTIVE, message=f"bulk test {_i}")
+            _db.add(_a); _db.flush(); _bids.append(_a.id)
+        _db.commit(); _db.close()
+        bulk = c.post("/api/alerts/bulk", json={"ids": _bids[:2] + [999999], "action": "ack"}).json()
+        assert bulk["changed_count"] == 2 and 999999 in bulk["skipped"], bulk
+        br = c.post("/api/alerts/bulk", json={"ids": _bids, "action": "resolve"}).json()
+        assert br["changed_count"] == 3, br   # all three resolve (2 were acked, 1 active)
+        assert c.post("/api/alerts/bulk", json={"ids":[1],"action":"nope"}).status_code == 400
+        assert c.post("/api/alerts/bulk", json={"ids":[],"action":"ack"}).status_code == 400
+        print("bulk alert ack/resolve (skip-missing + validation) OK")
+
         # a healthy check-in must AUTO-RESOLVE the resource alerts
         a.post("/api/agent/checkin", headers=hdr, json={"cpu_pct":5,"disk_pct":40,"ram_pct":30,"av_status":"on","patch_status":"current"})
         live = c.get("/api/alerts").json()
@@ -247,11 +266,24 @@ def main():
         _bt.first_response_due_at=_d3.now(_z3.utc)-_t3(hours=2)
         _bt.resolution_due_at=_d3.now(_z3.utc)-_t3(hours=2)
         _bt.sla_breach_alerted=False; _db2.commit(); _db2.close()
+        from app.models import PRIORITIES
         rc=c.post("/api/automation/run-checks").json()
         assert rc["sla_breaches_fired"]>=1, rc
         assert any("SLA breached" in n["message"] for n in c.get("/api/notifications").json())
+        # v0.38: built-in escalation runs on breach (ntid is already 'urgent' -> the
+        # note records the top-priority cap rather than bumping).
+        assert "escalated" in rc, rc
+        assert any("auto-escalated" in cm["body"] for cm in c.get(f"/api/tickets/{ntid}/comments").json())
         assert c.post("/api/automation/run-checks").json()["sla_breaches_fired"]==0, "breach re-fired (no dedup)"
-        print("run-checks SLA breach + dedup OK:", rc)
+        # priority-bump path: a normal-priority breached ticket gets bumped one level.
+        _eid=c.post("/api/tickets", json={"client_id":cid,"subject":"Escalate me","priority":"normal"}).json()["id"]
+        _ed=_SL(); _e=_ed.get(_ST,_eid)
+        _e.first_response_due_at=_d3.now(_z3.utc)-_t3(hours=3)
+        _e.resolution_due_at=_d3.now(_z3.utc)-_t3(hours=2); _ed.commit(); _ed.close()
+        rc3=c.post("/api/automation/run-checks").json()
+        assert rc3["escalated"]>=1, rc3
+        assert c.get(f"/api/tickets/{_eid}").json()["priority"]=="high", "normal should bump to high"
+        print("run-checks SLA breach + escalation (note + priority bump) + dedup OK")
 
         # Notifications: unread filter + mark read.
         unread=c.get("/api/notifications?unread_only=true").json()
@@ -609,7 +641,23 @@ def main():
         assert "/download/agent.exe" in body and "schtasks" in body and "ProgramData" in body
         # the whole point: no Python invocation (winget/pip/python.exe) anywhere
         assert "winget" not in body and "pip" not in body and "python " not in body.lower()
+        # install-exe drops a single-use token file so the boot task self-enrolls.
+        assert "opspilot-enroll.json" in body
         print("no-Python .exe installer OK")
+
+        # ============== v0.31: preconfigured ("preloaded") .cmd installer ==========
+        dtok = c.post(f"/api/agent/enroll-token/{cid}").json()["enroll_token"]
+        rcmd = c.get(f"/download/deploy.cmd?token={dtok}")
+        assert rcmd.status_code == 200, rcmd.status_code
+        cb = rcmd.text
+        # token baked in, hands off to install-exe.ps1, self-elevates, downloads as a file
+        assert dtok in cb, "enrollment token must be embedded in deploy.cmd"
+        assert "OPSPILOT_ENROLL_TOKEN" in cb
+        assert "install-exe.ps1?token=" in cb
+        assert "RunAs" in cb and "@echo off" in cb
+        assert "attachment" in rcmd.headers.get("content-disposition", "")
+        assert "bvtech-opspilot-install.cmd" in rcmd.headers.get("content-disposition", "")
+        print("preconfigured .cmd installer OK (token baked in)")
 
         # HTML pages must be uncacheable so deploys are visible immediately (v0.17.1).
         for pth in ("/", "/dashboard", "/portal", "/signup"):
@@ -880,6 +928,148 @@ def main():
         # client activity feed is scoped (no cross-tenant rows)
         print("live command-center overview (KPIs + activity + scope) OK")
 
+        # ===================== v0.32: Action Center (ranked next-best-actions) ====
+        # Seed a guaranteed-actionable signal: an open critical security finding.
+        acf = c.post("/api/security/findings", json={
+            "client_id": cid, "title": "AC smoke — exposed service",
+            "severity": "critical"})
+        assert acf.status_code in (200, 201), acf.text
+        ac = c.get("/api/action-center").json()
+        for k in ("generated_at", "ops_score", "total", "counts", "by_kind", "items"):
+            assert k in ac, ("missing action-center key", k)
+        assert isinstance(ac["ops_score"], int) and 0 <= ac["ops_score"] <= 100, ac["ops_score"]
+        for sk in ("critical", "high", "medium", "low"):
+            assert sk in ac["counts"], sk
+        # items are ranked by score, descending
+        scores = [i["score"] for i in ac["items"]]
+        assert scores == sorted(scores, reverse=True), ("not ranked", scores)
+        # every item is well-formed and explainable
+        for i in ac["items"]:
+            assert all(f in i for f in ("kind","severity","score","title","detail","action","link","client_id","client_name"))
+            assert i["severity"] in ("critical","high","medium","low")
+        # our seeded critical finding surfaces as a security_finding item
+        assert any(i["kind"]=="security_finding" and i["severity"]=="critical" for i in ac["items"]), \
+            "seeded critical finding not in action center"
+        assert ac["counts"]["critical"] >= 1
+        # staff can filter to one client; every returned item belongs to it
+        acf1 = c.get(f"/api/action-center?client_id={cid}").json()
+        assert all(i["client_id"]==cid for i in acf1["items"]), "client filter leaked other tenants"
+        # tenant scoping: a client user only ever sees their own org's actions
+        cac = ca_c.get("/api/action-center").json()
+        assert all(i["client_id"]==cid for i in cac["items"]), "client user saw foreign actions"
+        # a client user cannot peek at another client's action center
+        assert ca_c.get("/api/action-center?client_id=999999").status_code in (403, 404)
+        print("Action Center: ranked + explainable + RBAC scoped OK")
+
+        # ---- v0.36: one-click "create ticket from action item" ----
+        ct = c.post("/api/action-center/create-ticket", json={
+            "client_id": cid, "title": "Disk filling on FILER-01", "detail": "Projected full in 3 days.",
+            "severity": "critical", "link": "#devices/1", "kind": "predict_disk_fill",
+            "entity_type": "device", "entity_id": "1"})
+        assert ct.status_code == 201, ct.text
+        ctj = ct.json()
+        assert ctj["priority"] == "urgent" and ctj["id"], ctj   # critical -> urgent
+        # the ticket really exists, with SLA stamped
+        made = c.get(f"/api/tickets/{ctj['id']}").json()
+        assert made["subject"] == "Disk filling on FILER-01" and made["sla"], made
+        # RBAC: a client user cannot use the staff action
+        assert ca_c.post("/api/action-center/create-ticket", json={
+            "client_id": cid, "title": "x", "severity": "low"}).status_code == 403
+        print("Action Center one-click create-ticket (severity->priority + SLA + RBAC) OK")
+
+        # ===================== v0.33: Predictive Foresight =======================
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+        from app.core.db import SessionLocal as _SL
+        from app import models as _M
+        _now = _dt.now(_tz.utc)
+        _db = _SL()
+        _fdev = _M.Device(client_id=cid, hostname="FORECAST-FILER", os="Windows Server",
+                          health_score=72, patches_pending=2, av_status="on",
+                          disk_pct=91, last_checkin=_now)
+        _db.add(_fdev); _db.flush()
+        for _i in range(11):                       # 70% -> 92% over 10 days (~2.2%/day)
+            _db.add(_M.DeviceCheckin(device_id=_fdev.id, ts=_now - _td(days=10 - _i),
+                                     cpu_pct=30, ram_pct=60, disk_pct=70 + _i * 2.2,
+                                     health_score=82 - _i))
+        _db.commit(); _fid = _fdev.id; _db.close()
+
+        fdc = c.get(f"/api/devices/{_fid}/forecast").json()
+        assert fdc["enough_data"] and fdc["disk"], fdc
+        assert fdc["disk"]["days_to_full"] is not None and fdc["disk"]["days_to_full"] < 10, fdc["disk"]
+        assert fdc["disk"]["trend"] == "degrading", fdc["disk"]
+        assert any(r["kind"] == "disk_fill" for r in fdc["risks"]), fdc["risks"]
+        # fleet roll-up surfaces the predicted disk-fill, severity-ordered
+        ff = c.get("/api/foresight").json()
+        assert ff["total"] >= 1 and any(r["hostname"] == "FORECAST-FILER" for r in ff["risks"]), ff
+        # the prediction also flows into the Action Center as a predict_* item
+        ac2 = c.get("/api/action-center").json()
+        assert any(i["kind"].startswith("predict_") for i in ac2["items"]), "no predictive AC item"
+        # tenant scoping + not-found
+        assert ca_c.get(f"/api/devices/{_fid}/forecast").json()["device_id"] == _fid  # ca_c owns cid
+        assert c.get("/api/devices/999999/forecast").status_code == 404
+        print("Predictive Foresight: disk-fill projection + fleet + AC + RBAC OK")
+
+        # ---- anomaly detection: a sudden spike vs the device's own baseline ----
+        _db = _SL()
+        _adev = _M.Device(client_id=cid, hostname="ANOMALY-APP", health_score=82,
+                          av_status="on", cpu_pct=98, disk_pct=50, last_checkin=_now)
+        _db.add(_adev); _db.flush()
+        for _i in range(9):                        # stable ~20% CPU baseline
+            _db.add(_M.DeviceCheckin(device_id=_adev.id, ts=_now - _td(hours=18 - _i * 2),
+                                     cpu_pct=20 + (_i % 3), ram_pct=50, disk_pct=50, health_score=85))
+        _db.add(_M.DeviceCheckin(device_id=_adev.id, ts=_now, cpu_pct=98, ram_pct=50,
+                                 disk_pct=50, health_score=82))   # the spike
+        _db.commit(); _aid = _adev.id; _db.close()
+        afc = c.get(f"/api/devices/{_aid}/forecast").json()
+        assert any(a["kind"] == "cpu_spike" for a in afc.get("anomalies", [])), afc.get("anomalies")
+        ac3 = c.get("/api/action-center").json()
+        spikes = [i for i in ac3["items"] if i["kind"] == "predict_cpu_spike"
+                  and "ANOMALY-APP" in i["title"]]
+        assert len(spikes) == 1, ("expected exactly one anomaly item", len(spikes))
+        print("Anomaly detection: z-score spike + AC (deduped) OK")
+
+        # ===================== v0.33: Client Health Score ========================
+        ch = c.get("/api/clients/health").json()
+        assert "portfolio_score" in ch and isinstance(ch["clients"], list) and ch["count"] >= 1, ch
+        row = next(r for r in ch["clients"] if r["client_id"] == cid)
+        for k in ("score", "grade", "risk", "factors", "components", "stats"):
+            assert k in row, ("missing client-health key", k)
+        assert 0 <= row["score"] <= 100 and row["grade"] in ("A","B","C","D","F")
+        assert row["risk"] in ("healthy","watch","high")
+        # single-client endpoint + RBAC: a client user sees only their own
+        assert c.get(f"/api/clients/{cid}/health").json()["client_id"] == cid
+        chc = ca_c.get("/api/clients/health").json()
+        assert all(r["client_id"] == cid for r in chc["clients"]), "client saw other orgs' health"
+        print("Client Health Score: weighted + explainable + RBAC OK")
+
+        # ===================== v0.34: Content Studio (blog/advisory gen) =========
+        cpost = {"title": "Patch Tuesday June 2026 — Two Zero-Days Under Active Attack",
+                 "kind": "advisory", "keywords": "Patch Tuesday, CVE, BVTech",
+                 "body": "Microsoft shipped **74 fixes** today.\n\n## What to do\nPatch now.\n\n- Update endpoints\n- Verify backups\n\n> Managed clients are already covered.\n\nQuestions? [Book a call](https://bvtech.org/book/)."}
+        rr = c.post("/api/content/render", json=cpost)
+        assert rr.status_code == 200, rr.text
+        rj = rr.json()
+        assert rj["slug"] == "patch-tuesday-june-2026-two-zero-days-under-active-attack", rj["slug"]
+        assert rj["publish_path"] == f"blog/{rj['slug']}.html"
+        assert rj["url"].endswith(rj["slug"] + ".html")
+        h = rj["html"]
+        # SEO + schema + on-brand + safe markdown all present
+        for must in ["<title>", "application/ld+json", "BlogPosting", 'property="og:image"',
+                     "#0E0D2C", "<strong>74 fixes</strong>", "<h2>What to do</h2>",
+                     "<ul><li>Update endpoints", "<blockquote>", 'href="https://bvtech.org/book/"']:
+            assert must in h, ("content missing " + must)
+        # preview returns a live HTML page
+        pv = c.post("/api/content/preview", json=cpost)
+        assert pv.status_code == 200 and pv.headers["content-type"].startswith("text/html")
+        # stage computes the publish target
+        st = c.post("/api/content/stage", json=cpost).json()
+        assert st["staged"] and st["filename"].endswith(".html")
+        # title is required
+        assert c.post("/api/content/render", json={"title": ""}).status_code == 422
+        # RBAC: a client user cannot generate site content
+        assert ca_c.post("/api/content/render", json=cpost).status_code == 403
+        print("Content Studio: render + preview + stage + SEO/schema + RBAC OK")
+
         # ===================== v0.26: time tracking / money loop =====================
         tt_ticket=c.post("/api/tickets", json={"client_id":cid,"subject":"Timer ticket","priority":"normal"}).json()["id"]
         tt_pid=c.post("/api/projects", json={"client_id":cid,"name":"Timer project"}).json()["id"]
@@ -940,7 +1130,61 @@ def main():
         assert c.delete(f"/api/assets/{a1['id']}").status_code==204
         print("asset management (CMDB + warranty + filters + RBAC + search) OK")
 
-    print("\n=== OpsPilot v0.30 SMOKE TEST PASSED ===")
+        # ===================== v0.39: maintenance windows ========================
+        from datetime import datetime as _dM, timezone as _zM, timedelta as _tM
+        mwc = c.post("/api/clients", json={"name": "Maint Co"}).json()["id"]
+        mtok = c.post(f"/api/agent/enroll-token/{mwc}").json()["enroll_token"]
+        ma = TestClient(app)
+        ment = ma.post("/api/agent/enroll", json={"enroll_token": mtok, "hostname": "MAINT-PC", "os": "Win"}).json()
+        mhdr = {"X-Enroll-Id": ment["enroll_id"], "X-Agent-Key": ment["agent_key"]}
+        _nowM = _dM.now(_zM.utc)
+        win = c.post("/api/maintenance-windows", json={"client_id": mwc,
+            "starts_at": (_nowM - _tM(minutes=5)).isoformat(),
+            "ends_at": (_nowM + _tM(hours=2)).isoformat(), "reason": "Patching"})
+        assert win.status_code == 201 and win.json()["state"] == "active", win.text
+        wid = win.json()["id"]
+        # bad check-in DURING maintenance -> no alerts
+        ma.post("/api/agent/checkin", headers=mhdr, json={"cpu_pct": 99, "disk_pct": 99,
+                "ram_pct": 99, "av_status": "off", "patch_status": "behind"})
+        assert len([al for al in c.get("/api/alerts").json() if al["client_id"] == mwc]) == 0, "alerted during maintenance!"
+        # validation + RBAC
+        assert c.post("/api/maintenance-windows", json={"client_id": mwc,
+            "starts_at": _nowM.isoformat(), "ends_at": (_nowM - _tM(hours=1)).isoformat()}).status_code == 400
+        assert ca_c.post("/api/maintenance-windows", json={"client_id": mwc,
+            "starts_at": _nowM.isoformat(), "ends_at": (_nowM + _tM(hours=1)).isoformat()}).status_code == 403
+        # delete the window -> same bad check-in now alerts
+        assert c.delete(f"/api/maintenance-windows/{wid}").status_code == 200
+        ma.post("/api/agent/checkin", headers=mhdr, json={"cpu_pct": 99, "disk_pct": 99,
+                "ram_pct": 99, "av_status": "off", "patch_status": "behind"})
+        assert len([al for al in c.get("/api/alerts").json() if al["client_id"] == mwc]) > 0, "should alert after window"
+        print("maintenance windows: alert suppression + validation + RBAC OK")
+
+        # ===================== v0.40: SLA performance analytics ==================
+        _ac2 = c.post("/api/clients", json={"name": "SLA Co"}).json()["id"]
+        _adb = _SL()
+        from app.models import SupportTicket as _STa, TicketStatus as _TSa
+        _n = _dM.now(_zM.utc)
+        # one met (resolved before due), one missed (resolved after due)
+        _adb.add(_STa(client_id=_ac2, subject="met", priority="normal", status=_TSa.RESOLVED,
+                      created_at=_n - _tM(hours=10), first_response_due_at=_n - _tM(hours=8),
+                      resolution_due_at=_n - _tM(hours=2), first_responded_at=_n - _tM(hours=9),
+                      resolved_at=_n - _tM(hours=3)))
+        _adb.add(_STa(client_id=_ac2, subject="missed", priority="high", status=_TSa.RESOLVED,
+                      created_at=_n - _tM(hours=10), first_response_due_at=_n - _tM(hours=9),
+                      resolution_due_at=_n - _tM(hours=5), first_responded_at=_n - _tM(hours=8),
+                      resolved_at=_n - _tM(hours=1)))
+        _adb.commit(); _adb.close()
+        perf = c.get(f"/api/analytics/sla-performance?client_id={_ac2}").json()
+        o = perf["overall"]
+        assert o["tickets"] == 2 and o["resolved"] == 2, o
+        assert o["resolution_attainment_pct"] == 50.0, o   # 1 of 2 met
+        assert o["avg_resolution_minutes"] is not None and o["avg_resolution_minutes"] > 0, o
+        assert perf["by_priority"]["high"]["resolution_attainment_pct"] == 0.0, perf["by_priority"]["high"]
+        # client user is scoped to their own org (different client -> empty)
+        assert ca_c.get("/api/analytics/sla-performance").json()["overall"]["tickets"] >= 0
+        print("SLA performance analytics (attainment % + avg times + by-priority + scope) OK")
+
+    print("\n=== OpsPilot v0.40 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

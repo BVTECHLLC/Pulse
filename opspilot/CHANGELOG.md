@@ -1,5 +1,181 @@
 # BVTech OpsPilot — Changelog
 
+## v0.40.0 — SLA performance analytics (June 2026)
+- `GET /api/analytics/sla-performance?days=90` — the metrics MSPs report on:
+  **response & resolution SLA attainment %**, **avg response/resolution time**,
+  and a **per-priority breakdown**, over a rolling window. Tenant-scoped read
+  model (`services/analytics.py`), feeds QBRs. Verified: attainment math,
+  averages, by-priority, scoping.
+
+## v0.39.0 — Maintenance windows: suppress alerts during planned work (June 2026)
+- Schedule a **maintenance window** (per-device or whole-client) and the
+  monitoring engine **suppresses all alerting** inside it — patching, reboots and
+  migrations no longer page anyone. Telemetry is still recorded; only alerting
+  pauses. Offline detection respects windows too.
+- `POST/GET/DELETE /api/maintenance-windows` (staff manage, tenant-scoped reads),
+  new `maintenance_windows` table (Alembic migration verified up/down/up on
+  SQLite). Verified: a 99%/AV-off/behind check-in raises 0 alerts during a window
+  and 6 after it's deleted; validation + RBAC.
+
+## v0.38.0 — SLA breach auto-escalation (June 2026)
+- When a ticket newly breaches its SLA, the run-checks tick now **escalates** it,
+  not just flags it: bumps priority one level (low→normal→high→urgent, capped),
+  posts an **internal note** documenting the breach, and raises a **critical
+  notification** (in-app + channel fan-out). De-duplicated per breach.
+- Deliberately does NOT re-stamp SLA targets on escalation (the ticket stays
+  breached — no clock-resetting). `services/sla_escalation.py`; wired into
+  `/api/automation/run-checks` (returns `escalated` count). Verified end-to-end.
+
+## v0.37.0 — Bulk alert triage (June 2026)
+- Triage an alert storm in one click: select alerts (or "select all") on the
+  Alerts tab and **Ack** or **Resolve** them in bulk.
+- `POST /api/alerts/bulk {ids, action}` (OWNER/TECH) — skips missing/already-
+  resolved ids, audited, returns per-id results. Verified incl. validation.
+
+## v0.36.0 — Action Center goes operational: one-click create-ticket (June 2026)
+- Every Action Center item now has a **+ Ticket** button: turn any signal (a
+  predicted disk-fill, an SLA breach, an open finding, a contract renewal) into a
+  tracked **support ticket in one click**. Severity maps to priority
+  (critical→urgent … low→low), SLA targets are stamped, and automation fires —
+  identical to a hand-created ticket.
+- `POST /api/action-center/create-ticket` (OWNER/TECH), audited and tenant-scoped.
+- Verified: severity→priority mapping, SLA stamped, ticket really created, RBAC.
+
+## v0.35.0 — Daily auto-publishing pipeline for BVTech.org (June 2026)
+
+### Added — hands-off daily security advisories, live on the site
+- `automation/` toolkit that lets Claude Code (headless, on the Linode box)
+  write a fresh, fact-checked security advisory each day in Jordan's voice and
+  publish it live to bvtech.org:
+  - `bvtech_persona.md` — the writing voice/structure distilled from the
+    existing posts (calm, SMB-focused, "⚡ 60-Second Version" box, sign-off).
+  - `daily_blog_prompt.md` — the daily task: web-search a real current story,
+    verify across sources, write, and publish (never fabricate, never leak data).
+  - `daily_blog.sh` — cron wrapper: locks, pulls both repos, runs headless
+    Claude with web+write+bash tools, and has a safety-net publish.
+  - `SETUP.md` — full runbook: Cloudflare Pages ← GitHub auto-deploy, a Linode
+    deploy key for push, Claude Code install, and the cron schedule.
+- `scripts/publish_post.py` now also inserts the new post into `sitemap.xml`
+  (idempotent) and stages it for the commit, so posts get crawled immediately.
+
+### Notes
+- Publishing runs from the **Linode box's** deploy key (this session's GitHub
+  access is scoped to `bvtechllc/pulse`); the box is the publisher, which is the
+  correct, secure design for unattended deploys.
+- Verified: the JSON-driven publish path end-to-end against a real site copy
+  (pixel-perfect clone + sitemap update) and `daily_blog.sh` shell syntax.
+
+## v0.34.0 — Content Studio: publish on-brand pages to BVTech.org (June 2026)
+
+### Added — generate blog/advisory pages that match bvtech.org exactly
+- `services/content_studio.py` turns a title + lightweight-markdown body into a
+  finished, SEO-complete HTML page. Two modes:
+  - **Template-clone (pixel-perfect):** clones the newest real bvtech.org
+    `/blog/*.html` as the skeleton and transplants the new `<title>`, meta
+    description, canonical/OG URLs, schema.org JSON-LD, `<h1>`, dateline, and
+    article body — keeping the live site's header, footer, fonts, and CSS.
+  - **Standalone:** a self-contained on-brand page (BVTech navy/peri/gold,
+    Poppins+Lato) so previews work anywhere before the website repo is wired.
+- Full SEO out of the box: title/description, Open Graph, canonical, and
+  BlogPosting + BreadcrumbList JSON-LD. Public-safe by construction — no tenant
+  data is ever embedded.
+- **Content Studio** portal tab (staff-only): compose, **live-preview exactly as
+  it publishes** (iframe), and **stage** a post with its computed publish path.
+- `POST /api/content/render | /preview | /stage` (OWNER/TECH only).
+- `scripts/publish_post.py` — the CLI the daily job runs on the Linode box:
+  renders + writes `<website-repo>/blog/<slug>.html`, with optional
+  `--git` commit/push so Cloudflare Pages auto-deploys.
+- Loosened the portal CSP to allow `frame-src 'self' blob:` so the preview
+  iframe renders; added the Lato web font for typography parity with the site.
+
+### Verified
+- Generator (both modes) against a real bvtech.org blog skeleton, the publish
+  CLI (dry-run + write), the full smoke suite, and the live portal tab headless
+  (compose → preview → stage, zero console/CSP errors).
+
+## v0.33.0 — Predictive Foresight + Client Health + Command Palette (June 2026)
+
+### Added — Predictive Foresight: see problems before they happen
+- A new engine (`services/foresight.py`) trends each device's check-in history
+  with least-squares regression to **project the future**: days-until-disk-full,
+  rising RAM/CPU pressure, and health trajectory (improving / stable / degrading).
+- `GET /api/devices/{id}/forecast` (per-device) and `GET /api/foresight`
+  (fleet-wide, severity-ordered). Honest about uncertainty — it only projects
+  with enough history and a real trend.
+- **Statistical anomaly detection**: z-scores the latest reading against each
+  device's own baseline to catch *sudden* spikes (distinct from slow trends) —
+  a spike must be both statistically extreme (≥3σ) and absolutely high, so it
+  never cries wolf. Surfaces in the forecast (`anomalies`) and Action Center.
+- Predictions flow straight into the **Action Center**: "Disk full in ~3 days"
+  shows up as a ranked action *before* it's a 2 a.m. outage. Read-only, no agent
+  changes, no new tables.
+
+### Added — Client Health Score: one explainable number per client
+- `services/client_health.py` rolls endpoint health, patch compliance, uptime,
+  active alerts, SLA adherence, security findings, and ticket backlog into a
+  weighted **0-100 score** with a letter grade, a **churn-risk** band
+  (healthy / watch / high), and the **specific factors** pulling it down.
+- `GET /api/clients/health` (portfolio, worst-first) and
+  `GET /api/clients/{id}/health`. New **Client Health board** on the Clients tab
+  with a portfolio gauge and per-client cards.
+
+### Added — Command Palette (⌘K / Ctrl-K)
+- Power-user launcher: fuzzy-jump to any section, run quick actions (deploy
+  agent, add client, run monitoring sweep, open foresight), and search every
+  entity — all from the keyboard, with ↑↓ + ↵ navigation.
+
+### Notes
+- All three are **tenant-scoped + RBAC** (staff see the portfolio; a client user
+  only ever sees their own org) and pure read models.
+- Verified: backend math, full smoke suite, and the live dashboard rendered
+  headless (health board + command palette, zero console errors).
+
+## v0.32.0 — Action Center: the "what to do next" brain (June 2026)
+
+### Added — one ranked, explainable feed across every module
+- New **Action Center** (`GET /api/action-center`, dedicated dashboard tab) fuses
+  every signal we collect into a single prioritized list of what a tech should do
+  next, across the whole book of business: **SLA breaches & at-risk tickets**,
+  **active alerts**, **offline devices**, **AV disabled**, **low health**,
+  **patch-behind**, **open high/critical security findings**, **warranties
+  expiring**, **contracts up for renewal**, **unbilled time (revenue leak)**, and
+  **overdue project tasks**.
+- Every item carries a **0-100 priority score** (severity band + age + type
+  nudge), a plain-English **reason** and **recommended action**, and a
+  **deep-link** straight to the right tab — so triage is one glance, not twelve
+  dashboards.
+- An overall **Ops Score** (0-100) summarizes how much is on fire, shown as a
+  hero gauge on the Overview home screen with severity chips, plus a filterable
+  ranked feed on the Action Center tab (per-client filter for staff).
+- Smart de-duplication: an offline device suppresses its own stale AV/health/
+  patch noise so you see "it's offline," not five derived alarms.
+- **Tenant-scoped + RBAC**: staff see all clients (optionally one); a client user
+  only ever sees their own org, and a foreign `client_id` filter is denied.
+- Pure read model — computes from existing tables, mutates nothing.
+- Verified end-to-end: backend ranking/scoping, the smoke suite, and the live
+  dashboard rendered headless (Action Center tab + Overview Ops Score hero).
+
+## v0.31.0 — Preconfigured ("preloaded") agent installer (June 2026)
+
+### Added — zero-copy-paste agent deployment: the token is baked in
+- New **"Download ready-to-run installer (.cmd)"** button on the Deploy Agent
+  card. Generate a client's installer, hand the **single file** to them, and they
+  just **double-click it** — no token to paste, no URL to type. The installer
+  (`/download/deploy.cmd?token=…`) self-elevates to Administrator, then hands off
+  to the proven `install-exe.ps1`: downloads the standalone `opspilot-agent.exe`,
+  **enrolls with the embedded token**, and registers the boot Scheduled Task.
+- The agent (**v1.4.0**) gained **embedded-token auto-enroll**: a preconfigured
+  agent reads its enrollment token from `OPSPILOT_ENROLL_TOKEN` (env) or a
+  co-located `opspilot-enroll.json` / `opspilot-enroll.token` file, then enrolls
+  silently on first run and starts reporting — truly "it just works." The token
+  file is **single-use** (deleted after a successful enroll).
+- `install-exe.ps1` now also drops that single-use token file beside the exe, so
+  the boot task **self-enrolls** even if the first enroll is interrupted.
+- The copy-paste one-liners (.exe, PowerShell, Linux/macOS) remain as options.
+- Verified: token resolution (env + both file formats + single-use consume),
+  the `deploy.cmd` endpoint (token embedded, self-elevation, file download
+  headers), and the full smoke suite.
+
 ## v0.30.0 — Scheduled QBR emails + agent URL fix (June 2026)
 
 ### Fixed — agent enrollment failed when the URL was typed without a scheme
