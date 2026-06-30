@@ -1,5 +1,27 @@
 # BVTech OpsPilot — Changelog
 
+## v0.61.0 — Payments & balance tracking: record any payment, auto-reconcile (June 2026)
+- **Close the loop on every payment rail.** The offline methods from v0.59 (wire,
+  check, Zelle, Cash App, PayPal, cash) have no webhook — so staff can now
+  **Record a payment** against any invoice (amount + method + reference/note).
+  Card payments via Stripe record themselves through the webhook.
+- **Partial payments + live balance.** An invoice's **balance = total − Σ
+  payments**; it stays open with a shrinking balance until paid, then
+  **auto-marks paid** at zero. The Billing list shows the balance and a **＋
+  payment** action; invoices carry `amount_paid` / `balance`.
+- **Client pay links bill the *remaining* balance.** PayPal/Venmo/Cash App links
+  and the Stripe checkout now charge exactly what's left, and the invoice page
+  shows "Paid X of Y · Balance due Z". Once settled, the pay options close out.
+- `services/billing_payments.py` (balance math + the single status-reconcile
+  path, idempotent on a Stripe object id so webhook retries don't double-count),
+  new `payments` table (migration `d4e5f6a7b8c0` + startup self-heal),
+  `POST/GET /api/invoices/{id}/payments` (OWNER/TECH record, scoped reads).
+- Verified offline (smoke + unit): a partial payment shrinks the balance and
+  re-prices the pay links; a second payment auto-reconciles to **paid** and
+  closes the options; the Stripe webhook records a card payment **once** (retry
+  is a no-op); non-positive amounts and unknown methods are rejected; clients
+  can't record payments (RBAC). Migration up/down/up clean.
+
 ## v0.60.0 — Power dialer + call coaching (June 2026)
 - **Work a call list one click at a time.** A new **📞 Power Dialer** builds a
   queue — numbers typed/pasted in, or pulled straight from CRM contacts (has a

@@ -436,7 +436,7 @@
         <input id="inv-tax" type="number" placeholder="tax %" style="width:80px;padding:10px">
         <button class="btn sm" onclick="generateInvoice()">Generate draft</button>
       </div>
-      <table><thead><tr><th>#</th><th>Client</th><th>Total</th><th>Status</th><th>Issued</th><th></th></tr></thead>
+      <table><thead><tr><th>#</th><th>Client</th><th>Total</th><th>Balance</th><th>Status</th><th>Issued</th><th></th></tr></thead>
       <tbody id="t-invoices"></tbody></table>
     </div>
     <div class="card" style="margin-top:16px">
@@ -1505,15 +1505,31 @@ async function loadInvoices(){
   const money=v=>'$'+(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
   document.getElementById('t-invoices').innerHTML=rows.map(i=>{
     const sc={draft:'',sent:'warn',paid:'ok',void:'bad'}[i.status]||'';
-    const act=i.status==='draft'?`<button class="btn sm" onclick="invAction(${i.id},'send')">send</button>`:
+    const bal=(i.balance!=null)?i.balance:i.total;
+    const openInv=i.status!=='paid'&&i.status!=='void';
+    const recBtn=openInv?`<button class="btn sm" onclick="invRecord(${i.id},${bal})">＋ payment</button>`:'';
+    const act=i.status==='draft'?`<button class="btn sm" onclick="invAction(${i.id},'send')">send</button>${recBtn}`:
       (i.status==='sent'?`<button class="btn sm" onclick="invAction(${i.id},'paid')">mark paid</button>
-        <button class="btn sm ghost" onclick="invPay(${i.id})">💳 Pay link</button>`:'');
+        ${recBtn}<button class="btn sm ghost" onclick="invPay(${i.id})">💳 Pay link</button>`:'');
+    const balCell=openInv&&bal<i.total?`<b>${money(bal)}</b>`:(i.status==='paid'?'<span class="muted">$0.00</span>':money(bal));
     return `<tr><td><a href="/invoice/${i.id}" target="_blank">${esc(i.number||('#'+i.id))}</a></td>
-     <td>${esc(CLIENTS[i.client_id]||i.client_id)}</td><td>${money(i.total)}</td>
+     <td>${esc(CLIENTS[i.client_id]||i.client_id)}</td><td>${money(i.total)}</td><td>${balCell}</td>
      <td><span class="badge ${sc}">${esc(i.status)}</span></td>
      <td class="muted">${i.issued_at?new Date(i.issued_at).toLocaleDateString():'—'}</td>
      <td class="flex">${act}</td></tr>`;}).join('')
-    ||'<tr><td colspan=6 class="muted">No invoices yet.</td></tr>';
+    ||'<tr><td colspan=7 class="muted">No invoices yet.</td></tr>';
+}
+const PAY_METHODS=['cash','check','bank_wire','zelle','cashapp','venmo','paypal','quickbooks','card','other'];
+async function invRecord(id,bal){
+  const amtStr=prompt('Payment amount received:', (bal||0).toFixed(2)); if(amtStr==null)return;
+  const amount=parseFloat(amtStr); if(isNaN(amount)||amount<=0){alert('Enter a positive amount.');return;}
+  const method=(prompt('Method ('+PAY_METHODS.join('/')+'):','check')||'check').trim().toLowerCase();
+  if(!PAY_METHODS.includes(method)){alert('Unknown method.');return;}
+  const reference=prompt('Reference (check #, txn id — optional):','')||null;
+  const r=await post(`/api/invoices/${id}/payments`,{amount,method,reference});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){alert(`Recorded ${money(amount)} — balance ${money(j.balance)} (${j.status}).`);loadInvoices();loadBilling();}
+  else alert(j.detail||'Could not record payment.');
 }
 async function generateInvoice(){
   const rate=parseFloat(document.getElementById('inv-rate').value);

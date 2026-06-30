@@ -14,9 +14,10 @@ from sqlalchemy.orm import Session
 from ...core.db import get_db
 from ...core.deps import assert_client_access, current_user, is_staff, require_roles
 from ...models import (
-    Client, Invoice, InvoiceLineItem, InvoiceStatus, License, Role, TimeEntry, User,
+    Client, Invoice, InvoiceLineItem, InvoiceStatus, License, PAYMENT_METHODS,
+    Payment, Role, TimeEntry, User,
 )
-from ...services import audit
+from ...services import audit, billing_payments
 
 router = APIRouter(prefix="/api", tags=["invoices"])
 
@@ -32,7 +33,8 @@ def _recompute(db: Session, inv: Invoice) -> None:
     inv.total = round(inv.subtotal + inv.tax_amount, 2)
 
 
-def _serialize(inv: Invoice, lines: list[InvoiceLineItem] | None = None) -> dict:
+def _serialize(inv: Invoice, lines: list[InvoiceLineItem] | None = None,
+               paid: float | None = None) -> dict:
     d = {
         "id": inv.id, "client_id": inv.client_id, "number": inv.number,
         "status": inv.status.value, "currency": inv.currency,
@@ -45,6 +47,9 @@ def _serialize(inv: Invoice, lines: list[InvoiceLineItem] | None = None) -> dict
         "created_at": inv.created_at.isoformat(),
         "paid_at": inv.paid_at.isoformat() if inv.paid_at else None,
     }
+    if paid is not None:
+        d["amount_paid"] = round(paid, 2)
+        d["balance"] = round((inv.total or 0.0) - paid, 2)
     if lines is not None:
         d["line_items"] = [
             {"id": li.id, "description": li.description, "quantity": li.quantity,
@@ -128,7 +133,8 @@ def list_invoices(client_id: int | None = None, db: Session = Depends(get_db),
     else:
         # Clients see only their own, and never drafts.
         q = q.filter(Invoice.client_id == user.client_id, Invoice.status != InvoiceStatus.DRAFT)
-    return [_serialize(i) for i in q.order_by(Invoice.created_at.desc()).limit(200).all()]
+    rows = q.order_by(Invoice.created_at.desc()).limit(200).all()
+    return [_serialize(i, paid=billing_payments.amount_paid(db, i.id)) for i in rows]
 
 
 @router.get("/invoices/{invoice_id}")
@@ -140,7 +146,57 @@ def get_invoice(invoice_id: int, db: Session = Depends(get_db), user: User = Dep
         if inv.client_id != user.client_id or inv.status == InvoiceStatus.DRAFT:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
     lines = db.query(InvoiceLineItem).filter(InvoiceLineItem.invoice_id == inv.id).all()
-    return _serialize(inv, lines)
+    return _serialize(inv, lines, paid=billing_payments.amount_paid(db, inv.id))
+
+
+class PaymentIn(BaseModel):
+    amount: float
+    method: str = "other"
+    reference: str | None = None
+    note: str | None = None
+
+
+@router.get("/invoices/{invoice_id}/payments")
+def list_payments(invoice_id: int, db: Session = Depends(get_db),
+                  user: User = Depends(current_user)):
+    inv = db.get(Invoice, invoice_id)
+    if not inv:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+    if not is_staff(user):
+        if inv.client_id != user.client_id or inv.status == InvoiceStatus.DRAFT:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+    rows = (db.query(Payment).filter(Payment.invoice_id == inv.id)
+            .order_by(Payment.received_at.desc()).all())
+    paid = billing_payments.amount_paid(db, inv.id)
+    return {"invoice_id": inv.id, "total": inv.total, "amount_paid": round(paid, 2),
+            "balance": round((inv.total or 0.0) - paid, 2), "status": inv.status.value,
+            "payments": [{"id": p.id, "amount": p.amount, "method": p.method,
+                          "reference": p.reference, "note": p.note,
+                          "received_at": p.received_at.isoformat()} for p in rows]}
+
+
+@router.post("/invoices/{invoice_id}/payments", status_code=201)
+def record_payment(invoice_id: int, body: PaymentIn, request: Request,
+                   db: Session = Depends(get_db),
+                   user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    inv = db.get(Invoice, invoice_id)
+    if not inv:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+    if inv.status == InvoiceStatus.VOID:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Cannot record a payment on a void invoice")
+    if body.amount is None or body.amount <= 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "amount must be positive")
+    if body.method not in PAYMENT_METHODS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            f"method must be one of {list(PAYMENT_METHODS)}")
+    result = billing_payments.record_payment(
+        db, inv, body.amount, body.method, reference=body.reference,
+        note=body.note, user_id=user.id)
+    audit.record(db, action="invoice.payment", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="invoice", target_id=str(inv.id),
+                 client_id=inv.client_id, ip=_ip(request),
+                 detail=f"{body.method} {body.amount} balance={result['balance']}")
+    return result
 
 
 class LineItemIn(BaseModel):

@@ -910,6 +910,30 @@ class InvoiceLineItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+# Payment methods that can be recorded against an invoice (online + offline rails).
+PAYMENT_METHODS = (
+    "card", "paypal", "venmo", "cashapp", "zelle", "bank_wire", "check",
+    "quickbooks", "cash", "other",
+)
+
+
+class Payment(Base):
+    """A payment recorded against an invoice. Online rails (Stripe card) write one
+    automatically via the webhook; offline rails (wire, check, Zelle, Cash App…)
+    are recorded by staff. The invoice's balance is total − Σ payments, and it
+    auto-marks PAID once the balance reaches zero."""
+    __tablename__ = "payments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id"), index=True, nullable=False)
+    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    method: Mapped[str] = mapped_column(String(20), default="other")
+    reference: Mapped[str | None] = mapped_column(String(160))   # check #, txn id, confirmation
+    note: Mapped[str | None] = mapped_column(Text)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
 # --------------------------------------------------------------------------- #
 # v0.11 — Sites & networking (IPAM)
 # --------------------------------------------------------------------------- #
