@@ -152,10 +152,53 @@ def health():
 # Startup: create tables (dev) + bootstrap the first owner account.
 # In production, prefer Alembic migrations over create_all (see migrations/).
 # --------------------------------------------------------------------------- #
+def _reconcile_schema():
+    """Self-heal schema drift on boot so the running code never queries a column
+    or table the DB lacks. Alembic is still the source of truth, but deploy.sh
+    runs it best-effort (|| WARN) and the API starts BEFORE migrations apply — so
+    a failed/half-applied migration would otherwise break every query against the
+    affected table (e.g. integration_connections), making saved settings read as
+    "not connected". This makes startup idempotently reconcile:
+      1. create_all() — adds any MISSING tables (checkfirst; never touches existing)
+      2. ensure the recently-added COLUMNS exist (create_all can't add columns)
+    Both are safe to run every boot and on every dialect."""
+    from sqlalchemy import inspect, text
+    try:
+        Base.metadata.create_all(bind=engine)   # missing tables only
+    except Exception as e:  # noqa: BLE001
+        print(f"[schema] create_all warning: {e}")
+
+    # (table, column, DDL type) for columns added after their table existed.
+    wanted = [
+        ("integration_connections", "last_health_at", "TIMESTAMP WITH TIME ZONE"),
+        ("integration_connections", "last_health_ok", "BOOLEAN"),
+        ("integration_connections", "last_health_error", "VARCHAR(300)"),
+        ("devices", "agent_version", "VARCHAR(40)"),
+        ("devices", "platform", "VARCHAR(40)"),
+    ]
+    insp = inspect(engine)
+    is_sqlite = engine.dialect.name == "sqlite"
+    for table, col, ddl in wanted:
+        try:
+            cols = {c["name"] for c in insp.get_columns(table)}
+        except Exception:
+            continue   # table doesn't exist yet — create_all/alembic will make it
+        if col in cols:
+            continue
+        ddl_type = "DATETIME" if (is_sqlite and ddl.startswith("TIMESTAMP")) else ddl
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {col} {ddl_type}'))
+            print(f"[schema] added missing column {table}.{col}")
+        except Exception as e:  # noqa: BLE001
+            print(f"[schema] could not add {table}.{col}: {e}")
+
+
 @app.on_event("startup")
 def _startup():
-    if not _s.is_prod:
-        Base.metadata.create_all(bind=engine)
+    # Always reconcile (prod + dev): the cost is one cheap inspection per boot and
+    # it guarantees the schema matches the deployed code.
+    _reconcile_schema()
 
     db = SessionLocal()
     try:

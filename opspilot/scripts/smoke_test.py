@@ -1428,6 +1428,17 @@ def main():
             _ih.CHECKERS.update(_orig)
         print("Integration health watchdog: status fields + detect-fail + notify-once + RBAC OK")
 
+        # --- v0.52.1 SSO settings: vault-driven sign-in providers + redirect URIs ---
+        ss = c.get("/api/oauth/sso-settings").json()
+        assert "redirect_uris" in ss and ss["redirect_uris"]["microsoft"].endswith("/api/oauth/microsoft/callback")
+        sv = c.put("/api/oauth/sso-settings", json={"google_client_id": "gid.apps", "google_client_secret": "gsec"})
+        assert sv.status_code == 200 and "google" in sv.json()["providers_active"], sv.text
+        # the login page's provider list now includes google (vault-driven SSO)
+        provs = {p["key"] for p in c.get("/api/oauth/providers").json()["providers"]}
+        assert "google" in provs, provs
+        assert ca_c.put("/api/oauth/sso-settings", json={"google_client_id": "x"}).status_code == 403
+        print("SSO: vault-driven providers + redirect URIs + RBAC OK")
+
     print("\n=== OpsPilot v0.52 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
