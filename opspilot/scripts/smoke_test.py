@@ -1400,7 +1400,35 @@ def main():
                       "conditions": {}, "actions": [{"type": "run_nukes"}]}).status_code == 400
         print("Automation: outbound email/LinkedIn actions validated + unknown rejected OK")
 
-    print("\n=== OpsPilot v0.51 SMOKE TEST PASSED ===")
+        # --- v0.52 integration health watchdog ---
+        # /status carries health fields; the live-check endpoint is OWNER/TECH only.
+        sj = c.get("/api/integrations/status").json()
+        assert "failing" in sj and all("health_ok" in i for i in sj["integrations"])
+        assert ca_c.post("/api/integrations/health/check").status_code == 403
+        # Verify the sweep logic deterministically (no network): stub the checkers,
+        # force HubSpot to fail, confirm it's recorded + a notification fires once.
+        from app.services import integration_health as _ih
+        from app.core.db import SessionLocal as _SL
+        from app.models import Notification as _Notif
+        _orig = dict(_ih.CHECKERS)
+        _ih.CHECKERS.clear()
+        _ih.CHECKERS["hubspot"] = lambda cfg: (_ for _ in ()).throw(RuntimeError("HTTP 401 expired"))
+        try:
+            _hdb = _SL()
+            r1 = _ih.check_all(_hdb)
+            assert r1["failing"] >= 1 and r1["newly_failed"] >= 1, r1
+            n1 = _hdb.query(_Notif).filter(_Notif.kind == "integration_health").count()
+            assert n1 >= 1
+            r2 = _ih.check_all(_hdb)            # still failing, but no duplicate alert
+            assert r2["newly_failed"] == 0, r2
+            assert _hdb.query(_Notif).filter(_Notif.kind == "integration_health").count() == n1
+            _hdb.close()
+        finally:
+            _ih.CHECKERS.clear()
+            _ih.CHECKERS.update(_orig)
+        print("Integration health watchdog: status fields + detect-fail + notify-once + RBAC OK")
+
+    print("\n=== OpsPilot v0.52 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

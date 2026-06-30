@@ -1,5 +1,19 @@
 # BVTech OpsPilot — Changelog
 
+## v0.52.0 — Connector health watchdog (June 2026)
+- **Pulse now tells you when an integration breaks** instead of failing silently.
+  `services/integration_health.py` live-tests each connected provider (M365,
+  HubSpot, QuickBooks, GBP, Tactical RMM), records the result on the connection
+  (`last_health_ok/at/error`), and **raises a critical notification on each NEW
+  failure** (expired token, exhausted credit) — once, no alert storms.
+- Network checks run BEFORE any DB write (no transaction held open during slow
+  I/O). `POST /api/integrations/health/check` (OWNER/TECH) runs the sweep; the
+  **🔌 Integration Hub** gains a **🩺 Test all live** button and per-tile health
+  (✓ live / ⚠ error). `integration_connections` health columns (migration
+  up/down/up verified).
+- Verified: detect-fail → record + notify-once (no storm), skip for unconfigured,
+  status carries health, RBAC.
+
 ## v0.51.0 — Automation reaches across integrations (June 2026)
 - The automation engine gains **outbound-comms actions**: `send_email` (via the
   M365 mailbox) and `linkedin_post` (via the LinkedIn integration) — so a rule can

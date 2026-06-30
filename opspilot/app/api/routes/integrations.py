@@ -301,8 +301,22 @@ def platform_status(db: Session = Depends(get_db),
             connected += 1
         out.append({"key": spec["key"], "name": spec["name"], "category": spec["category"],
                     "icon": spec["icon"], "tab": spec["tab"], "configured": ok,
-                    "enabled": bool(conn.enabled) if conn else False})
-    return {"integrations": out, "connected": connected, "total": len(PLATFORM_INTEGRATIONS)}
+                    "enabled": bool(conn.enabled) if conn else False,
+                    "health_ok": conn.last_health_ok if conn else None,
+                    "health_error": conn.last_health_error if conn else None,
+                    "health_at": (conn.last_health_at.isoformat()
+                                  if conn and conn.last_health_at else None)})
+    failing = sum(1 for i in out if i["health_ok"] is False)
+    return {"integrations": out, "connected": connected, "failing": failing,
+            "total": len(PLATFORM_INTEGRATIONS)}
+
+
+@router.post("/health/check")
+def run_health_check(db: Session = Depends(get_db),
+                     user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Live-test every connected integration; raises a notification on new failures."""
+    from ...services import integration_health
+    return integration_health.check_all(db)
 
 
 class ConnectionIn(BaseModel):

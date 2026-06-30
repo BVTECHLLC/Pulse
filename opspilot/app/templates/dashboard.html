@@ -683,7 +683,8 @@
     <div class="card" style="margin-bottom:16px">
       <div class="flex" style="justify-content:space-between;align-items:center;flex-wrap:wrap">
         <div><b>🔌 Integration Hub.</b> <span class="muted" id="ih-summary">Loading connector status…</span></div>
-        <button class="btn sm ghost" onclick="loadIntegHub()">Refresh</button>
+        <div class="flex"><button class="btn sm" onclick="ihHealthCheck()">🩺 Test all live</button>
+          <button class="btn sm ghost" onclick="loadIntegHub()">Refresh</button></div>
       </div>
       <div id="ih-grid" class="grid cols-4" style="margin-top:12px"></div>
     </div>
@@ -2047,13 +2048,24 @@ async function loadIntegHub(){
     (r.connected<r.total?`<span class="muted">Click a greyed tile to set it up.</span>`:`<span style="color:var(--ok)">Everything's connected 🎉</span>`);
   document.getElementById('ih-grid').innerHTML=(r.integrations||[]).map(i=>{
     const on=i.configured;
-    return `<div class="card" style="cursor:pointer;border-color:${on?'var(--ok)':'var(--line)'};opacity:${on?1:.7}"
-       onclick="tab('${i.tab}')" title="${on?'Connected':'Not configured — click to set up'}">
+    // health: true=live-OK, false=failing, null=connected-but-not-tested
+    let hb='', border=on?'var(--ok)':'var(--line)';
+    if(on&&i.health_ok===false){hb=`<div class="muted" style="font-size:10px;color:var(--bad)">⚠ ${esc(i.health_error||'failing')}</div>`;border='var(--bad)';}
+    else if(on&&i.health_ok===true){hb=`<div class="muted" style="font-size:10px;color:var(--ok)">✓ live</div>`;}
+    return `<div class="card" style="cursor:pointer;border-color:${border};opacity:${on?1:.7}"
+       onclick="tab('${i.tab}')" title="${on?'Connected — click to manage':'Not configured — click to set up'}">
       <div style="font-size:20px">${i.icon}</div>
       <div style="font-weight:600;font-size:13px;margin-top:4px">${esc(i.name)}</div>
       <div class="muted" style="font-size:11px">${esc(i.category)}</div>
-      <div style="margin-top:6px"><span class="badge ${on?'ok':'bad'}">${on?'● connected':'○ not set up'}</span></div>
+      <div style="margin-top:6px"><span class="badge ${on?(i.health_ok===false?'bad':'ok'):'bad'}">${on?'● connected':'○ not set up'}</span></div>
+      ${hb}
     </div>`;}).join('');
+}
+async function ihHealthCheck(){
+  const s=document.getElementById('ih-summary'); s.textContent='Live-testing every connector…';
+  const r=await post('/api/integrations/health/check'); const j=await r.json().catch(()=>({}));
+  if(r.ok)s.innerHTML=`Tested ${j.checked} · <b style="color:${j.failing?'var(--bad)':'var(--ok)'}">${j.failing} failing</b>`;
+  await loadIntegHub();
 }
 async function loadOAuth(){
   const prov=await api('/api/oauth/providers');
