@@ -16,7 +16,7 @@ from fastapi import HTTPException, status
 from ...core.db import get_db
 from ...core.deps import current_user, is_staff, require_roles
 from ...models import Client, License, Role, User
-from ...services import ar_aging, audit
+from ...services import ar_aging, audit, finance_kpis
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
 
@@ -116,6 +116,14 @@ def ar_aging_report(client_id: int | None = None, db: Session = Depends(get_db),
     else:
         scope = user.client_id   # clients are pinned to their own A/R
     return ar_aging.aging_report(db, client_id=scope)
+
+
+@router.get("/finance")
+def finance_summary(db: Session = Depends(get_db),
+                    user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """The owner's money cockpit: collected (month/30d/all-time), outstanding +
+    overdue A/R, payment-method mix, and recent payments. Staff-only."""
+    return finance_kpis.summary(db)
 
 
 @router.post("/send-reminders")
