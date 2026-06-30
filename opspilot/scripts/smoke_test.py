@@ -782,6 +782,41 @@ def main():
         assert all(i["status"]!="draft" for i in cinv)    # clients never see drafts
         print("client portal data: own posture grade + balance + invoice balances + RBAC OK")
 
+        # ===================== v0.67: posture trend + drop alerting =====================
+        # Make cid's devices healthy → first snapshot should be a decent grade.
+        s=_SL2()
+        try:
+            for d in s.query(_Dev2).filter(_Dev2.client_id==cid).all():
+                d.av_status="Protected"; d.patches_pending=0; d.health_score=95
+                d.last_checkin=_dt3.now(_tz3.utc)
+            s.commit()
+        finally:
+            s.close()
+        snap=c.post("/api/posture/snapshot").json()
+        assert snap["ok"] and any(x["client_id"]==cid for x in snap["snapshots"]), snap
+        hist1=c.get(f"/api/posture/{cid}/history").json()["history"]
+        assert len(hist1)>=1 and "trend" in c.get(f"/api/posture/{cid}").json(), "trend missing"
+        # Now worsen cid's posture → next snapshot must drop the grade + alert staff.
+        s=_SL2()
+        try:
+            for d in s.query(_Dev2).filter(_Dev2.client_id==cid).all():
+                d.av_status="Disabled"; d.patches_pending=12; d.health_score=5
+                d.last_checkin=_dt3.now(_tz3.utc)-_td3(hours=6)
+            s.commit()
+        finally:
+            s.close()
+        snap2=c.post("/api/posture/snapshot").json()
+        drop=[x for x in snap2["snapshots"] if x["client_id"]==cid][0]
+        assert drop["dropped"] is True, drop
+        assert any(n["kind"]=="posture_drop" for n in c.get("/api/notifications").json()), "expected posture_drop notification"
+        hist2=c.get(f"/api/posture/{cid}/history").json()["history"]
+        assert len(hist2)>len(hist1), (len(hist1), len(hist2))
+        # Portfolio rows now carry a trend; a client can see their own history but not snapshot.
+        assert all("trend" in r for r in c.get("/api/posture").json())
+        assert ca_c.get(f"/api/posture/{cid}/history").status_code==200
+        assert ca_c.post("/api/posture/snapshot").status_code==403
+        print("posture trend: snapshot + history + grade-drop alert + RBAC OK")
+
         # ===================== v0.60: power dialer + call coaching =====================
         from app.services import power_dialer as _pd
         _orig_caller = _pd.CALLER
@@ -1808,7 +1843,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.66 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.67 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

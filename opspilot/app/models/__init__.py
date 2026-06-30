@@ -1231,3 +1231,16 @@ class RemediationRule(Base):
     fire_count: Mapped[int] = mapped_column(Integer, default=0)
     created_by_user_id: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class PostureSnapshot(Base):
+    """A point-in-time capture of a client's security scorecard, taken on the
+    scheduler tick (about daily). Powers the posture trend line and lets us alert
+    when a client's grade slips between snapshots."""
+    __tablename__ = "posture_snapshots"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    score: Mapped[int | None] = mapped_column(Integer)
+    grade: Mapped[str] = mapped_column(String(4), default="N/A")
+    domains: Mapped[dict] = mapped_column(JSON, default=dict)   # {domain: score}
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
