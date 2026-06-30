@@ -21,6 +21,9 @@ WEBSITE_GIT_URL="${WEBSITE_GIT_URL:-https://gitlab.com/bvtechllc-group/bvtech-we
 
 echo "== BVTech Linode bootstrap =="
 
+# Stop chmod +x from showing up as a tracked change and blocking `git pull`.
+git -C "${PULSE_REPO%/opspilot}" config core.fileMode false 2>/dev/null || true
+
 # ---- Required secrets (presence only; values never printed) ----------------
 # ANTHROPIC_API_KEY is read from your existing agent.env (JSON "anthropic_key"
 # is auto-mapped). The GitLab deploy token goes in a clean shell file so we
