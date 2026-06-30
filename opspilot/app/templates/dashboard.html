@@ -42,6 +42,7 @@
     <a class="active" data-tab="overview" onclick="tab('overview')">Overview</a>
     <a data-tab="action" onclick="tab('action')">⚡ Action Center</a>
     <a data-tab="clients" onclick="tab('clients')">Clients</a>
+    <a data-tab="crm" onclick="tab('crm')">🤝 CRM</a>
     <a data-tab="devices" onclick="tab('devices')">Devices</a>
     <a data-tab="assets" onclick="tab('assets')">Assets</a>
     <a data-tab="alerts" onclick="tab('alerts')">Alerts</a>
@@ -762,6 +763,39 @@
     </div>
   </section>
 
+  <section id="crm" class="hidden">
+    <div id="crm-pipeline" class="grid cols-4" style="margin-bottom:16px"></div>
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="margin-top:0">Add contact / lead</h3>
+      <div class="grid2">
+        <label>Name<input id="crm-name" placeholder="Jane Smith"></label>
+        <label>Company<input id="crm-company" placeholder="Acme Law"></label>
+        <label>Email<input id="crm-email" placeholder="jane@acme.com"></label>
+        <label>Phone<input id="crm-phone" placeholder="+1..."></label>
+        <label>Title<input id="crm-title" placeholder="Managing Partner"></label>
+        <label>Market<input id="crm-market" placeholder="austin"></label>
+      </div>
+      <div class="flex" style="margin-top:10px"><button class="btn sm" onclick="crmCreate()">Add contact</button>
+        <span class="muted" id="crm-msg" style="font-size:12px"></span></div>
+    </div>
+    <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px">
+      <div class="card">
+        <div class="flex" style="justify-content:space-between;flex-wrap:wrap">
+          <h3 style="margin:0">Pipeline</h3>
+          <div class="flex">
+            <select id="crm-filter" onchange="loadCrm()" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:8px;color:var(--ink)">
+              <option value="">All statuses</option></select>
+            <input id="crm-search" placeholder="search…" style="min-width:140px" onkeydown="if(event.key==='Enter')loadCrm()">
+            <button class="btn sm ghost" onclick="loadCrm()">Search</button>
+          </div>
+        </div>
+        <table style="margin-top:10px"><thead><tr><th>Name</th><th>Company</th><th>Status</th><th>Last touch</th></tr></thead>
+        <tbody id="t-crm"></tbody></table>
+      </div>
+      <div class="card" id="crm-detail"><p class="muted">Select a contact to see their timeline.</p></div>
+    </div>
+  </section>
+
   <section id="mailbox" class="hidden">
     <div id="mb-unconfigured" class="card hidden" style="margin-bottom:16px">
       <b>Mailbox not connected.</b> <span class="muted">Add your Microsoft 365 tenant & app credentials in
@@ -897,6 +931,7 @@ function tab(name){
   document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('active',a.dataset.tab===name));
   // Lazy-load tabs that hit external services so we don't call them on every page load.
   if(name==='mailbox'){loadMailbox();}
+  if(name==='crm'){loadCrm();}
   if(name==='rmm'){loadRmm();}
   if(name==='settings'&&!_tabLoaded.settings){_tabLoaded.settings=true;loadSettings();}
 }
@@ -2114,6 +2149,80 @@ async function loadBilling(){
      <td>${new Date(r.renewal_date).toLocaleDateString()}</td>
      <td><span class="badge ${r.overdue?'bad':(r.days_until<=14?'warn':'')}">${r.overdue?'overdue':r.days_until+'d'}</span></td></tr>`).join('')
     ||'<tr><td colspan=6 class="muted">Nothing renewing in this window.</td></tr>';
+}
+
+// ===================== CRM (native lead/contact pipeline) =====================
+const CRM_STATUSES=['new','contacted','qualified','proposal','customer','lost'];
+let _crmFilterInit=false;
+async function loadCrm(){
+  if(!_crmFilterInit){const sel=document.getElementById('crm-filter');
+    sel.innerHTML='<option value="">All statuses</option>'+CRM_STATUSES.map(s=>`<option value="${s}">${s}</option>`).join('');_crmFilterInit=true;}
+  const pipe=await api('/api/crm/pipeline');
+  if(pipe)document.getElementById('crm-pipeline').innerHTML=
+    [['Total',pipe.total]].concat(CRM_STATUSES.map(s=>[s,pipe.counts[s]||0]))
+    .slice(0,8).map(([k,v])=>`<div class="card"><h3 style="text-transform:capitalize">${k}</h3><div class="stat">${v}</div></div>`).join('');
+  const st=document.getElementById('crm-filter').value, q=document.getElementById('crm-search').value.trim();
+  const p=[]; if(st)p.push('status='+encodeURIComponent(st)); if(q)p.push('q='+encodeURIComponent(q));
+  const r=await api('/api/crm/contacts'+(p.length?'?'+p.join('&'):'')); if(!r)return;
+  document.getElementById('t-crm').innerHTML=(r.contacts||[]).map(c=>
+    `<tr style="cursor:pointer" onclick="crmOpen(${c.id})"><td>${esc(c.name)}</td><td>${esc(c.company||'—')}</td>
+     <td><span class="badge ${c.status==='customer'?'ok':(c.status==='lost'?'bad':'warn')}">${esc(c.status)}</span></td>
+     <td class="muted" style="font-size:12px">${c.last_touch_at?ago(c.last_touch_at):'—'}</td></tr>`).join('')
+    ||'<tr><td colspan=4 class="muted">No contacts. Add one or run prospecting.</td></tr>';
+}
+async function crmCreate(){
+  const msg=document.getElementById('crm-msg'); const name=val('crm-name');
+  if(!name){msg.textContent='Name is required.';return;}
+  msg.textContent='saving…';
+  const body={name,company:val('crm-company'),email:val('crm-email'),phone:val('crm-phone'),
+    title:val('crm-title'),market:val('crm-market'),source:'manual'};
+  const r=await post('/api/crm/contacts',body); const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Added ✓';['crm-name','crm-company','crm-email','crm-phone','crm-title','crm-market'].forEach(i=>document.getElementById(i).value='');loadCrm();}
+  else msg.textContent=j.detail||'Save failed';
+}
+async function crmOpen(id){
+  const d=document.getElementById('crm-detail'); d.innerHTML='<p class="muted">Loading…</p>';
+  const r=await api(`/api/crm/contacts/${id}`); if(!r||r.detail){d.innerHTML='<p class="err">Could not load.</p>';return;}
+  const c=r.contact;
+  const statusOpts=CRM_STATUSES.map(s=>`<option value="${s}" ${s===c.status?'selected':''}>${s}</option>`).join('');
+  const acts=(r.activities||[]).map(a=>
+    `<div style="border-left:2px solid var(--line);padding:4px 0 4px 10px;margin:6px 0">
+      <div style="font-size:12px"><b>${esc(a.type)}</b>${a.subject?' · '+esc(a.subject):''}
+        <span class="muted">${ago(a.created_at)}</span></div>
+      ${a.body?`<div class="muted" style="font-size:12px;white-space:pre-wrap">${esc(a.body)}</div>`:''}</div>`).join('')
+    ||'<p class="muted">No activity yet.</p>';
+  d.innerHTML=`<div class="flex" style="justify-content:space-between"><h3 style="margin:0">${esc(c.name)}</h3>
+      ${c.client_id?`<span class="badge ok">client #${c.client_id}</span>`
+        :`<button class="btn sm" onclick="crmConvert(${c.id})">Convert to client</button>`}</div>
+    <p class="muted" style="margin:4px 0;font-size:12px">${esc(c.company||'')} ${c.title?'· '+esc(c.title):''}<br>
+      ${esc(c.email||'')} ${c.phone?'· '+esc(c.phone):''}</p>
+    <div class="flex" style="margin:8px 0">
+      <select id="crm-status" onchange="crmStatus(${c.id},this.value)" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:8px;color:var(--ink)">${statusOpts}</select>
+      ${c.phone?`<button class="btn sm ghost" onclick="dialpadCallCrm('${esc(c.phone)}',${c.id})">📞 Call</button>`:''}
+    </div>
+    <hr style="border-color:var(--line)">
+    <label>Log activity</label>
+    <div class="flex"><select id="crm-act-type" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:8px;color:var(--ink)">
+      <option value="note">Note</option><option value="call">Call</option><option value="email">Email</option><option value="meeting">Meeting</option></select>
+      <input id="crm-act-subj" placeholder="subject" style="flex:1"></div>
+    <textarea id="crm-act-body" rows="2" placeholder="details…" style="width:100%;margin-top:6px"></textarea>
+    <button class="btn sm" style="margin-top:6px" onclick="crmLog(${c.id})">Add to timeline</button>
+    <hr style="border-color:var(--line)"><h4>Timeline</h4>${acts}`;
+}
+async function crmStatus(id,status){await patch(`/api/crm/contacts/${id}`,{status});loadCrm();}
+async function crmLog(id){
+  const body={type:document.getElementById('crm-act-type').value,subject:val('crm-act-subj'),body:val('crm-act-body')};
+  const r=await post(`/api/crm/contacts/${id}/activity`,body); if(r.ok){crmOpen(id);loadCrm();}
+}
+async function crmConvert(id){
+  if(!confirm('Convert this contact into a managed client?'))return;
+  const r=await post(`/api/crm/contacts/${id}/convert`); const j=await r.json().catch(()=>({}));
+  if(r.ok){alert('Converted to client #'+j.client_id);crmOpen(id);loadCrm();}else alert(j.detail||'Convert failed');
+}
+async function dialpadCallCrm(phone,id){
+  const r=await post('/api/comms/dialpad/call',{to:phone}); const j=await r.json().catch(()=>({}));
+  if(r.ok){await post(`/api/crm/contacts/${id}/activity`,{type:'call',subject:'Dialed via Dialpad',direction:'outbound'});crmOpen(id);}
+  else alert(j.detail||'Call failed (configure Dialpad in Settings).');
 }
 
 // ===================== RMM (Tactical RMM connector) =====================

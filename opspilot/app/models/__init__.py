@@ -1003,3 +1003,53 @@ class NotificationChannel(Base):
     client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)  # None = all
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+# --------------------------------------------------------------------------- #
+# v0.43 — Native CRM (leads/contacts + activity timeline). Our own PSA growth
+# engine — prospecting feeds it, campaigns/dialer act on it, and a qualified
+# contact converts straight into a managed Client.
+# --------------------------------------------------------------------------- #
+CRM_STATUSES = ("new", "contacted", "qualified", "proposal", "customer", "lost")
+
+
+class CrmContact(Base):
+    """A lead/prospect/contact in the CRM pipeline. Staff-owned (not client-scoped
+    like managed orgs); `client_id` is set once a contact converts to a Client."""
+    __tablename__ = "crm_contacts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(255), index=True)
+    phone: Mapped[str | None] = mapped_column(String(50))
+    company: Mapped[str | None] = mapped_column(String(200), index=True)
+    title: Mapped[str | None] = mapped_column(String(160))
+    source: Mapped[str | None] = mapped_column(String(40))        # scrape|manual|inbound|import
+    status: Mapped[str] = mapped_column(String(20), default="new", index=True)
+    score: Mapped[int | None] = mapped_column(Integer)            # MSP-readiness 0-100
+    market: Mapped[str | None] = mapped_column(String(60))        # austin|houston|...
+    website: Mapped[str | None] = mapped_column(String(300))
+    address: Mapped[str | None] = mapped_column(String(300))
+    notes: Mapped[str | None] = mapped_column(Text)
+    tags: Mapped[list] = mapped_column(JSON, default=list)
+    do_not_contact: Mapped[bool] = mapped_column(Boolean, default=False)   # CAN-SPAM/DNC
+    sms_opt_in: Mapped[bool] = mapped_column(Boolean, default=False)       # TCPA consent
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)
+    owner_user_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+    last_touch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CrmActivity(Base):
+    """One timeline entry against a contact (note, email, call, sms, meeting,
+    status change). The CRM's audit trail of every touch."""
+    __tablename__ = "crm_activities"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("crm_contacts.id"), index=True, nullable=False)
+    type: Mapped[str] = mapped_column(String(20), nullable=False)   # note|email|call|sms|meeting|status
+    direction: Mapped[str | None] = mapped_column(String(10))       # outbound|inbound
+    subject: Mapped[str | None] = mapped_column(String(300))
+    body: Mapped[str | None] = mapped_column(Text)
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
