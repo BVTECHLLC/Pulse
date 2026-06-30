@@ -1001,6 +1001,18 @@
     </div>
 
     <div class="card" style="margin-bottom:16px">
+      <h3>💳 Stripe Payments <span class="pill" id="set-sp-pill">not configured</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Let clients pay invoices online; paid invoices auto-reconcile via webhook. From your Stripe dashboard: a secret key + the webhook signing secret.</p>
+      <div class="grid2">
+        <label>Secret key (sk_…)<input id="set-sp-key" type="password" placeholder="(unchanged)"></label>
+        <label>Webhook signing secret (whsec_…)<input id="set-sp-wh" type="password" placeholder="(unchanged)"></label>
+      </div>
+      <input id="set-sp-webhook-url" readonly onclick="this.select()" style="font-family:monospace;font-size:11px;margin-top:6px">
+      <div class="flex" style="margin-top:8px"><button class="btn sm" onclick="saveStripe()">Save</button>
+        <span class="muted" id="set-sp-msg" style="font-size:12px"></span></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
       <h3>💵 QuickBooks Online <span class="pill" id="set-qb-pill">not configured</span></h3>
       <p class="muted" style="margin:4px 0 10px">Push Pulse invoices into QuickBooks. From your Intuit app: client id/secret, realm (company) id, and a refresh token.</p>
       <div class="grid2">
@@ -1406,7 +1418,8 @@ async function loadInvoices(){
   document.getElementById('t-invoices').innerHTML=rows.map(i=>{
     const sc={draft:'',sent:'warn',paid:'ok',void:'bad'}[i.status]||'';
     const act=i.status==='draft'?`<button class="btn sm" onclick="invAction(${i.id},'send')">send</button>`:
-      (i.status==='sent'?`<button class="btn sm" onclick="invAction(${i.id},'paid')">mark paid</button>`:'');
+      (i.status==='sent'?`<button class="btn sm" onclick="invAction(${i.id},'paid')">mark paid</button>
+        <button class="btn sm ghost" onclick="invPay(${i.id})">💳 Pay link</button>`:'');
     return `<tr><td><a href="/invoice/${i.id}" target="_blank">${esc(i.number||('#'+i.id))}</a></td>
      <td>${esc(CLIENTS[i.client_id]||i.client_id)}</td><td>${money(i.total)}</td>
      <td><span class="badge ${sc}">${esc(i.status)}</span></td>
@@ -1424,6 +1437,12 @@ async function generateInvoice(){
   else alert(j.detail||'Generate failed');
 }
 async function invAction(id,a){await post(`/api/invoices/${id}/${a}`);loadInvoices();loadBilling();}
+async function invPay(id){
+  const r=await post(`/api/payments/invoices/${id}/checkout`); const j=await r.json().catch(()=>({}));
+  if(r.ok&&j.url){const w=window.open(j.url,'_blank');try{await navigator.clipboard.writeText(j.url);}catch(e){}
+    if(!w)alert('Payment link (copied):\n'+j.url);}
+  else alert(j.detail||'Could not create payment link (configure Stripe in Settings → Payments).');
+}
 
 // ---- Contracts ----
 async function loadContracts(){
@@ -2473,6 +2492,13 @@ async function postGbp(){
   if(r.ok){msg.textContent='Posted to Google ✓';document.getElementById('set-gbp-text').value='';}
   else msg.textContent=j.detail||'Post failed';
 }
+async function saveStripe(){
+  const msg=document.getElementById('set-sp-msg'); msg.textContent='saving…';
+  const r=await put('/api/payments/settings',{secret_key:val('set-sp-key'),webhook_secret:val('set-sp-wh')});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Saved ✓';setPill('set-sp-pill',j.configured);['set-sp-key','set-sp-wh'].forEach(i=>document.getElementById(i).value='');}
+  else msg.textContent=j.detail||'Save failed';
+}
 async function saveQbo(){
   const msg=document.getElementById('set-qb-msg'); msg.textContent='saving…';
   const r=await put('/api/quickbooks/settings',{client_id:val('set-qb-cid'),client_secret:val('set-qb-secret'),
@@ -2813,6 +2839,9 @@ async function loadSettings(){
   if(qb){setPill('set-qb-pill',qb.configured);
     document.getElementById('set-qb-realm').value=fv(qb.fields,'realm_id');
     document.getElementById('set-qb-sandbox').checked=!!qb.sandbox;}
+  const sp=await api('/api/payments/settings');
+  if(sp){setPill('set-sp-pill',sp.configured);
+    document.getElementById('set-sp-webhook-url').value=location.origin+'/api/payments/webhook';}
   const hs=await api('/api/hubspot/settings'); if(hs)setPill('set-hs-pill',hs.configured);
   const gb=await api('/api/gbp/settings');
   if(gb){setPill('set-gbp-pill',gb.configured);
