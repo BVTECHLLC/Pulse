@@ -1,5 +1,17 @@
 # BVTech OpsPilot — Changelog
 
+## v0.55.0 — Morning Briefing + scheduled digest email (June 2026)
+- A cross-business **"what needs attention" briefing** (`services/briefing.py`):
+  active alerts, SLA breaches, failing integrations, offline devices, overdue
+  invoices, fresh CRM leads, and contracts expiring within 30 days — one
+  glanceable summary. `GET /api/briefing` (staff) + a **📋 Morning Briefing**
+  button on the Command Center.
+- New automation action **`send_digest`** emails that briefing via M365. Pair it
+  with a `schedule` rule and **Pulse emails you a morning briefing every day at
+  7am** — the capstone of the automation engine. Skips gracefully if the mailbox
+  isn't configured. Verified: briefing aggregation + render, staff-only, action
+  graceful-skip.
+
 ## v0.54.0 — Documentation & Password Vault (IT Glue / Hudu surface) (June 2026)
 - A native **per-client documentation vault**: knowledge articles, network/config
   notes, contacts, license keys, and an **encrypted password vault**. Passwords/

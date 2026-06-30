@@ -11,10 +11,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from ...core.db import get_db
-from ...core.deps import current_user, is_staff
+from ...core.deps import current_user, is_staff, require_roles
 from ...models import (
     Alert, AlertStatus, AuditLog, Client, Contract, Device, Invoice, InvoiceStatus,
-    License, Project, ProjectStatus, ProjectTask, SupportTicket, TicketStatus, User,
+    License, Project, ProjectStatus, ProjectTask, Role, SupportTicket, TicketStatus, User,
 )
 from ...services import sla
 from .contracts import monthly_value
@@ -28,6 +28,15 @@ def _aware(dt):
     if dt is None:
         return None
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+@router.get("/briefing")
+def briefing_view(db: Session = Depends(get_db),
+                  user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """The cross-business morning briefing (preview of what `send_digest` emails)."""
+    from ...services import briefing as _b
+    brief = _b.build(db)
+    return {**brief, "text": _b.render_text(brief)}
 
 
 @router.get("/overview")

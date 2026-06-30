@@ -1438,6 +1438,25 @@ def main():
         assert ca_c.post("/api/docs", json={"kind": "article", "title": "x"}).status_code == 403
         print("Docs vault: encrypted secret + audited reveal + client RBAC (no passwords) OK")
 
+        # --- v0.55 morning briefing + send_digest action ---
+        br = c.get("/api/briefing").json()
+        assert "attention_total" in br and "sections" in br and "text" in br
+        assert any(s["title"].startswith("🚨") for s in br["sections"])
+        assert ca_c.get("/api/briefing").status_code == 403   # staff-only aggregate
+        # send_digest is a valid automation action and skips gracefully unconfigured
+        assert c.post("/api/automation/rules", json={"name": "am-digest", "trigger": "schedule",
+                      "conditions": {"every": "day", "at": "07:00"},
+                      "actions": [{"type": "send_digest", "to": "jordan@bvtech.test"}]}).status_code in (200, 201)
+        from app.services import automation as _A3
+        from app.core.db import SessionLocal as _SL3
+        _bdb = _SL3()
+        # mailbox is configured (fake creds) by now, so this takes the send path and
+        # fails gracefully at the Graph call — the point is it returns a string, never raises.
+        msg = _A3._act_send_digest(_bdb, {"to": "x@y.test"}, {})
+        assert isinstance(msg, str) and ("digest" in msg or "briefing" in msg), msg
+        _bdb.close()
+        print("Morning briefing: aggregate + staff-only + send_digest action OK")
+
         # --- v0.52 integration health watchdog ---
         # /status carries health fields; the live-check endpoint is OWNER/TECH only.
         sj = c.get("/api/integrations/status").json()

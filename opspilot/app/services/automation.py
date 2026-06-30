@@ -19,7 +19,8 @@ from sqlalchemy.orm import Session
 
 from ..models import (
     ACTION_ACK_ALERT, ACTION_ADD_NOTE, ACTION_ASSIGN, ACTION_CREATE_TICKET,
-    ACTION_LINKEDIN_POST, ACTION_NOTIFY, ACTION_SEND_EMAIL, ACTION_SET_PRIORITY,
+    ACTION_LINKEDIN_POST, ACTION_NOTIFY, ACTION_SEND_DIGEST, ACTION_SEND_EMAIL,
+    ACTION_SET_PRIORITY,
     Alert, AlertStatus, AutomationRule, AutomationRun, Device, Notification,
     PRIORITIES, STAFF_ROLES, SupportTicket, TicketComment, TicketStatus,
     TRIGGER_SCHEDULE, User,
@@ -229,6 +230,30 @@ def _act_linkedin_post(db: Session, action: dict, ctx: dict) -> str:
     return f"posted to LinkedIn ({pid})"
 
 
+def _act_send_digest(db: Session, action: dict, ctx: dict) -> str:
+    to = action.get("to")
+    if not to:
+        return "send_digest skipped (no 'to' configured)"
+    from . import briefing, m365, secure_config
+    conn = secure_config.get_platform(db, "m365_mailbox")
+    cfg = (conn.config if conn else None) or {}
+    if not secure_config.configured(cfg, ("tenant_id", "client_id", "client_secret")) or not cfg.get("mailbox"):
+        return "send_digest skipped (M365 mailbox not configured)"
+    brief = briefing.build(db)
+    text = briefing.render_text(brief)
+    subject = action.get("subject") or f"Pulse briefing — {brief['attention_total']} items need attention"
+    try:
+        graph = m365.GraphClient(
+            str(secure_config.get_secret(cfg, "tenant_id") or cfg.get("tenant_id")),
+            str(secure_config.get_secret(cfg, "client_id") or cfg.get("client_id")),
+            str(secure_config.get_secret(cfg, "client_secret")))
+        recipients = [a.strip() for a in str(to).split(",") if a.strip()]
+        graph.send_mail(str(cfg.get("mailbox")), recipients, subject, text, html=False)
+    except m365.GraphError as e:
+        return f"send_digest failed: {e}"
+    return f"emailed briefing to {to} ({brief['attention_total']} items)"
+
+
 _HANDLERS = {
     ACTION_CREATE_TICKET: _act_create_ticket,
     ACTION_ACK_ALERT: _act_ack_alert,
@@ -238,6 +263,7 @@ _HANDLERS = {
     ACTION_ADD_NOTE: _act_add_note,
     ACTION_SEND_EMAIL: _act_send_email,
     ACTION_LINKEDIN_POST: _act_linkedin_post,
+    ACTION_SEND_DIGEST: _act_send_digest,
 }
 
 
