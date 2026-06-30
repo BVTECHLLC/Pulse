@@ -112,6 +112,11 @@ class GraphClient:
         except Exception as e:  # noqa: BLE001
             raise GraphError(f"graph POST {path} failed: {e}")
 
+    def ping(self) -> bool:
+        """Cheap liveness check — proves the app credentials still mint a token."""
+        self._token()
+        return True
+
     def get_subscribed_skus(self) -> list[dict]:
         data = self._get("/subscribedSkus")
         out = []

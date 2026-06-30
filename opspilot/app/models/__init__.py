@@ -306,6 +306,10 @@ class IntegrationConnection(Base):
     client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    # Health watchdog (v0.52): result of the last live liveness check.
+    last_health_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_health_ok: Mapped[bool | None] = mapped_column(Boolean)
+    last_health_error: Mapped[str | None] = mapped_column(String(300))
 
 
 class OAuthState(Base):

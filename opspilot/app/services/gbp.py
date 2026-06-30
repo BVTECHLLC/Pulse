@@ -80,6 +80,11 @@ class GBPClient:
         except Exception as e:  # noqa: BLE001
             raise GBPError(f"GBP API request failed: {e}")
 
+    def ping(self) -> bool:
+        """Cheap liveness check — refreshes the OAuth token."""
+        self._token()
+        return True
+
     def create_post(self, summary: str, cta_url: str | None = None,
                     cta_type: str = "LEARN_MORE") -> dict:
         body: dict = {"languageCode": "en-US", "summary": summary[:1500],
