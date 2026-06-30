@@ -1,5 +1,25 @@
 # BVTech OpsPilot — Changelog
 
+## v0.70.0 — Auto-posting: keep the feed alive on autopilot (July 2026)
+- **Queue a few posts, walk away.** A new **📣 Auto-post queue** in Content Studio
+  lets you load social posts; with auto-publish on, the scheduler publishes the
+  **oldest due** one to **LinkedIn** about **once a day** (configurable minimum
+  gap) — so your feed stays active without daily effort.
+- **Safe by default:** auto-publish is **off** until you turn it on; it never
+  double-posts (cadence gap tracked off the last published post); an unconfigured
+  LinkedIn leaves posts **queued** (never burns them); failures are recorded and
+  surfaced, not silently dropped. Plus **post-now** to publish immediately and a
+  per-post delete.
+- `services/autopost.py` (queue + cadence + injectable publisher so it's testable
+  offline), `routes/autopost.py` (queue CRUD, settings, post-now — staff-gated),
+  wired into `run-checks`. New `social_posts` table (migration `b8c9d0e1f2a4` +
+  startup self-heal).
+- Verified offline (smoke + unit): off-by-default; enabling publishes the oldest
+  queued post on the tick; the cadence gap blocks an immediate second post;
+  post-now bypasses the gap; scheduled-for-future posts wait; a failing publish is
+  marked failed without crashing the tick; clients can't touch the queue (RBAC).
+  Migration up/down/up clean.
+
 ## v0.69.0 — Installer that actually works (and never lies) (July 2026)
 - **Fixed the "it says installed but no device shows up" bug.** The one-click
   `deploy.cmd` used to `irm <portal>/install-exe.ps1 | iex` — but the portal is

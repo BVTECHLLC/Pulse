@@ -1233,6 +1233,23 @@ class RemediationRule(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+class SocialPost(Base):
+    """A queued social post for the auto-publisher (v0.70). The scheduler picks
+    the oldest due post (about once a day) and publishes it to its channels —
+    so the MSP loads a few posts and the feed stays alive on autopilot."""
+    __tablename__ = "social_posts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    link: Mapped[str | None] = mapped_column(String(500))
+    channels: Mapped[list] = mapped_column(JSON, default=list)   # ["linkedin"]
+    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)  # queued|posted|failed
+    scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # earliest post time
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    result: Mapped[str | None] = mapped_column(String(400))      # post ref or error
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
 class PostureSnapshot(Base):
     """A point-in-time capture of a client's security scorecard, taken on the
     scheduler tick (about daily). Powers the posture trend line and lets us alert
