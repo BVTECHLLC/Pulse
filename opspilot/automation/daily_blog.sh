@@ -13,12 +13,15 @@ PULSE_REPO="${PULSE_REPO:-/srv/pulse/opspilot}"
 export BV_WEBSITE_REPO="${BV_WEBSITE_REPO:-/srv/bvtech-website-new}"
 LOG_DIR="${LOG_DIR:-/var/log/bvtech}"
 LOCK="/tmp/bvtech-daily.lock"
-# Secrets (ANTHROPIC_API_KEY, optional repo-path overrides) come from the box's
-# protected env file. We source whichever exists; agent.env is the canonical one.
-# NOTE: never echo these values — `set +x` stays off and we only reference $VARS.
-for envf in /etc/bvtech/agent.env /etc/bvtech-daily.env; do
-  [ -f "$envf" ] && set -a && . "$envf" && set +a
-done
+# Secrets (ANTHROPIC_API_KEY, GitLab deploy token, optional repo paths) come from
+# the box's protected env files. The shared loader handles JSON or shell formats
+# and normalizes key names (e.g. "anthropic_key" -> ANTHROPIC_API_KEY). Values
+# are never echoed.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/lib_env.sh"; bvtech_load_env
+# Re-apply path defaults after loading (loader may set them).
+PULSE_REPO="${PULSE_REPO:-/srv/pulse/opspilot}"
+export BV_WEBSITE_REPO="${BV_WEBSITE_REPO:-/srv/bvtech-website-new}"
 
 mkdir -p "$LOG_DIR" "$PULSE_REPO/automation/out"
 LOG="$LOG_DIR/daily-$(date +%F).log"
@@ -29,8 +32,8 @@ echo "===== $(date -Is) daily_blog start ====="
 if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
   echo "FATAL: ANTHROPIC_API_KEY not set (expected in /etc/bvtech/agent.env)"; exit 1
 fi
-for d in "$PULSE_REPO/automation" "$BV_WEBSITE_REPO/blog"; do
-  [ -d "$d" ] || { echo "FATAL: missing directory $d — check PULSE_REPO/BV_WEBSITE_REPO"; exit 1; }
+for d in "$PULSE_REPO/automation" "$BV_WEBSITE_REPO/.git"; do
+  [ -d "$d" ] || { echo "FATAL: missing $d — check PULSE_REPO/BV_WEBSITE_REPO"; exit 1; }
 done
 
 # Single-instance guard.

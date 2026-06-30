@@ -11,9 +11,9 @@
 set -uo pipefail
 
 ENV_FILE=/etc/bvtech/agent.env
-for envf in "$ENV_FILE" /etc/bvtech-daily.env; do
-  [ -f "$envf" ] && set -a && . "$envf" && set +a
-done
+PUB_ENV=/etc/bvtech/publisher.env
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/lib_env.sh"; bvtech_load_env
 
 PULSE_REPO="${PULSE_REPO:-/srv/pulse/opspilot}"
 BV_WEBSITE_REPO="${BV_WEBSITE_REPO:-/srv/bvtech-website-new}"
@@ -22,20 +22,25 @@ WEBSITE_GIT_URL="${WEBSITE_GIT_URL:-https://gitlab.com/bvtechllc-group/bvtech-we
 echo "== BVTech Linode bootstrap =="
 
 # ---- Required secrets (presence only; values never printed) ----------------
+# ANTHROPIC_API_KEY is read from your existing agent.env (JSON "anthropic_key"
+# is auto-mapped). The GitLab deploy token goes in a clean shell file so we
+# never touch/append to your JSON.
 miss=0
-[ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "  ❌ ANTHROPIC_API_KEY missing in $ENV_FILE"; miss=1; }
-[ -n "${BV_GL_USER:-}" ]  || { echo "  ❌ BV_GL_USER missing  — GitLab deploy-token USERNAME (add to $ENV_FILE)"; miss=1; }
-[ -n "${BV_GL_TOKEN:-}" ] || { echo "  ❌ BV_GL_TOKEN missing — GitLab deploy-token VALUE   (add to $ENV_FILE)"; miss=1; }
+[ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "  ❌ ANTHROPIC_API_KEY/anthropic_key not found in $ENV_FILE"; miss=1; }
+[ -n "${BV_GL_USER:-}" ]  || { echo "  ❌ BV_GL_USER missing  — GitLab deploy-token USERNAME"; miss=1; }
+[ -n "${BV_GL_TOKEN:-}" ] || { echo "  ❌ BV_GL_TOKEN missing — GitLab deploy-token VALUE"; miss=1; }
 if [ "$miss" != 0 ]; then
-  cat <<'TIP'
+  cat <<TIP
 
   To create the GitLab deploy token (one time):
     GitLab → bvtech-website-new → Settings → Repository → Deploy tokens
     name: linode-publisher   scopes: read_repository + write_repository → Create
-  Then add these two lines to /etc/bvtech/agent.env (use the values it shows):
+  Then put the two values in a CLEAN shell file (NOT your JSON agent.env):
+    nano $PUB_ENV
+  and add:
     export BV_GL_USER='<deploy-token-username>'
     export BV_GL_TOKEN='<deploy-token-value>'
-  Re-run this script.
+  Save, then re-run this script.
 TIP
   exit 1
 fi
@@ -56,9 +61,10 @@ fi
 git -C "$BV_WEBSITE_REPO" config user.name  "BVTech Publisher"
 git -C "$BV_WEBSITE_REPO" config user.email "publisher@bvtech.org"
 
-# ---- Persist paths for cron (idempotent) -----------------------------------
-grep -q 'PULSE_REPO='      "$ENV_FILE" 2>/dev/null || echo "export PULSE_REPO=$PULSE_REPO"           >> "$ENV_FILE"
-grep -q 'BV_WEBSITE_REPO=' "$ENV_FILE" 2>/dev/null || echo "export BV_WEBSITE_REPO=$BV_WEBSITE_REPO" >> "$ENV_FILE"
+# ---- Persist paths for cron (idempotent) — into the CLEAN shell file -------
+touch "$PUB_ENV"; chmod 600 "$PUB_ENV"
+grep -q 'PULSE_REPO='      "$PUB_ENV" 2>/dev/null || echo "export PULSE_REPO=$PULSE_REPO"           >> "$PUB_ENV"
+grep -q 'BV_WEBSITE_REPO=' "$PUB_ENV" 2>/dev/null || echo "export BV_WEBSITE_REPO=$BV_WEBSITE_REPO" >> "$PUB_ENV"
 
 chmod +x "$PULSE_REPO"/automation/*.sh 2>/dev/null || true
 echo

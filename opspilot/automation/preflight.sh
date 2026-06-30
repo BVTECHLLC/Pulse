@@ -5,11 +5,10 @@
 # values (only "set / not set" + lengths). Exit 0 = ready.
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/lib_env.sh"; bvtech_load_env
 PULSE_REPO="${PULSE_REPO:-/srv/pulse/opspilot}"
 BV_WEBSITE_REPO="${BV_WEBSITE_REPO:-/srv/bvtech-website-new}"
-for envf in /etc/bvtech/agent.env /etc/bvtech-daily.env; do
-  [ -f "$envf" ] && set -a && . "$envf" && set +a
-done
 
 ok=0; fail=0
 pass(){ echo "  ✅ $1"; ok=$((ok+1)); }
