@@ -219,6 +219,14 @@ def callback(provider: str, request: Request, response: Response,
             if realm:
                 secure_config.upsert_platform(db, "quickbooks", "QuickBooks Online", "Accounting",
                                               {"realm_id": realm})
+        elif provider == "google_gbp":
+            # The Google Business poster reads the "gbp" vault entry — copy the
+            # refresh token there so connecting once makes posting work (you still
+            # set account_name + location_name in Settings → Google Business).
+            rt = tok.get("refresh_token")
+            if rt:
+                secure_config.upsert_platform(db, "gbp", "Google Business Profile", "Marketing",
+                                              {"refresh_token": rt})
     except Exception:
         pass
     audit.record(db, action="oauth.connected", actor_user_id=uid, actor_email=email,
