@@ -1,5 +1,18 @@
 # BVTech OpsPilot — Changelog
 
+## v0.42.0 — Command Center archived + Tactical RMM connector (June 2026)
+- Archived the full **BVTech MSP Command Center v32.1** suite into `command-center/`
+  as the porting source-of-truth, with `command-center/PORTING.md` mapping every
+  module → its native Pulse port status. (No secrets — all modules load from env.)
+- **Pulse is the MSP suite** (own agent + monitoring = native RMM). Added an
+  **optional Tactical RMM connector** to bridge/migrate a legacy RMM:
+  `services/tacticalrmm.py` (stdlib HTTP, **SSRF-guarded** user-supplied URL via
+  the netdiag resolver) + `routes/rmm.py` + a new **🖥️ RMM** tab (dashboard
+  rollup, agents, active alerts; reboot / resolve / service / update actions).
+  Reads are staff; mutating actions OWNER-only + audited. Creds encrypted in the
+  vault. Verified: SSRF rejection of private/loopback/metadata URLs, masked
+  credential reads, RBAC.
+
 ## v0.41.0 — Integrations hub: secure mailbox, publishers & auto-dialer (June 2026)
 - **Secure credential vault** (`services/secure_config.py`): integration secrets
   are entered in the Settings UI and stored **Fernet-encrypted at rest** (same key
