@@ -696,6 +696,17 @@ def main():
             assert all(r["client_id"] == cid for r in ca_ag["invoices"]), ca_ag
             assert ca_c.post("/api/billing/send-reminders").status_code == 403
             print("A/R aging + reminders: buckets + manual remind + cadence sweep + RBAC OK")
+
+            # ============== v0.63: finance KPI cockpit ==============
+            fin=c.get("/api/billing/finance").json()
+            # inv_id (Managed IT, 1500) was paid via check 500 + wire 1000 earlier.
+            assert fin["collected_total"]>=1500 and fin["collected_month"]>=1500, fin
+            assert fin["outstanding"]>=1000 and fin["overdue"]>=1000, fin   # a1+a2 still open
+            methods={m["method"] for m in fin["method_mix"]}
+            assert {"check","bank_wire"}<=methods, fin["method_mix"]
+            assert any(p["invoice_id"]==inv_id for p in fin["recent_payments"]), fin["recent_payments"]
+            assert ca_c.get("/api/billing/finance").status_code==403   # staff-only
+            print("finance cockpit: collected + outstanding + method mix + recent + RBAC OK")
         finally:
             _email.send = _orig_send
 
@@ -1725,7 +1736,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.62 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.63 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

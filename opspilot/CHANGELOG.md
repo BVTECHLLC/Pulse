@@ -1,5 +1,18 @@
 # BVTech OpsPilot — Changelog
 
+## v0.63.0 — Finance cockpit: the money picture in one view (June 2026)
+- **A revenue cockpit at the top of Billing.** One call pulls the whole money
+  picture together: **collected this month / last 30 days / all-time**,
+  **outstanding** and **overdue** A/R, open-invoice count, the **payment-method
+  mix** (how clients actually pay — card vs check vs wire vs PayPal…), and the
+  **most recent payments**.
+- `services/finance_kpis.py` (read-only aggregation over the payment ledger +
+  A/R aging), `GET /api/billing/finance` (OWNER/TECH), and a Finance Cockpit card
+  with KPI tiles, a method-mix bar breakdown, and a recent-payments list.
+- Verified offline (smoke + unit): collected totals sum the ledger, outstanding/
+  overdue match A/R, the method mix groups by rail, recent payments surface, and
+  it's staff-only (RBAC).
+
 ## v0.62.0 — A/R aging + automatic payment reminders (June 2026)
 - **See who owes you, by age.** A new **📊 A/R Aging** view buckets every
   outstanding (sent, unpaid) invoice by how overdue it is — **current · 1-30 ·

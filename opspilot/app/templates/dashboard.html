@@ -405,6 +405,14 @@
   </section>
 
   <section id="billing" class="hidden">
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="margin-top:0">💰 Finance cockpit</h3>
+      <div id="fin-kpis" class="grid cols-4" style="gap:10px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px">
+        <div><h4 style="margin:0 0 6px">How clients pay</h4><div id="fin-mix"><p class="muted">No payments yet.</p></div></div>
+        <div><h4 style="margin:0 0 6px">Recent payments</h4><table style="margin:0"><tbody id="fin-recent"></tbody></table></div>
+      </div>
+    </div>
     <div class="grid cols-3">
       <div class="card"><h3>Total MRR</h3><div class="stat" id="b-mrr">—</div><div class="stat sub" id="b-arr">—</div></div>
       <div class="card"><h3>Seat Utilization</h3><div class="stat" id="b-util">—</div><div class="stat sub" id="b-seats">—</div></div>
@@ -2522,6 +2530,30 @@ async function loadBilling(){
      <td><span class="badge ${r.overdue?'bad':(r.days_until<=14?'warn':'')}">${r.overdue?'overdue':r.days_until+'d'}</span></td></tr>`).join('')
     ||'<tr><td colspan=6 class="muted">Nothing renewing in this window.</td></tr>';
   loadAging();
+  loadFinance();
+}
+const METHOD_LABEL={card:'💳 Card',paypal:'🅿️ PayPal',venmo:'🟦 Venmo',cashapp:'💚 Cash App',
+  zelle:'⚡ Zelle',bank_wire:'🏦 Wire/ACH',check:'✉️ Check',quickbooks:'💵 QuickBooks',cash:'💵 Cash',other:'• Other'};
+async function loadFinance(){
+  const f=await api('/api/billing/finance'); if(!f)return;
+  const money=v=>'$'+(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const kpis=[['Collected this month',money(f.collected_month),''],
+    ['Collected (30d)',money(f.collected_30d),''],
+    ['Outstanding A/R',money(f.outstanding),''],
+    ['Overdue',money(f.overdue),f.overdue>0?'bad':'']];
+  document.getElementById('fin-kpis').innerHTML=kpis.map(([k,v,c])=>
+    `<div class="card" style="${c==='bad'?'border-color:#b91c1c':''}"><h3 style="font-size:12px">${k}</h3><div class="stat" style="font-size:22px">${v}</div></div>`).join('');
+  const totalMix=(f.method_mix||[]).reduce((a,m)=>a+m.amount,0)||1;
+  document.getElementById('fin-mix').innerHTML=(f.method_mix||[]).length?(f.method_mix.map(m=>{
+    const pct=Math.round(m.amount/totalMix*100);
+    return `<div style="margin:3px 0"><div class="flex" style="justify-content:space-between;font-size:13px">
+      <span>${METHOD_LABEL[m.method]||esc(m.method)}</span><span class="muted">${money(m.amount)} · ${pct}%</span></div>
+      <div style="background:var(--line);border-radius:6px;height:6px;overflow:hidden"><div style="width:${pct}%;height:6px;background:var(--accent,#3b82f6)"></div></div></div>`;}).join('')):'<p class="muted">No payments yet.</p>';
+  document.getElementById('fin-recent').innerHTML=(f.recent_payments||[]).length?(f.recent_payments.map(p=>
+    `<tr><td><a href="/invoice/${p.invoice_id}" target="_blank">#${p.invoice_id}</a></td>
+     <td>${esc(p.client||'—')}</td><td>${METHOD_LABEL[p.method]||esc(p.method)}</td>
+     <td style="text-align:right"><b>${money(p.amount)}</b></td>
+     <td class="muted" style="font-size:12px">${p.received_at?new Date(p.received_at).toLocaleDateString():''}</td></tr>`).join('')):'<tr><td class="muted">No payments recorded yet.</td></tr>';
 }
 async function loadAging(){
   const ag=await api('/api/billing/aging'); if(!ag)return;
