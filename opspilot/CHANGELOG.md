@@ -1,5 +1,31 @@
 # BVTech OpsPilot — Changelog
 
+## v0.41.0 — Integrations hub: secure mailbox, publishers & auto-dialer (June 2026)
+- **Secure credential vault** (`services/secure_config.py`): integration secrets
+  are entered in the Settings UI and stored **Fernet-encrypted at rest** (same key
+  as cached M365 tokens). Reads return a masked hint (`••••1234`) + a `configured`
+  flag and **never echo a secret back**; partial updates preserve untouched fields.
+  Singleton "platform connection" per provider — multi-tenant ready.
+- **📬 Microsoft 365 secure mailbox** — read & send your own mail from Pulse via
+  app-only Graph (Mail.Read / Mail.Send). New Mailbox tab: folders, message list,
+  reading pane (HTML mail sandboxed in an iframe), compose & reply. Credentials
+  (tenant/app id/secret + default mailbox) configured in Settings → Mailbox.
+  `GET/PUT /api/mailbox/settings`, `/test`, `/folders`, `/messages[/{id}]`,
+  `/send`, `/messages/{id}/read`.
+- **💼 LinkedIn auto-publisher** — store token + person URN (encrypted) and **post
+  to LinkedIn now** straight from the portal (UGC share API).
+  `PUT /api/publishers/linkedin`, `POST /api/publishers/linkedin/post`.
+- **🌐 Website auto-publisher settings** — BVTech.org & **JordanPolasek.com**
+  schedule/persona/topics/enabled (reputation-management surface for the daily
+  publisher). `PUT /api/publishers/website/{bvtech|jp}`, `GET /api/publishers/settings`.
+- **📞 Dialpad auto-dialer (click-to-call)** — store API key/user/caller-ID
+  (encrypted); rings your Dialpad device then dials the number.
+  `PUT /api/comms/dialpad/settings`, `POST /api/comms/dialpad/call`.
+- New **🛠️ Settings** tab ties it together. All endpoints staff-scoped (saves are
+  OWNER-only), audited, and reachable. Verified end-to-end in the smoke test:
+  encrypted round-trips, masked reads, partial-update retention, RBAC, and that
+  mail/call paths reach the upstream API.
+
 ## v0.40.0 — SLA performance analytics (June 2026)
 - `GET /api/analytics/sla-performance?days=90` — the metrics MSPs report on:
   **response & resolution SLA attainment %**, **avg response/resolution time**,

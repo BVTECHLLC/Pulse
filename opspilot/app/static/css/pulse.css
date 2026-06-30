@@ -66,6 +66,8 @@ input:focus{outline:none;border-color:var(--peri)}
 .err{color:var(--bad);font-size:13px;margin-top:12px;min-height:18px}
 .foot{margin-top:18px;font-size:11px;color:var(--muted);text-align:center}
 .hidden{display:none}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px}
+@media(max-width:700px){.grid2{grid-template-columns:1fr}}
 /* small inline action buttons (alert ack/resolve, ticket reply) */
 .btn.sm{padding:5px 11px;font-size:12px;border-radius:8px}
 .btn.sm.ghost{background:transparent;color:var(--muted);border:1px solid var(--line)}

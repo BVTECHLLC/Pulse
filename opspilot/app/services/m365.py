@@ -33,14 +33,39 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _addr(recipient: dict) -> dict:
+    ea = (recipient or {}).get("emailAddress") or {}
+    return {"name": ea.get("name"), "address": ea.get("address")}
+
+
+def _msg_summary(m: dict) -> dict:
+    return {
+        "id": m.get("id"),
+        "subject": m.get("subject") or "(no subject)",
+        "from": _addr(m.get("from") or {}),
+        "to": [_addr(r) for r in m.get("toRecipients", [])],
+        "received": m.get("receivedDateTime"),
+        "is_read": m.get("isRead"),
+        "has_attachments": m.get("hasAttachments"),
+        "preview": m.get("bodyPreview"),
+        "web_link": m.get("webLink"),
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Real Graph client (stdlib HTTP; no extra runtime deps)
 # --------------------------------------------------------------------------- #
 class GraphClient:
-    def __init__(self, tenant_id: str):
+    def __init__(self, tenant_id: str, client_id: str | None = None,
+                 client_secret: str | None = None):
         self.s = get_settings()
-        if not self.s.m365_enabled:
-            raise GraphError("Microsoft 365 is not configured (set M365_CLIENT_ID / M365_CLIENT_SECRET)")
+        # Credentials may come from the platform/connection config (entered via the
+        # Settings UI, stored encrypted) or fall back to server env. Either path
+        # works — but we need a usable pair before making any call.
+        self.client_id = client_id or self.s.M365_CLIENT_ID
+        self.client_secret = client_secret or self.s.M365_CLIENT_SECRET
+        if not (self.client_id and self.client_secret):
+            raise GraphError("Microsoft 365 is not configured (provide client_id/secret in Settings or set M365_CLIENT_ID / M365_CLIENT_SECRET)")
         self.tenant_id = tenant_id
         self.last_token: str | None = None
         self.last_expiry: datetime | None = None
@@ -50,8 +75,8 @@ class GraphClient:
             return self.last_token
         url = f"{self.s.M365_LOGIN_BASE}/{self.tenant_id}/oauth2/v2.0/token"
         body = parse.urlencode({
-            "client_id": self.s.M365_CLIENT_ID,
-            "client_secret": self.s.M365_CLIENT_SECRET,
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
             "scope": "https://graph.microsoft.com/.default",
             "grant_type": "client_credentials",
         }).encode()
@@ -72,6 +97,20 @@ class GraphClient:
                 return json.loads(r.read().decode())
         except Exception as e:  # noqa: BLE001
             raise GraphError(f"graph GET {path} failed: {e}")
+
+    def _post(self, path: str, payload: dict) -> dict | None:
+        url = f"{self.s.M365_GRAPH_BASE}{path}"
+        data = json.dumps(payload).encode()
+        req = request.Request(url, data=data, method="POST", headers={
+            "Authorization": f"Bearer {self._token()}",
+            "Content-Type": "application/json",
+        })
+        try:
+            with request.urlopen(req, timeout=30) as r:
+                raw = r.read().decode()
+                return json.loads(raw) if raw.strip() else None
+        except Exception as e:  # noqa: BLE001
+            raise GraphError(f"graph POST {path} failed: {e}")
 
     def get_subscribed_skus(self) -> list[dict]:
         data = self._get("/subscribedSkus")
@@ -98,6 +137,76 @@ class GraphClient:
             out.append({"upn": u.get("userPrincipalName", "unknown"),
                         "risk_level": (u.get("riskLevel") or "low").lower()})
         return out
+
+    # ----------------------------------------------------------------------- #
+    # Mailbox (app-only Mail.Read / Mail.Send on the registered Graph app).
+    # `mailbox` is a UPN / SMTP address; the app must have admin-consented
+    # application Mail permissions in the target tenant.
+    # ----------------------------------------------------------------------- #
+    def list_mail_folders(self, mailbox: str) -> list[dict]:
+        mb = parse.quote(mailbox)
+        data = self._get(f"/users/{mb}/mailFolders?$top=50"
+                         "&$select=id,displayName,unreadItemCount,totalItemCount")
+        return [{"id": f.get("id"), "name": f.get("displayName"),
+                 "unread": f.get("unreadItemCount"), "total": f.get("totalItemCount")}
+                for f in data.get("value", [])]
+
+    def list_messages(self, mailbox: str, folder: str = "inbox", top: int = 25,
+                      skip: int = 0, search: str | None = None) -> list[dict]:
+        mb = parse.quote(mailbox)
+        fld = parse.quote(folder)
+        select = "id,subject,from,toRecipients,receivedDateTime,isRead,hasAttachments,bodyPreview,webLink"
+        if search:
+            # $search can't be combined with $orderby/$skip per Graph rules.
+            q = (f"/users/{mb}/messages?$search=%22{parse.quote(search)}%22"
+                 f"&$top={int(top)}&$select={select}")
+        else:
+            q = (f"/users/{mb}/mailFolders/{fld}/messages?$top={int(top)}&$skip={int(skip)}"
+                 f"&$orderby=receivedDateTime%20desc&$select={select}")
+        data = self._get(q)
+        return [_msg_summary(m) for m in data.get("value", [])]
+
+    def get_message(self, mailbox: str, message_id: str) -> dict:
+        mb = parse.quote(mailbox)
+        mid = parse.quote(message_id, safe="")
+        m = self._get(f"/users/{mb}/messages/{mid}"
+                      "?$select=id,subject,from,toRecipients,ccRecipients,"
+                      "receivedDateTime,isRead,hasAttachments,body,webLink")
+        out = _msg_summary(m)
+        body = m.get("body") or {}
+        out["body_content"] = body.get("content")
+        out["body_type"] = body.get("contentType")  # html|text
+        out["cc"] = [_addr(r) for r in m.get("ccRecipients", [])]
+        return out
+
+    def send_mail(self, mailbox: str, to: list[str], subject: str, body: str,
+                  html: bool = False, cc: list[str] | None = None) -> None:
+        mb = parse.quote(mailbox)
+        msg = {
+            "message": {
+                "subject": subject,
+                "body": {"contentType": "HTML" if html else "Text", "content": body},
+                "toRecipients": [{"emailAddress": {"address": a}} for a in to if a],
+                "ccRecipients": [{"emailAddress": {"address": a}} for a in (cc or []) if a],
+            },
+            "saveToSentItems": True,
+        }
+        self._post(f"/users/{mb}/sendMail", msg)
+
+    def mark_read(self, mailbox: str, message_id: str, is_read: bool = True) -> None:
+        mb = parse.quote(mailbox)
+        mid = parse.quote(message_id, safe="")
+        url = f"{self.s.M365_GRAPH_BASE}/users/{mb}/messages/{mid}"
+        data = json.dumps({"isRead": is_read}).encode()
+        req = request.Request(url, data=data, method="PATCH", headers={
+            "Authorization": f"Bearer {self._token()}",
+            "Content-Type": "application/json",
+        })
+        try:
+            with request.urlopen(req, timeout=30) as r:
+                r.read()
+        except Exception as e:  # noqa: BLE001
+            raise GraphError(f"graph PATCH message failed: {e}")
 
 
 # --------------------------------------------------------------------------- #
