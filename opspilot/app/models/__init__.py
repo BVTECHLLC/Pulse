@@ -896,6 +896,8 @@ class Invoice(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_reminded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # v0.62 A/R
+    reminder_count: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class InvoiceLineItem(Base):

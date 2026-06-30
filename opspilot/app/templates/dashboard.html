@@ -427,6 +427,15 @@
       <tbody id="t-m365"></tbody></table>
     </div>
     <div class="card" style="margin-top:16px">
+      <div class="flex" style="justify-content:space-between;flex-wrap:wrap">
+        <h3 style="margin:0">📊 A/R Aging <span class="pill" id="ar-total">—</span></h3>
+        <button class="btn sm" onclick="sendReminders()">✉️ Send due reminders</button>
+      </div>
+      <p class="muted" style="margin:4px 0 10px">Outstanding (sent, unpaid) invoices by age. Reminders email the client's billing contact with a pay link — automatically every 7 days, or on demand.</p>
+      <div id="ar-buckets" class="grid cols-5" style="gap:10px"></div>
+      <span class="muted" id="ar-msg" style="font-size:12px"></span>
+    </div>
+    <div class="card" style="margin-top:16px">
       <h3>Invoices</h3>
       <div class="flex" style="margin:8px 0">
         <select id="inv-client" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
@@ -1510,7 +1519,8 @@ async function loadInvoices(){
     const recBtn=openInv?`<button class="btn sm" onclick="invRecord(${i.id},${bal})">＋ payment</button>`:'';
     const act=i.status==='draft'?`<button class="btn sm" onclick="invAction(${i.id},'send')">send</button>${recBtn}`:
       (i.status==='sent'?`<button class="btn sm" onclick="invAction(${i.id},'paid')">mark paid</button>
-        ${recBtn}<button class="btn sm ghost" onclick="invPay(${i.id})">💳 Pay link</button>`:'');
+        ${recBtn}<button class="btn sm ghost" onclick="invRemind(${i.id})">✉️ remind</button>
+        <button class="btn sm ghost" onclick="invPay(${i.id})">💳 Pay link</button>`:'');
     const balCell=openInv&&bal<i.total?`<b>${money(bal)}</b>`:(i.status==='paid'?'<span class="muted">$0.00</span>':money(bal));
     return `<tr><td><a href="/invoice/${i.id}" target="_blank">${esc(i.number||('#'+i.id))}</a></td>
      <td>${esc(CLIENTS[i.client_id]||i.client_id)}</td><td>${money(i.total)}</td><td>${balCell}</td>
@@ -2511,6 +2521,30 @@ async function loadBilling(){
      <td>${new Date(r.renewal_date).toLocaleDateString()}</td>
      <td><span class="badge ${r.overdue?'bad':(r.days_until<=14?'warn':'')}">${r.overdue?'overdue':r.days_until+'d'}</span></td></tr>`).join('')
     ||'<tr><td colspan=6 class="muted">Nothing renewing in this window.</td></tr>';
+  loadAging();
+}
+async function loadAging(){
+  const ag=await api('/api/billing/aging'); if(!ag)return;
+  const money=v=>'$'+(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('ar-total').textContent=ag.count?`${money(ag.total)} outstanding · ${money(ag.overdue_total)} overdue`:'all clear';
+  const labels={'current':'Current','1-30':'1–30 days','31-60':'31–60','61-90':'61–90','90+':'90+ days'};
+  const order=['current','1-30','31-60','61-90','90+'];
+  document.getElementById('ar-buckets').innerHTML=order.map(k=>{
+    const b=ag.buckets[k]||{amount:0,count:0};
+    const danger=(k!=='current'&&b.amount>0);
+    return `<div class="card" style="${danger?'border-color:#b91c1c':''}"><h3 style="font-size:13px">${labels[k]}</h3>
+      <div class="stat" style="font-size:20px">${money(b.amount)}</div>
+      <div class="stat sub">${b.count} invoice${b.count===1?'':'s'}</div></div>`;}).join('');
+}
+async function sendReminders(){
+  const msg=document.getElementById('ar-msg'); msg.textContent='sending…';
+  const r=await post('/api/billing/send-reminders'); const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent=`Sent ${j.count} reminder(s).`+(j.count?'':' (nothing overdue, or email not configured.)');loadInvoices();}
+  else msg.textContent=j.detail||'Failed (owner only).';
+}
+async function invRemind(id){
+  const r=await post(`/api/invoices/${id}/remind`); const j=await r.json().catch(()=>({}));
+  alert(r.ok?`Reminder sent to ${j.to}.`:(j.detail||'Could not send reminder.'));
 }
 
 // ===================== Prospecting (lead-gen) =====================

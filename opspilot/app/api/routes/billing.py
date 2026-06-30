@@ -11,11 +11,18 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
+from fastapi import HTTPException, status
+
 from ...core.db import get_db
-from ...core.deps import current_user, is_staff
-from ...models import Client, License, User
+from ...core.deps import current_user, is_staff, require_roles
+from ...models import Client, License, Role, User
+from ...services import ar_aging, audit
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
+
+
+def _ip(req: Request) -> str:
+    return req.headers.get("cf-connecting-ip") or (req.client.host if req.client else "?")
 
 
 def _scoped_licenses(db: Session, user: User, client_id: int | None):
@@ -96,6 +103,31 @@ def billing_summary(client_id: int | None = None, db: Session = Depends(get_db),
         "seat_utilization_pct": utilization,
         "by_client": breakdown,
     }
+
+
+@router.get("/aging")
+def ar_aging_report(client_id: int | None = None, db: Session = Depends(get_db),
+                    user: User = Depends(current_user)):
+    """Accounts-receivable aging: outstanding (sent, unpaid) invoices bucketed by
+    how overdue they are. Staff see the whole book (or one client); a client user
+    sees only their own."""
+    if is_staff(user):
+        scope = client_id
+    else:
+        scope = user.client_id   # clients are pinned to their own A/R
+    return ar_aging.aging_report(db, client_id=scope)
+
+
+@router.post("/send-reminders")
+def send_reminders(request: Request, db: Session = Depends(get_db),
+                   user: User = Depends(require_roles(Role.OWNER))):
+    """Email a payment reminder for every overdue invoice not reminded in the last
+    7 days (also runs automatically on the scheduler tick)."""
+    sent = ar_aging.send_due_reminders(db)
+    audit.record(db, action="billing.send_reminders", actor_user_id=user.id,
+                 actor_email=user.email, actor_role=user.role.value, target_type="billing",
+                 ip=_ip(request), detail=f"reminders_sent={len(sent)}")
+    return {"ok": True, "sent": sent, "count": len(sent)}
 
 
 @router.get("/renewals")

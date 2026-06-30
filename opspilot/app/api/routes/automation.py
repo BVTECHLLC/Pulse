@@ -195,6 +195,14 @@ def run_checks(db: Session = Depends(get_db),
     except Exception:
         pass
 
+    # A/R payment reminders (v0.62): nudge overdue unpaid invoices (7-day cadence).
+    from ...services import ar_aging
+    reminders = []
+    try:
+        reminders = ar_aging.send_due_reminders(db, now)
+    except Exception:
+        pass
+
     # Deliver any due scheduled client reports (v0.20).
     reports = scheduled_reports.send_due(db, now)
 
@@ -213,7 +221,8 @@ def run_checks(db: Session = Depends(get_db),
                         f"escalated={escalated} reports_sent={reports['reports_sent']}")
     return {"offline": sweep, "sla_breaches_fired": sla_fired, "escalated": escalated,
             "reports": reports, "health_checked": (health or {}).get("checked", 0),
-            "scheduled_fired": len(scheduled), "recurring_invoices": len(recurring)}
+            "scheduled_fired": len(scheduled), "recurring_invoices": len(recurring),
+            "reminders_sent": len(reminders)}
 
 
 # --------------------------------------------------------------------------- #

@@ -180,6 +180,8 @@ def _reconcile_schema():
         ("devices", "platform", "VARCHAR(40)"),
         ("contracts", "auto_invoice", "BOOLEAN DEFAULT FALSE"),
         ("contracts", "last_invoiced_at", "TIMESTAMP WITH TIME ZONE"),
+        ("invoices", "last_reminded_at", "TIMESTAMP WITH TIME ZONE"),
+        ("invoices", "reminder_count", "INTEGER DEFAULT 0"),
     ]
     insp = inspect(engine)
     is_sqlite = engine.dialect.name == "sqlite"
