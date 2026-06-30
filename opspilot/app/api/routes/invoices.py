@@ -17,7 +17,7 @@ from ...models import (
     Client, Invoice, InvoiceLineItem, InvoiceStatus, License, PAYMENT_METHODS,
     Payment, Role, TimeEntry, User,
 )
-from ...services import audit, billing_payments
+from ...services import ar_aging, audit, billing_payments
 
 router = APIRouter(prefix="/api", tags=["invoices"])
 
@@ -222,6 +222,24 @@ def add_line_item(invoice_id: int, body: LineItemIn, request: Request,
     _recompute(db, inv)
     db.commit()
     return {"id": li.id, "invoice_total": inv.total}
+
+
+@router.post("/invoices/{invoice_id}/remind")
+def remind_invoice(invoice_id: int, request: Request, db: Session = Depends(get_db),
+                   user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Email the client a payment reminder for this invoice now."""
+    inv = db.get(Invoice, invoice_id)
+    if not inv:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+    if inv.status != InvoiceStatus.SENT:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Only a sent invoice can be reminded")
+    result = ar_aging.remind_one(db, inv)
+    if not result.get("ok"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, result.get("reason") or "Could not send reminder")
+    audit.record(db, action="invoice.remind", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="invoice", target_id=str(inv.id),
+                 client_id=inv.client_id, ip=_ip(request), detail=f"to={result.get('to')}")
+    return result
 
 
 def _transition(db: Session, user: User, request: Request, invoice_id: int,

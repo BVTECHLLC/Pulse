@@ -1,5 +1,29 @@
 # BVTech OpsPilot — Changelog
 
+## v0.62.0 — A/R aging + automatic payment reminders (June 2026)
+- **See who owes you, by age.** A new **📊 A/R Aging** view buckets every
+  outstanding (sent, unpaid) invoice by how overdue it is — **current · 1-30 ·
+  31-60 · 61-90 · 90+** — with dollars rolled up per bucket and an overdue total.
+  `GET /api/billing/aging` (staff see the whole book or one client; a client sees
+  only their own).
+- **Get paid without chasing.** Overdue invoices now **email a polite reminder**
+  to the client's billing contact (the `Client.email`, else their CLIENT_ADMIN)
+  with a link to view + pay — automatically on the scheduler tick, on a **7-day
+  cadence** (tracked via `invoices.last_reminded_at`) so it never nags. Plus a
+  one-click **✉️ remind** on any sent invoice and an owner **Send due reminders**
+  sweep button.
+- `services/ar_aging.py` (pure bucketing + an injectable mail sender so reminders
+  are testable offline and an undeliverable attempt doesn't mark an invoice
+  reminded), wired into `POST /api/automation/run-checks`, `POST
+  /api/billing/send-reminders` (OWNER) + `POST /api/invoices/{id}/remind`
+  (OWNER/TECH). New `invoices.last_reminded_at` / `reminder_count` columns
+  (migration `e5f6a7b8c9d1` + startup self-heal) and an A/R Aging dashboard card.
+- Verified offline (smoke + unit): invoices land in the right age buckets (paid +
+  draft excluded); a manual remind emails the billing contact; the sweep respects
+  the 7-day cadence (a just-reminded invoice is skipped, an un-reminded one
+  fires); clients see only their own A/R and can't run the sweep (RBAC). Migration
+  up/down/up clean.
+
 ## v0.61.0 — Payments & balance tracking: record any payment, auto-reconcile (June 2026)
 - **Close the loop on every payment rail.** The offline methods from v0.59 (wire,
   check, Zelle, Cash App, PayPal, cash) have no webhook — so staff can now

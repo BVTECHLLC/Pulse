@@ -655,6 +655,50 @@ def main():
         assert ca_c.post(f"/api/invoices/{inv_id}/payments", json={"amount":5,"method":"cash"}).status_code==403
         print("payments & balance: partial→balance, link re-price, auto-reconcile, ledger + RBAC OK")
 
+        # ===================== v0.62: A/R aging + payment reminders =====================
+        from app.services import email as _email
+        from app.core.db import SessionLocal as _SL
+        from app.models import Invoice as _Inv
+        from datetime import timezone as _tz, timedelta as _td, datetime as _dt
+        _sent_box = []
+        _orig_send = _email.send
+        _email.send = lambda to, subject, body: (_sent_box.append((to, subject)) or True)
+        try:
+            # Two fresh sent invoices for cid, backdated so they're overdue.
+            def _overdue_inv(amount, days_over):
+                g = c.post("/api/invoices/generate", json={"client_id": cid, "include_time": False}).json()
+                c.post(f"/api/invoices/{g['id']}/line-items",
+                       json={"description": "Service", "quantity": 1, "unit_price": amount})
+                c.post(f"/api/invoices/{g['id']}/send")
+                s = _SL()
+                try:
+                    iv = s.get(_Inv, g["id"]); iv.due_at = _dt.now(_tz.utc) - _td(days=days_over); s.commit()
+                finally:
+                    s.close()
+                return g["id"]
+            a1 = _overdue_inv(250, 20)   # 1-30 bucket
+            a2 = _overdue_inv(750, 75)   # 61-90 bucket
+            # Aging report buckets the outstanding balances by age.
+            ag = c.get("/api/billing/aging").json()
+            assert ag["buckets"]["1-30"]["amount"] >= 250 and ag["buckets"]["61-90"]["amount"] >= 750, ag
+            assert ag["total"] >= 1000 and ag["overdue_total"] >= 1000, ag
+            assert any(r["id"] == a2 and r["bucket"] == "61-90" for r in ag["invoices"]), ag["invoices"]
+            # Manual remind: emails the client's billing contact (stubbed True).
+            rm = c.post(f"/api/invoices/{a1}/remind").json()
+            assert rm["ok"] and rm["delivered"], rm
+            assert _sent_box and "Payment reminder" in _sent_box[-1][1], _sent_box[-1]
+            # Cadence: a1 was just reminded → the sweep only reminds a2 now.
+            sweep = c.post("/api/billing/send-reminders").json()
+            nums = {s["invoice_id"] for s in sweep["sent"]}
+            assert a2 in nums and a1 not in nums, sweep
+            # RBAC: client sees only their own A/R; cannot run the reminder sweep.
+            ca_ag = ca_c.get("/api/billing/aging").json()
+            assert all(r["client_id"] == cid for r in ca_ag["invoices"]), ca_ag
+            assert ca_c.post("/api/billing/send-reminders").status_code == 403
+            print("A/R aging + reminders: buckets + manual remind + cadence sweep + RBAC OK")
+        finally:
+            _email.send = _orig_send
+
         # ===================== v0.60: power dialer + call coaching =====================
         from app.services import power_dialer as _pd
         _orig_caller = _pd.CALLER
@@ -1681,7 +1725,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.61 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.62 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
