@@ -70,6 +70,55 @@ def _seed() -> None:
 _seed()
 
 
+def sync_vault_providers(db) -> None:
+    """Register/refresh the Microsoft + Google SSO providers from the secure vault
+    so sign-in lights up from what was configured in Settings (no box env vars
+    needed). Called at the start of every OAuth request. Microsoft falls back to
+    the M365 mailbox app's credentials when a dedicated SSO app isn't set, so one
+    Entra app can power both mail and login."""
+    from . import secure_config
+    s = get_settings()
+
+    sso = secure_config.get_platform(db, "sso_login")
+    sso_cfg = (sso.config if sso else None) or {}
+    mbox = secure_config.get_platform(db, "m365_mailbox")
+    mbox_cfg = (mbox.config if mbox else None) or {}
+
+    # --- Microsoft ---
+    ms_id = secure_config.get_secret(sso_cfg, "ms_client_id") or sso_cfg.get("ms_client_id") \
+        or secure_config.get_secret(mbox_cfg, "client_id") or mbox_cfg.get("client_id")
+    ms_secret = secure_config.get_secret(sso_cfg, "ms_client_secret") \
+        or secure_config.get_secret(mbox_cfg, "client_secret")
+    ms_tenant = (sso_cfg.get("ms_tenant")
+                 or secure_config.get_secret(mbox_cfg, "tenant_id") or mbox_cfg.get("tenant_id")
+                 or s.MS_OAUTH_TENANT)
+    if ms_id and ms_secret:
+        base = f"{s.M365_LOGIN_BASE}/{ms_tenant}/oauth2/v2.0"
+        register_provider("microsoft", {
+            "name": "Microsoft",
+            "authorize_url": f"{base}/authorize", "token_url": f"{base}/token",
+            "userinfo_url": f"{s.M365_GRAPH_BASE}/me",
+            "scopes": ["openid", "email", "profile", "User.Read", "offline_access"],
+            "client_id": str(ms_id), "client_secret": str(ms_secret),
+            "email_fields": ["mail", "userPrincipalName"],
+        })
+
+    # --- Google ---
+    g_id = secure_config.get_secret(sso_cfg, "google_client_id") or sso_cfg.get("google_client_id")
+    g_secret = secure_config.get_secret(sso_cfg, "google_client_secret")
+    if g_id and g_secret:
+        register_provider("google", {
+            "name": "Google",
+            "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+            "token_url": "https://oauth2.googleapis.com/token",
+            "userinfo_url": "https://openidconnect.googleapis.com/v1/userinfo",
+            "scopes": ["openid", "email", "profile"],
+            "client_id": str(g_id), "client_secret": str(g_secret),
+            "email_fields": ["email"],
+            "extra_authorize": {"access_type": "offline", "prompt": "consent"},
+        })
+
+
 def get_provider(key: str) -> dict | None:
     return _PROVIDERS.get(key)
 

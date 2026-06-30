@@ -20,8 +20,10 @@ from ...core.config import get_settings
 from ...core.db import get_db
 from ...core.deps import require_roles
 from ...core.security import random_token
+from pydantic import BaseModel
+
 from ...models import OAuthState, OAuthToken, Role, User
-from ...services import audit, crypto, oauth
+from ...services import audit, crypto, oauth, secure_config
 from .auth import issue_session
 
 router = APIRouter(prefix="/api/oauth", tags=["oauth"])
@@ -44,14 +46,63 @@ def _redirect_uri(request: Request, provider: str) -> str:
     return f"{_base_url(request)}/api/oauth/{provider}/callback"
 
 
+# --------------------------------------------------------------------------- #
+# SSO settings — configure the Microsoft/Google sign-in apps from the UI (vault).
+# --------------------------------------------------------------------------- #
+class SSOSettingsIn(BaseModel):
+    ms_client_id: str | None = None
+    ms_client_secret: str | None = None
+    ms_tenant: str | None = None
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+
+
+@router.get("/sso-settings")
+def get_sso_settings(request: Request, db: Session = Depends(get_db),
+                     user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    conn = secure_config.get_platform(db, "sso_login")
+    cfg = (conn.config if conn else None) or {}
+    oauth.sync_vault_providers(db)
+    active = {p["key"] for p in oauth.enabled_providers()}
+    base = _base_url(request)
+    return {
+        "fields": secure_config.public_view(cfg),
+        "ms_tenant": cfg.get("ms_tenant"),
+        "providers_active": sorted(active),
+        "redirect_uris": {
+            "microsoft": f"{base}/api/oauth/microsoft/callback",
+            "google": f"{base}/api/oauth/google/callback",
+        },
+        # convenience: Microsoft SSO can reuse the M365 mailbox app
+        "microsoft_uses_mailbox": bool(
+            (secure_config.get_platform(db, "m365_mailbox") or None)
+            and "microsoft" in active and not cfg.get("ms_client_id")),
+    }
+
+
+@router.put("/sso-settings")
+def save_sso_settings(body: SSOSettingsIn, request: Request, db: Session = Depends(get_db),
+                      user: User = Depends(require_roles(Role.OWNER))):
+    payload = {k: v for k, v in body.model_dump().items() if v is not None}
+    conn = secure_config.upsert_platform(db, "sso_login", "Single Sign-On", "Identity", payload)
+    audit.record(db, action="sso.configure", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="integration", target_id=str(conn.id),
+                 ip=_ip(request), detail="sso credentials")
+    oauth.sync_vault_providers(db)
+    return {"ok": True, "providers_active": sorted(p["key"] for p in oauth.enabled_providers())}
+
+
 @router.get("/providers")
-def providers():
-    """Which SSO/connector providers are configured (drives the login buttons)."""
+def providers(db: Session = Depends(get_db)):
+    """Which SSO/connector providers are configured (drives the login buttons).
+    Resolves providers from the vault first so SSO lights up from Settings."""
+    oauth.sync_vault_providers(db)
     return {"providers": oauth.enabled_providers(), "sso_allowed": _s.OAUTH_ALLOW_SSO}
 
 
 def _start(request: Request, db: Session, provider: str, purpose: str,
            user_id: int | None, next_url: str | None) -> RedirectResponse:
+    oauth.sync_vault_providers(db)
     if not oauth.get_provider(provider):
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Provider '{provider}' is not configured")
     verifier = oauth.gen_verifier()
@@ -98,6 +149,7 @@ def callback(provider: str, request: Request, response: Response,
              db: Session = Depends(get_db)):
     if error:
         return RedirectResponse(f"/?oauth_error={error}", status_code=302)
+    oauth.sync_vault_providers(db)   # ensure the provider config is present
     st = _consume_state(db, provider, state)
     purpose, redirect_uri = st.purpose, st.redirect_uri
     uid, next_url, verifier = st.user_id, st.next_url, st.code_verifier

@@ -32,16 +32,51 @@ import time
 from pathlib import Path
 from urllib import request as urlreq
 
-AGENT_VERSION = "1.5.0"
+AGENT_VERSION = "1.5.1"
 
 
 def _normalize_url(u: str) -> str:
     """Accept what a human types: add https:// if no scheme, drop trailing slash.
     Prevents urllib 'unknown url type' when someone enters 'portal.bvtech.org'."""
-    u = (u or "").strip().rstrip("/")
+    u = (u or "").strip().strip('"').strip("'").rstrip("/")
     if u and "://" not in u:
         u = "https://" + u
     return u
+
+
+def _extract_token(raw: str) -> str:
+    """Pull a clean enrollment token out of whatever the user pasted — even the
+    whole command line (e.g. `.\\opspilot-agent.exe enroll eyJ... --url https://...`).
+    Enrollment tokens are JWTs, so we grab the longest eyJ... run; failing that we
+    strip obvious command noise. This makes onboarding forgiving of copy/paste."""
+    import re
+    raw = (raw or "").strip().strip('"').strip("'")
+    jwts = re.findall(r"eyJ[A-Za-z0-9._\-]{20,}", raw)
+    if jwts:
+        return max(jwts, key=len)
+    # No JWT found: drop the exe name, the word 'enroll', and any --flag value.
+    toks = []
+    skip_next = False
+    for t in raw.split():
+        if skip_next:
+            skip_next = False
+            continue
+        low = t.lower()
+        if low.startswith("--"):
+            skip_next = "=" not in t
+            continue
+        if low in ("enroll", "run") or low.endswith(".exe") or low.endswith(".py") \
+                or low.startswith(".\\") or low.startswith("./"):
+            continue
+        toks.append(t)
+    return toks[0] if toks else raw
+
+
+def _extract_url_flag(raw: str) -> str | None:
+    """If a pasted command contains `--url X`, return X."""
+    import re
+    m = re.search(r"--url[=\s]+(\S+)", raw or "")
+    return m.group(1) if m else None
 
 
 PULSE_URL = _normalize_url(os.environ.get("PULSE_URL", "https://portal.bvtech.org"))
@@ -341,6 +376,7 @@ def _patches_macos() -> list[dict]:
 
 # --------------------------------------------------------------------------- #
 def enroll(token: str) -> dict:
+    token = _extract_token(token)   # tolerate a pasted command / quotes / spaces
     body = {
         "enroll_token": token,
         "hostname": socket.gethostname(),
@@ -619,25 +655,46 @@ def _interactive_onboard() -> bool:
     print(_BANNER)
     print(f"  Agent v{AGENT_VERSION}\n")
     print("Let's connect this computer to your Pulse portal.")
-    print("(Get an enrollment token from your portal: Devices -> Deploy Agent -> Generate installer.)\n")
-    try:
-        u = input(f"Portal URL [{PULSE_URL}]: ").strip()
-    except EOFError:
-        u = ""
-    if u:
-        PULSE_URL = _normalize_url(u)
+    print("(Get an enrollment token from your portal: Devices -> Deploy Agent -> Generate installer.)")
+    print("Tip: you can just paste the whole token here — I'll figure out the rest.\n")
+
     token = ""
+    # First prompt does double duty: if the user pastes the token (or the whole
+    # command) here, we use it directly instead of treating it as a URL.
+    try:
+        first = input(f"Portal URL [{PULSE_URL}]  (or paste your token): ").strip()
+    except EOFError:
+        first = ""
+    if first:
+        if "eyj" in first.lower() or "enroll" in first.lower():
+            # They pasted the token / the example command at the URL prompt.
+            url = _extract_url_flag(first)
+            if url:
+                PULSE_URL = _normalize_url(url)
+            token = _extract_token(first)
+        else:
+            PULSE_URL = _normalize_url(first)
+
     while not token:
         try:
-            token = input("Paste your enrollment token: ").strip()
+            raw = input("Paste your enrollment token: ").strip()
         except EOFError:
             print("No token entered — nothing to do.")
             return False
+        if not raw:
+            continue
+        url = _extract_url_flag(raw)
+        if url:
+            PULSE_URL = _normalize_url(url)
+        token = _extract_token(raw)
+
+    print(f"\nConnecting to {PULSE_URL} ...")
     try:
         enroll(token)   # saves config (incl. URL); raises SystemExit on failure
         return True
     except SystemExit:
-        print("\nEnrollment failed. Double-check the token (they expire after 72h) and the URL, then try again.")
+        print("\nEnrollment failed. Double-check the token (they expire after 72h) and that the\n"
+              f"portal URL is right ({PULSE_URL}), then run me again.")
         return False
 
 

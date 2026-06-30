@@ -892,6 +892,25 @@
     </div>
 
     <div class="card" style="margin-bottom:16px">
+      <h3>🔐 Single Sign-On (login with Microsoft / Google) <span class="pill" id="set-sso-pill">not configured</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Turn on "Sign in with Microsoft/Google" on the Pulse login page. Add the redirect URI below to your Microsoft (Entra) and/or Google OAuth app. <b>Microsoft can reuse your M365 mailbox app</b> — just add the redirect URI + delegated <code>openid email profile User.Read</code> permissions to it.</p>
+      <div class="grid2">
+        <label>Microsoft client ID <span class="muted" style="font-weight:normal">(blank = reuse mailbox app)</span><input id="set-sso-msid" placeholder="(unchanged / reuse mailbox)"></label>
+        <label>Microsoft client secret<input id="set-sso-mssecret" type="password" placeholder="(unchanged / reuse mailbox)"></label>
+        <label>Microsoft tenant <span class="muted" style="font-weight:normal">(common = any account)</span><input id="set-sso-mstenant" placeholder="common"></label>
+        <label>Google client ID<input id="set-sso-gid" placeholder="...apps.googleusercontent.com"></label>
+        <label>Google client secret<input id="set-sso-gsecret" type="password" placeholder="(unchanged)"></label>
+      </div>
+      <div style="margin-top:10px">
+        <label>Redirect URIs — paste these into your OAuth app(s)</label>
+        <input id="set-sso-ms-redirect" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
+        <input id="set-sso-g-redirect" readonly onclick="this.select()" style="font-family:monospace;font-size:12px;margin-top:6px">
+      </div>
+      <div class="flex" style="margin-top:10px"><button class="btn sm" onclick="saveSSO()">Save</button>
+        <span class="muted" id="set-sso-msg" style="font-size:12px"></span></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
       <h3>📬 Microsoft 365 Mailbox <span class="pill" id="set-mb-pill">not configured</span></h3>
       <p class="muted" style="margin:4px 0 10px">App-only Graph access (Mail.Read / Mail.Send, admin-consented). Used by the Mailbox tab.</p>
       <div class="grid2">
@@ -2340,6 +2359,25 @@ async function runProspect(){
   if(r.ok){msg.textContent=`Found ${j.found}, added ${j.created} new leads (${j.skipped_existing} already in pipeline).`;loadCrm();}
   else msg.textContent=j.detail||'Prospecting failed';
 }
+async function loadSSO(){
+  const s=await api('/api/oauth/sso-settings'); if(!s)return;
+  const active=(s.providers_active||[]);
+  setPill('set-sso-pill', active.length>0);
+  const pill=document.getElementById('set-sso-pill');
+  if(active.length)pill.textContent=active.join(' + ')+' live';
+  document.getElementById('set-sso-mstenant').value=s.ms_tenant||'';
+  document.getElementById('set-sso-ms-redirect').value=(s.redirect_uris||{}).microsoft||'';
+  document.getElementById('set-sso-g-redirect').value=(s.redirect_uris||{}).google||'';
+}
+async function saveSSO(){
+  const msg=document.getElementById('set-sso-msg'); msg.textContent='saving…';
+  const r=await put('/api/oauth/sso-settings',{ms_client_id:val('set-sso-msid'),ms_client_secret:val('set-sso-mssecret'),
+    ms_tenant:val('set-sso-mstenant'),google_client_id:val('set-sso-gid'),google_client_secret:val('set-sso-gsecret')});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){const a=j.providers_active||[];msg.textContent=a.length?('Live: '+a.join(' + ')+' — sign-in buttons now show on the login page'):'Saved (add an app to light up sign-in)';
+    setPill('set-sso-pill',a.length>0);['set-sso-mssecret','set-sso-gsecret'].forEach(i=>document.getElementById(i).value='');}
+  else msg.textContent=j.detail||'Save failed';
+}
 async function saveHubspot(){
   const msg=document.getElementById('set-hs-msg'); msg.textContent='saving…';
   const r=await put('/api/hubspot/settings',{token:val('set-hs-token')}); const j=await r.json().catch(()=>({}));
@@ -2654,6 +2692,7 @@ async function loadSettings(){
   if(gb){setPill('set-gbp-pill',gb.configured);
     document.getElementById('set-gbp-acct').value=fv(gb.fields,'account_name');
     document.getElementById('set-gbp-loc').value=fv(gb.fields,'location_name');}
+  await loadSSO();
 }
 async function saveMailboxCfg(){
   const msg=document.getElementById('set-mb-msg'); msg.textContent='saving…';

@@ -1,5 +1,26 @@
 # BVTech OpsPilot — Changelog
 
+## v0.52.1 — Fix: saved settings read as "not connected" + agent onboarding (June 2026)
+- **Root cause of "I saved it but it shows not connected":** schema drift. The
+  v0.52 migration adds health columns to `integration_connections`; `deploy.sh`
+  runs `alembic upgrade head` best-effort (`|| WARN`) AFTER starting the new code,
+  so a failed/late migration left the app querying columns the DB lacked — and
+  **every** integration query then errored, making *saved* creds read as absent.
+  Fix: **startup now reconciles its own schema** (create missing tables + ADD
+  missing columns, idempotent, every boot, all dialects) so the code never
+  queries a column the DB lacks. Verified against a simulated old-schema DB: the
+  saved mailbox row was intact and read back correctly after self-heal. **No data
+  was lost.**
+- **Agent onboarding is now paste-proof:** pasting the whole command (or the token
+  with quotes/spaces, or at the wrong prompt) is parsed correctly — the JWT token
+  and any `--url` are extracted. Fixes the `unknown url type` enrollment failure.
+  Agent → v1.5.1.
+- **SSO sign-in is vault-driven:** "Sign in with Microsoft/Google" lights up from
+  credentials entered in **Settings → Single Sign-On** (Microsoft can reuse the
+  M365 mailbox app), not box env vars. New `GET/PUT /api/oauth/sso-settings`
+  (shows the redirect URIs to register); providers resolve from the vault on every
+  OAuth request. SSO card added to Settings.
+
 ## v0.52.0 — Connector health watchdog (June 2026)
 - **Pulse now tells you when an integration breaks** instead of failing silently.
   `services/integration_health.py` live-tests each connected provider (M365,
