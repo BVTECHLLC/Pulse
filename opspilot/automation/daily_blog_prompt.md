@@ -19,7 +19,8 @@ You are writing today's BVTech.org security update. Follow the persona in
 4. **Save the post body** to a file `automation/out/today.md` and a JSON of the
    metadata to `automation/out/today.json` with fields:
    `{"title": "...", "kind": "advisory", "keywords": "comma, separated, seo",
-     "body": "<the full markdown-lite body>"}`
+     "body": "<the full markdown-lite body>",
+     "linkedin": "<a 2-4 sentence first-person LinkedIn caption in Jordan's voice summarizing why this threat matters to a small business, ending with a soft 'questions? reach out' CTA — no hashtags spam, maybe 1-2 relevant hashtags>"}`
    (Either write `today.json` directly with the body inline, or write
    `today.md` and a small `today.json` without body — the publish step reads
    `today.json` and, if `body` is absent, falls back to `today.md`.)

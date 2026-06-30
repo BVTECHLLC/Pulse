@@ -73,6 +73,9 @@ PY
   echo "safety-net publish from $TODAY_JSON"
   python3 scripts/publish_post.py --repo "$BV_WEBSITE_REPO" --infile "$TODAY_JSON" --git \
     || echo "publish step failed (post may already be published by Claude)"
+  # Cross-post the advisory to LinkedIn (best-effort; needs a valid token).
+  python3 scripts/post_linkedin.py --from-json "$TODAY_JSON" --tag bvtech \
+    || echo "linkedin post skipped/failed (token may be expired)"
   # Archive so we don't republish tomorrow.
   mv "$TODAY_JSON" "automation/out/published-$(date +%F).json" 2>/dev/null || true
   rm -f automation/out/today.md
