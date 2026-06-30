@@ -1,5 +1,26 @@
 # BVTech OpsPilot — Changelog
 
+## v0.66.0 — Client portal, reimagined (self-service that sells your value) (June 2026)
+- **A portal clients actually want to log into.** The self-service portal is
+  rebuilt around what a client cares about:
+  - A **hero with their A–F security grade** + overall score — "managed &
+    monitored by BVTech" — backed by a **"How we're protecting you"** card that
+    breaks the grade into Endpoints / Patching / Microsoft 365 / Threats and
+    lists **"what we're working on for you"** (the posture recommendations).
+  - A **Balance Due** KPI + a pay banner: outstanding total, unpaid count, and a
+    one-tap link to **pay online by any method** (card, PayPal, Venmo, wire,
+    check…). Invoices now show the **remaining balance** and a *Pay / view* link.
+  - KPI strip (Devices · Active Alerts · Balance Due · Open Requests), polished
+    devices/alerts tables, submit-a-ticket + threaded conversation, security
+    findings, and documentation — all client-scoped.
+- Pure front-end on top of existing client-scoped APIs (`/api/posture/{id}`,
+  `/api/billing/aging`, `/api/invoices` with balance, tickets, KB) — **no new
+  endpoints, no schema change**; everything stays behind the same RBAC.
+- Verified offline (smoke): the portal shell renders and a **client** can read
+  exactly what it surfaces — their own posture grade + domains, their balance/
+  aging (scoped to them), and invoices carrying a balance with **drafts never
+  exposed**.
+
 ## v0.65.0 — Auto-remediation: detect → fix, automatically (June 2026)
 - **Close the loop without a human in the middle.** Define a **remediation rule**
   ("when **device_offline** on this client, run **Restart-Agent**") and when a

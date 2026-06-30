@@ -5,6 +5,21 @@
 <title>{{ app_name }} — Client Portal</title>
 <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/css/pulse.css">
+<style>
+  .hero{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;
+    background:linear-gradient(135deg,rgba(59,130,246,.12),rgba(34,197,94,.06));
+    border:1px solid var(--line);border-radius:16px;padding:22px 24px;margin-bottom:16px}
+  .hero h2{margin:0 0 4px;font-size:22px}
+  .grade-ring{width:96px;height:96px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:42px;font-weight:800;border:6px solid var(--line);flex:none}
+  .domain-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+  .domain{border:1px solid var(--line);border-radius:12px;padding:12px}
+  .domain .g{font-size:24px;font-weight:800}
+  .bal-banner{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;
+    border:1px solid var(--line);border-radius:12px;padding:14px 18px;background:rgba(234,179,8,.08)}
+  .pill-btn{background:var(--accent,#3b82f6);color:#fff;border:none;border-radius:10px;padding:8px 14px;
+    font-weight:600;cursor:pointer;text-decoration:none;display:inline-block}
+</style>
 </head>
 <body>
 <div class="topbar">
@@ -19,21 +34,48 @@
   </div>
 </div>
 <div class="wrap">
-  <div class="grid cols-3">
-    <div class="card"><h3>Your Devices</h3><div class="stat" id="s-devices">—</div>
-      <div class="stat sub" id="s-attn">—</div></div>
-    <div class="card"><h3>Active Alerts</h3><div class="stat" id="s-alerts" style="color:var(--bad)">—</div>
-      <div class="stat sub" id="s-alerts-sub">—</div></div>
-    <div class="card"><h3>Security Score</h3><div class="stat" id="s-score">—</div>
-      <div class="stat sub" id="s-score-sub">—</div></div>
-    <div class="card"><h3>Your Licenses</h3><div class="stat" id="s-lic">—</div></div>
+
+  <!-- Hero: greeting + security grade -->
+  <div class="hero">
+    <div>
+      <h2 id="greet">Welcome</h2>
+      <p class="muted" style="margin:0" id="hero-sub">Your managed IT &amp; security at a glance.</p>
+    </div>
+    <div style="text-align:center">
+      <div class="grade-ring" id="grade-ring">—</div>
+      <div class="muted" style="font-size:12px;margin-top:6px">Security grade</div>
+    </div>
   </div>
+
+  <!-- KPI strip -->
+  <div class="grid cols-4">
+    <div class="card"><h3>Devices</h3><div class="stat" id="s-devices">—</div><div class="stat sub" id="s-attn">—</div></div>
+    <div class="card"><h3>Active Alerts</h3><div class="stat" id="s-alerts" style="color:var(--bad)">—</div><div class="stat sub" id="s-alerts-sub">—</div></div>
+    <div class="card"><h3>Balance Due</h3><div class="stat" id="s-balance">—</div><div class="stat sub" id="s-balance-sub">—</div></div>
+    <div class="card"><h3>Open Requests</h3><div class="stat" id="s-tickets">—</div><div class="stat sub" id="s-lic">—</div></div>
+  </div>
+
+  <!-- Balance banner (only when something is owed) -->
+  <div class="bal-banner hidden" id="bal-banner" style="margin-top:16px">
+    <div><b id="bal-amount">—</b> due across <span id="bal-count">—</span>. Pay securely online by card or your preferred method.</div>
+    <a class="pill-btn" id="bal-pay" href="#">Pay an invoice →</a>
+  </div>
+
+  <!-- Security posture breakdown -->
+  <div class="card hidden" id="posture-card" style="margin-top:16px">
+    <h3 style="margin-top:0">🛡️ How we're protecting you</h3>
+    <div class="domain-grid" id="posture-domains"></div>
+    <div id="posture-recs" style="margin-top:12px"></div>
+  </div>
+
   <div class="card hidden" id="c-alerts" style="margin-top:16px"><h3>Active Alerts</h3><table>
     <thead><tr><th>Severity</th><th>Device</th><th>Issue</th><th>Detail</th><th>Since</th></tr></thead>
     <tbody id="t-alerts"></tbody></table></div>
-  <div class="card" style="margin-top:16px"><h3>Devices</h3><table>
+
+  <div class="card" style="margin-top:16px"><h3>Your Devices</h3><table>
     <thead><tr><th>Host</th><th>OS</th><th>Health</th><th>Last check-in</th></tr></thead>
     <tbody id="t-devices"></tbody></table></div>
+
   <div class="card" style="margin-top:16px"><h3>Request Support</h3>
     <label>Subject</label><input id="t-subject" placeholder="Brief summary">
     <label>Details</label><input id="t-body" placeholder="What's happening?">
@@ -49,9 +91,11 @@
   <div class="card" style="margin-top:16px"><h3>Your Requests</h3><table>
     <thead><tr><th>#</th><th>Subject</th><th>Priority</th><th>Status</th><th>Opened</th></tr></thead>
     <tbody id="t-tickets"></tbody></table></div>
+
   <div class="card hidden" id="inv-card" style="margin-top:16px"><h3>Invoices</h3><table>
-    <thead><tr><th>#</th><th>Total</th><th>Status</th><th>Issued</th><th></th></tr></thead>
+    <thead><tr><th>#</th><th>Total</th><th>Balance</th><th>Status</th><th>Issued</th><th></th></tr></thead>
     <tbody id="t-invoices"></tbody></table></div>
+
   <div class="card hidden" id="sec-card" style="margin-top:16px"><h3>Security Findings</h3><table>
     <thead><tr><th>Severity</th><th>Finding</th><th>Recommendation</th><th>Status</th></tr></thead>
     <tbody id="t-findings"></tbody></table></div>
@@ -65,12 +109,16 @@
   <span class="scripture">"Whatever you do, work heartily." — Col 3:23</span>
 </div>
 <script>
-async function api(p){const r=await fetch(p);if(r.status===401){location.href='/';return null;}return r.json();}
+async function api(p){const r=await fetch(p);if(r.status===401){location.href='/';return null;}if(!r.ok)return null;return r.json();}
 async function post(p,b){return fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});}
 async function logout(){await fetch('/api/auth/logout',{method:'POST'});location.href='/';}
 function badge(v){if(v==null)return '—';const c=v>=80?'ok':(v>=60?'warn':'bad');return `<span class="badge ${c}">${v}</span>`;}
 function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));}
 function ago(iso){if(!iso)return '';return new Date(iso).toLocaleString();}
+function money(v){return '$'+(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});}
+const GRADE_COLOR={A:'#22c55e',B:'#84cc16',C:'#eab308',D:'#f97316',F:'#ef4444','N/A':'#64748b'};
+let ME=null;
+
 async function submitTicket(){
   const msg=document.getElementById('t-msg');msg.textContent='';
   const subject=document.getElementById('t-subject').value.trim();
@@ -83,6 +131,8 @@ async function submitTicket(){
 let TICKETS=[];
 async function loadTickets(){
   TICKETS=await api('/api/tickets')||[];
+  const open=TICKETS.filter(t=>t.status!=='resolved'&&t.status!=='closed').length;
+  document.getElementById('s-tickets').textContent=open+' open';
   document.getElementById('t-tickets').innerHTML=TICKETS.map(t=>
     `<tr style="cursor:pointer" onclick="openTicket(${t.id})"><td>#${t.id}</td><td>${esc(t.subject)}</td><td>${esc(t.priority)}</td>
      <td><span class="badge ${t.status==='resolved'||t.status==='closed'?'ok':(t.status==='in_progress'?'warn':'')}">${esc(t.status)}</span></td>
@@ -112,18 +162,49 @@ async function sendReply(id){
 async function loadInvoices(){
   const rows=await api('/api/invoices');if(!rows)return;
   document.getElementById('inv-card').classList.toggle('hidden',rows.length===0);
-  const money=v=>'$'+(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
-  document.getElementById('t-invoices').innerHTML=rows.map(i=>
-    `<tr><td>${esc(i.number||('#'+i.id))}</td><td>${money(i.total)}</td>
+  let due=0,dueCount=0,firstOpen=null;
+  document.getElementById('t-invoices').innerHTML=rows.map(i=>{
+    const bal=(i.balance!=null)?i.balance:(i.status==='paid'?0:i.total);
+    if(i.status!=='paid'&&i.status!=='void'&&bal>0){due+=bal;dueCount++;if(firstOpen==null)firstOpen=i.id;}
+    const payable=i.status!=='paid'&&i.status!=='void';
+    return `<tr><td>${esc(i.number||('#'+i.id))}</td><td>${money(i.total)}</td>
+     <td>${payable&&bal<i.total?`<b>${money(bal)}</b>`:(i.status==='paid'?'<span class="muted">$0.00</span>':money(bal))}</td>
      <td><span class="badge ${i.status==='paid'?'ok':(i.status==='void'?'bad':'warn')}">${esc(i.status)}</span></td>
      <td>${i.issued_at?new Date(i.issued_at).toLocaleDateString():'—'}</td>
-     <td><a href="/invoice/${i.id}" target="_blank">view →</a></td></tr>`).join('');
+     <td><a class="${payable?'':'muted'}" href="/invoice/${i.id}" target="_blank">${payable?'Pay / view →':'view →'}</a></td></tr>`;}).join('');
+  // Balance KPI + banner
+  document.getElementById('s-balance').textContent=money(due);
+  document.getElementById('s-balance-sub').textContent=dueCount?`${dueCount} unpaid`:'all paid ✓';
+  const banner=document.getElementById('bal-banner');
+  if(due>0){banner.classList.remove('hidden');
+    document.getElementById('bal-amount').textContent=money(due)+' due';
+    document.getElementById('bal-count').textContent=dueCount+' invoice'+(dueCount===1?'':'s');
+    if(firstOpen!=null)document.getElementById('bal-pay').href=`/invoice/${firstOpen}`;
+  } else banner.classList.add('hidden');
+}
+async function loadPosture(){
+  if(!ME||ME.client_id==null)return;
+  const s=await api(`/api/posture/${ME.client_id}`);if(!s)return;
+  const ring=document.getElementById('grade-ring');
+  ring.textContent=s.grade; ring.style.color=GRADE_COLOR[s.grade]; ring.style.borderColor=GRADE_COLOR[s.grade];
+  document.getElementById('hero-sub').textContent=s.score!=null
+    ? `Overall security score ${s.score}/100 — managed &amp; monitored by BVTech.`
+    : 'Your managed IT & security at a glance.';
+  const labels={endpoints:'🖥️ Endpoints',patching:'🩹 Patching',identity:'🔑 Microsoft 365',threats:'⚠️ Threats'};
+  const desc={endpoints:'Devices online & protected',patching:'Updates applied',identity:'Identity hardening',threats:'Open security issues'};
+  const dl=Object.entries(s.domains||{});
+  if(dl.length){document.getElementById('posture-card').classList.remove('hidden');
+    document.getElementById('posture-domains').innerHTML=dl.map(([k,d])=>
+      `<div class="domain"><div style="display:flex;justify-content:space-between;align-items:center">
+        <b>${labels[k]||k}</b><span class="g" style="color:${GRADE_COLOR[d.grade]}">${d.grade}</span></div>
+        <div class="muted" style="font-size:12px;margin-top:2px">${desc[k]||''} · ${d.score}/100</div></div>`).join('');
+    const recs=(s.recommendations||[]);
+    document.getElementById('posture-recs').innerHTML=recs.length
+      ? `<b style="font-size:13px">What we're working on for you</b><ul style="margin:6px 0 0;padding-left:18px">${recs.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`
+      : '<p class="muted" style="margin:0">✓ No outstanding security action items — you\'re in great shape.</p>';
+  }
 }
 async function loadSecurity(){
-  const sc=await api('/api/security/scorecard');if(!sc)return;
-  const color=sc.score>=85?'var(--ok)':(sc.score>=60?'var(--warn)':'var(--bad)');
-  const el=document.getElementById('s-score');el.textContent=sc.score;el.style.color=color;
-  document.getElementById('s-score-sub').textContent=sc.open_findings+' open finding(s)';
   const fs=await api('/api/security/findings');
   document.getElementById('sec-card').classList.toggle('hidden',!(fs&&fs.length));
   document.getElementById('t-findings').innerHTML=(fs||[]).map(f=>
@@ -157,20 +238,18 @@ async function loadAlerts(){
      <td style="color:var(--muted)">${ago(a.first_seen)}</td></tr>`).join('');
 }
 async function load(){
-  const me=await api('/api/auth/me'); if(!me)return;
-  document.getElementById('who').textContent=me.email;
+  ME=await api('/api/auth/me'); if(!ME)return;
+  document.getElementById('who').textContent=ME.email;
+  document.getElementById('greet').textContent='Welcome, '+((ME.full_name||ME.email).split('@')[0])+' 👋';
   const [devices,licenses]=await Promise.all([api('/api/devices'),api('/api/licenses')]);
-  document.getElementById('s-devices').textContent=devices.length+' total';
-  document.getElementById('s-attn').textContent=devices.filter(d=>(d.health_score??100)<70).length+' need attention';
-  document.getElementById('s-lic').textContent=licenses.length+' tracked';
-  document.getElementById('t-devices').innerHTML=devices.map(d=>
-    `<tr><td>${d.hostname}</td><td>${d.os||'—'}</td><td>${badge(d.health_score)}</td>
+  document.getElementById('s-devices').textContent=(devices||[]).length+' total';
+  document.getElementById('s-attn').textContent=(devices||[]).filter(d=>(d.health_score??100)<70).length+' need attention';
+  document.getElementById('s-lic').textContent=(licenses||[]).length+' licenses tracked';
+  document.getElementById('t-devices').innerHTML=(devices||[]).map(d=>
+    `<tr><td>${esc(d.hostname)}</td><td>${esc(d.os||'—')}</td><td>${badge(d.health_score)}</td>
      <td>${d.last_checkin?new Date(d.last_checkin).toLocaleString():'never'}</td></tr>`).join('')
     ||'<tr><td colspan=4 style="color:var(--muted)">No devices yet.</td></tr>';
-  document.getElementById('t-licenses').innerHTML=licenses.map(l=>
-    `<tr><td>${l.product}</td><td>${l.seats_used??'?'}/${l.seats??'?'}</td>
-     <td>${l.renewal_date?new Date(l.renewal_date).toLocaleDateString():'—'}</td></tr>`).join('')
-    ||'<tr><td colspan=3 style="color:var(--muted)">No licenses yet.</td></tr>';
+  loadPosture();
   loadTickets();
   loadAlerts();
   loadKB();
