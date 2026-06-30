@@ -1387,20 +1387,33 @@ function renderAC(){
   const minRank=SEV_RANK[document.getElementById('ac-sev').value]??-1;
   const items=data.items.filter(i=>SEV_RANK[i.severity]>=minRank);
   const box=document.getElementById('ac-list');
+  AC_INDEX={}; items.forEach(i=>AC_INDEX[i.id]=i);
   if(!items.length){box.innerHTML='<div class="card muted">Nothing matches this filter. 🎉</div>';return;}
   box.innerHTML=items.map(i=>`
-    <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:14px;cursor:pointer;border-left:4px solid ${sevColor(i.severity)}" onclick="acJump('${esc(i.link)}')">
-      <div style="width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;background:${sevColor(i.severity)};color:#0b1020;flex-shrink:0">${i.score}</div>
-      <div style="flex:1;min-width:0">
+    <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:14px;border-left:4px solid ${sevColor(i.severity)}">
+      <div style="width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;background:${sevColor(i.severity)};color:#0b1020;flex-shrink:0;cursor:pointer" onclick="acJump('${esc(i.link)}')">${i.score}</div>
+      <div style="flex:1;min-width:0;cursor:pointer" onclick="acJump('${esc(i.link)}')">
         <div style="font-weight:600">${esc(i.title)}</div>
         <div class="muted" style="font-size:12px;margin-top:2px">${esc(i.detail)}</div>
         <div class="muted" style="font-size:12px;margin-top:3px">→ ${esc(i.action)}</div>
       </div>
-      <div style="text-align:right;flex-shrink:0">
+      <div style="text-align:right;flex-shrink:0;display:flex;flex-direction:column;gap:6px;align-items:flex-end">
         <div class="badge" style="background:${sevColor(i.severity)};color:#0b1020;font-weight:700">${i.severity}</div>
-        <div class="muted" style="font-size:11px;margin-top:4px">${esc(i.client_name)}</div>
+        <div class="muted" style="font-size:11px">${esc(i.client_name)}</div>
+        <button class="btn sm ghost" title="Create a ticket from this item" onclick="acCreateTicket('${esc(i.id)}',this)">+ Ticket</button>
       </div>
     </div>`).join('');
+}
+let AC_INDEX={};
+async function acCreateTicket(id,btn){
+  const i=AC_INDEX[id]; if(!i)return;
+  if(btn){btn.disabled=true;btn.textContent='…';}
+  const r=await fetch('/api/action-center/create-ticket',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({client_id:i.client_id,title:i.title,detail:i.detail,severity:i.severity,link:i.link,kind:i.kind,entity_type:i.entity_type,entity_id:String(i.entity_id)})});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){if(btn){btn.textContent='✓ #'+j.id;btn.style.color='var(--ok)';}
+    if(typeof loadTickets==='function')loadTickets();}
+  else{if(btn){btn.disabled=false;btn.textContent='+ Ticket';}alert(j.detail||'Could not create ticket');}
 }
 // ---- Content Studio (compose + preview + stage for BVTech.org) ----
 function ctPost(){return {title:document.getElementById('ct-title').value.trim(),

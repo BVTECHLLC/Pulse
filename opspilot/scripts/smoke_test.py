@@ -929,6 +929,22 @@ def main():
         assert ca_c.get("/api/action-center?client_id=999999").status_code in (403, 404)
         print("Action Center: ranked + explainable + RBAC scoped OK")
 
+        # ---- v0.36: one-click "create ticket from action item" ----
+        ct = c.post("/api/action-center/create-ticket", json={
+            "client_id": cid, "title": "Disk filling on FILER-01", "detail": "Projected full in 3 days.",
+            "severity": "critical", "link": "#devices/1", "kind": "predict_disk_fill",
+            "entity_type": "device", "entity_id": "1"})
+        assert ct.status_code == 201, ct.text
+        ctj = ct.json()
+        assert ctj["priority"] == "urgent" and ctj["id"], ctj   # critical -> urgent
+        # the ticket really exists, with SLA stamped
+        made = c.get(f"/api/tickets/{ctj['id']}").json()
+        assert made["subject"] == "Disk filling on FILER-01" and made["sla"], made
+        # RBAC: a client user cannot use the staff action
+        assert ca_c.post("/api/action-center/create-ticket", json={
+            "client_id": cid, "title": "x", "severity": "low"}).status_code == 403
+        print("Action Center one-click create-ticket (severity->priority + SLA + RBAC) OK")
+
         # ===================== v0.33: Predictive Foresight =======================
         from datetime import datetime as _dt, timezone as _tz, timedelta as _td
         from app.core.db import SessionLocal as _SL
@@ -1082,7 +1098,7 @@ def main():
         assert c.delete(f"/api/assets/{a1['id']}").status_code==204
         print("asset management (CMDB + warranty + filters + RBAC + search) OK")
 
-    print("\n=== OpsPilot v0.34 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.36 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

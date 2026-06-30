@@ -1,5 +1,14 @@
 # BVTech OpsPilot — Changelog
 
+## v0.36.0 — Action Center goes operational: one-click create-ticket (June 2026)
+- Every Action Center item now has a **+ Ticket** button: turn any signal (a
+  predicted disk-fill, an SLA breach, an open finding, a contract renewal) into a
+  tracked **support ticket in one click**. Severity maps to priority
+  (critical→urgent … low→low), SLA targets are stamped, and automation fires —
+  identical to a hand-created ticket.
+- `POST /api/action-center/create-ticket` (OWNER/TECH), audited and tenant-scoped.
+- Verified: severity→priority mapping, SLA stamped, ticket really created, RBAC.
+
 ## v0.35.0 — Daily auto-publishing pipeline for BVTech.org (June 2026)
 
 ### Added — hands-off daily security advisories, live on the site
