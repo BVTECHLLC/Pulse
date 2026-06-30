@@ -10,8 +10,9 @@ BAK="$F.bak.$(date +%s)"
 cp "$F" "$BAK"
 echo "backed up -> $BAK"
 
-# Remove lines that are shell exports (the publisher's vars live in publisher.env).
-sed -i '/^[[:space:]]*export /d' "$F"
+# Remove shell `export` lines that got pasted in — including ones pasted WITH a
+# leading quote so they look like `"export KEY="value"` (which breaks JSON).
+sed -i -E '/^[[:space:]]*"?export /d' "$F"
 
 if python3 -c "import json;json.load(open('$F',encoding='utf-8-sig'));print('VALID JSON ✓')" 2>/dev/null; then
   echo "agent.env is valid JSON again — your other automation can read it."
