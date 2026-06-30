@@ -1759,12 +1759,14 @@ function scoreColor(v){return v>=85?'var(--ok)':(v>=60?'var(--warn)':'var(--bad)
 const GRADE_COLOR={A:'#22c55e',B:'#84cc16',C:'#eab308',D:'#f97316',F:'#ef4444','N/A':'#64748b'};
 function gradePill(g){return `<b style="color:${GRADE_COLOR[g]||'#64748b'};font-size:16px">${g}</b>`;}
 function domGrade(d){return d?`<span style="color:${GRADE_COLOR[d.grade]}">${d.grade}</span> <span class="muted" style="font-size:11px">${d.score}</span>`:'<span class="muted">—</span>';}
+function trendArrow(t){if(!t||t.delta==null||t.delta===0)return '';
+  return t.delta>0?` <span style="color:#22c55e" title="up ${t.delta}">▲${t.delta}</span>`:` <span style="color:#ef4444" title="down ${t.delta}">▼${Math.abs(t.delta)}</span>`;}
 async function loadPosture(){
   const rows=await api('/api/posture'); if(!rows)return;
   document.getElementById('t-posture').innerHTML=rows.length?rows.map(r=>
     `<tr style="cursor:pointer" onclick="postureDetail(${r.client_id})">
       <td>${esc(r.client_name)}</td><td>${gradePill(r.grade)}</td>
-      <td style="color:${r.score!=null?scoreColor(r.score):'#64748b'}">${r.score!=null?r.score:'—'}</td>
+      <td style="color:${r.score!=null?scoreColor(r.score):'#64748b'}">${r.score!=null?r.score:'—'}${trendArrow(r.trend)}</td>
       <td>${r.domain_grades.endpoints?`<span style="color:${GRADE_COLOR[r.domain_grades.endpoints]}">${r.domain_grades.endpoints}</span>`:'—'}</td>
       <td>${r.domain_grades.patching?`<span style="color:${GRADE_COLOR[r.domain_grades.patching]}">${r.domain_grades.patching}</span>`:'—'}</td>
       <td>${r.domain_grades.identity?`<span style="color:${GRADE_COLOR[r.domain_grades.identity]}">${r.domain_grades.identity}</span>`:'—'}</td>

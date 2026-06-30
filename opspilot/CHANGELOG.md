@@ -1,5 +1,24 @@
 # BVTech OpsPilot — Changelog
 
+## v0.67.0 — Posture trend + grade-drop alerting (July 2026)
+- **Catch a slipping client before the QBR.** The scheduler now **snapshots every
+  client's security scorecard ~daily**, and the moment a client's grade **slips
+  between snapshots** (e.g. B→C) it raises a staff notification — so a degrading
+  posture surfaces immediately instead of three months later.
+- **Trend everywhere it matters:** the Security Scorecards portfolio shows a
+  **▲/▼ delta** next to each client's score; `GET /api/posture/{id}` now carries
+  a `trend` (latest vs previous), and `GET /api/posture/{id}/history` returns the
+  snapshot series (staff or that client's own users) for charting.
+- `services/posture_history.py` (snapshot + throttle + grade-drop detection;
+  A→F ladder, "N/A" never alerts), wired into `run-checks` (≈20h throttle), with
+  `POST /api/posture/snapshot` to force one now (staff). New `posture_snapshots`
+  table (migration `a7b8c9d0e1f3` + startup self-heal).
+- Verified offline (smoke + unit): a snapshot is taken and throttled; worsening a
+  client's devices drops the grade on the next snapshot and raises a
+  **posture_drop** notification; history grows and trend reads *down*; a client
+  can read their own history but can't trigger the portfolio snapshot (RBAC).
+  Migration up/down/up clean.
+
 ## v0.66.0 — Client portal, reimagined (self-service that sells your value) (June 2026)
 - **A portal clients actually want to log into.** The self-service portal is
   rebuilt around what a client cares about:

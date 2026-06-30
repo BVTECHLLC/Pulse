@@ -208,6 +208,15 @@ def run_checks(db: Session = Depends(get_db),
     except Exception:
         pass
 
+    # Posture snapshots (v0.67): capture each client's security grade ~daily and
+    # alert staff if a grade slipped since the last snapshot.
+    from ...services import posture_history
+    snapshots = []
+    try:
+        snapshots = posture_history.snapshot_all(db, now)
+    except Exception:
+        pass
+
     # Deliver any due scheduled client reports (v0.20).
     reports = scheduled_reports.send_due(db, now)
 
@@ -227,7 +236,7 @@ def run_checks(db: Session = Depends(get_db),
     return {"offline": sweep, "sla_breaches_fired": sla_fired, "escalated": escalated,
             "reports": reports, "health_checked": (health or {}).get("checked", 0),
             "scheduled_fired": len(scheduled), "recurring_invoices": len(recurring),
-            "reminders_sent": len(reminders)}
+            "reminders_sent": len(reminders), "posture_snapshots": len(snapshots)}
 
 
 # --------------------------------------------------------------------------- #
