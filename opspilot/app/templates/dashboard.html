@@ -502,6 +502,7 @@
         <textarea id="ar-cond" rows="2" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)"></textarea>
         <label>Actions (JSON array)</label>
         <textarea id="ar-actions" rows="4" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink)"></textarea>
+        <p class="muted" style="font-size:11px;margin:4px 0 0">Actions: <code>create_ticket</code>, <code>ack_alert</code>, <code>notify</code>, <code>assign</code>, <code>set_priority</code>, <code>add_note</code>, <code>send_email</code> (M365), <code>linkedin_post</code>. Outbound actions use <code>{hostname} {message} {severity} {subject}</code> placeholders and skip safely if that integration isn't connected.</p>
         <div class="err" id="ar-msg"></div>
         <div class="flex" style="margin-top:12px">
           <button class="btn" onclick="createRule()">Create rule</button>
@@ -1222,7 +1223,7 @@ async function refreshTicketStats(){
 
 // ---- Automation & notifications ----
 const RULE_EXAMPLES={
-  'alert.opened':{cond:{"severity":"critical"},actions:[{type:"create_ticket",priority:"high"},{type:"notify"}]},
+  'alert.opened':{cond:{"severity":"critical"},actions:[{type:"create_ticket",priority:"high"},{type:"notify"},{type:"send_email",to:"oncall@bvtech.org",subject:"Critical: {hostname}",body:"{message}"}]},
   'ticket.created':{cond:{"priority":"urgent"},actions:[{type:"assign",auto:true},{type:"add_note",body:"Escalated by automation."}]},
   'ticket.sla_breached':{cond:{},actions:[{type:"notify",message:"SLA breached — needs attention",severity:"warning"}]},
 };
