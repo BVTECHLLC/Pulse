@@ -543,6 +543,13 @@
   </section>
 
   <section id="security" class="hidden">
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="margin-top:0">🛡️ Security Scorecards <span class="muted" style="font-size:12px">— graded posture, riskiest first</span></h3>
+      <p class="muted" style="margin:4px 0 10px">One A–F grade per client across endpoints, patching, Microsoft 365 identity, and open threats. Click a row to see the breakdown + recommendations.</p>
+      <table><thead><tr><th>Client</th><th>Grade</th><th>Score</th><th>Endpoints</th><th>Patching</th><th>Identity</th><th>Threats</th><th>To-do</th></tr></thead>
+      <tbody id="t-posture"></tbody></table>
+      <div id="posture-detail" class="hidden" style="margin-top:12px"></div>
+    </div>
     <div class="card" style="margin-bottom:16px"><h3>Security Posture by Client</h3><table>
       <thead><tr><th>Client</th><th>Score</th><th>Open</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th></tr></thead>
       <tbody id="t-scorecard"></tbody></table></div>
@@ -1692,7 +1699,45 @@ async function decideDep(id,action){
 // ---- Security posture ----
 function sevBadge(s){const m={critical:'bad',high:'bad',medium:'warn',low:'ok'};return `<span class="sev ${s==='medium'?'warning':(s==='low'?'info':'critical')}">${s}</span>`;}
 function scoreColor(v){return v>=85?'var(--ok)':(v>=60?'var(--warn)':'var(--bad)');}
+const GRADE_COLOR={A:'#22c55e',B:'#84cc16',C:'#eab308',D:'#f97316',F:'#ef4444','N/A':'#64748b'};
+function gradePill(g){return `<b style="color:${GRADE_COLOR[g]||'#64748b'};font-size:16px">${g}</b>`;}
+function domGrade(d){return d?`<span style="color:${GRADE_COLOR[d.grade]}">${d.grade}</span> <span class="muted" style="font-size:11px">${d.score}</span>`:'<span class="muted">—</span>';}
+async function loadPosture(){
+  const rows=await api('/api/posture'); if(!rows)return;
+  document.getElementById('t-posture').innerHTML=rows.length?rows.map(r=>
+    `<tr style="cursor:pointer" onclick="postureDetail(${r.client_id})">
+      <td>${esc(r.client_name)}</td><td>${gradePill(r.grade)}</td>
+      <td style="color:${r.score!=null?scoreColor(r.score):'#64748b'}">${r.score!=null?r.score:'—'}</td>
+      <td>${r.domain_grades.endpoints?`<span style="color:${GRADE_COLOR[r.domain_grades.endpoints]}">${r.domain_grades.endpoints}</span>`:'—'}</td>
+      <td>${r.domain_grades.patching?`<span style="color:${GRADE_COLOR[r.domain_grades.patching]}">${r.domain_grades.patching}</span>`:'—'}</td>
+      <td>${r.domain_grades.identity?`<span style="color:${GRADE_COLOR[r.domain_grades.identity]}">${r.domain_grades.identity}</span>`:'—'}</td>
+      <td>${r.domain_grades.threats?`<span style="color:${GRADE_COLOR[r.domain_grades.threats]}">${r.domain_grades.threats}</span>`:'—'}</td>
+      <td>${r.open_recommendations||0}</td></tr>`).join('')
+    :'<tr><td colspan=8 class="muted">No clients yet.</td></tr>';
+}
+async function postureDetail(cid){
+  const box=document.getElementById('posture-detail'); box.classList.remove('hidden');
+  box.innerHTML='<p class="muted">Loading…</p>';
+  const s=await api(`/api/posture/${cid}`); if(!s){box.innerHTML='<p class="err">Could not load.</p>';return;}
+  const labels={endpoints:'🖥️ Endpoints',patching:'🩹 Patching',identity:'🔑 M365 Identity',threats:'⚠️ Threats'};
+  const doms=Object.entries(s.domains).map(([k,d])=>{
+    let detail='';
+    if(k==='endpoints')detail=`${d.online}/${d.device_count} online · ${d.av_protected}/${d.device_count} AV-protected${d.avg_health!=null?` · health ${d.avg_health}`:''}`;
+    if(k==='patching')detail=`${d.compliance_pct}% compliant · ${d.pending_total} pending`;
+    if(k==='identity')detail=`Secure Score ${d.secure_score}/${d.secure_score_max}${d.risky_signins?` · ${d.risky_signins} risky sign-ins`:''}`;
+    if(k==='threats')detail=`${d.open_findings} open finding(s)`;
+    return `<div class="card" style="padding:10px"><div class="flex" style="justify-content:space-between"><b>${labels[k]||k}</b>${gradePill(d.grade)}</div>
+      <div class="stat" style="font-size:20px;color:${scoreColor(d.score)}">${d.score}</div>
+      <div class="muted" style="font-size:12px">${detail}</div></div>`;}).join('');
+  const recs=(s.recommendations||[]).map(r=>`<li>${esc(r)}</li>`).join('')||'<li class="muted">No action items — looking good.</li>';
+  box.innerHTML=`<div class="flex" style="justify-content:space-between;align-items:center">
+      <h4 style="margin:0">${esc(s.client_name)} — overall ${gradePill(s.grade)} <span style="color:${s.score!=null?scoreColor(s.score):'#64748b'}">${s.score!=null?s.score:'N/A'}</span></h4>
+      <button class="btn sm ghost" onclick="document.getElementById('posture-detail').classList.add('hidden')">close</button></div>
+    <div class="grid cols-4" style="gap:10px;margin:10px 0">${doms}</div>
+    <b style="font-size:13px">Recommendations</b><ul style="margin:6px 0 0;padding-left:18px">${recs}</ul>`;
+}
 async function loadSecurity(){
+  loadPosture();
   const cards=await api('/api/security/scorecard');if(!cards)return;
   const list=Array.isArray(cards)?cards:[cards];
   document.getElementById('t-scorecard').innerHTML=list.map(s=>{

@@ -710,6 +710,29 @@ def main():
         finally:
             _email.send = _orig_send
 
+        # ===================== v0.64: client security scorecard =====================
+        # Portfolio: one graded row per client (staff-only).
+        port=c.get("/api/posture").json()
+        assert isinstance(port, list) and any(r["client_id"]==cid for r in port), port
+        row=[r for r in port if r["client_id"]==cid][0]
+        assert row["grade"] in ("A","B","C","D","F") and "threats" in row["domain_grades"], row
+        # Drill-down scorecard for cid (SMOKE-PC was enrolled → endpoints domain present).
+        sc=c.get(f"/api/posture/{cid}").json()
+        assert sc["grade"] in ("A","B","C","D","F") and sc["score"] is not None, sc
+        assert "endpoints" in sc["domains"] and "threats" in sc["domains"], sc["domains"]
+        assert sc["domains"]["threats"]["grade"] in ("A","B","C","D","F")
+        assert isinstance(sc["recommendations"], list)
+        # The client QBR report now carries the posture grade (client-shareable).
+        rep=c.get(f"/api/reports/{cid}/summary").json()
+        assert rep["posture"]["grade"]==sc["grade"], (rep["posture"], sc["grade"])
+        assert "Posture grade" in c.get(f"/api/reports/{cid}/export.csv").text
+        # RBAC: a client sees their OWN scorecard but not the portfolio nor others'.
+        assert ca_c.get(f"/api/posture/{cid}").status_code==200
+        assert ca_c.get("/api/posture").status_code==403
+        _other_cid=c.post("/api/clients", json={"name":"Other Co"}).json()["id"]
+        assert ca_c.get(f"/api/posture/{_other_cid}").status_code==403  # different client
+        print("security scorecard: graded portfolio + domains + report grade + RBAC OK")
+
         # ===================== v0.60: power dialer + call coaching =====================
         from app.services import power_dialer as _pd
         _orig_caller = _pd.CALLER
@@ -1736,7 +1759,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.63 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.64 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
