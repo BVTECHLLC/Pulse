@@ -10,9 +10,10 @@ BAK="$F.bak.$(date +%s)"
 cp "$F" "$BAK"
 echo "backed up -> $BAK"
 
-# Remove shell `export` lines that got pasted in — including ones pasted WITH a
-# leading quote so they look like `"export KEY="value"` (which breaks JSON).
-sed -i -E '/^[[:space:]]*"?export /d' "$F"
+# Remove shell lines pasted into the JSON: `export K=V`, quoted `"export K=V`,
+# AND bare `KEY=value` assignments (which start with an unquoted identifier+`=` —
+# never valid JSON, where lines start with a quoted "key":).
+sed -i -E '/^[[:space:]]*"?export /d; /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=/d' "$F"
 
 if python3 -c "import json;json.load(open('$F',encoding='utf-8-sig'));print('VALID JSON ✓')" 2>/dev/null; then
   echo "agent.env is valid JSON again — your other automation can read it."
