@@ -43,7 +43,11 @@ claude -p "$PROMPT" --allowedTools "$CLAUDE_TOOLS" \
 TODAY_JSON="automation/out-jp/today.json"
 if [ -f "$TODAY_JSON" ]; then
   echo "safety-net publish from $TODAY_JSON"
+  # Publish with JP branding + canonical so posts get jordanpolasek.com URLs
+  # (not bvtech.org). This is what makes them show up as real JP posts.
   python3 scripts/publish_post.py --repo "$BV_JP_WEBSITE_REPO" --infile "$TODAY_JSON" --git \
+    --site "https://jordanpolasek.com" --org "Jordan Polasek" \
+    --author-url "https://jordanpolasek.com" \
     || echo "publish step failed (post may already be published by Claude)"
   # Cross-post to LinkedIn (best-effort).
   python3 scripts/post_linkedin.py --from-json "$TODAY_JSON" --tag jp \

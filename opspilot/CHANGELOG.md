@@ -1,5 +1,17 @@
 # BVTech OpsPilot — Changelog
 
+## v0.48.1 — Fix: JordanPolasek.com auto-posts were getting bvtech.org URLs (June 2026)
+- **Root cause** of "no JP posts": `content_studio` hardcoded `SITE =
+  https://bvtech.org`, so every post published to the JP repo got a **bvtech.org
+  canonical/OG/sitemap URL + BVTech branding** — the JP daily run wrote a
+  bvtech.org `<loc>` into jordanpolasek.com's sitemap (visible in the live site).
+- Threaded **site / org / author_url** through `normalize_post` + `render` +
+  schema + the standalone template (defaults unchanged → Content Studio + BVTech
+  posts identical). `publish_post.py` gains `--site/--org/--author-url`;
+  `daily_jp_blog.sh` now publishes with `--site https://jordanpolasek.com --org
+  "Jordan Polasek"`. Verified: JP posts get jordanpolasek.com canonical + sitemap
+  entries; BVTech default intact; Content Studio smoke green.
+
 ## v0.48.0 — QuickBooks Online: push invoices to accounting (June 2026)
 - Connect QuickBooks once (client id/secret + realm id + refresh token, encrypted
   in the vault) and **push a Pulse invoice into QBO** — finds/creates the customer,
