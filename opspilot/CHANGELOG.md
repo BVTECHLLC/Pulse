@@ -1,5 +1,15 @@
 # BVTech OpsPilot — Changelog
 
+## v0.39.0 — Maintenance windows: suppress alerts during planned work (June 2026)
+- Schedule a **maintenance window** (per-device or whole-client) and the
+  monitoring engine **suppresses all alerting** inside it — patching, reboots and
+  migrations no longer page anyone. Telemetry is still recorded; only alerting
+  pauses. Offline detection respects windows too.
+- `POST/GET/DELETE /api/maintenance-windows` (staff manage, tenant-scoped reads),
+  new `maintenance_windows` table (Alembic migration verified up/down/up on
+  SQLite). Verified: a 99%/AV-off/behind check-in raises 0 alerts during a window
+  and 6 after it's deleted; validation + RBAC.
+
 ## v0.38.0 — SLA breach auto-escalation (June 2026)
 - When a ticket newly breaches its SLA, the run-checks tick now **escalates** it,
   not just flags it: bumps priority one level (low→normal→high→urgent, capped),

@@ -20,7 +20,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..models import (
-    Alert, AlertPolicy, AlertSeverity, AlertStatus, Device,
+    Alert, AlertPolicy, AlertSeverity, AlertStatus, Device, MaintenanceWindow,
     ALERT_AV_OFF, ALERT_DISK_FULL, ALERT_HIGH_CPU, ALERT_HIGH_RAM,
     ALERT_LOW_HEALTH, ALERT_OFFLINE, ALERT_PATCH_BEHIND,
 )
@@ -28,6 +28,19 @@ from ..models import (
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def in_maintenance(db: Session, device: Device, now: datetime | None = None) -> bool:
+    """True if the device (or its whole client) is inside an active maintenance
+    window right now — in which case the engine suppresses alerting."""
+    now = now or _utcnow()
+    return db.query(MaintenanceWindow.id).filter(
+        MaintenanceWindow.client_id == device.client_id,
+        MaintenanceWindow.starts_at <= now,
+        MaintenanceWindow.ends_at >= now,
+        or_(MaintenanceWindow.device_id.is_(None),
+            MaintenanceWindow.device_id == device.id),
+    ).first() is not None
 
 
 class _DefaultPolicy:
@@ -96,6 +109,11 @@ def evaluate_device(db: Session, device: Device) -> list[Alert]:
     """Open/resolve resource alerts from the device's current telemetry. Returns
     the list of *newly opened* alerts so the caller can fire automation. Does NOT
     commit — the caller's check-in transaction owns the commit."""
+    # Planned maintenance: suppress all alerting (don't open or resolve) so the
+    # check-in still records telemetry but nothing pages during the window.
+    if in_maintenance(db, device):
+        return []
+
     pol = get_policy(db, device.client_id)
     opened: list[Alert] = []
 
@@ -178,7 +196,7 @@ def sweep_offline(db: Session, client_id: int | None = None) -> tuple[dict, list
             last = last.replace(tzinfo=timezone.utc)
         # Treat a never-seen device as offline too (it enrolled but never reported).
         is_offline = last is None or last < cutoff
-        if is_offline:
+        if is_offline and not in_maintenance(db, dev, now):
             mins = int((now - last).total_seconds() // 60) if last else None
             msg = (f"No check-in for {mins} min (threshold {pol.offline_minutes} min)"
                    if mins is not None else "Device has never checked in")

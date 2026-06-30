@@ -1130,7 +1130,36 @@ def main():
         assert c.delete(f"/api/assets/{a1['id']}").status_code==204
         print("asset management (CMDB + warranty + filters + RBAC + search) OK")
 
-    print("\n=== OpsPilot v0.38 SMOKE TEST PASSED ===")
+        # ===================== v0.39: maintenance windows ========================
+        from datetime import datetime as _dM, timezone as _zM, timedelta as _tM
+        mwc = c.post("/api/clients", json={"name": "Maint Co"}).json()["id"]
+        mtok = c.post(f"/api/agent/enroll-token/{mwc}").json()["enroll_token"]
+        ma = TestClient(app)
+        ment = ma.post("/api/agent/enroll", json={"enroll_token": mtok, "hostname": "MAINT-PC", "os": "Win"}).json()
+        mhdr = {"X-Enroll-Id": ment["enroll_id"], "X-Agent-Key": ment["agent_key"]}
+        _nowM = _dM.now(_zM.utc)
+        win = c.post("/api/maintenance-windows", json={"client_id": mwc,
+            "starts_at": (_nowM - _tM(minutes=5)).isoformat(),
+            "ends_at": (_nowM + _tM(hours=2)).isoformat(), "reason": "Patching"})
+        assert win.status_code == 201 and win.json()["state"] == "active", win.text
+        wid = win.json()["id"]
+        # bad check-in DURING maintenance -> no alerts
+        ma.post("/api/agent/checkin", headers=mhdr, json={"cpu_pct": 99, "disk_pct": 99,
+                "ram_pct": 99, "av_status": "off", "patch_status": "behind"})
+        assert len([al for al in c.get("/api/alerts").json() if al["client_id"] == mwc]) == 0, "alerted during maintenance!"
+        # validation + RBAC
+        assert c.post("/api/maintenance-windows", json={"client_id": mwc,
+            "starts_at": _nowM.isoformat(), "ends_at": (_nowM - _tM(hours=1)).isoformat()}).status_code == 400
+        assert ca_c.post("/api/maintenance-windows", json={"client_id": mwc,
+            "starts_at": _nowM.isoformat(), "ends_at": (_nowM + _tM(hours=1)).isoformat()}).status_code == 403
+        # delete the window -> same bad check-in now alerts
+        assert c.delete(f"/api/maintenance-windows/{wid}").status_code == 200
+        ma.post("/api/agent/checkin", headers=mhdr, json={"cpu_pct": 99, "disk_pct": 99,
+                "ram_pct": 99, "av_status": "off", "patch_status": "behind"})
+        assert len([al for al in c.get("/api/alerts").json() if al["client_id"] == mwc]) > 0, "should alert after window"
+        print("maintenance windows: alert suppression + validation + RBAC OK")
+
+    print("\n=== OpsPilot v0.39 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
