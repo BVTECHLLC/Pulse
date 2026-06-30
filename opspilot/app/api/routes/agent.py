@@ -147,6 +147,13 @@ def checkin(body: CheckinIn, request: Request,
     # Fire automation for each newly-opened alert (after commit so ids exist).
     for alert in new_alerts:
         automation.dispatch(db, "alert.opened", automation.build_alert_context(alert, dev))
+    # Auto-remediation (v0.65): queue approved fix-scripts for matching alerts.
+    if new_alerts:
+        from ...services import auto_remediation
+        try:
+            auto_remediation.on_new_alerts(db, new_alerts, dev)
+        except Exception:  # never let remediation break a check-in
+            pass
     return {"ok": True, "interval_sec": CHECKIN_INTERVAL_SEC}
 
 

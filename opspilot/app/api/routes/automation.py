@@ -158,10 +158,15 @@ def run_checks(db: Session = Depends(get_db),
     alert.opened automation for new ones, and (2) fires ticket.sla_breached for
     open tickets that have newly breached (de-duplicated via sla_breach_alerted)."""
     sweep, new_offline = monitoring.sweep_offline(db)
+    from ...services import auto_remediation
     for alert in new_offline:
         from ...models import Device
         dev = db.get(Device, alert.device_id)
         automation.dispatch(db, "alert.opened", automation.build_alert_context(alert, dev))
+        try:
+            auto_remediation.on_alert(db, alert, dev)   # detect → fix
+        except Exception:
+            pass
 
     now = datetime.now(timezone.utc)
     open_tickets = (db.query(SupportTicket)

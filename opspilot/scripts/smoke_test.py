@@ -733,6 +733,43 @@ def main():
         assert ca_c.get(f"/api/posture/{_other_cid}").status_code==403  # different client
         print("security scorecard: graded portfolio + domains + report grade + RBAC OK")
 
+        # ===================== v0.65: auto-remediation =====================
+        from app.core.db import SessionLocal as _SL2
+        from app.models import Device as _Dev2
+        from datetime import datetime as _dt3, timezone as _tz3, timedelta as _td3
+        # Catalog + validation.
+        ak=c.get("/api/remediation/alert-kinds").json()["alert_kinds"]
+        assert "device_offline" in ak, ak
+        assert c.post("/api/remediation/rules", json={"name":"x","alert_kind":"bogus","script_id":sc_id}).status_code==400
+        assert c.post("/api/remediation/rules", json={"name":"x","alert_kind":"device_offline","script_id":999999}).status_code==404
+        # Rule: device_offline → the enabled "Clear temp" script (global, all clients).
+        rr=c.post("/api/remediation/rules", json={"name":"Restart on offline","alert_kind":"device_offline",
+                  "script_id":sc_id,"cooldown_minutes":60,"max_per_day":3})
+        assert rr.status_code==201, rr.text
+        rule_id=rr.json()["id"]
+        assert any(r["id"]==rule_id and r["enabled"] for r in c.get("/api/remediation/rules").json())
+        # Backdate AUTO-PC's check-in so the sweep opens a device_offline alert.
+        s=_SL2()
+        try:
+            d=s.get(_Dev2, target_dev); d.last_checkin=_dt3.now(_tz3.utc)-_td3(minutes=60); s.commit()
+        finally:
+            s.close()
+        c.post("/api/automation/run-checks")   # sweep opens the alert → remediation fires
+        recent=c.get("/api/remediation/recent").json()
+        auto=[x for x in recent if x["device_id"]==target_dev and x["status"]=="approved"]
+        assert auto and "auto-remediation" in (auto[0]["reason"] or ""), recent
+        before_n=len(recent)
+        # It lands in the device's command queue as an approved job (the agent pulls it).
+        cmds=c.get(f"/api/agent/devices/{target_dev}/commands").json()["commands"]
+        assert any(cm["id"]==auto[0]["deployment_id"] and cm["status"]=="approved" for cm in cmds), cmds
+        # No spam: a second tick (alert already active → no NEW offline) queues nothing more.
+        c.post("/api/automation/run-checks")
+        assert len(c.get("/api/remediation/recent").json())==before_n, "auto-remediation should not re-fire on an active alert"
+        # RBAC: clients can't see or create remediation rules.
+        assert ca_c.get("/api/remediation/rules").status_code==403
+        assert ca_c.post("/api/remediation/rules", json={"name":"x","alert_kind":"device_offline","script_id":sc_id}).status_code==403
+        print("auto-remediation: alert→approved fix-script + dedup + queue + RBAC OK")
+
         # ===================== v0.60: power dialer + call coaching =====================
         from app.services import power_dialer as _pd
         _orig_caller = _pd.CALLER
@@ -1759,7 +1796,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.64 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.65 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
