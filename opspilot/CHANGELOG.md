@@ -1,5 +1,30 @@
 # BVTech OpsPilot — Changelog
 
+## v0.60.0 — Power dialer + call coaching (June 2026)
+- **Work a call list one click at a time.** A new **📞 Power Dialer** builds a
+  queue — numbers typed/pasted in, or pulled straight from CRM contacts (has a
+  phone, not do-not-contact, filtered by pipeline status/market) — then **Dial
+  next** rings your Dialpad device → the prospect, you log a **disposition**
+  (connected / voicemail / callback / not-interested / won / do-not-call / …) +
+  notes, and it advances.
+- **Live coaching on every call.** Attach a **CallScript** (opening line, talking
+  points, and **objection→response cards**) to a session and it's shown beside
+  the dialer while you talk. **Live stats** roll up per session: remaining,
+  dialed, **connect rate**, and **won**.
+- **Writes back to the CRM.** A call against a CRM contact is logged to that
+  contact's timeline (with the disposition); a **do-not-call** outcome flips the
+  contact's `do_not_contact` flag so campaigns and future pulls skip them.
+- `services/power_dialer.py` (pure queue/stat logic; Dialpad HTTP isolated behind
+  an injectable `CALLER`), `routes/dialer.py` (sessions, scripts, dial-next,
+  disposition, skip, pause/resume/complete — all OWNER/TECH), new `call_scripts`
+  / `dial_sessions` / `dial_entries` tables (migration `c3d4e5f6a7b9` + startup
+  self-heal), and a full Power Dialer tab in the dashboard.
+- Verified offline (smoke + unit): CRM-pull builds the queue (skips no-phone),
+  dial-next flips an entry to *calling*, disposition advances + updates live
+  stats, a do-not-call result writes DNC back to the CRM contact, bad
+  dispositions are rejected, a paused session refuses to dial, and clients are
+  locked out (RBAC).
+
 ## v0.59.0 — Pay any way: PayPal, Venmo, Cash App, Zelle, wire, check, QuickBooks (June 2026)
 - **Hand clients every way to pay, right on the invoice.** Configure each rail
   once in **Settings → Payment Methods** and it renders automatically on every

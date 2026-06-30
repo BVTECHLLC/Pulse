@@ -630,6 +630,60 @@ def main():
         assert ca_c.get("/api/payments/methods/settings").status_code==403
         print("multi-method payments (PayPal/Venmo/CashApp/wire/check + prefill + RBAC) OK")
 
+        # ===================== v0.60: power dialer + call coaching =====================
+        from app.services import power_dialer as _pd
+        _orig_caller = _pd.CALLER
+        _pd.CALLER = lambda cfg, num: f"call-{num[-4:]}"   # stub Dialpad (no network)
+        try:
+            # Coaching script: opening + talking points + objection cards.
+            sc = c.post("/api/dialer/scripts", json={"name": "MSP cold call",
+                "opening": "Hi, this is BVTech…", "talking_points": ["Security", "24/7 support"],
+                "objections": [{"objection": "Too expensive", "response": "ROI in 3 months"}]})
+            assert sc.status_code == 201, sc.text
+            sid = sc.json()["id"]
+            assert sc.json()["talking_points"] == ["Security", "24/7 support"]
+            # A dial-ready CRM contact (has phone, not DNC) for the from_crm pull.
+            dcid = c.post("/api/crm/contacts", json={"name": "Dial Me", "company": "LeadCo",
+                          "phone": "+15125550199", "status": "qualified"}).json()["id"]
+            c.post("/api/crm/contacts", json={"name": "No Phone", "status": "qualified"})  # excluded
+            # Build a session: one typed number + the qualified CRM contacts with a phone.
+            sess = c.post("/api/dialer/sessions", json={"name": "Today's calls", "script_id": sid,
+                          "items": [{"name": "Walk-in", "phone": "+15550001111"}],
+                          "from_crm": {"status": "qualified", "limit": 50}})
+            assert sess.status_code == 201, sess.text
+            sess_id = sess.json()["id"]
+            st0 = sess.json()["stats"]
+            assert st0["total"] >= 2 and st0["remaining"] == st0["total"], st0
+            # Session detail carries the script + the next number to dial.
+            det = c.get(f"/api/dialer/sessions/{sess_id}").json()
+            assert det["script"]["name"] == "MSP cold call" and det["next"]["phone"] == "+15550001111"
+            assert any(e["crm_contact_id"] == dcid for e in det["entries"]), "CRM pull missing"
+            # Dial next → rings via (stubbed) Dialpad, entry flips to calling.
+            dn = c.post(f"/api/dialer/sessions/{sess_id}/dial-next")
+            assert dn.status_code == 202 and dn.json()["entry"]["status"] == "calling", dn.text
+            eid = dn.json()["entry"]["id"]
+            # Log the outcome → advances + rolls into stats.
+            disp = c.post(f"/api/dialer/entries/{eid}/disposition",
+                          json={"disposition": "won", "notes": "Booked a demo"}).json()
+            assert disp["entry"]["disposition"] == "won" and disp["stats"]["won"] == 1, disp
+            assert c.post(f"/api/dialer/entries/{eid}/disposition",
+                          json={"disposition": "nope"}).status_code == 400  # bad disposition
+            # Dial the CRM contact + mark do_not_call → writes DNC back to the CRM.
+            dn2 = c.post(f"/api/dialer/sessions/{sess_id}/dial-next").json()
+            e2 = dn2["entry"]["id"]
+            c.post(f"/api/dialer/entries/{e2}/disposition", json={"disposition": "do_not_call"})
+            if dn2["entry"]["crm_contact_id"] == dcid:
+                assert c.get(f"/api/crm/contacts/{dcid}").json()["contact"]["do_not_contact"] is True
+            # Pause blocks dialing; complete stamps the session.
+            c.post(f"/api/dialer/sessions/{sess_id}/status", json={"status": "paused"})
+            assert c.post(f"/api/dialer/sessions/{sess_id}/dial-next").status_code == 409
+            # RBAC: clients can't touch the dialer at all.
+            assert ca_c.get("/api/dialer/sessions").status_code == 403
+            assert ca_c.post("/api/dialer/scripts", json={"name": "x"}).status_code == 403
+            print("power dialer: script + CRM-pull queue + dial/disposition + stats + DNC writeback + RBAC OK")
+        finally:
+            _pd.CALLER = _orig_caller
+
         # ===================== v0.15: Notification channels =====================
         import threading
         from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -1602,7 +1656,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.59 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.60 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -1114,3 +1114,64 @@ class CrmActivity(Base):
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
     created_by_user_id: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+# --------------------------------------------------------------------------- #
+# v0.60 — Power dialer + call coaching (on top of the Dialpad integration)
+# --------------------------------------------------------------------------- #
+# Call outcomes. CONNECTED_DISPOSITIONS counts as "reached a human"; WON marks a
+# booked/sold outcome. Used for live connect-rate / conversion stats.
+DIAL_DISPOSITIONS = (
+    "connected", "voicemail", "no_answer", "busy", "callback",
+    "not_interested", "wrong_number", "do_not_call", "won",
+)
+CONNECTED_DISPOSITIONS = ("connected", "callback", "not_interested", "won")
+DIAL_SESSION_STATUSES = ("active", "paused", "completed")
+DIAL_ENTRY_STATUSES = ("queued", "calling", "done", "skipped")
+
+
+class CallScript(Base):
+    """A reusable call-coaching script: an opening, bullet talking points, and
+    objection→response cards surfaced to the rep during a power-dial session."""
+    __tablename__ = "call_scripts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    opening: Mapped[str | None] = mapped_column(Text)
+    talking_points: Mapped[list] = mapped_column(JSON, default=list)   # list[str]
+    objections: Mapped[list] = mapped_column(JSON, default=list)       # list[{objection,response}]
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class DialSession(Base):
+    """A power-dial campaign run: a named queue of numbers a rep works through
+    one click at a time, optionally guided by a CallScript."""
+    __tablename__ = "dial_sessions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    script_id: Mapped[int | None] = mapped_column(ForeignKey("call_scripts.id"))
+    owner_user_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DialEntry(Base):
+    """One number in a power-dial queue, with its call outcome + notes."""
+    __tablename__ = "dial_entries"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("dial_sessions.id"), index=True, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    name: Mapped[str | None] = mapped_column(String(200))
+    phone: Mapped[str] = mapped_column(String(50), nullable=False)
+    company: Mapped[str | None] = mapped_column(String(200))
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)
+    crm_contact_id: Mapped[int | None] = mapped_column(ForeignKey("crm_contacts.id"), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
+    disposition: Mapped[str | None] = mapped_column(String(20))
+    notes: Mapped[str | None] = mapped_column(Text)
+    call_id: Mapped[str | None] = mapped_column(String(80))
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    dialed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
