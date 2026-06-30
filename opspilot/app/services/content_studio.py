@@ -111,6 +111,11 @@ def normalize_post(post: dict) -> dict:
     org = post.get("org") or "BVTech LLC"
     author_url = post.get("author_url") or AUTHOR_URL
     og_image = post.get("og_image") or f"{site}/assets/img/og-image.jpg"
+    # URL convention: bvtech.org -> /blog/<slug>.html; jordanpolasek.com -> /<slug>/.
+    if (post.get("path_style") or "blog-file") == "slug-folder":
+        url = f"{site}/{slug}/"
+    else:
+        url = f"{site}/blog/{slug}.html"
     return {
         "title": title,
         "slug": slug,
@@ -124,7 +129,7 @@ def normalize_post(post: dict) -> dict:
         "org": org,
         "author_url": author_url,
         "og_image": og_image,
-        "url": f"{site}/blog/{slug}.html",
+        "url": url,
     }
 
 
@@ -157,18 +162,28 @@ def _schema_blocks(p: dict) -> str:
 # --------------------------------------------------------------------------- #
 # Mode 1 — template clone (pixel-perfect parity with the live site)
 # --------------------------------------------------------------------------- #
-def render_from_skeleton(skeleton_html: str, post: dict) -> str:
-    """Produce a new post by transplanting content into a real bvtech.org blog
-    page (header/footer/CSS preserved verbatim). Robust to the exact markup:
+# Content wrappers we try, in order, when transplanting the body. Starting with
+# bvtech.org's `.article-body` keeps that site byte-identical; later classes
+# (e.g. jordanpolasek.com's `.content`) let the SAME cloner work on other sites
+# WITHOUT nuking a sibling <h1>/byline that lives outside the content wrapper.
+_CONTENT_CLASSES = ("article-body", "content", "post-content", "entry-content",
+                    "single-content", "article-content", "post-body")
+
+
+def render_from_skeleton(skeleton_html: str, post: dict,
+                         content_classes: tuple[str, ...] | None = None) -> str:
+    """Produce a new post by transplanting content into a real blog page
+    (header/footer/CSS preserved verbatim). Robust to the exact markup:
     we replace the <title>, description, canonical+OG urls, the schema JSON-LD
-    blocks, the <h1>, and the <article ...>…</article> (or .article-body) body."""
+    blocks, the <h1>, and the body — preferring a known content wrapper so the
+    page's own <h1>/byline survive; only falling back to the whole <article>."""
     p = normalize_post(post)
     h = skeleton_html
     dateline = _date.fromisoformat(p["date"]).strftime("%B %-d, %Y")
 
     # <title>
     h = re.sub(r"<title>.*?</title>",
-               f"<title>{html.escape(p['title'])} | {p['author']} | BVTech LLC</title>",
+               f"<title>{html.escape(p['title'])} | {p['author']} | {html.escape(p['org'])}</title>",
                h, count=1, flags=re.S)
     # meta description
     h = re.sub(r'(<meta\s+name="description"\s+content=")(.*?)(")',
@@ -191,14 +206,19 @@ def render_from_skeleton(skeleton_html: str, post: dict) -> str:
     # <h1>
     h = re.sub(r"<h1[^>]*>.*?</h1>", f"<h1>{html.escape(p['title'])}</h1>",
                h, count=1, flags=re.S)
-    # the article body
+    # the article body — prefer a known content wrapper (preserves a sibling
+    # <h1>/byline); only fall back to replacing the whole <article> interior.
     new_body = (f'<p class="meta">By {p["author"]} · {dateline}</p>\n{p["body_html"]}')
-    if re.search(r'<div class="article-body">.*?</div>', h, flags=re.S):
-        h = re.sub(r'(<div class="article-body">).*?(</div>)',
-                   lambda m: m.group(1) + new_body + m.group(2), h, count=1, flags=re.S)
-    else:
-        h = re.sub(r"(<article[^>]*>).*?(</article>)",
-                   lambda m: m.group(1) + new_body + m.group(2), h, count=1, flags=re.S)
+    for cls in (content_classes or _CONTENT_CLASSES):
+        # Match an opening tag with class="...cls..." then its content up to the
+        # NEXT closing tag of the same element. We approximate by matching to the
+        # first </div> when the wrapper is a div (the common case for these sites).
+        pat = rf'(<div[^>]*class="[^"]*\b{re.escape(cls)}\b[^"]*"[^>]*>)(.*?)(</div>)'
+        if re.search(pat, h, flags=re.S):
+            h = re.sub(pat, lambda m: m.group(1) + new_body + m.group(3), h, count=1, flags=re.S)
+            return h
+    h = re.sub(r"(<article[^>]*>).*?(</article>)",
+               lambda m: m.group(1) + new_body + m.group(2), h, count=1, flags=re.S)
     return h
 
 
@@ -305,7 +325,9 @@ def render_standalone(post: dict) -> str:
     )
 
 
-def render(post: dict, skeleton_html: str | None = None) -> str:
+def render(post: dict, skeleton_html: str | None = None,
+           content_classes: tuple[str, ...] | None = None) -> str:
     """Render a post — pixel-perfect clone if a skeleton is supplied, else the
     self-contained on-brand page."""
-    return render_from_skeleton(skeleton_html, post) if skeleton_html else render_standalone(post)
+    return (render_from_skeleton(skeleton_html, post, content_classes=content_classes)
+            if skeleton_html else render_standalone(post))

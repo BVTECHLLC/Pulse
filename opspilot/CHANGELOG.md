@@ -1,5 +1,21 @@
 # BVTech OpsPilot — Changelog
 
+## v0.49.1 — Publisher works end-to-end on the JordanPolasek.com site (June 2026)
+- Box logs confirmed the JP publish path was structurally wrong for that site:
+  posts live at `/<slug>/index.html` (not `blog/<slug>.html`), the skeleton glob
+  (`blog/*.html`) found none → bvtech-branded standalone fallback, and the
+  clone path nuked the `<h1>`/byline that sit outside the content wrapper.
+- `publish_post.py` gains `--skeleton-glob`, `--post-path {blog-file|slug-folder}`,
+  `--content-class`; `content_studio` transplants into a known content wrapper
+  (preserving a sibling `<h1>`/byline) and honors a `path_style` URL convention.
+  `daily_jp_blog.sh` now uses `--skeleton-glob '*/index.html' --post-path
+  slug-folder --content-class content`.
+- Verified end-to-end: JP clone → folder URL, h1 replaced, byline + site chrome
+  preserved, content swapped, **zero bvtech.org leakage**; bvtech.org publishing
+  byte-for-byte unchanged. (Note: the daily *generation* itself was failing on
+  the box with "Credit balance is too low" — an Anthropic billing issue, separate
+  from this publisher fix.)
+
 ## v0.49.0 — HubSpot + Google Business Profile connectors (June 2026)
 - **HubSpot** — push a Pulse CRM contact to HubSpot (create-or-update by email +
   log a note), one click from the contact (**↗ HubSpot**). `services/hubspot.py`

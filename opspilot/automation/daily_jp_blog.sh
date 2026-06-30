@@ -48,6 +48,7 @@ if [ -f "$TODAY_JSON" ]; then
   python3 scripts/publish_post.py --repo "$BV_JP_WEBSITE_REPO" --infile "$TODAY_JSON" --git \
     --site "https://jordanpolasek.com" --org "Jordan Polasek" \
     --author-url "https://jordanpolasek.com" \
+    --skeleton-glob "*/index.html" --post-path slug-folder --content-class "content" \
     || echo "publish step failed (post may already be published by Claude)"
   # Cross-post to LinkedIn (best-effort).
   python3 scripts/post_linkedin.py --from-json "$TODAY_JSON" --tag jp \
