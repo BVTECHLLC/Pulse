@@ -817,38 +817,44 @@ def main():
         assert ca_c.post("/api/posture/snapshot").status_code==403
         print("posture trend: snapshot + history + grade-drop alert + RBAC OK")
 
-        # ===================== v0.70: auto-posting queue + scheduler =====================
+        # ===================== v0.70/0.71: auto-posting (LinkedIn + Google Business) =====================
         from app.services import autopost as _ap
-        _orig_poster=_ap._linkedin_poster
-        _ap._linkedin_poster=lambda db:(lambda t,u:"urn:li:share:smoke")   # stub LinkedIn
+        _o_li, _o_gb = _ap._linkedin_poster, _ap._gbp_poster
+        _gb_seen=[]
+        _ap._linkedin_poster=lambda db:(lambda t,u,img=None:"urn:li:share:smoke")
+        _ap._gbp_poster=lambda db:(lambda t,u,img=None:(_gb_seen.append((t,u,img)) or "accounts/1/locations/2/localPosts/9"))
         try:
             st=c.get("/api/autopost/settings").json()
             assert st["enabled"] is False, st   # off by default (no surprise posting)
+            assert "google_business" in st["channels"] and "ready" in st, st
             p=c.post("/api/autopost", json={"body":"Managed IT tip from BVTech","link":"https://bvtech.org"})
             assert p.status_code==201, p.text
             pid=p.json()["id"]
             assert any(x["id"]==pid and x["status"]=="queued" for x in c.get("/api/autopost").json())
-            # Enable, then the scheduler tick publishes the oldest queued post.
-            c.put("/api/autopost/settings", json={"enabled":True,"gap_hours":20})
+            # Enable (WEEKLY cadence), then the tick publishes the oldest queued post.
+            c.put("/api/autopost/settings", json={"enabled":True,"gap_hours":168})
             chk=c.post("/api/automation/run-checks").json()
             assert chk.get("posts_published",0)>=1, chk
-            assert any(x["id"]==pid and x["status"]=="posted" and x["result"]=="urn:li:share:smoke"
+            assert any(x["id"]==pid and x["status"]=="posted" and "linkedin=urn:li:share:smoke" in (x["result"] or "")
                        for x in c.get("/api/autopost").json())
-            # Cadence: an immediate second tick publishes nothing (gap not elapsed).
-            chk2=c.post("/api/automation/run-checks").json()
-            assert chk2.get("posts_published",0)==0, chk2
-            # Manual post-now bypasses cadence.
-            p2=c.post("/api/autopost", json={"body":"Second post"}).json()
-            pn=c.post(f"/api/autopost/{p2['id']}/post-now").json()
+            # Cadence: an immediate second tick publishes nothing (weekly gap not elapsed).
+            assert c.post("/api/automation/run-checks").json().get("posts_published",0)==0
+            # Google Business post WITH an image, via post-now (bypasses cadence).
+            gp=c.post("/api/autopost", json={"body":"Top 5 ways El Campo SMBs stay secure",
+                      "link":"https://bvtech.org/contact","image_url":"https://bvtech.org/img/post.jpg",
+                      "channels":["google_business"]}).json()
+            pn=c.post(f"/api/autopost/{gp['id']}/post-now").json()
             assert pn["ok"] and pn["post"]["status"]=="posted", pn
-            # Delete a (failed/queued) post; RBAC: clients can't touch autopost.
+            assert _gb_seen and _gb_seen[-1][2]=="https://bvtech.org/img/post.jpg", _gb_seen   # image passed through
+            assert "google_business=" in pn["post"]["result"], pn
+            # Delete; RBAC: clients can't touch autopost.
             p3=c.post("/api/autopost", json={"body":"to delete"}).json()
             assert c.delete(f"/api/autopost/{p3['id']}").status_code==200
             assert ca_c.get("/api/autopost").status_code==403
-            assert ca_c.post("/api/autopost", json={"body":"x"}).status_code==403
-            print("auto-posting: queue + enable + scheduled publish + cadence + post-now + RBAC OK")
+            assert ca_c.post("/api/autopost", json={"body":"x","channels":["google_business"]}).status_code==403
+            print("auto-posting: LinkedIn + Google Business (image, weekly cadence, post-now) + RBAC OK")
         finally:
-            _ap._linkedin_poster=_orig_poster
+            _ap._linkedin_poster, _ap._gbp_poster = _o_li, _o_gb
 
         # ===================== v0.60: power dialer + call coaching =====================
         from app.services import power_dialer as _pd
@@ -1914,7 +1920,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.70 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.71 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -187,6 +187,7 @@ def _reconcile_schema():
         ("contracts", "last_invoiced_at", "TIMESTAMP WITH TIME ZONE"),
         ("invoices", "last_reminded_at", "TIMESTAMP WITH TIME ZONE"),
         ("invoices", "reminder_count", "INTEGER DEFAULT 0"),
+        ("social_posts", "image_url", "VARCHAR(800)"),
     ]
     insp = inspect(engine)
     is_sqlite = engine.dialect.name == "sqlite"

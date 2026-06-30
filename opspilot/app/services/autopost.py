@@ -42,9 +42,12 @@ def save_config(db: Session, *, enabled: bool, gap_hours: int) -> dict:
     return get_config(db)
 
 
+CHANNELS = ("linkedin", "google_business")
+
+
 def _linkedin_poster(db: Session):
-    """Default poster: publish to LinkedIn using the vault credentials. Returns a
-    callable(text, url) -> ref, or None if LinkedIn isn't configured."""
+    """LinkedIn poster: callable(text, url, image) -> ref, or None if unconfigured.
+    (LinkedIn image upload isn't wired yet, so the image arg is accepted+ignored.)"""
     from . import publishers
     conn = secure_config.get_platform(db, "pub_linkedin")
     cfg = (conn.config if conn else None) or {}
@@ -52,7 +55,40 @@ def _linkedin_poster(db: Session):
     urn = secure_config.get_secret(cfg, "person_urn") or cfg.get("person_urn")
     if not (token and urn):
         return None
-    return lambda text, url: publishers.post_linkedin(str(token), str(urn), text, url or "")
+    return lambda text, url, image=None: publishers.post_linkedin(str(token), str(urn), text, url or "")
+
+
+def _gbp_poster(db: Session):
+    """Google Business poster: callable(text, url, image) -> ref, or None if the
+    GBP connection isn't fully configured. Publishes a localPost (with photo)."""
+    from . import gbp
+    conn = secure_config.get_platform(db, "gbp")
+    cfg = (conn.config if conn else None) or {}
+    req = ("client_id", "client_secret", "refresh_token", "account_name", "location_name")
+    if not secure_config.configured(cfg, req):
+        return None
+    client = gbp.GBPClient(
+        str(secure_config.get_secret(cfg, "client_id") or cfg.get("client_id")),
+        str(secure_config.get_secret(cfg, "client_secret")),
+        str(secure_config.get_secret(cfg, "refresh_token")),
+        str(cfg.get("account_name")), str(cfg.get("location_name")))
+
+    def _post(text, url, image=None):
+        res = client.create_post(text, url or None, image_url=(image or None))
+        return res.get("name") or "localPost"
+    return _post
+
+
+def _poster_for(db: Session, channel: str):
+    if channel == "linkedin":
+        return _linkedin_poster(db)
+    if channel == "google_business":
+        return _gbp_poster(db)
+    return None
+
+
+def channel_readiness(db: Session) -> dict:
+    return {ch: (_poster_for(db, ch) is not None) for ch in CHANNELS}
 
 
 def _last_posted_at(db: Session) -> datetime | None:
@@ -73,30 +109,45 @@ def next_due(db: Session, now: datetime) -> SocialPost | None:
 
 
 def publish_one(db: Session, post: SocialPost, now: datetime | None = None, *,
-                poster=None) -> dict:
-    """Publish a single post now. Marks posted/failed. Commits. `poster` defaults
-    to the LinkedIn publisher; pass one in tests."""
+                posters: dict | None = None) -> dict:
+    """Publish a post to each of its channels. Marks posted if ANY channel
+    succeeds, failed if all attempted channels errored, and leaves it queued if no
+    channel is configured yet (so it publishes once creds are added). Commits.
+    `posters` is a {channel: callable(text,url,image)} override for tests."""
     now = now or datetime.now(timezone.utc)
-    fn = poster if poster is not None else _linkedin_poster(db)
-    if fn is None:
-        return {"ok": False, "reason": "LinkedIn not configured — connect it in Settings → Publishers."}
-    try:
-        ref = fn(post.body, post.link or "")
-        post.status = "posted"
-        post.posted_at = now
-        post.result = str(ref)[:400]
-        db.commit()
-        return {"ok": True, "post_id": post.id, "result": post.result}
-    except Exception as e:  # noqa: BLE001 — record + surface, never crash the tick
+    channels = [c for c in (post.channels or ["linkedin"]) if c in CHANNELS] or ["linkedin"]
+    results, any_ok, any_err, any_ready = {}, False, False, False
+    for ch in channels:
+        fn = (posters or {}).get(ch) if posters is not None else _poster_for(db, ch)
+        if fn is None:
+            results[ch] = "skipped (not configured)"
+            continue
+        any_ready = True
+        try:
+            ref = fn(post.body, post.link or "", post.image_url or None)
+            results[ch] = str(ref)[:160]
+            any_ok = True
+        except Exception as e:  # noqa: BLE001 — record + surface, never crash the tick
+            results[ch] = f"error: {e}"[:160]
+            any_err = True
+    post.result = ("; ".join(f"{k}={v}" for k, v in results.items()))[:400]
+    if any_ok:
+        post.status, post.posted_at = "posted", now
+    elif any_err:
         post.status = "failed"
-        post.result = f"error: {e}"[:400]
-        db.commit()
-        return {"ok": False, "post_id": post.id, "reason": post.result}
+    # else: nothing configured -> leave it 'queued' (don't burn it)
+    db.commit()
+    return {"ok": any_ok, "ready": any_ready, "post_id": post.id,
+            "result": post.result, "channels": results,
+            "reason": (None if any_ok else
+                       ("No channel configured — connect LinkedIn / Google Business in Settings."
+                        if not any_ready else post.result))}
 
 
-def publish_due(db: Session, now: datetime | None = None, *, poster=None) -> list[dict]:
+def publish_due(db: Session, now: datetime | None = None, *, posters: dict | None = None) -> list[dict]:
     """Scheduler entrypoint: if enabled and the gap has elapsed, publish the next
-    due post. At most one per call. Returns a summary list (empty if nothing)."""
+    due post (at most one). Skips entirely if no channel for that post is ready,
+    so the cadence gap is only consumed by a real publish."""
     now = now or datetime.now(timezone.utc)
     cfg = get_config(db)
     if not cfg["enabled"]:
@@ -107,10 +158,8 @@ def publish_due(db: Session, now: datetime | None = None, *, poster=None) -> lis
     post = next_due(db, now)
     if not post:
         return []
-    # If the channel isn't ready, leave the post queued (don't fail it) so it
-    # publishes once credentials are added.
-    fn = poster if poster is not None else _linkedin_poster(db)
-    if fn is None:
-        return []
-    res = publish_one(db, post, now, poster=fn)
-    return [res] if res.get("ok") else [res]
+    chans = [c for c in (post.channels or ["linkedin"]) if c in CHANNELS] or ["linkedin"]
+    built = {ch: ((posters or {}).get(ch) if posters is not None else _poster_for(db, ch)) for ch in chans}
+    if not any(v is not None for v in built.values()):
+        return []   # nothing ready for this post — wait, don't consume the gap
+    return [publish_one(db, post, now, posters=built)]

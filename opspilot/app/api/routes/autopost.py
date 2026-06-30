@@ -18,7 +18,7 @@ from ...services import audit, autopost
 
 router = APIRouter(prefix="/api/autopost", tags=["autopost"])
 
-_CHANNELS = ("linkedin",)
+_CHANNELS = ("linkedin", "google_business")
 
 
 def _ip(req: Request) -> str:
@@ -26,8 +26,8 @@ def _ip(req: Request) -> str:
 
 
 def _serialize(p: SocialPost) -> dict:
-    return {"id": p.id, "body": p.body, "link": p.link, "channels": p.channels or [],
-            "status": p.status, "result": p.result,
+    return {"id": p.id, "body": p.body, "link": p.link, "image_url": p.image_url,
+            "channels": p.channels or [], "status": p.status, "result": p.result,
             "scheduled_for": p.scheduled_for.isoformat() if p.scheduled_for else None,
             "posted_at": p.posted_at.isoformat() if p.posted_at else None,
             "created_at": p.created_at.isoformat()}
@@ -37,9 +37,10 @@ def _serialize(p: SocialPost) -> dict:
 def get_settings(db: Session = Depends(get_db),
                  user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
     cfg = autopost.get_config(db)
-    # Is a publishing channel actually ready?
-    linked = autopost._linkedin_poster(db) is not None
-    return {**cfg, "linkedin_ready": linked}
+    ready = autopost.channel_readiness(db)
+    return {**cfg, "channels": list(autopost.CHANNELS), "ready": ready,
+            "linkedin_ready": ready.get("linkedin", False),
+            "google_business_ready": ready.get("google_business", False)}
 
 
 class SettingsIn(BaseModel):
@@ -67,6 +68,7 @@ def list_posts(db: Session = Depends(get_db),
 class PostIn(BaseModel):
     body: str
     link: str | None = None
+    image_url: str | None = None
     channels: list[str] = ["linkedin"]
     scheduled_for: datetime | None = None
 
@@ -77,7 +79,8 @@ def add_post(body: PostIn, request: Request, db: Session = Depends(get_db),
     if not body.body.strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Post text is required.")
     channels = [c for c in (body.channels or ["linkedin"]) if c in _CHANNELS] or ["linkedin"]
-    p = SocialPost(body=body.body.strip(), link=(body.link or None), channels=channels,
+    p = SocialPost(body=body.body.strip(), link=(body.link or None),
+                   image_url=(body.image_url or None), channels=channels,
                    scheduled_for=body.scheduled_for, status="queued",
                    created_by_user_id=user.id)
     db.add(p)

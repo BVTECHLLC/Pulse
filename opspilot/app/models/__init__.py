@@ -1241,7 +1241,8 @@ class SocialPost(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     link: Mapped[str | None] = mapped_column(String(500))
-    channels: Mapped[list] = mapped_column(JSON, default=list)   # ["linkedin"]
+    image_url: Mapped[str | None] = mapped_column(String(800))   # public https image (GBP photo)
+    channels: Mapped[list] = mapped_column(JSON, default=list)   # ["linkedin","google_business"]
     status: Mapped[str] = mapped_column(String(20), default="queued", index=True)  # queued|posted|failed
     scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # earliest post time
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
