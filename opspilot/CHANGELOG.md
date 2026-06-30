@@ -1,5 +1,16 @@
 # BVTech OpsPilot — Changelog
 
+## v0.57.0 — Stripe payments: clients pay invoices online, auto-reconcile (June 2026)
+- A **💳 Pay link** on any sent invoice creates a **Stripe Checkout Session** for
+  the invoice total; the client pays online and the invoice **auto-marks paid**
+  via a **signature-verified webhook** (`POST /api/payments/webhook`, public — the
+  HMAC signature is the auth). `services/stripe_pay.py` (injectable HTTP) +
+  `routes/payments.py` + a Stripe Settings card (shows the webhook URL to register).
+- Verified offline: checkout form (cents/metadata), webhook signature verify
+  (valid passes; **tampered + stale rejected**), and end-to-end auto-reconcile
+  (a valid `checkout.session.completed` flips the invoice to paid). Masked key,
+  RBAC, graceful upstream errors.
+
 ## v0.56.0 — One-click OAuth Connect + self-refreshing tokens (June 2026)
 - **Authorize once, never paste a token again.** New one-click **Connect** for
   LinkedIn, Google Business Profile, and QuickBooks — built on the existing

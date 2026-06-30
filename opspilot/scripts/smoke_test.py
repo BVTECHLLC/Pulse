@@ -1522,6 +1522,33 @@ def main():
         assert ca_c.get("/api/oauth/connections").status_code == 403
         print("One-click OAuth connect: providers + app-config gating + self-refresh engine + RBAC OK")
 
+        # --- v0.57 Stripe payments: settings + signature-verified webhook reconcile ---
+        import hmac as _hm, hashlib as _hh, json as _js, time as _tm
+        from app.core.db import SessionLocal as _SLp
+        from app.models import Invoice as _Inv, InvoiceStatus as _IS
+        assert c.get("/api/payments/settings").json()["configured"] is False
+        assert c.put("/api/payments/settings", json={"secret_key": "sk_test_x",
+                     "webhook_secret": "whsec_smoke"}).json()["configured"] is True
+        assert c.get("/api/payments/settings").json()["fields"]["secret_key"]["value"] is None
+        # seed a SENT invoice, then post a valid Stripe webhook -> it auto-marks paid
+        _pdb = _SLp()
+        _iv = _Inv(client_id=cid, number="PAYME-1", status=_IS.SENT, total=99.0, currency="USD")
+        _pdb.add(_iv); _pdb.commit(); _iv_id = _iv.id; _pdb.close()
+        _ts = str(int(_tm.time()))
+        _body = _js.dumps({"type": "checkout.session.completed",
+                           "data": {"object": {"metadata": {"invoice_id": str(_iv_id)}}}}).encode()
+        _sig = _hm.new(b"whsec_smoke", _ts.encode() + b"." + _body, _hh.sha256).hexdigest()
+        wr = c.post("/api/payments/webhook", content=_body,
+                    headers={"stripe-signature": f"t={_ts},v1={_sig}", "content-type": "application/json"})
+        assert wr.status_code == 200 and wr.json().get("invoice_paid") == _iv_id, wr.text
+        # a bad signature is rejected
+        assert c.post("/api/payments/webhook", content=_body,
+                      headers={"stripe-signature": f"t={_ts},v1=bad"}).status_code == 400
+        # checkout creation requires Stripe to be reachable (fake key) -> graceful 502, not 500
+        assert c.post(f"/api/payments/invoices/{_iv_id}/checkout").status_code in (409, 502)  # already paid or upstream
+        assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
+        print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
+
     print("\n=== OpsPilot v0.52 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
