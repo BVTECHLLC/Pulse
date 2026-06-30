@@ -1,5 +1,17 @@
 # BVTech OpsPilot — Changelog
 
+## v0.43.0 — Native CRM: our own lead/contact pipeline (June 2026)
+- **We are the PSA/CRM now** — a native CRM replaces SuperOps' CRM side.
+  New `crm_contacts` + `crm_activities` tables (Alembic migration verified
+  up/down/up). `services/crm.py` + `routes/crm.py` + a **🤝 CRM** tab.
+- Pipeline by status (new → contacted → qualified → proposal → customer / lost),
+  contact CRUD with search, an **activity timeline** (note/call/email/meeting,
+  auto-logged on create & status change), one-click **📞 Dialpad call** from a
+  contact, and **Convert → Client** which spins up a real managed Client and
+  links it (ties the CRM straight into the client list).
+- Staff-only; deletes OWNER-only; every touch audited. Verified end-to-end:
+  pipeline, CRUD, timeline, status validation, convert (+ conflict), RBAC.
+
 ## v0.42.0 — Command Center archived + Tactical RMM connector (June 2026)
 - Archived the full **BVTech MSP Command Center v32.1** suite into `command-center/`
   as the porting source-of-truth, with `command-center/PORTING.md` mapping every

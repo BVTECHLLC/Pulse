@@ -1230,7 +1230,33 @@ def main():
         assert ca_c.post("/api/rmm/agents/1/reboot").status_code in (401, 403)
         print("Tactical RMM connector: SSRF guard + encrypted/masked creds + RBAC OK")
 
-    print("\n=== OpsPilot v0.42 SMOKE TEST PASSED ===")
+        # --- v0.43 native CRM: pipeline, contact CRUD, timeline, convert→client, RBAC ---
+        assert c.get("/api/crm/pipeline").json()["total"] >= 0
+        nc = c.post("/api/crm/contacts", json={"name": "Jane Smith", "company": "Acme Law",
+                    "email": "jane@acme.test", "phone": "+15125550133", "market": "austin"})
+        assert nc.status_code == 201, nc.text
+        ct_id = nc.json()["id"]
+        # search + status filter
+        assert any(x["id"] == ct_id for x in c.get("/api/crm/contacts?q=acme").json()["contacts"])
+        # creation logged a status activity
+        det = c.get(f"/api/crm/contacts/{ct_id}").json()
+        assert det["contact"]["status"] == "new" and len(det["activities"]) >= 1
+        # log a call + advance status
+        assert c.post(f"/api/crm/contacts/{ct_id}/activity", json={"type": "call",
+                      "subject": "Discovery", "direction": "outbound"}).status_code == 201
+        assert c.patch(f"/api/crm/contacts/{ct_id}", json={"status": "qualified"}).json()["status"] == "qualified"
+        assert c.patch(f"/api/crm/contacts/{ct_id}", json={"status": "bogus"}).status_code == 400
+        # convert → creates a real managed Client and links it
+        conv = c.post(f"/api/crm/contacts/{ct_id}/convert").json()
+        new_client_id = conv["client_id"]
+        assert new_client_id and conv["contact"]["status"] == "customer"
+        assert any(cl["id"] == new_client_id for cl in c.get("/api/clients").json())
+        assert c.post(f"/api/crm/contacts/{ct_id}/convert").status_code == 409  # already linked
+        # RBAC: client users can't touch the CRM; TECH can't delete (OWNER-only)
+        assert ca_c.get("/api/crm/contacts").status_code == 403
+        print("Native CRM: pipeline + contact CRUD + timeline + convert→client + RBAC OK")
+
+    print("\n=== OpsPilot v0.43 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
