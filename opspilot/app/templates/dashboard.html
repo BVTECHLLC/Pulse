@@ -43,6 +43,7 @@
     <a data-tab="action" onclick="tab('action')">⚡ Action Center</a>
     <a data-tab="clients" onclick="tab('clients')">Clients</a>
     <a data-tab="crm" onclick="tab('crm')">🤝 CRM</a>
+    <a data-tab="dialer" onclick="tab('dialer')">📞 Power Dialer</a>
     <a data-tab="devices" onclick="tab('devices')">Devices</a>
     <a data-tab="assets" onclick="tab('assets')">Assets</a>
     <a data-tab="alerts" onclick="tab('alerts')">Alerts</a>
@@ -863,6 +864,54 @@
     </div>
   </section>
 
+  <section id="dialer" class="hidden">
+    <div id="dial-stats" class="grid cols-4" style="margin-bottom:16px"></div>
+    <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px">
+      <div>
+        <div class="card" id="dial-live" style="margin-bottom:16px">
+          <h3 style="margin-top:0">📞 Now dialing <span class="pill" id="dial-sess-name">no session</span></h3>
+          <div id="dial-current"><p class="muted">Start or pick a session below, then hit <b>Dial next</b> to work the queue.</p></div>
+        </div>
+        <div class="card" style="margin-bottom:16px">
+          <h3 style="margin-top:0">▶️ Start a dial session</h3>
+          <div class="grid2">
+            <label>Session name<input id="dl-name" placeholder="Today's outbound"></label>
+            <label>Coaching script<select id="dl-script" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:8px;color:var(--ink)"><option value="">— none —</option></select></label>
+          </div>
+          <label style="margin-top:8px">Pull from CRM — status
+            <select id="dl-crm-status" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:8px;color:var(--ink)">
+              <option value="">— don't pull —</option><option value="new">new</option><option value="qualified">qualified</option>
+              <option value="contacted">contacted</option><option value="customer">customer</option></select>
+            <input id="dl-crm-limit" type="number" value="25" min="1" max="200" style="width:80px" title="max contacts">
+          </label>
+          <label style="margin-top:8px">…and/or paste numbers (one per line — <span class="muted">Name, +15551234567</span>)
+            <textarea id="dl-numbers" rows="3" placeholder="Jane Smith, +15125550133&#10;+15125550199" style="width:100%"></textarea></label>
+          <div class="flex" style="margin-top:8px"><button class="btn sm" onclick="dialerStart()">Start session</button>
+            <span class="muted" id="dl-start-msg" style="font-size:12px"></span></div>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0">Recent sessions</h3>
+          <table><thead><tr><th>Name</th><th>Progress</th><th>Connect</th><th>Won</th><th></th></tr></thead>
+          <tbody id="t-dial-sessions"></tbody></table>
+        </div>
+      </div>
+      <div>
+        <div class="card" id="dial-coach" style="margin-bottom:16px"><p class="muted">Coaching guidance shows here during a call.</p></div>
+        <div class="card">
+          <div class="flex" style="justify-content:space-between"><h3 style="margin:0">🎯 Coaching scripts</h3></div>
+          <p class="muted" style="margin:4px 0 8px">Opening + talking points + objection→response cards for your reps.</p>
+          <label>Name<input id="sc-name" placeholder="MSP cold call"></label>
+          <label style="margin-top:6px">Opening line<input id="sc-opening" placeholder="Hi, this is BVTech…"></label>
+          <label style="margin-top:6px">Talking points (one per line)<textarea id="sc-points" rows="3" style="width:100%" placeholder="Security-first managed IT&#10;24/7 US-based support"></textarea></label>
+          <label style="margin-top:6px">Objections (one per line — <span class="muted">objection | response</span>)<textarea id="sc-obj" rows="3" style="width:100%" placeholder="Too expensive | We pay for ourselves in saved downtime"></textarea></label>
+          <div class="flex" style="margin-top:8px"><button class="btn sm" onclick="scriptCreate()">Add script</button>
+            <span class="muted" id="sc-msg" style="font-size:12px"></span></div>
+          <div id="t-scripts" style="margin-top:10px"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="docs" class="hidden">
     <div class="card" style="margin-bottom:16px">
       <h3 style="margin-top:0">📚 Documentation &amp; Password Vault</h3>
@@ -1161,6 +1210,7 @@ function tab(name){
   if(name==='mailbox'){loadMailbox();}
   if(name==='docs'){loadDocs();}
   if(name==='crm'){loadCrm();}
+  if(name==='dialer'){loadDialer();}
   if(name==='rmm'){loadRmm();}
   if(name==='settings'&&!_tabLoaded.settings){_tabLoaded.settings=true;loadSettings();}
 }
@@ -2638,6 +2688,114 @@ async function crmCreate(){
     title:val('crm-title'),market:val('crm-market'),source:'manual'};
   const r=await post('/api/crm/contacts',body); const j=await r.json().catch(()=>({}));
   if(r.ok){msg.textContent='Added ✓';['crm-name','crm-company','crm-email','crm-phone','crm-title','crm-market'].forEach(i=>document.getElementById(i).value='');loadCrm();}
+  else msg.textContent=j.detail||'Save failed';
+}
+// -------------------- Power Dialer --------------------
+const DIALER={session:null,detail:null,scripts:[]};
+const DISP=[['connected','Connected','ok'],['voicemail','Voicemail',''],['no_answer','No answer',''],
+  ['busy','Busy',''],['callback','Callback','warn'],['not_interested','Not interested','bad'],
+  ['wrong_number','Wrong #',''],['do_not_call','Do not call','bad'],['won','Won 🎉','ok']];
+async function loadDialer(){
+  DIALER.scripts=await api('/api/dialer/scripts')||[];
+  const sel=document.getElementById('dl-script');
+  if(sel)sel.innerHTML='<option value="">— none —</option>'+DIALER.scripts.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  document.getElementById('t-scripts').innerHTML=DIALER.scripts.length?DIALER.scripts.map(s=>
+    `<div style="border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:6px">
+      <b>${esc(s.name)}</b> ${s.active?'':'<span class="muted">(inactive)</span>'}
+      <div class="muted" style="font-size:12px">${(s.talking_points||[]).length} points · ${(s.objections||[]).length} objections</div></div>`).join('')
+    :'<p class="muted">No scripts yet.</p>';
+  await loadDialSessions();
+  if(DIALER.session)await openSession(DIALER.session);
+}
+async function loadDialSessions(){
+  const rows=await api('/api/dialer/sessions')||[];
+  document.getElementById('t-dial-sessions').innerHTML=rows.length?rows.map(s=>{
+    const st=s.stats||{};
+    return `<tr style="cursor:pointer" onclick="openSession(${s.id})"><td>${esc(s.name)}
+      <span class="badge ${s.status==='active'?'ok':(s.status==='paused'?'warn':'')}">${s.status}</span></td>
+      <td>${st.completed||0}/${st.total||0}</td><td>${Math.round((st.connect_rate||0)*100)}%</td>
+      <td>${st.won||0}</td><td><button class="btn sm ghost" onclick="event.stopPropagation();openSession(${s.id})">Open</button></td></tr>`;
+  }).join(''):'<tr><td colspan=5 class="muted">No sessions yet — start one.</td></tr>';
+}
+async function dialerStart(){
+  const msg=document.getElementById('dl-start-msg'); const name=val('dl-name')||'Dial session';
+  const items=val('dl-numbers').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
+    const m=l.match(/^(.*?),\s*(\+?[0-9().\- ]+)$/);
+    return m?{name:m[1].trim(),phone:m[2].trim()}:{phone:l};
+  });
+  const body={name,items}; const sid=val('dl-script'); if(sid)body.script_id=parseInt(sid);
+  const cs=document.getElementById('dl-crm-status').value;
+  if(cs)body.from_crm={status:cs,limit:parseInt(val('dl-crm-limit')||'25')};
+  if(!items.length&&!cs){msg.textContent='Add numbers or pick a CRM status.';return;}
+  msg.textContent='starting…';
+  const r=await post('/api/dialer/sessions',body); const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='';document.getElementById('dl-numbers').value='';document.getElementById('dl-name').value='';
+    await loadDialSessions();openSession(j.id);}
+  else msg.textContent=j.detail||'Could not start.';
+}
+async function openSession(id){
+  DIALER.session=id;
+  const d=await api(`/api/dialer/sessions/${id}`); if(!d)return; DIALER.detail=d;
+  document.getElementById('dial-sess-name').textContent=d.name+' · '+d.status;
+  renderStats(d.stats); renderCoach(d.script); renderCurrent(d);
+}
+function renderStats(st){
+  st=st||{};
+  const cells=[['Remaining',st.remaining||0],['Dialed',st.dialed||0],
+    ['Connect rate',Math.round((st.connect_rate||0)*100)+'%'],['Won',st.won||0]];
+  document.getElementById('dial-stats').innerHTML=cells.map(([k,v])=>
+    `<div class="card"><h3>${k}</h3><div class="stat">${v}</div></div>`).join('');
+}
+function renderCoach(s){
+  const box=document.getElementById('dial-coach');
+  if(!s){box.innerHTML='<p class="muted">No coaching script on this session.</p>';return;}
+  const pts=(s.talking_points||[]).map(p=>`<li>${esc(p)}</li>`).join('');
+  const obj=(s.objections||[]).map(o=>`<div style="border:1px solid var(--line);border-radius:8px;padding:6px;margin:4px 0">
+    <div style="font-size:12px"><b>❝ ${esc(o.objection)}</b></div><div class="muted" style="font-size:12px">→ ${esc(o.response)}</div></div>`).join('');
+  box.innerHTML=`<h3 style="margin-top:0">🎯 ${esc(s.name)}</h3>
+    ${s.opening?`<p style="margin:4px 0"><b>Opening:</b> ${esc(s.opening)}</p>`:''}
+    ${pts?`<b style="font-size:13px">Talking points</b><ul style="margin:4px 0 8px;padding-left:18px">${pts}</ul>`:''}
+    ${obj?`<b style="font-size:13px">Objection handling</b>${obj}`:''}`;
+}
+function renderCurrent(d){
+  const box=document.getElementById('dial-current'); const e=d.next;
+  if(d.status!=='active'){box.innerHTML=`<p class="muted">Session is ${d.status}.</p>
+    ${d.status==='paused'?`<button class="btn sm" onclick="sessStatus('active')">Resume</button>`:''}`;return;}
+  if(!e){box.innerHTML=`<p><b>Queue complete 🎉</b> Nice work.</p>
+    <button class="btn sm" onclick="sessStatus('completed')">Mark session done</button>`;return;}
+  const calling=e.status==='calling';
+  const disp=DISP.map(([k,l,c])=>`<button class="btn sm ${c==='bad'?'danger':(c==='ok'?'':'ghost')}" onclick="setDisp(${e.id},'${k}')">${l}</button>`).join(' ');
+  box.innerHTML=`<div style="font-size:20px;font-weight:700">${esc(e.name||'—')}</div>
+    <div class="muted">${esc(e.company||'')}</div>
+    <div style="font-size:24px;font-family:monospace;margin:8px 0">${esc(e.phone)}</div>
+    ${calling?`<p class="muted">📞 Ringing… log the outcome when done.</p>`
+      :`<button class="btn" onclick="dialNext()">📞 Dial next</button>
+        <button class="btn sm ghost" onclick="skipEntry(${e.id})">Skip</button>`}
+    <div style="margin-top:10px"><textarea id="dl-notes" rows="2" placeholder="Call notes…" style="width:100%"></textarea></div>
+    <div class="flex" style="flex-wrap:wrap;margin-top:8px;gap:6px">${disp}</div>
+    <div class="flex" style="margin-top:8px"><button class="btn sm ghost" onclick="sessStatus('paused')">Pause session</button></div>`;
+}
+async function dialNext(){
+  const r=await post(`/api/dialer/sessions/${DIALER.session}/dial-next`); const j=await r.json().catch(()=>({}));
+  if(!r.ok){alert(j.detail||'Could not place call (configure Dialpad in Settings).');return;}
+  openSession(DIALER.session);
+}
+async function setDisp(eid,disp){
+  const notes=(document.getElementById('dl-notes')||{}).value||'';
+  const r=await post(`/api/dialer/entries/${eid}/disposition`,{disposition:disp,notes});
+  if(r.ok){await loadDialSessions();openSession(DIALER.session);}
+}
+async function skipEntry(eid){await post(`/api/dialer/entries/${eid}/skip`);openSession(DIALER.session);}
+async function sessStatus(s){await post(`/api/dialer/sessions/${DIALER.session}/status`,{status:s});await loadDialSessions();openSession(DIALER.session);}
+async function scriptCreate(){
+  const msg=document.getElementById('sc-msg'); const name=val('sc-name');
+  if(!name){msg.textContent='Name required.';return;}
+  const points=val('sc-points').split('\n').map(s=>s.trim()).filter(Boolean);
+  const objections=val('sc-obj').split('\n').map(l=>{const p=l.split('|');return p.length>=2?{objection:p[0].trim(),response:p.slice(1).join('|').trim()}:null;}).filter(Boolean);
+  msg.textContent='saving…';
+  const r=await post('/api/dialer/scripts',{name,opening:val('sc-opening'),talking_points:points,objections});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Added ✓';['sc-name','sc-opening','sc-points','sc-obj'].forEach(i=>document.getElementById(i).value='');loadDialer();}
   else msg.textContent=j.detail||'Save failed';
 }
 async function crmOpen(id){
