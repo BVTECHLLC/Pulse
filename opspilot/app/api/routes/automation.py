@@ -187,12 +187,21 @@ def run_checks(db: Session = Depends(get_db),
     # Deliver any due scheduled client reports (v0.20).
     reports = scheduled_reports.send_due(db, now)
 
+    # Connector health watchdog (v0.52.2) — auto-sweep at most hourly so a dead
+    # token / exhausted credit raises an alert without anyone clicking "Test".
+    from ...services import integration_health
+    health = None
+    try:
+        health = integration_health.maybe_sweep(db, min_interval_minutes=60)
+    except Exception:
+        pass
+
     audit.record(db, action="automation.run_checks", actor_user_id=user.id, actor_email=user.email,
                  actor_role=user.role.value, target_type="automation", ip=None,
                  detail=f"offline_opened={sweep['offline_opened']} sla_breaches_fired={sla_fired} "
                         f"escalated={escalated} reports_sent={reports['reports_sent']}")
     return {"offline": sweep, "sla_breaches_fired": sla_fired, "escalated": escalated,
-            "reports": reports}
+            "reports": reports, "health_checked": (health or {}).get("checked", 0)}
 
 
 # --------------------------------------------------------------------------- #

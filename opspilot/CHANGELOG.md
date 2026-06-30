@@ -1,5 +1,13 @@
 # BVTech OpsPilot — Changelog
 
+## v0.52.2 — Connector health watchdog runs itself (June 2026)
+- The health watchdog is now **automatic**: the `run-checks` cron tick triggers a
+  connector-health sweep **at most once per hour** (`integration_health.maybe_sweep`)
+  — so an expired token or dead API credit raises an alert on its own, no "Test
+  all live" click needed. Throttled off the newest `last_health_at` (no extra
+  table); skips entirely when nothing checkable is configured. Verified:
+  skip-when-none, run-when-due, throttle-within-hour, re-run-after-interval.
+
 ## v0.52.1 — Fix: saved settings read as "not connected" + agent onboarding (June 2026)
 - **Root cause of "I saved it but it shows not connected":** schema drift. The
   v0.52 migration adds health columns to `integration_connections`; `deploy.sh`
