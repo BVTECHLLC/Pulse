@@ -309,6 +309,15 @@
   </section>
 
   <section id="tickets" class="hidden">
+    <div class="card" style="margin-bottom:14px">
+      <div class="flex" style="justify-content:space-between"><h3 style="margin:0">SLA Performance <span class="pill">last 90 days</span></h3></div>
+      <div class="grid cols-4" style="margin-top:10px">
+        <div class="card" style="margin:0"><h3>Response SLA</h3><div class="stat" id="sla-resp">—</div><div class="stat sub" id="sla-resp-sub">—</div></div>
+        <div class="card" style="margin:0"><h3>Resolution SLA</h3><div class="stat" id="sla-reso">—</div><div class="stat sub" id="sla-reso-sub">—</div></div>
+        <div class="card" style="margin:0"><h3>Avg Response</h3><div class="stat" id="sla-respt">—</div></div>
+        <div class="card" style="margin:0"><h3>Avg Resolution</h3><div class="stat" id="sla-resot">—</div></div>
+      </div>
+    </div>
     <div class="flex" style="margin-bottom:10px">
       <label class="flex" style="margin:0;font-size:13px;color:var(--muted)">
         <input type="checkbox" id="tk-mine" style="width:auto" onchange="loadTickets()"> assigned to me</label>
@@ -827,6 +836,18 @@ function slaBadge(s){
   return '<span class="badge ok">on track</span>';
 }
 function fmtMins(m){if(m==null)return '—';const h=Math.floor(m/60),mm=m%60;return (h?h+'h ':'')+mm+'m';}
+function fmtDur(m){if(m==null)return '—';if(m<60)return Math.round(m)+'m';if(m<1440)return (m/60).toFixed(1)+'h';return (m/1440).toFixed(1)+'d';}
+async function loadSlaPerf(){
+  const p=await api('/api/analytics/sla-performance'); if(!p)return;const o=p.overall;
+  const col=v=>v==null?'var(--muted)':(v>=90?'var(--ok)':v>=75?'var(--warn)':'var(--bad)');
+  const set=(id,v,unit='%')=>{const e=document.getElementById(id);if(e){e.textContent=v==null?'—':v+unit;if(unit==='%')e.style.color=col(v);}};
+  set('sla-resp',o.response_attainment_pct);set('sla-reso',o.resolution_attainment_pct);
+  const sub=(id,n,d)=>{const e=document.getElementById(id);if(e)e.textContent=`${n}/${d} on target`;};
+  sub('sla-resp-sub',o.response_met!=null?Math.round((o.response_attainment_pct||0)/100*o.responded):o.responded,o.responded);
+  sub('sla-reso-sub',Math.round((o.resolution_attainment_pct||0)/100*o.resolved),o.resolved);
+  document.getElementById('sla-respt').textContent=fmtDur(o.avg_response_minutes);
+  document.getElementById('sla-resot').textContent=fmtDur(o.avg_resolution_minutes);
+}
 async function loadTickets(){
   const params=[];
   if(document.getElementById('tk-mine').checked)params.push('mine=true');
@@ -2009,7 +2030,7 @@ async function load(){
   await loadStaff();
   ruleExample();
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
-    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations(),loadProjects(),loadOverview(),loadTime(),loadAssets(),loadActionCenter(),loadClientHealth(),loadMaint()]);
+    loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations(),loadProjects(),loadOverview(),loadTime(),loadAssets(),loadActionCenter(),loadClientHealth(),loadMaint(),loadSlaPerf()]);
   toggleOvAuto();   // start the command-center live refresh
 }
 load();
