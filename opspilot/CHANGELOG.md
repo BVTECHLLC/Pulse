@@ -1,5 +1,17 @@
 # BVTech OpsPilot — Changelog
 
+## v0.45.0 — Campaigns: email + SMS outreach to the CRM (June 2026)
+- **Email campaigns** via the M365 mailbox and **SMS campaigns** via Dialpad,
+  targeting a slice of the CRM pipeline (by status / market / explicit ids).
+  Compliance is built in: email skips `do_not_contact` and appends an opt-out
+  footer (CAN-SPAM); SMS only reaches `sms_opt_in` numbers (TCPA). `{first}` /
+  `{company}` personalization. Every send lands on the contact's timeline.
+- `services/campaigns.py` (injected transport → audience/compliance/personalize/
+  logging unit-tested offline), `routes/campaigns.py`, a **📣 Campaigns** card on
+  the CRM tab with always-available **dry-run preview**. Staff-only + audited.
+  Verified: email/SMS audience filtering, dry-run no-op, send+log+footer, failure
+  counting, RBAC.
+
 ## v0.44.0 — Prospecting: find & score leads into the CRM (June 2026)
 - **Lead-gen engine** ported from the Command Center. Google Places discovery of
   real local businesses by market + industry, **MSP-readiness scored 0-100**,
