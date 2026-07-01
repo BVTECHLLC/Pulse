@@ -1,5 +1,16 @@
 # BVTech OpsPilot — Changelog
 
+## v0.90.0 — Heads-up on self-service SSO logins (July 2026)
+- **🔔 Staff get an in-app notification the moment someone self-registers via SSO**
+  (v0.87 zero-touch): "New self-service SSO login: name@domain (read-only, Client).
+  Review in Users & Access." So a new login is never a surprise — the owner is
+  prompted to review, promote, or deactivate right where they manage users.
+- Also fans out to any configured notification channels (email/Slack/Teams/webhook)
+  at `info` severity, best-effort and non-blocking (a notify failure never breaks
+  the sign-in).
+- Verified offline (smoke): a zero-touch SSO sign-in raises a broadcast staff
+  notification (kind `access`) naming the new user.
+
 ## v0.89.0 — Session control & sign-out-everywhere (July 2026)
 - **🔓 "Sign out everywhere" per user** in Users & Access — revokes all of a
   user's live sessions instantly (a lost laptop or a shared login is one click
