@@ -63,6 +63,7 @@
     <a data-tab="mailbox" onclick="tab('mailbox')">📬 Mailbox</a>
     <a data-tab="licenses" onclick="tab('licenses')">Licenses</a>
     <a data-tab="integrations" onclick="tab('integrations')">Integrations</a>
+    <a data-tab="users" onclick="tab('users')">👥 Users &amp; Access</a>
     <a data-tab="settings" onclick="tab('settings')">🛠️ Settings</a>
     <a data-tab="audit" onclick="tab('audit')">Audit Log</a>
   </div>
@@ -1407,6 +1408,29 @@
     </div>
   </section>
 
+  <section id="users" class="hidden">
+    <div class="card">
+      <div class="flex" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <div><b>👥 Users &amp; Access</b><div class="muted" style="font-size:12px">Every login — staff, client admins, and self-registered SSO viewers</div></div>
+        <div id="users-summary" class="muted" style="font-size:12px"></div>
+      </div>
+      <div class="flex" style="gap:8px;margin-top:10px;flex-wrap:wrap">
+        <input id="users-q" placeholder="Search name or email…" style="max-width:240px" oninput="renderUsers()">
+        <select id="users-role" onchange="renderUsers()">
+          <option value="">All roles</option><option value="owner">Owner</option><option value="tech">Tech</option>
+          <option value="client_admin">Client admin</option><option value="client_viewer">Client viewer</option>
+        </select>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:normal;font-size:13px"><input type="checkbox" id="users-sso" style="width:auto" onchange="renderUsers()"> SSO self-registered only</label>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:normal;font-size:13px"><input type="checkbox" id="users-inactive" style="width:auto" onchange="renderUsers()" checked> Show inactive</label>
+        <button class="btn sm ghost" onclick="loadUsers()">↻ Refresh</button>
+      </div>
+      <table style="margin-top:10px"><thead><tr>
+        <th>User</th><th>Role</th><th>Client</th><th>Source</th><th>Last login</th><th>Status</th><th>Actions</th>
+      </tr></thead><tbody id="t-users"></tbody></table>
+      <div class="muted" id="users-empty" style="font-size:12px;margin-top:8px"></div>
+    </div>
+  </section>
+
   <section id="audit" class="hidden"><div class="card"><table>
     <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th>IP</th><th>OK</th></tr></thead>
     <tbody id="t-audit"></tbody></table></div></section>
@@ -1480,6 +1504,7 @@ function tab(name){
   if(name==='inventory'){loadInventory();}
   if(name==='content'){loadAutopost();}
   if(name==='rmm'){loadRmm();}
+  if(name==='users'){loadUsers();}
   if(name==='settings'&&!_tabLoaded.settings){_tabLoaded.settings=true;loadSettings();}
 }
 function badge(v,good,warn){if(v==null)return '<span class="badge">—</span>';
@@ -1487,6 +1512,70 @@ function badge(v,good,warn){if(v==null)return '<span class="badge">—</span>';
 function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));}
 function ago(iso){if(!iso)return 'never';return new Date(iso).toLocaleString();}
 async function logout(){await fetch('/api/auth/logout',{method:'POST'});location.href='/';}
+// ---- 👥 Users & Access ----
+let _usersCache=[];
+async function loadUsers(){
+  const j=await api('/api/users'); if(!j)return;
+  _usersCache=j.users||[];
+  const s=j.summary||{};
+  document.getElementById('users-summary').textContent=
+    `${s.total||0} users · ${s.staff||0} staff · ${s.client_admins||0} client admins · ${s.client_viewers||0} viewers · ${s.sso_provisioned||0} via SSO · ${s.inactive||0} inactive`;
+  renderUsers();
+}
+function _roleLabel(r){return {owner:'Owner',tech:'Tech',client_admin:'Client admin',client_viewer:'Client viewer'}[r]||r;}
+function renderUsers(){
+  const q=(document.getElementById('users-q').value||'').trim().toLowerCase();
+  const role=document.getElementById('users-role').value;
+  const ssoOnly=document.getElementById('users-sso').checked;
+  const showInactive=document.getElementById('users-inactive').checked;
+  let rows=_usersCache.filter(u=>{
+    if(role&&u.role!==role)return false;
+    if(ssoOnly&&!u.sso_provisioned)return false;
+    if(!showInactive&&!u.is_active)return false;
+    if(q&&!((u.email||'').toLowerCase().includes(q)||(u.full_name||'').toLowerCase().includes(q)))return false;
+    return true;
+  });
+  const tb=document.getElementById('t-users');
+  tb.innerHTML=rows.map(u=>{
+    const name=esc(u.full_name||u.email.split('@')[0]);
+    const src=u.sso_provisioned?'<span class="badge warn" title="Self-registered via SSO">SSO ✨</span>':
+              (u.is_staff?'<span class="badge">staff</span>':'<span class="badge ok">invited</span>');
+    const status=u.is_active?'<span class="badge ok">active</span>':'<span class="badge bad">inactive</span>';
+    let actions='';
+    if(u.is_staff){actions='<span class="muted" style="font-size:11px">managed by operator</span>';}
+    else{
+      if(u.role==='client_viewer')actions+=`<button class="btn sm ghost" onclick="userRole(${u.id},'client_admin')">⬆ Make admin</button> `;
+      if(u.role==='client_admin')actions+=`<button class="btn sm ghost" onclick="userRole(${u.id},'client_viewer')">⬇ Make viewer</button> `;
+      actions+=u.is_active?`<button class="btn sm ghost" onclick="userActive(${u.id},false)">Deactivate</button> `
+                          :`<button class="btn sm ghost" onclick="userActive(${u.id},true)">Reactivate</button> `;
+      actions+=`<button class="btn sm ghost" onclick="userReset(${u.id})">Reset pw</button>`;
+    }
+    return `<tr${u.is_active?'':' style="opacity:.55"'}>
+      <td><b>${name}</b><div class="muted" style="font-size:11px">${esc(u.email)}</div></td>
+      <td>${_roleLabel(u.role)}</td>
+      <td>${esc(u.client_name||(u.is_staff?'—':''))}</td>
+      <td>${src}</td>
+      <td class="muted" style="font-size:12px">${u.last_login_at?ago(u.last_login_at):'never'}</td>
+      <td>${status}</td>
+      <td>${actions}</td></tr>`;
+  }).join('');
+  document.getElementById('users-empty').textContent=rows.length?'':'No users match these filters.';
+}
+async function userRole(id,role){
+  const r=await patch('/api/users/'+id+'/role',{role}); const j=await r.json().catch(()=>({}));
+  if(r.ok)loadUsers(); else alert(j.detail||'Could not change role');
+}
+async function userActive(id,active){
+  if(!active&&!confirm('Deactivate this user? They will be signed out and unable to log in.'))return;
+  const r=await patch('/api/users/'+id+'/active',{active}); const j=await r.json().catch(()=>({}));
+  if(r.ok)loadUsers(); else alert(j.detail||'Could not update status');
+}
+async function userReset(id){
+  if(!confirm('Issue a new temporary password for this user?'))return;
+  const r=await post('/api/users/'+id+'/reset-password'); const j=await r.json().catch(()=>({}));
+  if(r.ok){alert('Temporary password for '+j.email+':\n\n'+j.temp_password+'\n\n'+(j.emailed?'(also emailed)':'(email off — copy it now)'));loadUsers();}
+  else alert(j.detail||'Could not reset password');
+}
 // ---- ✨ Ask Pulse copilot ----
 function toggleCopilot(){const el=document.getElementById('copilot');el.classList.toggle('hidden');
   if(!el.classList.contains('hidden'))document.getElementById('copilot-q').focus();}

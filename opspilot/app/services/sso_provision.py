@@ -109,6 +109,7 @@ def maybe_autoprovision(db: Session, email: str | None, *, full_name: str | None
         role=Role.CLIENT_VIEWER,                          # lowest privilege, always
         client_id=client_id,
         is_active=True,
+        provisioned_via="sso",                            # flagged for the admin view
     )
     db.add(user)
     db.commit()

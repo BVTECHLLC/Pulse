@@ -60,6 +60,9 @@ class User(Base):
     # null for BVTech staff; set for client-side users
     client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # How this login was created: null = created manually (bootstrap/invite/onboard),
+    # "sso" = self-registered via zero-touch SSO just-in-time provisioning (v0.87).
+    provisioned_via: Mapped[str | None] = mapped_column(String(20))
     # MFA
     mfa_secret: Mapped[str | None] = mapped_column(String(64))
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)

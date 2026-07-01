@@ -1,5 +1,29 @@
 # BVTech OpsPilot — Changelog
 
+## v0.88.0 — Users & Access management center (July 2026)
+- **👥 A single place to see and manage every login.** New "Users & Access" tab:
+  staff, client admins, and the read-only viewers who **self-registered via SSO**
+  (v0.87) — each clearly flagged (✨ SSO). Header counts, plus filters by role, by
+  SSO-self-registered, by active/inactive, and a name/email search.
+- **One-click lifecycle actions (owner), fully guardrailed:**
+  - **Promote** a client viewer → client admin (and demote back). Promoting a
+    self-registered user clears its "SSO" flag — it's now a real managed account.
+  - **Deactivate / reactivate** a login (deactivating signs them out immediately).
+  - **Reset password** — issues a fresh temp password (emailed when SMTP is on,
+    shown once regardless) and re-enables the account.
+- **Safety is built into the service, not the button:** you can't change your own
+  account here, staff/owner accounts aren't editable from this panel (so it can
+  never elevate someone to staff or lock out the owner), and role changes are
+  constrained to client_admin ↔ client_viewer.
+- New `User.provisioned_via` column (Alembic migration verified up→down→up) marks
+  SSO self-registrations. Endpoints: `GET /api/users` (+summary/filters, staff),
+  `PATCH /api/users/{id}/role`, `PATCH /api/users/{id}/active`,
+  `POST /api/users/{id}/reset-password` (owner-only mutations).
+- Verified offline (smoke): directory + summary + filters, promote clears the SSO
+  flag, activate/deactivate, password reset re-enables, and the guardrails hold
+  (no self-edit, no staff-edit, no staff-role assignment) with tech-read /
+  owner-write / client-none RBAC.
+
 ## v0.87.0 — Zero-touch client SSO (just-in-time provisioning) (July 2026)
 - **🚪 Onboard a client once, and their whole team can sign in themselves.** When
   someone signs in with an M365 account whose email domain matches an onboarded
