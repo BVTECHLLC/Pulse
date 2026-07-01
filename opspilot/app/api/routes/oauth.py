@@ -94,6 +94,28 @@ def save_sso_settings(body: SSOSettingsIn, request: Request, db: Session = Depen
     return {"ok": True, "providers_active": sorted(p["key"] for p in oauth.enabled_providers())}
 
 
+class ProvisionIn(BaseModel):
+    enabled: bool
+
+
+@router.get("/sso-provisioning")
+def get_sso_provisioning(db: Session = Depends(get_db),
+                         user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    from ...services import sso_provision
+    return sso_provision.get_config(db)
+
+
+@router.put("/sso-provisioning")
+def save_sso_provisioning(body: ProvisionIn, request: Request, db: Session = Depends(get_db),
+                          user: User = Depends(require_roles(Role.OWNER))):
+    from ...services import sso_provision
+    out = sso_provision.save_config(db, {"enabled": body.enabled})
+    audit.record(db, action="sso.provisioning", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="sso_provisioning", ip=_ip(request),
+                 detail=f"enabled={out['enabled']}")
+    return out
+
+
 @router.get("/sso-diagnostics")
 def sso_diagnostics(request: Request, db: Session = Depends(get_db),
                     user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
@@ -160,9 +182,11 @@ def sso_diagnostics(request: Request, db: Session = Depends(get_db),
          "ok": bool(_user_for(user.email)),
          "hint": "SSO signs in an existing user matched by email; it never creates one."},
     ]
+    from ...services import sso_provision
     return {
         "providers_active": sorted(active),
         "your_login": {"email": user.email, "role": user.role.value},
+        "auto_provision": sso_provision.get_config(db),
         "microsoft": {
             "app_configured": "microsoft" in active,
             "effective_tenant": eff_tenant,
@@ -294,6 +318,21 @@ def callback(provider: str, request: Request, response: Response,
             if user:
                 email = cand
                 break
+        if not user:
+            # Zero-touch client SSO: if one of the presented emails belongs (by
+            # domain) to exactly one onboarded client, create a read-only viewer.
+            from ...services import sso_provision
+            claims = oauth.decode_id_token_claims(tok.get("id_token"))
+            name = claims.get("name")
+            for cand in candidates:
+                user = sso_provision.maybe_autoprovision(db, cand, full_name=name)
+                if user:
+                    email = cand
+                    audit.record(db, action="login.oauth_autoprovision", actor_user_id=user.id,
+                                 actor_email=user.email, actor_role=user.role.value,
+                                 client_id=user.client_id, ip=_ip(request),
+                                 detail=f"provider={provider} client_id={user.client_id}")
+                    break
         if not user:
             audit.record(db, action="login.oauth_no_match",
                          actor_email=(email or ",".join(candidates) or None), ip=_ip(request),

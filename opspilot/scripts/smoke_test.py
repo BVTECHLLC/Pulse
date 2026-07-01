@@ -1495,6 +1495,70 @@ def main():
         assert ca_c.get("/api/oauth/sso-diagnostics").status_code == 403   # staff-only
         print("Microsoft SSO hardening: work-account tenant + select_account + id_token match + case-insensitive + no-hijack + diagnostics OK")
 
+        # --- v0.87: zero-touch JIT SSO provisioning (domain-anchored, safe) ---
+        from app.services import sso_provision as _prov
+        from app.core.db import SessionLocal as _PSL
+        assert c.get("/api/oauth/sso-provisioning").json()["enabled"] is True   # default on
+        # onboard a client -> anchors its email domain via the created CLIENT_ADMIN
+        ob = c.post("/api/clients/onboard", json={"name": "Zero Touch Co",
+                    "contact_email": "admin@zerotouch.io", "contact_name": "Zed Admin"})
+        assert ob.status_code == 201, ob.text
+        zt_cid = ob.json()["client_id"]
+        # a NEW colleague on that domain signs in via SSO -> auto read-only viewer
+        class _JitIdp(_CaseIdp):
+            def do_POST(self):
+                n=int(self.headers.get("content-length",0)); self.rfile.read(n)
+                self._send({"access_token":"AT-J","expires_in":3600,
+                            "id_token":_mk_idtok({"preferred_username":"NewHire@ZeroTouch.io","name":"New Hire"})})
+        jsrv=HTTPServer(("127.0.0.1",0),_JitIdp)
+        threading.Thread(target=jsrv.serve_forever,daemon=True).start()
+        jbase=f"http://127.0.0.1:{jsrv.server_address[1]}"
+        oauthsvc.register_provider("mockjit", {
+            "name":"MockJit","authorize_url":f"{jbase}/authorize","token_url":f"{jbase}/token",
+            "userinfo_url":f"{jbase}/userinfo","scopes":["openid"],
+            "client_id":"cj","client_secret":"sj","email_fields":["email"]})
+        ocj=TestClient(app); ocj.cookies.clear()
+        rj=ocj.get("/api/oauth/mockjit/login", follow_redirects=False)
+        stj=_up.parse_qs(_up.urlparse(rj.headers["location"]).query)["state"][0]
+        cbj=ocj.get(f"/api/oauth/mockjit/callback?state={stj}&code=AC", follow_redirects=False)
+        assert cbj.status_code==302 and cbj.headers["location"]=="/portal", cbj.headers
+        me=ocj.get("/api/auth/me").json()
+        assert me["email"]=="newhire@zerotouch.io" and me["role"]=="client_viewer", me
+        # the created user is scoped to the anchored client, lowest privilege
+        _pdb=_PSL()
+        try:
+            from app.models import User as _U, Role as _R
+            nu=_pdb.query(_U).filter(_U.email=="newhire@zerotouch.io").first()
+            assert nu and nu.role==_R.CLIENT_VIEWER and nu.client_id==zt_cid, "wrong provisioned scope"
+            # second sign-in must NOT create a duplicate
+            ocj.get("/api/oauth/mockjit/login", follow_redirects=False)
+            cnt=_pdb.query(_U).filter(_U.email=="newhire@zerotouch.io").count()
+            assert cnt==1, cnt
+        finally:
+            _pdb.close()
+        jsrv.shutdown()
+        # direct service checks for the safety guards
+        _sdb=_PSL()
+        try:
+            # free/public domain never provisions even if it somehow anchored
+            assert _prov.maybe_autoprovision(_sdb, "someone@gmail.com") is None
+            # unknown domain (no anchor) refuses
+            assert _prov.maybe_autoprovision(_sdb, "ghost@nfl-unknown-domain.io") is None
+            # ambiguous: same domain under two clients -> refuse
+            c.post("/api/clients/onboard", json={"name":"Ambi A","contact_email":"a@ambi.io"})
+            c.post("/api/clients/onboard", json={"name":"Ambi B","contact_email":"b@ambi.io"})
+            assert _prov.maybe_autoprovision(_sdb, "c@ambi.io") is None, "ambiguous domain must not provision"
+            # disabled toggle short-circuits
+            _prov.save_config(_sdb, {"enabled": False})
+            assert _prov.maybe_autoprovision(_sdb, "late@zerotouch.io") is None
+            _prov.save_config(_sdb, {"enabled": True})
+        finally:
+            _sdb.close()
+        # RBAC: only owner toggles; clients can't read or change provisioning
+        assert ca_c.get("/api/oauth/sso-provisioning").status_code == 403
+        assert ca_c.put("/api/oauth/sso-provisioning", json={"enabled": False}).status_code == 403
+        print("Zero-touch SSO provisioning: domain-anchored viewer + no-dupe + free-domain/ambiguous/disabled guards + RBAC OK")
+
         # ===================== v0.24: PSA projects + Kanban =====================
         pj=c.post("/api/projects", json={"client_id":cid,"name":"M365 Migration","budget_hours":40})
         assert pj.status_code==201, pj.text
@@ -2269,7 +2333,7 @@ def main():
         assert ca_c.post("/api/automation/weekly-digest/send-now").status_code == 403
         print("weekly digest: grade+briefing render + weekday/hour gate + once-per-week + send-now + RBAC OK")
 
-    print("\n=== OpsPilot v0.86 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.87 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

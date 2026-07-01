@@ -1,5 +1,26 @@
 # BVTech OpsPilot — Changelog
 
+## v0.87.0 — Zero-touch client SSO (just-in-time provisioning) (July 2026)
+- **🚪 Onboard a client once, and their whole team can sign in themselves.** When
+  someone signs in with an M365 account whose email domain matches an onboarded
+  client, Pulse auto-creates a **read-only CLIENT_VIEWER** portal login for them —
+  no manual invite needed.
+- **Safe by construction.** A new login is only created when it's provable:
+  - the email domain must already belong to **exactly one** onboarded client,
+    proven by an existing active client user on that domain (the CLIENT_ADMIN from
+    onboarding). Zero or ambiguous (2+ clients) → refused.
+  - **free/public domains** (gmail, outlook, icloud, yahoo, …) never provision.
+  - the account is always **lowest privilege** (read-only viewer), scoped to that
+    client, and **SSO-only** (a random password it can't know). Never staff, never
+    admin, never an elevation of an existing user.
+- **Owner control**: a "Zero-touch client logins" toggle in Settings → SSO (on by
+  default), reflected in the "Check my SSO setup" panel. Endpoints:
+  `GET/PUT /api/oauth/sso-provisioning`.
+- Verified offline (smoke): a matching-domain SSO sign-in creates a viewer scoped
+  to the anchored client and lands in the portal; a second sign-in reuses it (no
+  duplicate); and the guards hold — free domains, unknown domains, ambiguous
+  domains, and the disabled toggle all refuse; owner-only RBAC on the toggle.
+
 ## v0.86.0 — Microsoft SSO that just works (July 2026)
 - **🔐 Fixes the "account.live.com / the portal doesn't know who I am" login.**
   The Microsoft sign-in defaulted to the `common` tenant, which let a work email
