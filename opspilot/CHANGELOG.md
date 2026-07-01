@@ -1,5 +1,24 @@
 # BVTech OpsPilot — Changelog
 
+## v0.76.0 — MSP Practice Health: grade your own operation (July 2026)
+- **One A–F grade for how well the MSP itself is running** — not any single
+  client, but *your practice*. Four domains, each 0–100, weighted into an overall
+  grade with a "do next" list:
+  - **Service** — SLA response + resolution attainment (90-day)
+  - **Security** — average client security-posture score
+  - **Endpoints** — fleet online % blended with patch compliance
+  - **Billing** — share of A/R that's current (not overdue)
+- **Built for everyone:** a franchise HQ benchmarks locations with it, an
+  established MSP tracks it month over month, a solo operator sees where to focus.
+  Domains with no data yet are excluded (not scored zero), so a new install grades
+  fairly. It headlines the **Overview** with a grade ring + per-domain grades +
+  recommendations.
+- `services/practice_health.py` (pure aggregation over SLA analytics, posture,
+  inventory/patching, and A/R aging) + `GET /api/practice/health` (staff-only).
+  No schema change.
+- Verified offline (smoke + unit): domains score + grade, weighting excludes
+  empty domains, recommendations fire on real gaps, and it's staff-only (RBAC).
+
 ## v0.75.0 — White-label branding (resell it as your own) (July 2026)
 - **Make the whole portal yours.** A new **🎨 Branding / White-label** card
   (Settings, owner-only) sets the **company + product name, logo, accent color,
