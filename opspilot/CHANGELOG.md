@@ -1,5 +1,13 @@
 # BVTech OpsPilot — Changelog
 
+## v0.79.0 — ⌘K command palette (July 2026)
+- **Press ⌘K (or Ctrl-K) anywhere** to jump to any tab or run a quick action —
+  Ask Pulse, run automation checks, generate posts, sign out — by typing. Arrow
+  keys + Enter, Esc to close. Auto-builds its list from the nav, so it stays in
+  sync as the portal grows.
+- Pure front-end (no backend, no schema); the smoke suite guards that the
+  dashboard shell still ships the palette + AI copilot + branding script.
+
 ## v0.78.0 — CSAT: client satisfaction after every ticket (July 2026)
 - **Close the feedback loop.** When a request is resolved, the client gets a
   one-tap **👍/👎 (+ optional comment)** right in the portal. `POST
