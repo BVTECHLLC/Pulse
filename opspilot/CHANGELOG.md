@@ -1,5 +1,20 @@
 # BVTech OpsPilot — Changelog
 
+## v0.83.0 — One-step client onboarding (July 2026)
+- **🚀 Onboard a new client in a single action.** From Clients → Onboard: it
+  creates the client record, **provisions their first CLIENT_ADMIN portal login**
+  (temp password), **emails a welcome**, and hands back a ready-to-use **agent
+  enrollment token** (with a one-click installer download) — so a new client, or
+  a new franchise location's client, is fully live the same way every time.
+- `POST /api/clients/onboard` (OWNER/TECH): rejects a bad or duplicate email,
+  returns `{client_id, portal_user, temp_password, emailed, enroll_token}`. The
+  welcome email is a no-op-safe send (logged when SMTP is off, and the temp
+  password is shown in the UI so you can relay it).
+- Verified offline (smoke): onboarding creates the client + login + enroll token,
+  the **provisioned user really logs in** as a CLIENT_ADMIN scoped to the new
+  client, the enroll token brings a device online, and duplicate/bad emails +
+  client-role callers are rejected (RBAC).
+
 ## v0.82.0 — AI QBR narrative — a client-ready exec summary in one click (July 2026)
 - **✨ QBR narrative** button on the client report: Claude turns the QBR data
   (security grade, device health, patch compliance, tickets/SLA, projects, assets,
