@@ -225,6 +225,15 @@ def run_checks(db: Session = Depends(get_db),
     except Exception:
         pass
 
+    # Weekly "State of the Practice" digest (v0.85) — once per ISO week, on the
+    # configured weekday, emailed to the owner. Idempotent + no-op-safe.
+    from ...services import weekly_digest
+    digest = {"sent": False}
+    try:
+        digest = weekly_digest.maybe_send(db, now)
+    except Exception:
+        pass
+
     # Deliver any due scheduled client reports (v0.20).
     reports = scheduled_reports.send_due(db, now)
 
@@ -245,7 +254,72 @@ def run_checks(db: Session = Depends(get_db),
             "reports": reports, "health_checked": (health or {}).get("checked", 0),
             "scheduled_fired": len(scheduled), "recurring_invoices": len(recurring),
             "reminders_sent": len(reminders), "posture_snapshots": len(snapshots),
-            "posts_published": len([p for p in posts if p.get("ok")])}
+            "posts_published": len([p for p in posts if p.get("ok")]),
+            "weekly_digest": digest}
+
+
+# --------------------------------------------------------------------------- #
+# Weekly "State of the Practice" digest (v0.85)
+# --------------------------------------------------------------------------- #
+@router.get("/weekly-digest")
+def get_weekly_digest(db: Session = Depends(get_db),
+                      user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    from ...services import weekly_digest
+    cfg = weekly_digest.get_config(db)
+    if not cfg.get("recipients"):
+        cfg["effective_recipients"] = weekly_digest._owner_emails(db)
+    else:
+        cfg["effective_recipients"] = cfg["recipients"]
+    return cfg
+
+
+class WeeklyDigestIn(BaseModel):
+    enabled: bool | None = None
+    weekday: int | None = None
+    hour: int | None = None
+    recipients: list[str] | str | None = None
+
+
+@router.put("/weekly-digest")
+def save_weekly_digest(body: WeeklyDigestIn, request: Request, db: Session = Depends(get_db),
+                       user: User = Depends(require_roles(Role.OWNER))):
+    from ...services import weekly_digest
+    out = weekly_digest.save_config(db, {k: v for k, v in body.model_dump().items() if v is not None})
+    audit.record(db, action="automation.weekly_digest.save", actor_user_id=user.id,
+                 actor_email=user.email, actor_role=user.role.value, target_type="weekly_digest",
+                 ip=_ip(request), detail=f"enabled={out['enabled']} weekday={out['weekday']}")
+    return out
+
+
+@router.get("/weekly-digest/preview")
+def preview_weekly_digest(db: Session = Depends(get_db),
+                          user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    from ...services import weekly_digest
+    subject, body = weekly_digest.render(db)
+    return {"subject": subject, "body": body}
+
+
+@router.post("/weekly-digest/send-now")
+def send_weekly_digest_now(request: Request, db: Session = Depends(get_db),
+                           user: User = Depends(require_roles(Role.OWNER))):
+    """Send this week's digest immediately to the configured recipients,
+    regardless of weekday/hour. Does not consume the once-per-week guard."""
+    from ...services import email as email_svc, weekly_digest
+    cfg = weekly_digest.get_config(db)
+    recipients = cfg.get("recipients") or weekly_digest._owner_emails(db)
+    subject, body = weekly_digest.render(db)
+    delivered = sum(1 for to in recipients if _safe_send(email_svc.send, to, subject, body))
+    audit.record(db, action="automation.weekly_digest.send_now", actor_user_id=user.id,
+                 actor_email=user.email, actor_role=user.role.value, target_type="weekly_digest",
+                 ip=_ip(request), detail=f"recipients={len(recipients)} delivered={delivered}")
+    return {"recipients": len(recipients), "delivered": delivered}
+
+
+def _safe_send(send, to, subject, body) -> bool:
+    try:
+        return bool(send(to, subject, body))
+    except Exception:
+        return False
 
 
 # --------------------------------------------------------------------------- #

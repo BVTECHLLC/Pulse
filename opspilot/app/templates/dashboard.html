@@ -1164,6 +1164,27 @@
     </div>
 
     <div class="card" style="margin-bottom:16px">
+      <h3 style="margin-top:0">🗓️ Weekly "State of the Practice" digest <span class="pill" id="wd-pill">on</span></h3>
+      <p class="muted" style="margin:4px 0 10px">One email every week that opens with your practice grade and the week's headline numbers, then everything that needs attention. Sent automatically — no cron to set up. No-op-safe until email (SMTP/M365) is configured.</p>
+      <div class="grid2">
+        <label>Send day
+          <select id="wd-weekday"><option value="0">Monday</option><option value="1">Tuesday</option><option value="2">Wednesday</option><option value="3">Thursday</option><option value="4">Friday</option><option value="5">Saturday</option><option value="6">Sunday</option></select>
+        </label>
+        <label>Send after (hour, UTC)<input id="wd-hour" type="number" min="0" max="23" value="7"></label>
+      </div>
+      <label style="margin-top:8px;display:block">Recipients <span class="muted" style="font-weight:normal">(comma-separated; blank = all owners)</span><input id="wd-recipients" placeholder="you@bvtech.org"></label>
+      <div class="muted" id="wd-effective" style="font-size:12px;margin-top:6px"></div>
+      <div class="flex" style="margin-top:8px;align-items:center;gap:14px">
+        <label style="display:flex;align-items:center;gap:6px;font-weight:normal"><input type="checkbox" id="wd-enabled" style="width:auto"> Send weekly digest</label>
+        <button class="btn sm" onclick="saveWeeklyDigest()">Save</button>
+        <button class="btn sm ghost" onclick="previewWeeklyDigest()">Preview</button>
+        <button class="btn sm ghost" onclick="sendWeeklyDigestNow()">Send now</button>
+        <span class="muted" id="wd-msg" style="font-size:12px"></span>
+      </div>
+      <pre id="wd-preview" class="hidden" style="white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px;font-size:12px;max-height:320px;overflow:auto"></pre>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
       <h3>🔐 Single Sign-On (login with Microsoft / Google) <span class="pill" id="set-sso-pill">not configured</span></h3>
       <p class="muted" style="margin:4px 0 10px">Turn on "Sign in with Microsoft/Google" on the Pulse login page. Add the redirect URI below to your Microsoft (Entra) and/or Google OAuth app. <b>Microsoft can reuse your M365 mailbox app</b> — just add the redirect URI + delegated <code>openid email profile User.Read</code> permissions to it.</p>
       <div class="grid2">
@@ -3225,6 +3246,36 @@ async function loadIncidents(){
       <span class="muted" style="font-size:12px">${esc(i.status)}</span>${btn}</div>`;
   }).join('');
 }
+async function loadWeeklyDigest(){
+  const cfg=await api('/api/automation/weekly-digest'); if(!cfg)return;
+  const en=document.getElementById('wd-enabled'); if(en)en.checked=!!cfg.enabled;
+  const wd=document.getElementById('wd-weekday'); if(wd)wd.value=String(cfg.weekday);
+  const hr=document.getElementById('wd-hour'); if(hr)hr.value=cfg.hour;
+  const rc=document.getElementById('wd-recipients'); if(rc)rc.value=(cfg.recipients||[]).join(', ');
+  const pill=document.getElementById('wd-pill'); if(pill){pill.textContent=cfg.enabled?'on':'off';pill.className='pill'+(cfg.enabled?' ok':'');}
+  const eff=document.getElementById('wd-effective');
+  if(eff)eff.textContent='Currently sends to: '+((cfg.effective_recipients||[]).join(', ')||'(no owner email on file)');
+}
+async function saveWeeklyDigest(){
+  const msg=document.getElementById('wd-msg'); msg.textContent='saving…';
+  const r=await put('/api/automation/weekly-digest',{enabled:document.getElementById('wd-enabled').checked,
+    weekday:parseInt(val('wd-weekday'),10),hour:parseInt(val('wd-hour'),10),recipients:val('wd-recipients')});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Saved ✓';await loadWeeklyDigest();}
+  else msg.textContent=j.detail||'Only an owner can change this.';
+}
+async function previewWeeklyDigest(){
+  const msg=document.getElementById('wd-msg'); msg.textContent='rendering…';
+  const j=await api('/api/automation/weekly-digest/preview'); const box=document.getElementById('wd-preview');
+  if(j){box.textContent='Subject: '+j.subject+'\n\n'+j.body;box.classList.remove('hidden');msg.textContent='';}
+  else msg.textContent='Preview failed';
+}
+async function sendWeeklyDigestNow(){
+  const msg=document.getElementById('wd-msg'); msg.textContent='sending…';
+  const r=await post('/api/automation/weekly-digest/send-now'); const j=await r.json().catch(()=>({}));
+  if(r.ok)msg.textContent=`Sent to ${j.recipients} recipient(s) (${j.delivered} delivered)`;
+  else msg.textContent=j.detail||'Send failed';
+}
 async function saveGbp(){
   const msg=document.getElementById('set-gbp-msg'); msg.textContent='saving…';
   const r=await put('/api/gbp/settings',{client_id:val('set-gbp-cid'),client_secret:val('set-gbp-secret'),
@@ -3783,6 +3834,7 @@ async function loadSettings(){
   await loadPayMethods();
   await loadBranding();
   await loadStatusPage();
+  await loadWeeklyDigest();
   const hs=await api('/api/hubspot/settings'); if(hs)setPill('set-hs-pill',hs.configured);
   const gb=await api('/api/gbp/settings');
   if(gb){setPill('set-gbp-pill',gb.configured);
