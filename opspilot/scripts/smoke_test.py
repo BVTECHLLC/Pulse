@@ -921,6 +921,21 @@ def main():
         assert c.post("/api/ai/ask", json={"question":"x"}).status_code==503
         print("AI copilot: ask + draft + ticket-reply + graceful-unconfigured + RBAC OK")
 
+        # ===================== v0.75: white-label branding =====================
+        b0=c.get("/api/branding").json()   # public, safe defaults
+        assert b0["company"] and b0["accent"].startswith("#") and "app_name" in b0, b0
+        # Owner rebrands; invalid color is ignored (keeps the CSS safe).
+        bs=c.put("/api/branding", json={"company":"Acme MSP","product":"Shield","accent":"not-a-color","tagline":"IT done right"})
+        assert bs.status_code==200 and bs.json()["company"]=="Acme MSP" and bs.json()["accent"]=="#6c5ce7", bs.text
+        bs2=c.put("/api/branding", json={"accent":"#ff8800"}).json()
+        assert bs2["accent"]=="#ff8800" and bs2["app_name"]=="Acme MSP Shield", bs2
+        # Public read needs no auth (the login page uses it) and shows the brand.
+        anon=TestClient(app); anon.cookies.clear()
+        assert anon.get("/api/branding").json()["company"]=="Acme MSP"
+        # RBAC: a client user cannot change branding (owner-only).
+        assert ca_c.put("/api/branding", json={"company":"Hacked"}).status_code==403
+        print("white-label branding: public read + owner rebrand + color guard + RBAC OK")
+
         # ===================== v0.60: power dialer + call coaching =====================
         from app.services import power_dialer as _pd
         _orig_caller = _pd.CALLER
@@ -1985,7 +2000,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.74 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.75 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
