@@ -2081,7 +2081,53 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.83 SMOKE TEST PASSED ===")
+        # --- v0.84 public branded status page ------------------------------ #
+        pub = TestClient(app); pub.cookies.clear()
+        # disabled by default -> public view is 404 (page existence not leaked)
+        assert pub.get("/api/status/public").status_code == 404
+        assert c.get("/api/status/config").json()["enabled"] is False
+        # owner enables + brands the page
+        cfg = c.put("/api/status/config", json={"enabled": True, "headline": "Service Status",
+                    "intro": "How the systems we manage are doing."}).json()
+        assert cfg["enabled"] is True and cfg["headline"] == "Service Status"
+        # empty page: operational, 100% uptime, no incidents
+        pv = pub.get("/api/status/public"); assert pv.status_code == 200, pv.text
+        pj = pv.json()
+        assert pj["overall"] == "operational" and pj["uptime_90d"] == 100.0
+        assert pj["active_incidents"] == [] and pj["brand"]["company"]
+        # validation on create
+        assert c.post("/api/status/incidents", json={"title": "x", "impact": "boom"}).status_code == 400
+        assert c.post("/api/status/incidents", json={"title": "x", "status": "nope"}).status_code == 400
+        # post a MAJOR incident -> banner escalates to partial outage, it shows publicly
+        inc_id = c.post("/api/status/incidents", json={"title": "Email delivery delays",
+                        "impact": "major", "status": "investigating",
+                        "body": "We're seeing delayed mail flow."}).json()["id"]
+        pj = pub.get("/api/status/public").json()
+        assert pj["overall"] == "partial_outage", pj["overall"]
+        assert len(pj["active_incidents"]) == 1
+        assert pj["active_incidents"][0]["title"] == "Email delivery delays"
+        # public payload must not leak internal fields
+        assert "created_by_user_id" not in pj["active_incidents"][0]
+        # advance to monitoring, then resolve -> drops out of active, into history, uptime recovers to 100%
+        assert c.patch(f"/api/status/incidents/{inc_id}", json={"status": "monitoring",
+                       "body": "Fix deploying."}).json()["status"] == "monitoring"
+        rr = c.patch(f"/api/status/incidents/{inc_id}", json={"status": "resolved"}).json()
+        assert rr["resolved"] is True
+        pj = pub.get("/api/status/public").json()
+        assert pj["overall"] == "operational" and pj["active_incidents"] == []
+        assert any(i["id"] == inc_id and i["resolved"] for i in pj["recent_incidents"])
+        # a same-instant open->resolved window is ~0 downtime, so uptime stays effectively 100%
+        assert pj["uptime_90d"] >= 99.9, pj["uptime_90d"]
+        # staff can list incidents (incl. resolved); the public HTML shell renders
+        assert len(c.get("/api/status/incidents").json()["incidents"]) >= 1
+        assert pub.get("/status").status_code == 200
+        # RBAC: client-admin cannot manage config or incidents
+        assert ca_c.get("/api/status/config").status_code == 403
+        assert ca_c.put("/api/status/config", json={"enabled": False}).status_code == 403
+        assert ca_c.post("/api/status/incidents", json={"title": "hax", "impact": "minor"}).status_code == 403
+        print("public status page: enable+brand + incident lifecycle + uptime + no-leak + RBAC OK")
+
+    print("\n=== OpsPilot v0.84 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

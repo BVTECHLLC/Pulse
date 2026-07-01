@@ -1139,6 +1139,31 @@
     </div>
 
     <div class="card" style="margin-bottom:16px">
+      <h3 style="margin-top:0">📣 Public Status Page <span class="pill" id="sp-pill">off</span></h3>
+      <p class="muted" style="margin:4px 0 10px">A branded, shareable uptime &amp; incident page for your clients — like Statuspage, but native and white-labelled. Turn it on, then post incidents so clients can follow along at <a id="sp-link" href="/status" target="_blank">/status</a>.</p>
+      <div class="grid2">
+        <label>Headline<input id="sp-headline" placeholder="Service Status"></label>
+        <label>Intro line<input id="sp-intro" placeholder="Live status of the systems we manage for you."></label>
+      </div>
+      <div class="flex" style="margin-top:8px;align-items:center;gap:14px">
+        <label style="display:flex;align-items:center;gap:6px;font-weight:normal"><input type="checkbox" id="sp-enabled" style="width:auto"> Make page public</label>
+        <button class="btn sm" onclick="saveStatusCfg()">Save</button>
+        <span class="muted" id="sp-msg" style="font-size:12px"></span>
+      </div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:14px 0">
+      <b style="font-size:13px">Post an incident</b>
+      <div class="grid2" style="margin-top:8px">
+        <label>Title<input id="sp-i-title" placeholder="Email delivery delays"></label>
+        <label>Impact
+          <select id="sp-i-impact"><option value="minor">Minor</option><option value="major">Major</option><option value="critical">Critical</option><option value="none">Informational</option></select>
+        </label>
+      </div>
+      <label style="margin-top:8px;display:block">Update / details<textarea id="sp-i-body" rows="2" placeholder="What's happening and what you're doing about it."></textarea></label>
+      <div class="flex" style="margin-top:8px"><button class="btn sm" onclick="createIncident()">Post incident</button></div>
+      <div id="sp-incidents" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
       <h3>🔐 Single Sign-On (login with Microsoft / Google) <span class="pill" id="set-sso-pill">not configured</span></h3>
       <p class="muted" style="margin:4px 0 10px">Turn on "Sign in with Microsoft/Google" on the Pulse login page. Add the redirect URI below to your Microsoft (Entra) and/or Google OAuth app. <b>Microsoft can reuse your M365 mailbox app</b> — just add the redirect URI + delegated <code>openid email profile User.Read</code> permissions to it.</p>
       <div class="grid2">
@@ -3159,6 +3184,47 @@ async function saveBranding(){
   if(r.ok){msg.textContent='Saved ✓ — refreshing…';setTimeout(()=>location.reload(),700);}
   else{const j=await r.json().catch(()=>({}));msg.textContent=j.detail||'Only an owner can change branding.';}
 }
+async function loadStatusPage(){
+  const cfg=await api('/api/status/config'); if(!cfg)return;
+  const set=(id,v)=>{const e=document.getElementById(id); if(e&&v!=null)e.value=v;};
+  set('sp-headline',cfg.headline); set('sp-intro',cfg.intro);
+  const en=document.getElementById('sp-enabled'); if(en)en.checked=!!cfg.enabled;
+  const pill=document.getElementById('sp-pill'); if(pill){pill.textContent=cfg.enabled?'public':'off';pill.className='pill'+(cfg.enabled?' ok':'');}
+  await loadIncidents();
+}
+async function saveStatusCfg(){
+  const msg=document.getElementById('sp-msg'); msg.textContent='saving…';
+  const r=await put('/api/status/config',{enabled:document.getElementById('sp-enabled').checked,
+    headline:val('sp-headline'),intro:val('sp-intro')});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Saved ✓';const pill=document.getElementById('sp-pill');pill.textContent=j.enabled?'public':'off';pill.className='pill'+(j.enabled?' ok':'');}
+  else msg.textContent=j.detail||'Only an owner can change this.';
+}
+async function createIncident(){
+  const msg=document.getElementById('sp-msg'); const t=val('sp-i-title');
+  if(!t){msg.textContent='Enter a title.';return;}
+  msg.textContent='posting…';
+  const r=await post('/api/status/incidents',{title:t,impact:val('sp-i-impact'),body:val('sp-i-body')||null});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Incident posted ✓';document.getElementById('sp-i-title').value='';document.getElementById('sp-i-body').value='';await loadIncidents();}
+  else msg.textContent=j.detail||'Post failed';
+}
+const _SP_NEXT={investigating:'identified',identified:'monitoring',monitoring:'resolved'};
+async function advanceIncident(id,to){await patch('/api/status/incidents/'+id,{status:to});await loadIncidents();}
+async function loadIncidents(){
+  const box=document.getElementById('sp-incidents'); if(!box)return;
+  const j=await api('/api/status/incidents'); const list=(j&&j.incidents)||[];
+  if(!list.length){box.innerHTML='<div class="muted" style="font-size:12px">No incidents yet.</div>';return;}
+  box.innerHTML=list.map(i=>{
+    const next=_SP_NEXT[i.status];
+    const btn=i.resolved?'<span class="pill ok">resolved</span>':
+      `<button class="btn sm ghost" onclick="advanceIncident(${i.id},'${next}')">→ ${next}</button>`;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line)">
+      <span class="pill">${esc(i.impact)}</span>
+      <b style="flex:1">${esc(i.title)}</b>
+      <span class="muted" style="font-size:12px">${esc(i.status)}</span>${btn}</div>`;
+  }).join('');
+}
 async function saveGbp(){
   const msg=document.getElementById('set-gbp-msg'); msg.textContent='saving…';
   const r=await put('/api/gbp/settings',{client_id:val('set-gbp-cid'),client_secret:val('set-gbp-secret'),
@@ -3716,6 +3782,7 @@ async function loadSettings(){
     document.getElementById('set-sp-webhook-url').value=location.origin+'/api/payments/webhook';}
   await loadPayMethods();
   await loadBranding();
+  await loadStatusPage();
   const hs=await api('/api/hubspot/settings'); if(hs)setPill('set-hs-pill',hs.configured);
   const gb=await api('/api/gbp/settings');
   if(gb){setPill('set-gbp-pill',gb.configured);
