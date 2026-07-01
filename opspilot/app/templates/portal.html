@@ -152,7 +152,25 @@ async function openTicket(id){
       `<div class="comment"><div class="meta">${esc(c.author_email)} · ${ago(c.created_at)}</div>${esc(c.body)}</div>`).join('')
       ||'<p style="color:var(--muted)">No replies yet — we\\'ll respond here.</p>'}</div>
     <label>Add a reply</label><input id="td-reply" placeholder="Add more detail or a follow-up…">
-    <button class="btn" style="margin-top:10px" onclick="sendReply(${t.id})">Send reply</button>`;
+    <button class="btn" style="margin-top:10px" onclick="sendReply(${t.id})">Send reply</button>
+    ${csatBlock(t)}`;
+}
+function csatBlock(t){
+  const resolved=(t.status==='resolved'||t.status==='closed');
+  if(!resolved) return '';
+  if(t.csat_rating) return `<div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">
+    <span class="muted">Thanks for your feedback: ${t.csat_rating===1?'👍':'👎'}</span></div>`;
+  return `<div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">
+    <b>How did we do?</b>
+    <div class="flex" style="gap:8px;margin-top:6px">
+      <button class="btn sm" onclick="rateTicket(${t.id},1)">👍 Great</button>
+      <button class="btn sm ghost" onclick="rateTicket(${t.id},-1)">👎 Not great</button>
+    </div></div>`;
+}
+async function rateTicket(id,rating){
+  const comment=rating===-1?prompt('Sorry! What went wrong? (optional)')||'':'';
+  await post(`/api/tickets/${id}/rate`,{rating,comment});
+  await loadTickets(); openTicket(id);
 }
 async function sendReply(id){
   const body=document.getElementById('td-reply').value.trim();if(!body)return;

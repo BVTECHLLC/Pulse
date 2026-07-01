@@ -954,6 +954,27 @@ def main():
         assert ca_c.get("/api/practice/health").status_code==403   # staff-only
         print("MSP Practice Health: graded domains + recommendations + RBAC OK")
 
+        # ===================== v0.78: ticket CSAT =====================
+        # A client files a ticket, staff resolves it, the client rates it.
+        _ct=ca_c.post("/api/tickets", json={"subject":"CSAT test","body":"help","priority":"normal"}).json()["id"]
+        # Can't rate before it's resolved.
+        assert ca_c.post(f"/api/tickets/{_ct}/rate", json={"rating":1}).status_code==409
+        c.patch(f"/api/tickets/{_ct}", json={"status":"resolved"})
+        assert ca_c.post(f"/api/tickets/{_ct}/rate", json={"rating":5}).status_code==400   # invalid rating
+        rr=ca_c.post(f"/api/tickets/{_ct}/rate", json={"rating":1,"comment":"Fast + friendly"})
+        assert rr.status_code==200 and rr.json()["csat_rating"]==1, rr.text
+        assert [t for t in ca_c.get("/api/tickets").json() if t["id"]==_ct][0]["csat_rating"]==1
+        # A second, unhappy rating on another resolved ticket.
+        _ct2=ca_c.post("/api/tickets", json={"subject":"CSAT test 2","priority":"low"}).json()["id"]
+        c.patch(f"/api/tickets/{_ct2}", json={"status":"resolved"})
+        ca_c.post(f"/api/tickets/{_ct2}/rate", json={"rating":-1,"comment":"Too slow"})
+        # Staff CSAT rollup reflects both; a client can't see the practice rollup.
+        cs=c.get("/api/tickets/csat/summary").json()
+        assert cs["rated"]>=2 and cs["satisfied"]>=1 and cs["unsatisfied"]>=1 and cs["csat_pct"] is not None, cs
+        assert any(n["id"]==_ct2 for n in cs["recent_negative"]), cs
+        assert ca_c.get("/api/tickets/csat/summary").status_code==403   # staff-only rollup
+        print("ticket CSAT: rate-after-resolve + rollup + recent-negative + RBAC OK")
+
         # ===================== v0.60: power dialer + call coaching =====================
         from app.services import power_dialer as _pd
         _orig_caller = _pd.CALLER
@@ -2018,7 +2039,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.77 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.78 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

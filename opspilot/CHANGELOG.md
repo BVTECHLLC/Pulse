@@ -1,5 +1,20 @@
 # BVTech OpsPilot — Changelog
 
+## v0.78.0 — CSAT: client satisfaction after every ticket (July 2026)
+- **Close the feedback loop.** When a request is resolved, the client gets a
+  one-tap **👍/👎 (+ optional comment)** right in the portal. `POST
+  /api/tickets/{id}/rate` (client, own ticket, resolved-only).
+- **A number HQ can benchmark.** `GET /api/tickets/csat/summary` (staff) rolls up
+  **satisfaction %** across the practice (or one client) with the **recent
+  negatives** surfaced for follow-up; the score shows on the **MSP Practice
+  Health** card. Franchise HQ compares CSAT across locations; established MSPs
+  prove their value; solos catch unhappy clients early.
+- `support_tickets.csat_rating/comment/at` (migration `d0e1f2a3b4c6` + startup
+  self-heal); portal rating prompt on resolved tickets.
+- Verified offline (smoke): can't rate before resolve; invalid ratings rejected;
+  a 👍 and a 👎 roll into the satisfaction % with the negative surfaced; the
+  rollup is staff-only (RBAC). Migration up/down/up clean.
+
 ## v0.77.0 — AI "explain this alert" — senior-tech guidance on tap (July 2026)
 - **One ✨ click on any alert** and Claude explains, in plain English, what it
   likely means, the top likely causes, and **step-by-step fix actions**
