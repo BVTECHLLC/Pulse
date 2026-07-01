@@ -1100,6 +1100,21 @@
     </div>
 
     <div class="card" style="margin-bottom:16px">
+      <h3 style="margin-top:0">🎨 Branding / White-label</h3>
+      <p class="muted" style="margin:4px 0 10px">Make the portal yours — this name, logo &amp; color apply everywhere (login, dashboard, client portal). Perfect for reselling under your own brand.</p>
+      <div class="grid2">
+        <label>Company name<input id="br-company" placeholder="BVTech"></label>
+        <label>Product name<input id="br-product" placeholder="OpsPilot"></label>
+        <label>Logo URL (public https)<input id="br-logo" placeholder="https://.../logo.svg"></label>
+        <label>Accent color<input id="br-accent" type="color" value="#6c5ce7" style="height:42px;padding:4px"></label>
+        <label>Support email<input id="br-support" placeholder="help@bvtech.org"></label>
+        <label>Tagline<input id="br-tagline" placeholder="Managed IT &amp; Security"></label>
+      </div>
+      <div class="flex" style="margin-top:8px"><button class="btn sm" onclick="saveBranding()">Save branding</button>
+        <span class="muted" id="br-msg" style="font-size:12px"></span></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
       <h3>🔐 Single Sign-On (login with Microsoft / Google) <span class="pill" id="set-sso-pill">not configured</span></h3>
       <p class="muted" style="margin:4px 0 10px">Turn on "Sign in with Microsoft/Google" on the Pulse login page. Add the redirect URI below to your Microsoft (Entra) and/or Google OAuth app. <b>Microsoft can reuse your M365 mailbox app</b> — just add the redirect URI + delegated <code>openid email profile User.Read</code> permissions to it.</p>
       <div class="grid2">
@@ -2963,6 +2978,19 @@ async function testHubspot(){
   const r=await post('/api/hubspot/test'); const j=await r.json().catch(()=>({}));
   msg.textContent=r.ok?'Connected ✓':(j.detail||'Test failed');
 }
+async function loadBranding(){
+  const b=await api('/api/branding'); if(!b)return;
+  const set=(id,v)=>{const e=document.getElementById(id); if(e&&v!=null)e.value=v;};
+  set('br-company',b.company); set('br-product',b.product); set('br-logo',b.logo_url);
+  set('br-accent',b.accent); set('br-support',b.support_email); set('br-tagline',b.tagline);
+}
+async function saveBranding(){
+  const msg=document.getElementById('br-msg'); msg.textContent='saving…';
+  const r=await put('/api/branding',{company:val('br-company'),product:val('br-product'),
+    logo_url:val('br-logo'),accent:val('br-accent'),support_email:val('br-support'),tagline:val('br-tagline')});
+  if(r.ok){msg.textContent='Saved ✓ — refreshing…';setTimeout(()=>location.reload(),700);}
+  else{const j=await r.json().catch(()=>({}));msg.textContent=j.detail||'Only an owner can change branding.';}
+}
 async function saveGbp(){
   const msg=document.getElementById('set-gbp-msg'); msg.textContent='saving…';
   const r=await put('/api/gbp/settings',{client_id:val('set-gbp-cid'),client_secret:val('set-gbp-secret'),
@@ -3519,6 +3547,7 @@ async function loadSettings(){
   if(sp){setPill('set-sp-pill',sp.configured);
     document.getElementById('set-sp-webhook-url').value=location.origin+'/api/payments/webhook';}
   await loadPayMethods();
+  await loadBranding();
   const hs=await api('/api/hubspot/settings'); if(hs)setPill('set-hs-pill',hs.configured);
   const gb=await api('/api/gbp/settings');
   if(gb){setPill('set-gbp-pill',gb.configured);
@@ -3651,5 +3680,6 @@ async function load(){
 }
 load();
 </script>
+<script src="/static/js/brand.js"></script>
 </body>
 </html>

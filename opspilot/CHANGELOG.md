@@ -1,5 +1,19 @@
 # BVTech OpsPilot — Changelog
 
+## v0.75.0 — White-label branding (resell it as your own) (July 2026)
+- **Make the whole portal yours.** A new **🎨 Branding / White-label** card
+  (Settings, owner-only) sets the **company + product name, logo, accent color,
+  support email, and tagline** — applied **everywhere**: the login page, the
+  staff dashboard, and the client portal (title, lockup, logo, accent). The
+  foundation for reselling OpsPilot under another MSP's brand.
+- `services/branding.py` + `GET /api/branding` (**public** — the login page needs
+  it, so it returns display-only values, no secrets) + `PUT /api/branding`
+  (owner). A shared `static/js/brand.js` applies the brand on every page; invalid
+  colors are rejected so the CSS can't break. No schema change.
+- Verified offline (smoke): safe public defaults; an owner rebrand shows through
+  the public endpoint (even unauthenticated); a bad color is ignored; a client
+  user can't change branding (RBAC).
+
 ## v0.74.0 — Claude, baked in: the "Ask Pulse" AI copilot (July 2026)
 - **A floating ✨ Ask Pulse copilot on every dashboard page.** Ask in plain
   English — "who's overdue?", "how's security looking?", "write a LinkedIn post
