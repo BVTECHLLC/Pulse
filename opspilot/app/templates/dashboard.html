@@ -1347,6 +1347,24 @@
     <tbody id="t-audit"></tbody></table></div></section>
 </div>
 
+<!-- 🚀 First-run setup wizard -->
+<div id="wizard" class="hidden" style="position:fixed;inset:0;z-index:75;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeWizard()">
+  <div style="width:600px;max-width:96vw;max-height:88vh;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.6)">
+    <div style="padding:20px 22px;background:linear-gradient(135deg,rgba(108,92,231,.16),rgba(59,130,246,.08));border-bottom:1px solid var(--line)">
+      <h2 style="margin:0">👋 Welcome — let's get you live</h2>
+      <p class="muted" style="margin:6px 0 0">A few quick steps to a fully working MSP portal. Do them in any order; this closes when you're set up.</p>
+      <div style="background:var(--line);border-radius:8px;height:8px;overflow:hidden;margin-top:12px">
+        <div id="wiz-bar" style="height:8px;width:0;background:var(--ok,#22c55e);transition:width .3s"></div></div>
+      <div class="muted" id="wiz-count" style="font-size:12px;margin-top:6px">—</div>
+    </div>
+    <div id="wiz-steps" style="padding:12px 18px"></div>
+    <div class="flex" style="justify-content:space-between;padding:12px 18px;border-top:1px solid var(--line)">
+      <button class="btn sm ghost" onclick="dismissWizard()">Don't show again</button>
+      <button class="btn sm" onclick="closeWizard()">I'll finish later</button>
+    </div>
+  </div>
+</div>
+
 <!-- ⌘K command palette -->
 <div id="cmdk" class="hidden" style="position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;padding-top:12vh" onclick="if(event.target===this)closeCmdk()">
   <div style="width:560px;max-width:94vw;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.6);overflow:hidden">
@@ -1479,6 +1497,7 @@ function cmdkCommands(){
   cmds.push({label:'Run automation checks now',hint:'action',run:async()=>{closeCmdk();await post('/api/automation/run-checks');if(typeof loadAlerts==='function')loadAlerts();}});
   cmds.push({label:'Generate social posts',hint:'marketing',run:()=>{tab('content');}});
   cmds.push({label:'MSP Practice Health',hint:'report',run:()=>{tab('overview');}});
+  cmds.push({label:'Open setup guide',hint:'onboarding',run:()=>{closeCmdk();openWizard(true);}});
   cmds.push({label:'Sign out',hint:'account',run:()=>logout()});
   return cmds;
 }
@@ -2272,6 +2291,28 @@ async function loadRecentTime(){
 
 // ---- Live command-center overview ----
 let OV_TIMER=null;
+// ---- 🚀 First-run setup wizard ----
+async function openWizard(force){
+  const s=await api('/api/setup/status'); if(!s)return;
+  if(!force){
+    if(localStorage.getItem('wizardDismissed')==='1') return;
+    if(s.done>=s.total-1) return;   // basically set up — don't nag
+  }
+  document.getElementById('wiz-bar').style.width=s.pct+'%';
+  document.getElementById('wiz-count').textContent=`${s.done} of ${s.total} steps done`;
+  document.getElementById('wiz-steps').innerHTML=s.items.map(i=>
+    `<div class="flex" style="justify-content:space-between;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px">
+      <div class="flex" style="gap:9px;align-items:center">
+        <span style="font-size:16px">${i.done?'✅':'⬜'}</span>
+        <div><div style="${i.done?'color:var(--muted);text-decoration:line-through':'font-weight:600'}">${esc(i.label)}</div>
+          ${i.done?'':`<div class="muted" style="font-size:11px">${esc(i.hint)}</div>`}</div>
+      </div>
+      ${i.done?'':`<button class="btn sm" onclick="wizGo('${i.tab}')">Go →</button>`}</div>`).join('');
+  document.getElementById('wizard').classList.remove('hidden');
+}
+function wizGo(tabName){closeWizard();tab(tabName);}
+function closeWizard(){document.getElementById('wizard').classList.add('hidden');}
+function dismissWizard(){localStorage.setItem('wizardDismissed','1');closeWizard();}
 async function loadSetup(){
   const s=await api('/api/setup/status'); if(!s)return;
   const card=document.getElementById('setup-card');
@@ -3773,6 +3814,7 @@ async function load(){
   await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
     loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations(),loadProjects(),loadOverview(),loadTime(),loadAssets(),loadActionCenter(),loadClientHealth(),loadMaint(),loadSlaPerf()]);
   toggleOvAuto();   // start the command-center live refresh
+  openWizard(false);   // first-run guided setup (auto-hides once configured / dismissed)
 }
 load();
 </script>
