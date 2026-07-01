@@ -41,9 +41,11 @@ def list_clients(db: Session = Depends(get_db), user: User = Depends(current_use
     q = db.query(Client)
     if not is_staff(user):
         q = q.filter(Client.id == user.client_id)
+    staff = is_staff(user)
     return [
         {"id": c.id, "name": c.name, "primary_contact": c.primary_contact,
-         "email": c.email, "phone": c.phone, "is_active": c.is_active}
+         "email": c.email, "phone": c.phone, "is_active": c.is_active,
+         **({"sso_domains": c.sso_domains or []} if staff else {})}
         for c in q.order_by(Client.name).all()
     ]
 
@@ -66,6 +68,7 @@ class OnboardIn(BaseModel):
     contact_name: str | None = None
     phone: str | None = None
     site_address: str | None = None
+    sso_domains: list[str] | str | None = None   # authorize zero-touch SSO (v0.91)
 
 
 @router.post("/clients/onboard", status_code=201)
@@ -76,7 +79,7 @@ def onboard_client(body: OnboardIn, request: Request, db: Session = Depends(get_
     token — so a new client (or a new franchise location's client) is fully set up
     in a single step, the same way every time."""
     from ...core.security import hash_password, random_token, mint_enrollment_token
-    from ...services import email as email_svc
+    from ...services import email as email_svc, sso_provision
 
     email_l = (body.contact_email or "").strip().lower()
     if "@" not in email_l:
@@ -84,8 +87,14 @@ def onboard_client(body: OnboardIn, request: Request, db: Session = Depends(get_
     if db.query(User).filter(User.email == email_l).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "That email already has a login.")
 
+    # Authorize zero-touch SSO for the contact's own domain by default (unless it's
+    # a free mailbox), plus anything explicitly passed. So a client's team can sign
+    # in themselves from day one.
+    domains = sso_provision.normalize_domains(body.sso_domains) if body.sso_domains is not None \
+        else sso_provision.normalize_domains(email_l.rsplit("@", 1)[-1])
+
     c = Client(name=body.name[:200], primary_contact=body.contact_name, email=email_l,
-               phone=body.phone, site_address=body.site_address)
+               phone=body.phone, site_address=body.site_address, sso_domains=domains)
     db.add(c)
     db.flush()
 
@@ -106,7 +115,39 @@ def onboard_client(body: OnboardIn, request: Request, db: Session = Depends(get_
                  actor_role=user.role.value, target_type="client", target_id=str(c.id),
                  client_id=c.id, ip=_ip(request), detail=f"onboarded {c.name}")
     return {"client_id": c.id, "portal_user": email_l, "temp_password": temp_pw,
-            "emailed": emailed, "enroll_token": enroll_token}
+            "emailed": emailed, "enroll_token": enroll_token, "sso_domains": domains}
+
+
+class SSODomainsIn(BaseModel):
+    sso_domains: list[str] | str | None = None
+
+
+@router.get("/clients/{client_id}/sso-domains")
+def get_client_sso_domains(client_id: int, db: Session = Depends(get_db),
+                           user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    c = db.get(Client, client_id)
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Client not found")
+    return {"client_id": client_id, "sso_domains": c.sso_domains or []}
+
+
+@router.put("/clients/{client_id}/sso-domains")
+def set_client_sso_domains(client_id: int, body: SSODomainsIn, request: Request,
+                           db: Session = Depends(get_db),
+                           user: User = Depends(require_roles(Role.OWNER))):
+    """Set the email domains authorized to zero-touch-provision read-only logins
+    for this client. Free/public mailbox domains are dropped for safety."""
+    from ...services import sso_provision
+    c = db.get(Client, client_id)
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Client not found")
+    domains = sso_provision.normalize_domains(body.sso_domains)
+    c.sso_domains = domains
+    db.commit()
+    audit.record(db, action="client.sso_domains", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="client", target_id=str(client_id),
+                 client_id=client_id, ip=_ip(request), detail=",".join(domains) or "(cleared)")
+    return {"client_id": client_id, "sso_domains": domains}
 
 
 # --------------------------------------------------------------------------- #

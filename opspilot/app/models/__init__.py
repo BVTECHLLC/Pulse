@@ -42,6 +42,10 @@ class Client(Base):
     phone: Mapped[str | None] = mapped_column(String(50))
     site_address: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+    # Email domains the owner has explicitly authorized for this client. A login
+    # on one of these domains can zero-touch-provision (v0.87) even before anyone
+    # from the client has signed in — no "anchor user" required. (v0.91)
+    sso_domains: Mapped[list] = mapped_column(JSON, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 

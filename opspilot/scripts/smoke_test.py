@@ -1563,6 +1563,40 @@ def main():
         assert ca_c.put("/api/oauth/sso-provisioning", json={"enabled": False}).status_code == 403
         print("Zero-touch SSO provisioning: domain-anchored viewer + staff notify + no-dupe + free-domain/ambiguous/disabled guards + RBAC OK")
 
+        # --- v0.91: explicit per-client SSO domains (provision before any anchor) ---
+        # onboard with explicit domains: normalized, free/pathless ones dropped
+        ob2 = c.post("/api/clients/onboard", json={"name": "Domain Co",
+              "contact_email": "boss@domainco.io",
+              "sso_domains": "DomainCo.io, https://sub-not/, gmail.com"}).json()
+        assert "domainco.io" in ob2["sso_domains"] and "gmail.com" not in ob2["sso_domains"], ob2
+        dc_cid = ob2["client_id"]
+        assert c.get(f"/api/clients/{dc_cid}/sso-domains").json()["sso_domains"] == ob2["sso_domains"]
+        # a brand-new client with NO users: authorize a domain, then it provisions
+        fresh_cid = c.post("/api/clients", json={"name": "Fresh Co"}).json()["id"]
+        put_res = c.put(f"/api/clients/{fresh_cid}/sso-domains",
+                        json={"sso_domains": ["FreshCo.io", "gmail.com"]}).json()
+        assert put_res["sso_domains"] == ["freshco.io"], put_res   # free domain dropped
+        _ddb = _PSL()
+        try:
+            u = _prov.maybe_autoprovision(_ddb, "newperson@freshco.io")
+            assert u and u.role.value == "client_viewer" and u.client_id == fresh_cid, \
+                "explicit-domain provisioning (no anchor user) failed"
+            # ambiguity: two clients both claim a domain -> refuse
+            c.put(f"/api/clients/{dc_cid}/sso-domains", json={"sso_domains": ["shared-x.io"]})
+            c.put(f"/api/clients/{fresh_cid}/sso-domains", json={"sso_domains": ["freshco.io", "shared-x.io"]})
+            assert _prov.maybe_autoprovision(_ddb, "x@shared-x.io") is None, "ambiguous explicit domain must refuse"
+        finally:
+            _ddb.close()
+        # onboard WITHOUT domains -> defaults to the contact's own domain
+        ob3 = c.post("/api/clients/onboard", json={"name": "Default Dom",
+              "contact_email": "lead@defaultdom.io"}).json()
+        assert ob3["sso_domains"] == ["defaultdom.io"], ob3
+        # RBAC: owner writes, staff reads, client-admin gets nothing
+        assert tc.get(f"/api/clients/{dc_cid}/sso-domains").status_code == 200
+        assert tc.put(f"/api/clients/{dc_cid}/sso-domains", json={"sso_domains": ["x.io"]}).status_code == 403
+        assert ca_c.put(f"/api/clients/{dc_cid}/sso-domains", json={"sso_domains": ["x.io"]}).status_code == 403
+        print("Per-client SSO domains: onboard default+explicit + provision-before-anchor + free-domain drop + ambiguity + RBAC OK")
+
         # --- v0.88: Users & Access management (directory + guardrailed actions) ---
         ulist = c.get("/api/users").json()
         assert "users" in ulist and "summary" in ulist and ulist["summary"]["sso_provisioned"] >= 1
@@ -2386,7 +2420,7 @@ def main():
         assert ca_c.post("/api/automation/weekly-digest/send-now").status_code == 403
         print("weekly digest: grade+briefing render + weekday/hour gate + once-per-week + send-now + RBAC OK")
 
-    print("\n=== OpsPilot v0.90 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.91 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

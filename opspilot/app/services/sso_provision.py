@@ -26,7 +26,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..core.security import hash_password, random_token
-from ..models import Role, User
+from ..models import Client, Role, User
 from . import secure_config
 
 PROVIDER = "sso_provisioning"
@@ -67,10 +67,54 @@ def _domain(email: str | None) -> str | None:
     return dom or None
 
 
+def normalize_domains(value) -> list[str]:
+    """Clean a user-supplied domain list/string into lowercased bare domains.
+    Accepts a list or a comma/space/newline-separated string; strips a leading
+    '@' or 'https://' and any path so 'https://Acme.COM/' -> 'acme.com'."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        parts = value.replace("\n", ",").replace(" ", ",").split(",")
+    else:
+        parts = list(value)
+    out: list[str] = []
+    for p in parts:
+        d = str(p or "").strip().lower()
+        if not d:
+            continue
+        d = d.split("://", 1)[-1]        # drop scheme
+        d = d.split("/", 1)[0]           # drop path
+        d = d.lstrip("@").strip(".")
+        if "." in d and d not in out and d not in _FREE_DOMAINS:
+            out.append(d)
+    return out
+
+
+def _explicit_client_ids(db: Session, domain: str) -> set[int]:
+    """Clients that have explicitly authorized this domain in Client.sso_domains."""
+    ids: set[int] = set()
+    # sso_domains is small JSON per row; scan active clients that have any set.
+    for c in db.query(Client).filter(Client.is_active.is_(True)).all():
+        doms = c.sso_domains or []
+        if isinstance(doms, list) and domain in [str(d).strip().lower() for d in doms]:
+            ids.add(c.id)
+    return ids
+
+
 def _anchor_client_id(db: Session, domain: str) -> int | None:
-    """The single onboarded client whose domain this is, proven by an existing
-    active client-scoped user on that exact domain. Returns None if there is no
-    anchor or the domain spans more than one client (ambiguous → refuse)."""
+    """The single client this domain belongs to. Two independent signals:
+      1. an EXPLICIT authorization in Client.sso_domains (owner opted the domain
+         in — works even before anyone from the client has logged in), or
+      2. an existing active client user already on that exact domain (implicit
+         anchor from onboarding).
+    Explicit wins outright when unambiguous. Otherwise we fall back to the
+    implicit anchor. Any ambiguity (the domain maps to >1 client) → refuse."""
+    explicit = _explicit_client_ids(db, domain)
+    if len(explicit) == 1:
+        return next(iter(explicit))
+    if len(explicit) > 1:
+        return None   # two clients both claim the domain — refuse
+
     rows = (db.query(User)
             .filter(User.is_active.is_(True),
                     User.client_id.isnot(None),

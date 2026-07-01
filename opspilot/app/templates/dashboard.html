@@ -258,6 +258,8 @@
         <input id="ob-phone" placeholder="Phone" style="width:130px">
         <button class="btn sm" onclick="onboardClient()">Onboard client</button>
       </div>
+      <input id="ob-domains" placeholder="Authorized SSO domains (comma-separated · blank = use contact's domain)" style="margin-top:8px;width:100%">
+      <div class="muted" style="font-size:11px;margin-top:4px">Anyone with an M365 account on these domains can sign in themselves as a read-only viewer (zero-touch). Free mailbox domains are ignored.</div>
       <div id="ob-result" class="hidden" style="margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(34,197,94,.08)"></div>
       <div class="err" id="ob-msg"></div>
     </div>
@@ -2235,15 +2237,16 @@ async function onboardClient(){
   const name=val('ob-name'), email=val('ob-email');
   if(!name||!email){msg.textContent='Client name and contact email are required.';return;}
   msg.textContent='onboarding…';
-  const r=await post('/api/clients/onboard',{name,contact_email:email,contact_name:val('ob-contact')||null,phone:val('ob-phone')||null});
+  const r=await post('/api/clients/onboard',{name,contact_email:email,contact_name:val('ob-contact')||null,phone:val('ob-phone')||null,sso_domains:val('ob-domains')||null});
   const j=await r.json().catch(()=>({}));
   if(r.ok){
     msg.textContent='';
-    ['ob-name','ob-contact','ob-email','ob-phone'].forEach(i=>document.getElementById(i).value='');
+    ['ob-name','ob-contact','ob-email','ob-phone','ob-domains'].forEach(i=>document.getElementById(i).value='');
     const box=document.getElementById('ob-result'); box.classList.remove('hidden');
     box.innerHTML=`<b>✅ ${esc(name)} is onboarded!</b>
       <div style="font-size:13px;margin-top:6px">Portal login: <b>${esc(j.portal_user)}</b>${j.emailed?' (welcome email sent)':' — <span class="muted">set SMTP to auto-email; share these now:</span>'}</div>
       <div style="font-size:13px">Temp password: <code>${esc(j.temp_password)}</code></div>
+      ${(j.sso_domains&&j.sso_domains.length)?`<div style="font-size:12px;margin-top:4px">🔑 Zero-touch SSO enabled for: <b>${esc(j.sso_domains.join(', '))}</b></div>`:''}
       ${j.enroll_token?`<div style="font-size:12px;margin-top:6px"><a class="btn sm ghost" href="/download/deploy.cmd?token=${encodeURIComponent(j.enroll_token)}">⬇️ Download their agent installer</a></div>`:''}`;
     loadClients&&loadClients();
   } else msg.textContent=j.detail||'Onboarding failed';
