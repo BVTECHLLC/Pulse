@@ -112,6 +112,47 @@ def client_summary(client_id: int, db: Session = Depends(get_db),
     return _build_summary(db, client, datetime.now(timezone.utc))
 
 
+@router.post("/{client_id}/narrative")
+def qbr_narrative(client_id: int, db: Session = Depends(get_db),
+                  user: User = Depends(current_user)):
+    """Claude turns the client's QBR data into a polished, client-ready executive
+    summary you can drop into a review deck or email. Staff, or the client's own
+    users (they can read their own review)."""
+    from ...services import ai
+    client = db.get(Client, client_id)
+    if not client:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Client not found")
+    assert_client_access(user, client_id)
+    if not ai.enabled():
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
+                            "Claude isn't connected yet — add your Anthropic API key on the server.")
+    s = _build_summary(db, client, datetime.now(timezone.utc))
+    p = s.get("posture", {})
+    facts = (
+        f"Client: {client.name}\n"
+        f"Security grade: {p.get('grade')} (score {p.get('score')})\n"
+        f"Devices: {s['devices']['total']} ({s['devices']['need_attention']} need attention), "
+        f"avg health {s['devices']['avg_health']}\n"
+        f"Patch compliance: {s['patch']['compliance_pct']}% ({s['patch']['pending_total']} pending)\n"
+        f"Tickets (period): {s['tickets']['total']} total, {s['tickets']['resolved']} resolved, "
+        f"{s['tickets']['sla_breached']} SLA-breached\n"
+        f"Projects: {s['projects']['active']} active\n"
+        f"Assets: {s['assets']['total']} ({s['assets']['warranty_expiring']} warranties expiring)\n"
+        f"Service hours (90d): {s['service']['hours_90d']}\n"
+        f"Open security findings: {s['security'].get('open_findings')}\n"
+    )
+    system = ("You write concise, positive-but-honest quarterly business review "
+              "(QBR) narratives for an MSP's client. Audience: a non-technical "
+              "business owner. 3-4 short paragraphs: what we did, current health, "
+              "risks/recommendations, and what's next. No fluff, no fabricated numbers.")
+    try:
+        text = ai.complete(system, f"Write the QBR narrative from these facts:\n\n{facts}",
+                           smart=True, max_tokens=900)
+    except ai.AIError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
+    return {"client_id": client_id, "client": client.name, "narrative": text}
+
+
 def summary_csv(s: dict) -> str:
     """Render a summary dict (from _build_summary) as a flat Metric,Value CSV.
     Shared by the export endpoint and the scheduled-report attachment."""

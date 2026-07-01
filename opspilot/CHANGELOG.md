@@ -1,5 +1,18 @@
 # BVTech OpsPilot — Changelog
 
+## v0.82.0 — AI QBR narrative — a client-ready exec summary in one click (July 2026)
+- **✨ QBR narrative** button on the client report: Claude turns the QBR data
+  (security grade, device health, patch compliance, tickets/SLA, projects, assets,
+  service hours, open findings) into a **polished, non-technical executive
+  summary** — what we did, current health, risks/recommendations, what's next —
+  ready to drop into a review deck or email.
+- `POST /api/reports/{id}/narrative` — staff or that client's own users (they can
+  read their own review); uses the heavier model for quality; graceful 503 when
+  Claude isn't connected; 404 for a missing client.
+- Verified offline (smoke): a narrative is produced from the report facts (Claude
+  stubbed), a missing client 404s, and a client can generate their **own** review
+  but not another client's (RBAC).
+
 ## v0.81.0 — First-run setup wizard (dummy-proof onboarding) (July 2026)
 - **A brand-new operator (or franchise location) is walked through setup.** On
   first login, a friendly **🚀 Welcome wizard** appears with a progress bar and

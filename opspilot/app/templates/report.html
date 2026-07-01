@@ -18,9 +18,11 @@
   <div class="noprint flex" style="justify-content:space-between;margin-bottom:12px">
     <a class="lockup" href="/dashboard"><img src="/static/img/mark.svg"><span class="wm"><b>BVTech</b> OpsPilot</span></a>
     <div class="flex"><button class="btn sm" onclick="window.print()">Print / Save PDF</button>
+      <button class="btn sm" onclick="genNarrative()">✨ QBR narrative</button>
       <a class="btn sm ghost" id="csv-link" href="#">Export CSV</a>
       <a class="btn sm ghost" href="/dashboard">Back</a></div>
   </div>
+  <div class="card hidden" id="narrative" style="margin-bottom:12px"></div>
   <div class="card" id="rep">Loading…</div>
   <div class="brand-footer"><span>© BVTech LLC · El Campo, TX</span>
     <span class="scripture">"Whatever you do, work heartily." — Col 3:23</span></div>
@@ -31,6 +33,17 @@ function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;'
 function money(v){return '$'+(v||0).toLocaleString(undefined,{maximumFractionDigits:0});}
 function scoreColor(v){return v>=85?'var(--ok)':(v>=60?'var(--warn)':'var(--bad)');}
 function kpi(label,val,sub,color){return `<div class="card"><h3>${label}</h3><div class="big" style="color:${color||'var(--ink)'}">${val}</div><div class="muted">${sub||''}</div></div>`;}
+async function genNarrative(){
+  const box=document.getElementById('narrative'); box.classList.remove('hidden');
+  box.innerHTML='<p class="muted">✨ Claude is writing your executive summary…</p>';
+  try{
+    const r=await fetch(`/api/reports/${CID}/narrative`,{method:'POST',headers:{'Content-Type':'application/json'}});
+    const j=await r.json().catch(()=>({}));
+    box.innerHTML=r.ok
+      ? `<h3 style="margin-top:0">Executive Summary</h3><div style="white-space:pre-wrap;line-height:1.5">${esc(j.narrative)}</div>`
+      : `<p class="err">${esc(j.detail||'Could not generate — connect Claude on the server.')}</p>`;
+  }catch(e){ box.innerHTML='<p class="err">Something went wrong reaching Claude.</p>'; }
+}
 async function load(){
   const r=await fetch(`/api/reports/${CID}/summary`);
   if(r.status===401){location.href='/';return;}
