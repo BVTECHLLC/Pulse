@@ -924,6 +924,13 @@ def main():
             gai=c.post("/api/autopost/generate", json={"count":3,"use_ai":True,
                        "city":"El Campo, TX","keywords":["managed IT"],"channels":["linkedin"]}).json()
             assert gai["ok"] and gai["created"]==3, gai   # AI stub returns 1, topped up to 3
+            # v0.82: AI QBR narrative for a client (Claude stubbed).
+            nar=c.post(f"/api/reports/{cid}/narrative").json()
+            assert nar["narrative"].startswith("AI:") and nar["client_id"]==cid, nar
+            assert c.post("/api/reports/999999/narrative").status_code==404
+            # A client can generate their OWN review, but not another client's.
+            assert ca_c.post(f"/api/reports/{cid}/narrative").status_code==200
+            assert ca_c.post(f"/api/reports/{_other_cid}/narrative").status_code==403
             # RBAC: clients can't use the copilot.
             assert ca_c.post("/api/ai/ask", json={"question":"x"}).status_code==403
             assert ca_c.get("/api/ai/status").status_code==403
@@ -2050,7 +2057,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.81 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.82 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
