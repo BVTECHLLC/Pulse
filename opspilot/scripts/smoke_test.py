@@ -856,6 +856,27 @@ def main():
         finally:
             _ap._linkedin_poster, _ap._gbp_poster = _o_li, _o_gb
 
+        # ===================== v0.72: guided setup checklist + GBP location picker =====================
+        ss=c.get("/api/setup/status").json()
+        assert "items" in ss and ss["total"]>=8 and "pct" in ss, ss
+        assert any(i["key"]=="gbp" for i in ss["items"]) and all("done" in i and "hint" in i for i in ss["items"])
+        assert ca_c.get("/api/setup/status").status_code==403   # staff-only
+        # GBP location picker: unconfigured is graceful; connected creds + stubbed
+        # Google listing returns pickable locations (no ID typing).
+        assert c.get("/api/gbp/locations").status_code in (200, 503)
+        from app.services import gbp as _gbp
+        c.put("/api/gbp/settings", json={"client_id":"cid","client_secret":"sec","refresh_token":"rt"})
+        _o_ll=_gbp.GBPClient.list_locations
+        _gbp.GBPClient.list_locations=lambda self:[{"account":"accounts/1","location":"locations/2",
+                                                    "title":"BVTech LLC","address":"El Campo, TX"}]
+        try:
+            lj=c.get("/api/gbp/locations").json()
+            assert lj["locations"][0]["location"]=="locations/2" and lj["locations"][0]["title"]=="BVTech LLC", lj
+            assert ca_c.get("/api/gbp/locations").status_code==403
+        finally:
+            _gbp.GBPClient.list_locations=_o_ll
+        print("guided setup checklist + GBP location picker + RBAC OK")
+
         # ===================== v0.60: power dialer + call coaching =====================
         from app.services import power_dialer as _pd
         _orig_caller = _pd.CALLER
@@ -1920,7 +1941,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.71 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.72 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -20,17 +20,32 @@ def _ip(req: Request) -> str:
     return req.headers.get("cf-connecting-ip") or (req.client.host if req.client else "?")
 
 
-def _client(db: Session) -> gbp.GBPClient:
+_CONNECTED = ("client_id", "client_secret", "refresh_token")   # enough to LIST
+
+
+def _client(db: Session, *, require_location: bool = True) -> gbp.GBPClient:
     conn = secure_config.get_platform(db, PROVIDER)
     cfg = (conn.config if conn else None) or {}
-    if not secure_config.configured(cfg, _REQUIRED):
+    need = _REQUIRED if require_location else _CONNECTED
+    if not secure_config.configured(cfg, need):
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
-                            "Google Business Profile not configured — add credentials in Settings.")
+                            "Google Business Profile not connected — add credentials + Connect in Settings.")
     return gbp.GBPClient(
         str(secure_config.get_secret(cfg, "client_id") or cfg.get("client_id")),
         str(secure_config.get_secret(cfg, "client_secret")),
         str(secure_config.get_secret(cfg, "refresh_token")),
-        str(cfg.get("account_name")), str(cfg.get("location_name")))
+        str(cfg.get("account_name") or ""), str(cfg.get("location_name") or ""))
+
+
+@router.get("/locations")
+def locations(db: Session = Depends(get_db),
+              user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """List the connected account's locations so the user picks one (no ID typing)."""
+    client = _client(db, require_location=False)
+    try:
+        return {"locations": client.list_locations()}
+    except gbp.GBPError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
 
 
 class GBPSettingsIn(BaseModel):
