@@ -21,7 +21,7 @@ from .api.routes import (
     time_tracking, assets, action_center, foresight, client_health, content,
     maintenance, analytics, mailbox, publishers, comms, rmm, crm, prospecting,
     campaigns, remote, quickbooks, gbp, hubspot, docs, payments, dialer, posture,
-    remediation, inventory, autopost, setup, ai, branding, practice, status,
+    remediation, inventory, autopost, setup, ai, branding, practice, status, users,
 )
 
 _s = get_settings()
@@ -153,6 +153,7 @@ app.include_router(ai.router)
 app.include_router(branding.router)
 app.include_router(practice.router)
 app.include_router(status.router)
+app.include_router(users.router)
 app.include_router(ui.router)
 
 
@@ -193,6 +194,7 @@ def _reconcile_schema():
         ("invoices", "last_reminded_at", "TIMESTAMP WITH TIME ZONE"),
         ("invoices", "reminder_count", "INTEGER DEFAULT 0"),
         ("social_posts", "image_url", "VARCHAR(800)"),
+        ("users", "provisioned_via", "VARCHAR(20)"),
         ("support_tickets", "csat_rating", "INTEGER"),
         ("support_tickets", "csat_comment", "TEXT"),
         ("support_tickets", "csat_at", "TIMESTAMP WITH TIME ZONE"),

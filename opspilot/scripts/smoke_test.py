@@ -1559,6 +1559,48 @@ def main():
         assert ca_c.put("/api/oauth/sso-provisioning", json={"enabled": False}).status_code == 403
         print("Zero-touch SSO provisioning: domain-anchored viewer + no-dupe + free-domain/ambiguous/disabled guards + RBAC OK")
 
+        # --- v0.88: Users & Access management (directory + guardrailed actions) ---
+        ulist = c.get("/api/users").json()
+        assert "users" in ulist and "summary" in ulist and ulist["summary"]["sso_provisioned"] >= 1
+        by_email = {u["email"]: u for u in ulist["users"]}
+        assert by_email[owner_email]["is_staff"] is True and by_email[owner_email]["role"] == "owner"
+        nh = by_email.get("newhire@zerotouch.io")
+        assert nh and nh["sso_provisioned"] is True and nh["role"] == "client_viewer" \
+            and nh["client_id"] == zt_cid, nh
+        nh_id = nh["id"]
+        tech_id = by_email["tech@bvtech.org"]["id"]
+        # filters: SSO-only returns only self-registered users (incl. newhire)
+        sso_list = c.get("/api/users?sso_only=true").json()["users"]
+        assert sso_list and all(u["sso_provisioned"] for u in sso_list)
+        assert any(u["email"] == "newhire@zerotouch.io" for u in sso_list)
+        # role filter + search
+        assert all(u["role"] == "client_viewer" for u in c.get("/api/users?role=client_viewer").json()["users"])
+        assert any(u["email"] == "newhire@zerotouch.io"
+                   for u in c.get("/api/users?q=newhire").json()["users"])
+        # promote viewer -> admin: clears the SSO self-registered flag
+        pr = c.patch(f"/api/users/{nh_id}/role", json={"role": "client_admin"})
+        assert pr.status_code == 200 and pr.json()["role"] == "client_admin", pr.text
+        assert pr.json()["sso_provisioned"] is False   # promotion = "real" managed account
+        # demote back
+        assert c.patch(f"/api/users/{nh_id}/role", json={"role": "client_viewer"}).json()["role"] == "client_viewer"
+        # guardrails: can't set a staff role, can't touch staff, can't touch self
+        assert c.patch(f"/api/users/{nh_id}/role", json={"role": "tech"}).status_code == 400
+        assert c.patch(f"/api/users/{tech_id}/role", json={"role": "client_viewer"}).status_code == 403
+        assert c.patch(f"/api/users/{tech_id}/active", json={"active": False}).status_code == 403
+        own_id = by_email[owner_email]["id"]
+        assert c.patch(f"/api/users/{own_id}/active", json={"active": False}).status_code == 400  # not yourself
+        # activate/deactivate a client user
+        assert c.patch(f"/api/users/{nh_id}/active", json={"active": False}).json()["is_active"] is False
+        assert c.patch(f"/api/users/{nh_id}/active", json={"active": True}).json()["is_active"] is True
+        # password reset issues a temp password + re-enables
+        rp = c.post(f"/api/users/{nh_id}/reset-password").json()
+        assert rp.get("temp_password") and rp["is_active"] is True
+        # RBAC: staff (tech) can READ, but only OWNER can mutate; clients get nothing
+        assert tc.get("/api/users").status_code == 200
+        assert tc.patch(f"/api/users/{nh_id}/role", json={"role": "client_viewer"}).status_code == 403
+        assert ca_c.get("/api/users").status_code == 403
+        print("Users & Access: directory + summary + filters + promote(clears SSO flag) + active + reset + self/staff guardrails + RBAC OK")
+
         # ===================== v0.24: PSA projects + Kanban =====================
         pj=c.post("/api/projects", json={"client_id":cid,"name":"M365 Migration","budget_hours":40})
         assert pj.status_code==201, pj.text
@@ -2333,7 +2375,7 @@ def main():
         assert ca_c.post("/api/automation/weekly-digest/send-now").status_code == 403
         print("weekly digest: grade+briefing render + weekday/hour gate + once-per-week + send-now + RBAC OK")
 
-    print("\n=== OpsPilot v0.87 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.88 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
