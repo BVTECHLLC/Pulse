@@ -332,6 +332,21 @@ def callback(provider: str, request: Request, response: Response,
                                  actor_email=user.email, actor_role=user.role.value,
                                  client_id=user.client_id, ip=_ip(request),
                                  detail=f"provider={provider} client_id={user.client_id}")
+                    # Tell staff a new person came in the zero-touch door, so they
+                    # can review/promote/deactivate in Users & Access.
+                    try:
+                        from ...models import Client, Notification
+                        from ...services import notifications as _notif
+                        cli = db.get(Client, user.client_id) if user.client_id else None
+                        cname = cli.name if cli else "a client"
+                        msg = (f"New self-service SSO login: {user.email} "
+                               f"(read-only, {cname}). Review in Users & Access.")
+                        db.add(Notification(client_id=None, target_user_id=None,
+                                            kind="access", severity="info", message=msg[:1000]))
+                        db.commit()
+                        _notif.fanout(db, message=msg, severity="info", client_id=None)
+                    except Exception:
+                        pass
                     break
         if not user:
             audit.record(db, action="login.oauth_no_match",

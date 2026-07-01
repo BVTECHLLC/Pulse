@@ -1524,6 +1524,10 @@ def main():
         assert cbj.status_code==302 and cbj.headers["location"]=="/portal", cbj.headers
         me=ocj.get("/api/auth/me").json()
         assert me["email"]=="newhire@zerotouch.io" and me["role"]=="client_viewer", me
+        # staff get an in-app heads-up about the new self-service login
+        notifs=c.get("/api/notifications").json()
+        assert any(n["kind"]=="access" and "newhire@zerotouch.io" in n["message"] for n in notifs), \
+            "expected a staff notification for the new SSO user"
         # the created user is scoped to the anchored client, lowest privilege
         _pdb=_PSL()
         try:
@@ -1557,7 +1561,7 @@ def main():
         # RBAC: only owner toggles; clients can't read or change provisioning
         assert ca_c.get("/api/oauth/sso-provisioning").status_code == 403
         assert ca_c.put("/api/oauth/sso-provisioning", json={"enabled": False}).status_code == 403
-        print("Zero-touch SSO provisioning: domain-anchored viewer + no-dupe + free-domain/ambiguous/disabled guards + RBAC OK")
+        print("Zero-touch SSO provisioning: domain-anchored viewer + staff notify + no-dupe + free-domain/ambiguous/disabled guards + RBAC OK")
 
         # --- v0.88: Users & Access management (directory + guardrailed actions) ---
         ulist = c.get("/api/users").json()
@@ -2382,7 +2386,7 @@ def main():
         assert ca_c.post("/api/automation/weekly-digest/send-now").status_code == 403
         print("weekly digest: grade+briefing render + weekday/hour gate + once-per-week + send-now + RBAC OK")
 
-    print("\n=== OpsPilot v0.89 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.90 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
