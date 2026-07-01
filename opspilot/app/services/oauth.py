@@ -40,20 +40,43 @@ def register_provider(key: str, cfg: dict) -> None:
     _PROVIDERS[key] = cfg
 
 
+def normalize_tenant(tenant: str | None) -> str:
+    """An MSP portal signs people in with their M365 *work/school* accounts.
+    Empty or 'common' would also allow personal Microsoft accounts (the
+    account.live.com path) and lets an address that exists as both silently land
+    on the wrong one — so we coerce those to 'organizations' (any work/school
+    tenant). A specific tenant GUID (or 'consumers') is respected as given."""
+    t = (tenant or "").strip()
+    if not t or t.lower() == "common":
+        return "organizations"
+    return t
+
+
+def _register_microsoft(*, client_id: str, client_secret: str, tenant: str,
+                        login_base: str, graph_base: str) -> None:
+    tenant = normalize_tenant(tenant)
+    base = f"{login_base}/{tenant}/oauth2/v2.0"
+    register_provider("microsoft", {
+        "name": "Microsoft",
+        "authorize_url": f"{base}/authorize",
+        "token_url": f"{base}/token",
+        "userinfo_url": f"{graph_base}/me",
+        "scopes": ["openid", "email", "profile", "User.Read", "offline_access"],
+        "client_id": str(client_id),
+        "client_secret": str(client_secret),
+        "email_fields": ["mail", "userPrincipalName"],
+        # select_account: always show the account picker so a cached personal
+        # login can't hijack the flow — the user explicitly picks their work account.
+        "extra_authorize": {"prompt": "select_account"},
+    })
+
+
 def _seed() -> None:
     s = get_settings()
     if s.ms_oauth_enabled:
-        base = f"{s.M365_LOGIN_BASE}/{s.MS_OAUTH_TENANT}/oauth2/v2.0"
-        register_provider("microsoft", {
-            "name": "Microsoft",
-            "authorize_url": f"{base}/authorize",
-            "token_url": f"{base}/token",
-            "userinfo_url": f"{s.M365_GRAPH_BASE}/me",
-            "scopes": ["openid", "email", "profile", "User.Read", "offline_access"],
-            "client_id": s.M365_CLIENT_ID,
-            "client_secret": s.M365_CLIENT_SECRET,
-            "email_fields": ["mail", "userPrincipalName"],
-        })
+        _register_microsoft(client_id=s.M365_CLIENT_ID, client_secret=s.M365_CLIENT_SECRET,
+                            tenant=s.MS_OAUTH_TENANT, login_base=s.M365_LOGIN_BASE,
+                            graph_base=s.M365_GRAPH_BASE)
     if s.google_oauth_enabled:
         register_provider("google", {
             "name": "Google",
@@ -94,15 +117,8 @@ def sync_vault_providers(db) -> None:
                  or secure_config.get_secret(mbox_cfg, "tenant_id") or mbox_cfg.get("tenant_id")
                  or s.MS_OAUTH_TENANT)
     if ms_id and ms_secret:
-        base = f"{s.M365_LOGIN_BASE}/{ms_tenant}/oauth2/v2.0"
-        register_provider("microsoft", {
-            "name": "Microsoft",
-            "authorize_url": f"{base}/authorize", "token_url": f"{base}/token",
-            "userinfo_url": f"{s.M365_GRAPH_BASE}/me",
-            "scopes": ["openid", "email", "profile", "User.Read", "offline_access"],
-            "client_id": str(ms_id), "client_secret": str(ms_secret),
-            "email_fields": ["mail", "userPrincipalName"],
-        })
+        _register_microsoft(client_id=ms_id, client_secret=ms_secret, tenant=ms_tenant,
+                            login_base=s.M365_LOGIN_BASE, graph_base=s.M365_GRAPH_BASE)
 
     # --- Google ---
     g_id = secure_config.get_secret(sso_cfg, "google_client_id") or sso_cfg.get("google_client_id")
@@ -211,6 +227,63 @@ def fetch_userinfo(provider_key: str, access_token: str) -> dict:
             return json.loads(r.read().decode() or "{}")
     except Exception:
         return {}
+
+
+def decode_id_token_claims(id_token: str | None) -> dict:
+    """Return the claims from an OIDC id_token WITHOUT signature verification.
+
+    This is safe for our use: the id_token is delivered directly by the
+    provider's token endpoint over TLS, in an authenticated server-to-server
+    code exchange (client_id + client_secret) — it never passes through the
+    browser. We only read identity claims (email/upn), never authorize on it
+    alone; the real gate is that the resolved email must match a provisioned
+    Pulse user."""
+    if not id_token or id_token.count(".") < 2:
+        return {}
+    payload = id_token.split(".")[1]
+    payload += "=" * (-len(payload) % 4)   # restore base64 padding
+    try:
+        return json.loads(base64.urlsafe_b64decode(payload.encode()).decode())
+    except Exception:
+        return {}
+
+
+def candidate_emails(provider_key: str, tok: dict, access_token: str | None) -> list[str]:
+    """Every email/UPN this sign-in could reasonably be matched on, best first.
+
+    Pulls from the id_token claims (reliable across work/personal accounts) and
+    then the provider's userinfo endpoint (Graph /me for Microsoft). De-duped,
+    lowercased. Matching against a provisioned user is done case-insensitively by
+    the caller."""
+    out: list[str] = []
+
+    def add(v):
+        if v and isinstance(v, str) and "@" in v:
+            e = v.strip().lower()
+            if e not in out:
+                out.append(e)
+
+    claims = decode_id_token_claims((tok or {}).get("id_token"))
+    for k in ("email", "preferred_username", "upn", "unique_name"):
+        add(claims.get(k))
+
+    if access_token:
+        try:
+            info = fetch_userinfo(provider_key, access_token)
+        except Exception:
+            info = {}
+        p = _PROVIDERS.get(provider_key) or {}
+        for f in p.get("email_fields", ["email"]):
+            add(info.get(f))
+        # personal-account Graph responses sometimes only carry these
+        for f in ("mail", "userPrincipalName", "otherMails"):
+            v = info.get(f)
+            if isinstance(v, list):
+                for item in v:
+                    add(item)
+            else:
+                add(v)
+    return out
 
 
 # --------------------------------------------------------------------------- #

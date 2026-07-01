@@ -1407,6 +1407,94 @@ def main():
         osrv.shutdown()
         print("OAuth connector: encrypted token store + list + RBAC + revoke OK")
 
+        # --- v0.86: Microsoft SSO hardening (work-account tenant + robust match) ---
+        import base64 as _b64, json as _js2
+        # tenant normalization: personal-account-inviting values become work/school
+        assert oauthsvc.normalize_tenant("common") == "organizations"
+        assert oauthsvc.normalize_tenant("") == "organizations"
+        assert oauthsvc.normalize_tenant(None) == "organizations"
+        assert oauthsvc.normalize_tenant("  Common ") == "organizations"
+        assert oauthsvc.normalize_tenant("11112222-3333-4444-5555-666677778888") == \
+            "11112222-3333-4444-5555-666677778888"   # a real tenant GUID is respected
+        # registering Microsoft coerces the tenant + forces the account picker
+        oauthsvc._register_microsoft(client_id="mid", client_secret="msec", tenant="common",
+                                     login_base="https://login.microsoftonline.com",
+                                     graph_base="https://graph.microsoft.com/v1.0")
+        msp = oauthsvc.get_provider("microsoft")
+        assert "/organizations/oauth2/v2.0/authorize" in msp["authorize_url"], msp["authorize_url"]
+        assert msp["extra_authorize"].get("prompt") == "select_account"
+        au = oauthsvc.authorize_url("microsoft", state="s", code_challenge="cc",
+                                    redirect_uri="https://x/cb")
+        assert "prompt=select_account" in au and "code_challenge_method=S256" in au
+        # id_token claims drive the email (reliable across account types), lowercased
+        def _mk_idtok(claims):
+            seg = lambda o: _b64.urlsafe_b64encode(_js2.dumps(o).encode()).decode().rstrip("=")
+            return f"{seg({'alg':'none'})}.{seg(claims)}.sig"
+        cands = oauthsvc.candidate_emails(
+            "microsoft", {"id_token": _mk_idtok({"preferred_username": "Owner@BVTech.ORG"})}, None)
+        assert cands and cands[0] == "owner@bvtech.org", cands
+        # SSO matches a provisioned user case-insensitively even if the IdP returns
+        # the address in a different case than we stored it.
+        class _CaseIdp(BaseHTTPRequestHandler):
+            def _send(self, obj):
+                b=_js2.dumps(obj).encode(); self.send_response(200)
+                self.send_header("Content-Type","application/json")
+                self.send_header("Content-Length",str(len(b))); self.end_headers(); self.wfile.write(b)
+            def do_POST(self):
+                n=int(self.headers.get("content-length",0)); self.rfile.read(n)
+                self._send({"access_token":"AT-9","expires_in":3600,
+                            "id_token":_mk_idtok({"preferred_username":owner_email.upper()})})
+            def do_GET(self): self._send({})
+            def log_message(self,*a): pass
+        csrv=HTTPServer(("127.0.0.1",0),_CaseIdp)
+        threading.Thread(target=csrv.serve_forever,daemon=True).start()
+        cbase=f"http://127.0.0.1:{csrv.server_address[1]}"
+        oauthsvc.register_provider("mockcase", {
+            "name":"MockCase","authorize_url":f"{cbase}/authorize","token_url":f"{cbase}/token",
+            "userinfo_url":f"{cbase}/userinfo","scopes":["openid","email"],
+            "client_id":"cid2","client_secret":"sec2","email_fields":["email"]})
+        oc2=TestClient(app); oc2.cookies.clear()
+        r2=oc2.get("/api/oauth/mockcase/login", follow_redirects=False)
+        st2=_up.parse_qs(_up.urlparse(r2.headers["location"]).query)["state"][0]
+        cb2=oc2.get(f"/api/oauth/mockcase/callback?state={st2}&code=AC", follow_redirects=False)
+        assert cb2.status_code==302 and cb2.headers["location"]=="/dashboard", cb2.headers
+        assert oc2.get("/api/auth/me").json()["email"]==owner_email, "case-insensitive SSO match failed"
+        # an unknown IdP address still never creates/hijacks an account
+        class _NoIdp(_CaseIdp):
+            def do_POST(self):
+                n=int(self.headers.get("content-length",0)); self.rfile.read(n)
+                self._send({"access_token":"AT-0","expires_in":3600,
+                            "id_token":_mk_idtok({"preferred_username":"stranger@nowhere.test"})})
+        nsrv=HTTPServer(("127.0.0.1",0),_NoIdp)
+        threading.Thread(target=nsrv.serve_forever,daemon=True).start()
+        nbase=f"http://127.0.0.1:{nsrv.server_address[1]}"
+        oauthsvc.register_provider("mocknone", {
+            "name":"MockNone","authorize_url":f"{nbase}/authorize","token_url":f"{nbase}/token",
+            "userinfo_url":f"{nbase}/userinfo","scopes":["openid"],
+            "client_id":"c3","client_secret":"s3","email_fields":["email"]})
+        oc3=TestClient(app); oc3.cookies.clear()
+        r3=oc3.get("/api/oauth/mocknone/login", follow_redirects=False)
+        st3=_up.parse_qs(_up.urlparse(r3.headers["location"]).query)["state"][0]
+        cb3=oc3.get(f"/api/oauth/mocknone/callback?state={st3}&code=AC", follow_redirects=False)
+        assert cb3.status_code==302 and "oauth_error=no_account" in cb3.headers["location"], cb3.headers
+        assert not oc3.cookies.get("access_token"), "unmatched SSO must not open a session"
+        csrv.shutdown(); nsrv.shutdown()
+        # the settings API advertises the effective (healed) tenant to the UI:
+        # nothing saved a tenant, so it resolves to work/school 'organizations'.
+        assert c.get("/api/oauth/sso-settings").json()["ms_tenant_effective"] == "organizations"
+        # SSO self-diagnostics surface the last failed attempt + a fixable checklist
+        diag = c.get("/api/oauth/sso-diagnostics").json()
+        assert diag["microsoft"]["effective_tenant"] == "organizations"
+        assert diag["microsoft"]["work_accounts_only"] is True
+        assert diag["microsoft"]["redirect_uri"].endswith("/api/oauth/microsoft/callback")
+        assert any(x["label"].startswith("Your own email") and x["ok"] is True
+                   for x in diag["microsoft"]["checklist"])   # owner maps to a login
+        lf = diag["last_failed_attempt"]
+        assert lf and "stranger@nowhere.test" in lf["emails_returned"] and lf["resolved_now"] is False, lf
+        assert diag["last_successful_attempt"] and diag["last_successful_attempt"]["email"]
+        assert ca_c.get("/api/oauth/sso-diagnostics").status_code == 403   # staff-only
+        print("Microsoft SSO hardening: work-account tenant + select_account + id_token match + case-insensitive + no-hijack + diagnostics OK")
+
         # ===================== v0.24: PSA projects + Kanban =====================
         pj=c.post("/api/projects", json={"client_id":cid,"name":"M365 Migration","budget_hours":40})
         assert pj.status_code==201, pj.text
@@ -2181,7 +2269,7 @@ def main():
         assert ca_c.post("/api/automation/weekly-digest/send-now").status_code == 403
         print("weekly digest: grade+briefing render + weekday/hour gate + once-per-week + send-now + RBAC OK")
 
-    print("\n=== OpsPilot v0.85 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.86 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

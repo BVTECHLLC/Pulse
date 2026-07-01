@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ...core.config import get_settings
@@ -68,6 +69,7 @@ def get_sso_settings(request: Request, db: Session = Depends(get_db),
     return {
         "fields": secure_config.public_view(cfg),
         "ms_tenant": cfg.get("ms_tenant"),
+        "ms_tenant_effective": oauth.normalize_tenant(cfg.get("ms_tenant") or _s.MS_OAUTH_TENANT),
         "providers_active": sorted(active),
         "redirect_uris": {
             "microsoft": f"{base}/api/oauth/microsoft/callback",
@@ -90,6 +92,94 @@ def save_sso_settings(body: SSOSettingsIn, request: Request, db: Session = Depen
                  ip=_ip(request), detail="sso credentials")
     oauth.sync_vault_providers(db)
     return {"ok": True, "providers_active": sorted(p["key"] for p in oauth.enabled_providers())}
+
+
+@router.get("/sso-diagnostics")
+def sso_diagnostics(request: Request, db: Session = Depends(get_db),
+                    user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Show, in plain language, exactly what SSO sign-in needs and what the last
+    attempt actually returned — so "the portal doesn't know who I am" becomes a
+    visible, fixable checklist instead of a mystery.
+
+    The key line is the last failed attempt: it tells you the exact email
+    Microsoft/Google handed us and whether a Pulse login exists for it (SSO only
+    signs in an already-provisioned user; it never creates accounts)."""
+    from ...models import AuditLog
+    oauth.sync_vault_providers(db)
+    active = {p["key"] for p in oauth.enabled_providers()}
+    base = _base_url(request)
+
+    sso = secure_config.get_platform(db, "sso_login")
+    sso_cfg = (sso.config if sso else None) or {}
+    mbox = secure_config.get_platform(db, "m365_mailbox")
+    reuses_mailbox = bool(mbox and "microsoft" in active and not sso_cfg.get("ms_client_id"))
+    eff_tenant = oauth.normalize_tenant(sso_cfg.get("ms_tenant") or _s.MS_OAUTH_TENANT)
+
+    def _user_for(email: str | None):
+        if not email or "@" not in email:
+            return None
+        return (db.query(User).filter(func.lower(User.email) == email.strip().lower()).first())
+
+    # Most recent failed + successful SSO attempts (either provider).
+    last_fail = (db.query(AuditLog).filter(AuditLog.action == "login.oauth_no_match")
+                 .order_by(AuditLog.ts.desc()).first())
+    last_ok = (db.query(AuditLog).filter(AuditLog.action == "login.oauth_success")
+               .order_by(AuditLog.ts.desc()).first())
+
+    fail_view = None
+    if last_fail:
+        tried = [e.strip() for e in (last_fail.actor_email or "").split(",") if e.strip()]
+        matched_now = next((e for e in tried if _user_for(e)), None)
+        fail_view = {
+            "when": last_fail.ts.isoformat() if last_fail.ts else None,
+            "detail": last_fail.detail,
+            "emails_returned": tried,
+            # if a user now exists for one of those emails, the earlier failure is
+            # already resolved (e.g. after inviting that address).
+            "resolved_now": bool(matched_now),
+            "hint": (f"A Pulse login now exists for {matched_now} — try signing in again."
+                     if matched_now else
+                     "No active Pulse user has that email. Invite/onboard that exact "
+                     "address (Clients → Onboard, or add a staff user), then retry."),
+        }
+
+    ms_checklist = [
+        {"label": "Microsoft SSO app configured (client ID + secret)",
+         "ok": "microsoft" in active,
+         "hint": "Add the SSO app in Settings, or reuse your M365 mailbox app."},
+        {"label": "Redirect URI registered in your Entra app",
+         "ok": None,
+         "hint": f"Add exactly: {base}/api/oauth/microsoft/callback"},
+        {"label": "Supported account types = any organizational directory",
+         "ok": None,
+         "hint": "In Entra → App registration → Authentication. This lets you and "
+                 "every client's M365 org sign in (work/school accounts)."},
+        {"label": "Delegated permissions: openid, email, profile, User.Read",
+         "ok": None, "hint": "Entra → API permissions → Microsoft Graph (delegated)."},
+        {"label": "Your own email maps to a Pulse login",
+         "ok": bool(_user_for(user.email)),
+         "hint": "SSO signs in an existing user matched by email; it never creates one."},
+    ]
+    return {
+        "providers_active": sorted(active),
+        "your_login": {"email": user.email, "role": user.role.value},
+        "microsoft": {
+            "app_configured": "microsoft" in active,
+            "effective_tenant": eff_tenant,
+            "work_accounts_only": eff_tenant not in ("common", "consumers"),
+            "reuses_mailbox_app": reuses_mailbox,
+            "redirect_uri": f"{base}/api/oauth/microsoft/callback",
+            "checklist": ms_checklist,
+        },
+        "google": {
+            "app_configured": "google" in active,
+            "redirect_uri": f"{base}/api/oauth/google/callback",
+        },
+        "last_failed_attempt": fail_view,
+        "last_successful_attempt": (
+            {"when": last_ok.ts.isoformat() if last_ok.ts else None,
+             "email": last_ok.actor_email, "detail": last_ok.detail} if last_ok else None),
+    }
 
 
 @router.get("/connections")
@@ -184,22 +274,40 @@ def callback(provider: str, request: Request, response: Response,
     except Exception:
         return RedirectResponse("/?oauth_error=exchange_failed", status_code=302)
     access = tok.get("access_token")
-    if not access:
-        return RedirectResponse("/?oauth_error=no_token", status_code=302)
-    email = oauth.fetch_email(provider, access)
+    # For SSO we only need identity (the id_token), which is present even when no
+    # access_token/Graph scope was granted — so don't hard-fail on a missing
+    # access token until we've tried the id_token claims.
+    candidates = oauth.candidate_emails(provider, tok, access)
+    email = candidates[0] if candidates else None
 
     if purpose == "sso":
         if not _s.OAUTH_ALLOW_SSO:
             return RedirectResponse("/?oauth_error=sso_disabled", status_code=302)
-        user = db.query(User).filter(User.email == (email or "")).first() if email else None
-        if not user or not user.is_active:
-            audit.record(db, action="login.oauth_no_match", actor_email=email, ip=_ip(request),
-                         success=False, detail=f"provider={provider}")
+        # Match a provisioned user against ANY email/UPN this sign-in presented,
+        # case-insensitively. This is the real authorization gate — SSO never
+        # creates accounts, it only signs in someone already invited/onboarded.
+        user = None
+        for cand in candidates:
+            user = (db.query(User)
+                    .filter(func.lower(User.email) == cand)
+                    .filter(User.is_active.is_(True)).first())
+            if user:
+                email = cand
+                break
+        if not user:
+            audit.record(db, action="login.oauth_no_match",
+                         actor_email=(email or ",".join(candidates) or None), ip=_ip(request),
+                         success=False, detail=f"provider={provider} tried={len(candidates)}")
             return RedirectResponse("/?oauth_error=no_account", status_code=302)
         dest = "/portal" if user.role in (Role.CLIENT_ADMIN, Role.CLIENT_VIEWER) else "/dashboard"
         redirect = RedirectResponse(dest, status_code=302)
         issue_session(db, user, request, redirect, method=f"oauth:{provider}")
+        audit.record(db, action="login.oauth_success", actor_user_id=user.id, actor_email=user.email,
+                     actor_role=user.role.value, ip=_ip(request), detail=f"provider={provider}")
         return redirect
+
+    if not access:
+        return RedirectResponse("/?oauth_error=no_token", status_code=302)
 
     # purpose == "connect": store the encrypted token (with refresh) for the user.
     _store_token(db, provider, tok, user_id=uid, email=email)
