@@ -896,6 +896,31 @@ def main():
             _gbp.GBPClient.list_locations=_o_ll
         print("guided setup checklist + GBP location picker + RBAC OK")
 
+        # ===================== v0.74: AI copilot (Ask Pulse) =====================
+        from app.services import ai as _ai
+        _o_en, _o_call = _ai.enabled, _ai._CALLER
+        _ai.enabled = lambda: True
+        _ai._CALLER = lambda system, user, model, max_tokens: "AI:" + user[:24]
+        try:
+            assert c.get("/api/ai/status").json()["enabled"] is True
+            ans=c.post("/api/ai/ask", json={"question":"Who is overdue and how's security?"}).json()
+            assert ans["answer"].startswith("AI:"), ans
+            drf=c.post("/api/ai/draft", json={"kind":"social","prompt":"weekly backups tip"}).json()
+            assert "draft" in drf and drf["draft"].startswith("AI:"), drf
+            # Draft a reply for a real ticket from its thread.
+            _tk=ca_c.post("/api/tickets", json={"subject":"AI test — PC won't boot","body":"black screen","priority":"normal"}).json()["id"]
+            rd=c.post(f"/api/ai/tickets/{_tk}/reply-draft").json()
+            assert rd["draft"].startswith("AI:"), rd
+            assert c.post(f"/api/ai/tickets/999999/reply-draft").status_code==404
+            # RBAC: clients can't use the copilot.
+            assert ca_c.post("/api/ai/ask", json={"question":"x"}).status_code==403
+            assert ca_c.get("/api/ai/status").status_code==403
+        finally:
+            _ai.enabled, _ai._CALLER = _o_en, _o_call
+        # Graceful when Claude isn't connected (no API key) → clear 503, not a crash.
+        assert c.post("/api/ai/ask", json={"question":"x"}).status_code==503
+        print("AI copilot: ask + draft + ticket-reply + graceful-unconfigured + RBAC OK")
+
         # ===================== v0.60: power dialer + call coaching =====================
         from app.services import power_dialer as _pd
         _orig_caller = _pd.CALLER
@@ -1960,7 +1985,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.73 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.74 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # --- Identity ---
     APP_NAME: str = "BVTech OpsPilot"
-    APP_VERSION: str = "0.73.0"
+    APP_VERSION: str = "0.74.0"
     ENV: str = "development"  # development | production
 
     # --- Security ---
@@ -78,6 +78,16 @@ class Settings(BaseSettings):
     @property
     def ms_oauth_enabled(self) -> bool:
         return bool(self.M365_CLIENT_ID and self.M365_CLIENT_SECRET)
+
+    # --- AI (Claude baked in). Key from env/secret; never logged. When unset,
+    #     AI features degrade gracefully to a clear "connect Claude" message. ---
+    ANTHROPIC_API_KEY: str | None = None
+    AI_MODEL: str = "claude-sonnet-5"        # fast + capable default for in-app AI
+    AI_MODEL_SMART: str = "claude-opus-4-8"  # for heavier drafting when asked
+
+    @property
+    def ai_enabled(self) -> bool:
+        return bool(self.ANTHROPIC_API_KEY)
 
     # --- Rate limiting ---
     RATE_LIMIT_LOGIN_PER_MIN: int = 5

@@ -1,5 +1,23 @@
 # BVTech OpsPilot — Changelog
 
+## v0.74.0 — Claude, baked in: the "Ask Pulse" AI copilot (July 2026)
+- **A floating ✨ Ask Pulse copilot on every dashboard page.** Ask in plain
+  English — "who's overdue?", "how's security looking?", "write a LinkedIn post
+  about backups", "draft a reply for ticket 12" — and Claude answers using a
+  live, safe snapshot of your operations (A/R, open tickets, offline devices,
+  riskiest security grades — aggregates only, no secrets).
+- **AI drafting anywhere:** `POST /api/ai/draft` writes client emails, advisories,
+  and social posts; `POST /api/ai/tickets/{id}/reply-draft` turns a ticket thread
+  into a ready-to-send reply. The copilot auto-routes "draft a reply for ticket N".
+- **Graceful + safe:** `services/ai.py` is a thin stdlib Anthropic client with the
+  key read from the server env (never logged); when Claude isn't connected, AI
+  features return a clear "add your Anthropic API key" message instead of failing.
+  The HTTP call is injectable, so every AI feature is tested offline.
+- `GET /api/ai/status`, staff-only across the board (RBAC). No schema change —
+  just set `ANTHROPIC_API_KEY` on the server to light it up.
+- Verified offline (smoke): ask + draft + ticket-reply all return content (Claude
+  stubbed); a missing key yields a clean 503; clients are locked out.
+
 ## v0.73.0 — Auto-posting that writes itself (SEO drafts + auto-refill) (July 2026)
 - **Never write a post again.** Set your **city + keywords** once and OpsPilot
   generates **SEO-tuned, on-brand** post drafts straight into the queue — a
