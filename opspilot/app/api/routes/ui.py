@@ -67,6 +67,14 @@ def remote_view(token: str, request: Request):
     return _page("remote.html", request, token=token)
 
 
+@router.get("/status", response_class=HTMLResponse)
+def status_page(request: Request):
+    """Public, branded uptime/incident page an MSP can share with its clients.
+    The shell fetches /api/status/public; if the page isn't enabled the API
+    returns 404 and the page shows a neutral 'not available' message."""
+    return _page("status.html", request)
+
+
 @router.get("/developers", response_class=HTMLResponse)
 def developers(request: Request):
     """Branded developer hub: how to authenticate, the event catalog, webhook

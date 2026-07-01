@@ -1,5 +1,29 @@
 # BVTech OpsPilot — Changelog
 
+## v0.84.0 — Public branded status page (July 2026)
+- **📣 A shareable status page you can hand to every client** — a branded,
+  public uptime & incident page at `/status`, the transparency layer
+  SuperOps/Statuspage charge for, now native and white-labelled (it uses your
+  branding automatically). Off by default; flip it on from **Settings → Public
+  Status Page**.
+- **Run incidents like the big platforms.** Post an incident with an impact
+  (minor/major/critical) and advance it through investigating → identified →
+  monitoring → resolved. The overall banner escalates automatically (Operational
+  → Degraded → Partial Outage → Major Outage) from the worst active incident,
+  and resolved incidents move into a public history timeline.
+- **Honest 90-day uptime.** The uptime figure is derived from the real recorded
+  downtime of major/critical incidents (overlapping windows merged so a busy day
+  can't double-count) — not a made-up number.
+- Endpoints: public `GET /api/status/public` (404 until enabled, and it never
+  leaks client names, counts, or internal fields); owner/tech
+  `GET/PUT /api/status/config`, `GET/POST /api/status/incidents`,
+  `PATCH /api/status/incidents/{id}`.
+- Verified offline (smoke): disabled→404, enable+brand, empty page reads
+  operational at 100%, a major incident escalates the banner and shows publicly
+  (with no internal fields leaked), the full investigating→resolved lifecycle,
+  uptime recovery, and RBAC (client roles can't manage config or incidents).
+  Alembic migration verified up→down→up.
+
 ## v0.83.0 — One-step client onboarding (July 2026)
 - **🚀 Onboard a new client in a single action.** From Clients → Onboard: it
   creates the client record, **provisions their first CLIENT_ADMIN portal login**

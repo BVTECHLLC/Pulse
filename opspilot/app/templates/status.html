@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ app_name }} — Status</title>
+<link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/css/pulse.css">
+<style>
+  .status-wrap{max-width:760px;margin:0 auto;padding:32px 20px 60px}
+  .status-head{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  .status-head img{height:34px;width:auto}
+  .banner{border-radius:14px;padding:20px 22px;margin:22px 0;display:flex;
+    align-items:center;gap:14px;font-weight:600;font-size:18px;color:#fff}
+  .banner .dot{width:14px;height:14px;border-radius:50%;background:#fff;flex:none}
+  .b-operational{background:#1a9d5a}
+  .b-degraded{background:#c98a00}
+  .b-partial_outage{background:#d9720b}
+  .b-major_outage{background:#c0392b}
+  .metrics{display:flex;gap:14px;flex-wrap:wrap;margin:14px 0}
+  .metric{background:var(--card,#fff);border:1px solid var(--line,#e6e6ef);border-radius:12px;
+    padding:14px 18px;flex:1;min-width:150px}
+  .metric .n{font-size:26px;font-weight:700}
+  .metric .l{color:var(--muted,#777);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  h2{font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted,#777);
+    margin:30px 0 10px}
+  .inc{border:1px solid var(--line,#e6e6ef);border-radius:12px;padding:16px 18px;margin-bottom:12px;
+    background:var(--card,#fff)}
+  .inc .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .inc h3{margin:0;font-size:16px}
+  .pill{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+    padding:3px 9px;border-radius:20px;color:#fff}
+  .imp-minor{background:#c98a00}.imp-major{background:#d9720b}.imp-critical{background:#c0392b}
+  .imp-none{background:#888}
+  .st{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+    padding:3px 9px;border-radius:20px;border:1px solid var(--line,#ccc);color:var(--muted,#666)}
+  .st-resolved{color:#1a9d5a;border-color:#1a9d5a}
+  .inc .body{margin:8px 0 0;color:var(--ink,#333);white-space:pre-wrap;line-height:1.5}
+  .inc .meta{color:var(--muted,#999);font-size:12px;margin-top:8px}
+  .empty{color:var(--muted,#999);padding:18px 0}
+  .foot{color:var(--muted,#999);font-size:12px;margin-top:36px;text-align:center}
+</style>
+</head>
+<body>
+<div class="status-wrap">
+  <div id="content">
+    <div class="empty" id="loading">Loading status…</div>
+  </div>
+  <div class="foot" id="foot"></div>
+</div>
+<script>
+const OVERALL = {
+  operational:   {t:"All Systems Operational", c:"b-operational"},
+  degraded:      {t:"Degraded Performance",     c:"b-degraded"},
+  partial_outage:{t:"Partial Outage",           c:"b-partial_outage"},
+  major_outage:  {t:"Major Outage",             c:"b-major_outage"},
+};
+const STLABEL = {investigating:"Investigating",identified:"Identified",monitoring:"Monitoring",resolved:"Resolved"};
+function esc(s){return (s||"").replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function fdate(iso){ if(!iso) return ""; try{const d=new Date(iso);return d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});}catch(e){return iso;} }
+function incCard(i){
+  const st = i.resolved ? "st-resolved" : "";
+  return `<div class="inc">
+    <div class="top">
+      <h3>${esc(i.title)}</h3>
+      <span class="pill imp-${esc(i.impact)}">${esc(i.impact)}</span>
+      <span class="st ${st}">${STLABEL[i.status]||esc(i.status)}</span>
+    </div>
+    ${i.body?`<div class="body">${esc(i.body)}</div>`:""}
+    <div class="meta">Started ${fdate(i.started_at)}${i.resolved_at?` · Resolved ${fdate(i.resolved_at)}`:""}</div>
+  </div>`;
+}
+(async function(){
+  let j;
+  try{
+    const r = await fetch('/api/status/public');
+    if(r.status===404){ document.getElementById('content').innerHTML='<div class="empty">This status page is not available.</div>'; return; }
+    if(!r.ok) throw new Error('load');
+    j = await r.json();
+  }catch(e){ document.getElementById('content').innerHTML='<div class="empty">Unable to load status right now.</div>'; return; }
+
+  const brand = j.brand||{};
+  const ov = OVERALL[j.overall]||OVERALL.operational;
+  const logo = brand.logo_url ? `<img src="${esc(brand.logo_url)}" alt="">` : "";
+  const active = (j.active_incidents||[]);
+  const recent = (j.recent_incidents||[]).filter(i=>i.resolved);
+  const html = `
+    <div class="status-head">${logo}<div>
+      <div style="font-weight:700;font-size:20px">${esc((brand.company||'')+' '+(j.headline||'Status')).trim()}</div>
+      <div style="color:var(--muted,#888);font-size:13px">${esc(j.intro||'')}</div>
+    </div></div>
+    <div class="banner ${ov.c}"><span class="dot"></span>${ov.t}</div>
+    <div class="metrics">
+      <div class="metric"><div class="n">${(j.uptime_90d??100).toFixed(2)}%</div><div class="l">Uptime · 90 days</div></div>
+      <div class="metric"><div class="n">${active.length}</div><div class="l">Active incidents</div></div>
+    </div>
+    <h2>Active incidents</h2>
+    ${active.length?active.map(incCard).join(''):'<div class="empty">No incidents right now. Everything is running normally.</div>'}
+    <h2>Incident history</h2>
+    ${recent.length?recent.map(incCard).join(''):'<div class="empty">No past incidents on record.</div>'}
+  `;
+  document.getElementById('content').innerHTML = html;
+  document.getElementById('foot').textContent =
+    `${brand.app_name||'{{ app_name }}'} · Updated ${fdate(j.generated_at)}`;
+  document.title = `${brand.company||'{{ app_name }}'} — Status`;
+})();
+</script>
+<script src="/static/js/brand.js"></script>
+</body>
+</html>

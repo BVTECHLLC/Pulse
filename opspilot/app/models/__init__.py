@@ -1265,3 +1265,23 @@ class PostureSnapshot(Base):
     grade: Mapped[str] = mapped_column(String(4), default="N/A")
     domains: Mapped[dict] = mapped_column(JSON, default=dict)   # {domain: score}
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+class StatusIncident(Base):
+    """An entry on the MSP's public, shareable status page (v0.84). The owner
+    posts an incident, advances it through investigating→identified→monitoring→
+    resolved, and clients follow along at a branded /status URL — the same
+    transparency pattern SuperOps/Statuspage give, but native and white-labelled.
+    Downtime windows on major/critical incidents feed the 90-day uptime figure."""
+    __tablename__ = "status_incidents"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    # investigating | identified | monitoring | resolved
+    status: Mapped[str] = mapped_column(String(20), default="investigating", index=True)
+    # none | minor | major | critical
+    impact: Mapped[str] = mapped_column(String(20), default="minor")
+    body: Mapped[str | None] = mapped_column(Text)          # latest update / description
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
