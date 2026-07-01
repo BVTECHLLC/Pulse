@@ -31,6 +31,39 @@ _DEFAULT_KEYWORDS = ["managed IT", "cybersecurity", "data backup", "IT support",
                      "network security", "endpoint protection"]
 
 
+def generate_ai_drafts(count: int, *, city: str = "", keywords: list[str] | None = None,
+                       biz: str = "BVTech", cta_url: str = "", start: int = 0) -> list[dict]:
+    """Claude-written posts when AI is connected; otherwise the template engine.
+    Always returns exactly `count` drafts (tops up from templates if AI returns
+    fewer), so the caller never has to handle a short/failed batch."""
+    from . import ai
+    count = max(1, min(count, 52))
+    kws = [k.strip() for k in (keywords or []) if k.strip()] or _DEFAULT_KEYWORDS
+    city = (city or "our area").strip()
+    biz = (biz or "BVTech").strip()
+    if not ai.enabled():
+        return generate_drafts(count, city=city, keywords=kws, biz=biz, cta_url=cta_url, start=start)
+    system = ("You are a senior marketing copywriter for a managed IT & security "
+              "provider (MSP). Write posts that are specific, credible, and locally "
+              "relevant — no fluff, no hashtag spam.")
+    prompt = (f"Write {count} DISTINCT social posts for {biz}, an MSP serving {city}. "
+              f"Naturally weave in these themes/keywords across the set: {', '.join(kws)}. "
+              "Each post: under 500 characters, a strong first line, a concrete value or "
+              "tip, and a soft call-to-action. Separate every post with a line containing "
+              "only %%% and output nothing else.")
+    try:
+        text = ai.complete(system, prompt, smart=False, max_tokens=1600)
+    except ai.AIError:
+        return generate_drafts(count, city=city, keywords=kws, biz=biz, cta_url=cta_url, start=start)
+    parts = [p.strip() for p in text.split("%%%") if p.strip()][:count]
+    drafts = [{"body": (p + (f"\n\n👉 {cta_url}" if cta_url else "")),
+               "link": (cta_url or None)} for p in parts]
+    if len(drafts) < count:   # top up if Claude returned fewer than asked
+        drafts += generate_drafts(count - len(drafts), city=city, keywords=kws, biz=biz,
+                                  cta_url=cta_url, start=start + len(drafts))
+    return drafts
+
+
 def generate_drafts(count: int, *, city: str = "", keywords: list[str] | None = None,
                     biz: str = "BVTech", cta_url: str = "", start: int = 0) -> list[dict]:
     """Return `count` varied, SEO-woven post drafts as {body, link}. Deterministic:

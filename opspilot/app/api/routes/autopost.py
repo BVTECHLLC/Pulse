@@ -72,6 +72,7 @@ class GenerateIn(BaseModel):
     cta_url: str | None = None
     image_url: str | None = None
     channels: list[str] = ["linkedin"]
+    use_ai: bool = False        # Claude-written posts (falls back to templates)
 
 
 @router.post("/generate")
@@ -86,7 +87,7 @@ def generate(body: GenerateIn, request: Request, db: Session = Depends(get_db),
         keywords=body.keywords if body.keywords is not None else cfg["keywords"],
         cta_url=body.cta_url if body.cta_url is not None else cfg["cta_url"],
         image_url=body.image_url if body.image_url is not None else cfg["image_url"],
-        channels=body.channels or cfg["gen_channels"])
+        channels=body.channels or cfg["gen_channels"], use_ai=body.use_ai)
     audit.record(db, action="autopost.generate", actor_user_id=user.id, actor_email=user.email,
                  actor_role=user.role.value, target_type="autopost", ip=_ip(request),
                  detail=f"generated={len(created)}")

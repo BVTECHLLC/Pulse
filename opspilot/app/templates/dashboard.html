@@ -195,7 +195,8 @@
           <label>Call-to-action URL<input id="ap-gen-cta" placeholder="https://bvtech.org/contact"></label>
           <label>Image URL for generated posts (optional)<input id="ap-gen-img" placeholder="https://bvtech.org/img/post.jpg"></label>
         </div>
-        <div class="flex" style="margin-top:8px"><button class="btn sm" onclick="generatePosts()">✨ Generate 6 drafts</button>
+        <div class="flex" style="margin-top:8px"><button class="btn sm" onclick="generatePosts(false)">Generate 6 drafts</button>
+          <button class="btn sm" onclick="generatePosts(true)" title="Write with Claude (needs an Anthropic API key)">✨ AI write 6</button>
           <button class="btn sm ghost" onclick="saveAutopost()">Save brand profile</button>
           <span class="muted" id="ap-gen-msg" style="font-size:12px"></span></div>
       </div>
@@ -2435,12 +2436,12 @@ async function saveAutopost(){
   if(!r.ok){alert('Only an owner can change auto-post settings.');}
   loadAutopost();
 }
-async function generatePosts(){
-  const msg=document.getElementById('ap-gen-msg'); msg.textContent='writing…';
+async function generatePosts(useAi){
+  const msg=document.getElementById('ap-gen-msg'); msg.textContent=useAi?'Claude is writing…':'writing…';
   const kws=val('ap-gen-kw').split(',').map(s=>s.trim()).filter(Boolean);
   const channels=[]; if(document.getElementById('ap-ch-linkedin').checked)channels.push('linkedin');
   if(document.getElementById('ap-ch-gbp').checked)channels.push('google_business');
-  const r=await post('/api/autopost/generate',{count:6,city:val('ap-gen-city'),keywords:kws,
+  const r=await post('/api/autopost/generate',{count:6,city:val('ap-gen-city'),keywords:kws,use_ai:!!useAi,
     cta_url:val('ap-gen-cta')||null,image_url:val('ap-gen-img')||null,channels:channels.length?channels:['linkedin']});
   const j=await r.json().catch(()=>({}));
   if(r.ok){msg.textContent=`Added ${j.created} draft(s) to the queue ✓`;loadAutopost();}
