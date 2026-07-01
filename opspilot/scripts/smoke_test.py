@@ -1569,6 +1569,12 @@ def main():
             and nh["client_id"] == zt_cid, nh
         nh_id = nh["id"]
         tech_id = by_email["tech@bvtech.org"]["id"]
+        # session control: the SSO viewer has a live session; owner can force sign-out
+        assert nh["active_sessions"] >= 1, nh
+        assert ocj.get("/api/auth/me").status_code == 200        # session live before
+        so = c.post(f"/api/users/{nh_id}/sign-out-all").json()
+        assert so["revoked_sessions"] >= 1 and so["active_sessions"] == 0, so
+        assert ocj.get("/api/auth/me").status_code == 401        # signed out everywhere
         # filters: SSO-only returns only self-registered users (incl. newhire)
         sso_list = c.get("/api/users?sso_only=true").json()["users"]
         assert sso_list and all(u["sso_provisioned"] for u in sso_list)
@@ -1599,7 +1605,8 @@ def main():
         assert tc.get("/api/users").status_code == 200
         assert tc.patch(f"/api/users/{nh_id}/role", json={"role": "client_viewer"}).status_code == 403
         assert ca_c.get("/api/users").status_code == 403
-        print("Users & Access: directory + summary + filters + promote(clears SSO flag) + active + reset + self/staff guardrails + RBAC OK")
+        assert tc.post(f"/api/users/{nh_id}/sign-out-all").status_code == 403   # owner-only
+        print("Users & Access: directory + summary + filters + promote(clears SSO flag) + active + reset + session control (sign-out-all) + guardrails + RBAC OK")
 
         # ===================== v0.24: PSA projects + Kanban =====================
         pj=c.post("/api/projects", json={"client_id":cid,"name":"M365 Migration","budget_hours":40})
@@ -2375,7 +2382,7 @@ def main():
         assert ca_c.post("/api/automation/weekly-digest/send-now").status_code == 403
         print("weekly digest: grade+briefing render + weekday/hour gate + once-per-week + send-now + RBAC OK")
 
-    print("\n=== OpsPilot v0.88 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.89 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

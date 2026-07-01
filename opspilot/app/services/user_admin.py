@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from ..core.security import hash_password, random_token
-from ..models import Client, Role, STAFF_ROLES, User
+from ..models import AuthSession, Client, Role, STAFF_ROLES, User
 
 _CLIENT_ROLES = {Role.CLIENT_ADMIN, Role.CLIENT_VIEWER}
 
@@ -40,7 +40,8 @@ def _aware(dt):
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-def serialize(u: User, *, client_name: str | None = None) -> dict:
+def serialize(u: User, *, client_name: str | None = None,
+              active_sessions: int | None = None) -> dict:
     return {
         "id": u.id,
         "email": u.email,
@@ -53,9 +54,40 @@ def serialize(u: User, *, client_name: str | None = None) -> dict:
         "provisioned_via": u.provisioned_via,   # "sso" or None
         "sso_provisioned": u.provisioned_via == "sso",
         "mfa_enabled": bool(u.mfa_enabled),
+        "active_sessions": active_sessions,
         "last_login_at": _aware(u.last_login_at).isoformat() if u.last_login_at else None,
         "created_at": _aware(u.created_at).isoformat() if u.created_at else None,
     }
+
+
+def _active_session_counts(db: Session, user_ids: list[int]) -> dict[int, int]:
+    """{user_id: live (non-revoked, unexpired) session count} for a batch."""
+    if not user_ids:
+        return {}
+    from sqlalchemy import func
+    now = datetime.now(timezone.utc)
+    rows = (db.query(AuthSession.user_id, func.count(AuthSession.id))
+            .filter(AuthSession.user_id.in_(user_ids),
+                    AuthSession.revoked.is_(False),
+                    AuthSession.expires_at > now)
+            .group_by(AuthSession.user_id).all())
+    return {uid: n for uid, n in rows}
+
+
+def revoke_all_sessions(db: Session, user_id: int) -> int:
+    """Revoke every live session for a user (force sign-out everywhere).
+    Returns how many were revoked. Commits."""
+    now = datetime.now(timezone.utc)
+    sessions = (db.query(AuthSession)
+                .filter(AuthSession.user_id == user_id, AuthSession.revoked.is_(False))
+                .all())
+    n = 0
+    for s in sessions:
+        s.revoked = True
+        n += 1
+    if n:
+        db.commit()
+    return n
 
 
 def list_users(db: Session, *, client_id: int | None = None, role: str | None = None,
@@ -79,13 +111,15 @@ def list_users(db: Session, *, client_id: int | None = None, role: str | None = 
         query = query.filter(or_(func.lower(User.email).like(like),
                                  func.lower(func.coalesce(User.full_name, "")).like(like)))
     users = query.order_by(User.is_active.desc(), User.email).all()
-    # resolve client names in one pass
+    # resolve client names + session counts in one pass each (no N+1)
     names: dict[int, str] = {}
     cids = {u.client_id for u in users if u.client_id}
     if cids:
         for c in db.query(Client).filter(Client.id.in_(cids)).all():
             names[c.id] = c.name
-    return [serialize(u, client_name=names.get(u.client_id)) for u in users]
+    sess = _active_session_counts(db, [u.id for u in users])
+    return [serialize(u, client_name=names.get(u.client_id),
+                      active_sessions=sess.get(u.id, 0)) for u in users]
 
 
 def _load_editable_client_user(db: Session, actor: User, user_id: int) -> User:
@@ -123,20 +157,33 @@ def set_active(db: Session, actor: User, user_id: int, active: bool) -> dict:
     target = _load_editable_client_user(db, actor, user_id)
     target.is_active = bool(active)
     db.commit()
+    # Deactivation isn't just future-blocking: kill any live sessions now.
+    if not active:
+        revoke_all_sessions(db, target.id)
     db.refresh(target)
     return serialize(target)
 
 
+def sign_out_all(db: Session, actor: User, user_id: int) -> dict:
+    """Force sign-out everywhere for a client user (revoke all live sessions)."""
+    target = _load_editable_client_user(db, actor, user_id)
+    revoked = revoke_all_sessions(db, target.id)
+    db.refresh(target)
+    return {**serialize(target, active_sessions=0), "revoked_sessions": revoked}
+
+
 def reset_password(db: Session, actor: User, user_id: int) -> tuple[dict, str]:
     """Issue a fresh temporary password for a client user. Returns (user, temp_pw);
-    the route emails it and shows it once."""
+    the route emails it and shows it once. Revokes existing sessions so a leaked
+    session can't outlive the reset."""
     target = _load_editable_client_user(db, actor, user_id)
     temp_pw = random_token(12)
     target.password_hash = hash_password(temp_pw)
     target.is_active = True   # a reset re-enables the login
     db.commit()
+    revoke_all_sessions(db, target.id)   # old sessions die with the old password
     db.refresh(target)
-    return serialize(target), temp_pw
+    return serialize(target, active_sessions=0), temp_pw
 
 
 def summary(db: Session) -> dict:
