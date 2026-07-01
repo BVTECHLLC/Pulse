@@ -195,6 +195,7 @@ def _reconcile_schema():
         ("invoices", "reminder_count", "INTEGER DEFAULT 0"),
         ("social_posts", "image_url", "VARCHAR(800)"),
         ("users", "provisioned_via", "VARCHAR(20)"),
+        ("clients", "sso_domains", "JSON"),
         ("support_tickets", "csat_rating", "INTEGER"),
         ("support_tickets", "csat_comment", "TEXT"),
         ("support_tickets", "csat_at", "TIMESTAMP WITH TIME ZONE"),

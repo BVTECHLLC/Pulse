@@ -1,5 +1,23 @@
 # BVTech OpsPilot — Changelog
 
+## v0.91.0 — Explicit per-client SSO domains (July 2026)
+- **🔑 Authorize a client's email domains for zero-touch SSO up front** — so their
+  team can self-provision read-only logins **from day one**, before anyone has
+  signed in (no "anchor user" needed anymore). Onboarding now auto-authorizes the
+  contact's own domain by default, and you can list more.
+- **New `Client.sso_domains`** (Alembic migration verified up→down→up). Provisioning
+  now matches on either an explicit authorization *or* an existing user on the
+  domain; ambiguity (a domain claimed by 2+ clients) still refuses, and free/public
+  mailbox domains are always dropped.
+- **UI**: an "Authorized SSO domains" field on the one-step onboarding form (blank =
+  use the contact's domain), and the onboard result shows which domains are live.
+- Endpoints: `GET /api/clients/{id}/sso-domains` (staff),
+  `PUT /api/clients/{id}/sso-domains` (owner); domains are also settable at
+  onboard time. Domain input is normalized (strips `@`, scheme, path; lowercased).
+- Verified offline (smoke): onboard default + explicit domains, a brand-new client
+  with **no users** provisions once a domain is authorized, free-domain drop,
+  ambiguity refusal, and owner-write / staff-read / client-none RBAC.
+
 ## v0.90.0 — Heads-up on self-service SSO logins (July 2026)
 - **🔔 Staff get an in-app notification the moment someone self-registers via SSO**
   (v0.87 zero-touch): "New self-service SSO login: name@domain (read-only, Client).
