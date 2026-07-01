@@ -1,5 +1,23 @@
 # BVTech OpsPilot — Changelog
 
+## v0.73.0 — Auto-posting that writes itself (SEO drafts + auto-refill) (July 2026)
+- **Never write a post again.** Set your **city + keywords** once and OpsPilot
+  generates **SEO-tuned, on-brand** post drafts straight into the queue — a
+  curated library of high-performing MSP/security angles woven with your town and
+  a rotating keyword (locally relevant + varied, exactly what LinkedIn and Google
+  Business reward). **✨ Generate 6 drafts** in one click.
+- **The feed truly runs itself.** Turn on **auto-refill** and the scheduler tops
+  the queue back up whenever it runs low (below your `min_queue`), so with weekly
+  publishing on, your LinkedIn + Google Business stay active with zero effort.
+- **No AI key, no cost, no dependency.** The generator is a deterministic template
+  engine — it keeps working even when an AI API is missing or out of credit (an
+  AI writer can layer on later). `services/post_generator.py` + `autopost`
+  brand-profile config + `POST /api/autopost/generate`, wired into `run-checks`.
+- Verified offline (smoke + unit): generation produces varied, keyword-/CTA-woven
+  drafts into the queue; saving a brand profile + enabling auto-refill tops the
+  queue up to `min_queue` on the tick; a full queue is a no-op; clients can't
+  generate (RBAC). No schema change.
+
 ## v0.72.0 — Smoother onboarding: one-click location picker + guided setup (July 2026)
 - **No more typing Google IDs.** After you Connect Google Business, click **Load
   my locations** in Settings → Google Business Profile and **pick your listing

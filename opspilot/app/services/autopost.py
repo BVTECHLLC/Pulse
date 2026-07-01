@@ -27,18 +27,52 @@ def _aware(dt):
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
+def _truthy(v) -> bool:
+    return str(v).lower() in ("1", "true", "yes", "on")
+
+
 def get_config(db: Session) -> dict:
     conn = secure_config.get_platform(db, PROVIDER)
     cfg = (conn.config if conn else None) or {}
-    return {"enabled": str(cfg.get("enabled", "")).lower() in ("1", "true", "yes", "on"),
+    kws = [k.strip() for k in (cfg.get("keywords") or "").split(",") if k.strip()]
+    chans = [c.strip() for c in (cfg.get("gen_channels") or "linkedin").split(",") if c.strip()]
+    return {"enabled": _truthy(cfg.get("enabled")),
             "gap_hours": int(cfg.get("gap_hours") or _DEFAULT_GAP_HOURS),
-            "default_channels": cfg.get("default_channels") or ["linkedin"]}
+            # Auto-generate ("runs itself"): brand profile used to top up the queue.
+            "auto_generate": _truthy(cfg.get("auto_generate")),
+            "min_queue": int(cfg.get("min_queue") or 3),
+            "city": cfg.get("city") or "",
+            "keywords": kws,
+            "cta_url": cfg.get("cta_url") or "",
+            "image_url": cfg.get("image_url") or "",
+            "gen_channels": [c for c in chans if c in CHANNELS] or ["linkedin"],
+            "default_channels": ["linkedin"]}
 
 
-def save_config(db: Session, *, enabled: bool, gap_hours: int) -> dict:
-    secure_config.upsert_platform(db, PROVIDER, "Auto-posting", "Marketing",
-                                  {"enabled": "true" if enabled else "false",
-                                   "gap_hours": str(max(1, gap_hours))})
+def save_config(db: Session, **fields) -> dict:
+    """Persist any subset of the auto-post settings (partial update)."""
+    payload = {}
+    if "enabled" in fields:
+        payload["enabled"] = "true" if fields["enabled"] else "false"
+    if "gap_hours" in fields and fields["gap_hours"] is not None:
+        payload["gap_hours"] = str(max(1, int(fields["gap_hours"])))
+    if "auto_generate" in fields:
+        payload["auto_generate"] = "true" if fields["auto_generate"] else "false"
+    if "min_queue" in fields and fields["min_queue"] is not None:
+        payload["min_queue"] = str(max(1, min(int(fields["min_queue"]), 20)))
+    if "city" in fields and fields["city"] is not None:
+        payload["city"] = str(fields["city"])[:120]
+    if "keywords" in fields and fields["keywords"] is not None:
+        kws = fields["keywords"]
+        payload["keywords"] = ",".join(kws) if isinstance(kws, list) else str(kws)
+    if "cta_url" in fields and fields["cta_url"] is not None:
+        payload["cta_url"] = str(fields["cta_url"])[:500]
+    if "image_url" in fields and fields["image_url"] is not None:
+        payload["image_url"] = str(fields["image_url"])[:800]
+    if "gen_channels" in fields and fields["gen_channels"] is not None:
+        ch = fields["gen_channels"]
+        payload["gen_channels"] = ",".join(ch) if isinstance(ch, list) else str(ch)
+    secure_config.upsert_platform(db, PROVIDER, "Auto-posting", "Marketing", payload)
     return get_config(db)
 
 
@@ -144,6 +178,43 @@ def publish_one(db: Session, post: SocialPost, now: datetime | None = None, *,
                         if not any_ready else post.result))}
 
 
+def generate_and_queue(db: Session, count: int, *, city: str = "", keywords=None,
+                       cta_url: str = "", image_url: str = "", channels=None,
+                       biz: str = "BVTech") -> list[dict]:
+    """Generate `count` SEO-tuned drafts and add them to the queue. Rotation
+    continues from the current post count so re-runs don't repeat."""
+    from . import post_generator
+    channels = [c for c in (channels or ["linkedin"]) if c in CHANNELS] or ["linkedin"]
+    start = db.query(SocialPost).count()
+    drafts = post_generator.generate_drafts(count, city=city, keywords=keywords,
+                                            biz=biz, cta_url=cta_url, start=start)
+    created = []
+    for d in drafts:
+        p = SocialPost(body=d["body"], link=d.get("link"), image_url=(image_url or None),
+                       channels=list(channels), status="queued")
+        db.add(p)
+        db.flush()
+        created.append({"id": p.id})
+    if created:
+        db.commit()
+    return created
+
+
+def maybe_refill(db: Session, now: datetime | None = None) -> list[dict]:
+    """If auto-generate is on and the queue is running low, top it back up so the
+    feed never runs dry. Returns the drafts created."""
+    cfg = get_config(db)
+    if not cfg["auto_generate"]:
+        return []
+    queued = db.query(SocialPost).filter(SocialPost.status == "queued").count()
+    if queued >= cfg["min_queue"]:
+        return []
+    need = cfg["min_queue"] - queued
+    return generate_and_queue(db, need, city=cfg["city"], keywords=cfg["keywords"],
+                              cta_url=cfg["cta_url"], image_url=cfg["image_url"],
+                              channels=cfg["gen_channels"])
+
+
 def publish_due(db: Session, now: datetime | None = None, *, posters: dict | None = None) -> list[dict]:
     """Scheduler entrypoint: if enabled and the gap has elapsed, publish the next
     due post (at most one). Skips entirely if no channel for that post is ready,
@@ -152,6 +223,11 @@ def publish_due(db: Session, now: datetime | None = None, *, posters: dict | Non
     cfg = get_config(db)
     if not cfg["enabled"]:
         return []
+    # Keep the queue stocked (auto-generate) so it never runs dry.
+    try:
+        maybe_refill(db, now)
+    except Exception:
+        pass
     last = _last_posted_at(db)
     if last and (now - last) < timedelta(hours=cfg["gap_hours"]):
         return []
