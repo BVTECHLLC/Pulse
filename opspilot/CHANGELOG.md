@@ -1,5 +1,17 @@
 # BVTech OpsPilot — Changelog
 
+## v0.77.0 — AI "explain this alert" — senior-tech guidance on tap (July 2026)
+- **One ✨ click on any alert** and Claude explains, in plain English, what it
+  likely means, the top likely causes, and **step-by-step fix actions**
+  (Windows-first) — using the alert + that device's live telemetry (CPU/RAM/disk,
+  health, AV, pending patches). The answer opens in the Ask Pulse copilot.
+- **Why it matters for everyone:** a junior tech at a growing/franchise MSP gets
+  senior-level triage instantly; a busy owner resolves faster. `POST
+  /api/ai/alerts/{id}/explain` (staff-only), graceful 503 when Claude isn't
+  connected, 404 for a missing alert.
+- Verified offline (smoke): explaining a real alert returns fix guidance (Claude
+  stubbed), a missing alert 404s, and clients are locked out (RBAC).
+
 ## v0.76.0 — MSP Practice Health: grade your own operation (July 2026)
 - **One A–F grade for how well the MSP itself is running** — not any single
   client, but *your practice*. Four domains, each 0–100, weighted into an overall

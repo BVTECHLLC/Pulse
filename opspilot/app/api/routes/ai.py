@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from ...core.db import get_db
 from ...core.deps import require_roles
 from ...models import (
-    Device, Role, SupportTicket, TicketComment, TicketStatus, User,
+    Alert, Device, Role, SupportTicket, TicketComment, TicketStatus, User,
 )
 from ...services import ai
 
@@ -121,6 +121,34 @@ def draft(body: DraftIn, db: Session = Depends(get_db),
     except ai.AIError as e:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
     return {"draft": text}
+
+
+@router.post("/alerts/{alert_id}/explain")
+def explain_alert(alert_id: int, db: Session = Depends(get_db),
+                  user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Plain-English cause + fix steps for an alert — senior-tech guidance on tap,
+    so junior techs (and busy owners) resolve faster."""
+    if not ai.enabled():
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
+                            "Claude isn't connected yet — add your Anthropic API key on the server.")
+    a = db.get(Alert, alert_id)
+    if not a:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Alert not found")
+    dev = db.get(Device, a.device_id) if a.device_id else None
+    ctx = (f"Alert type: {a.kind}\nSeverity: {a.severity.value if hasattr(a.severity,'value') else a.severity}\n"
+           f"Message: {a.message}\nReading: {a.metric_value}\n")
+    if dev:
+        ctx += (f"Device: {dev.hostname} ({dev.os or 'unknown OS'}), "
+                f"CPU {dev.cpu_pct}%, RAM {dev.ram_pct}%, disk {dev.disk_pct}%, "
+                f"health {dev.health_score}, AV {dev.av_status}, patches pending {dev.patches_pending}.\n")
+    prompt = ("Explain this RMM alert to a junior technician: what it most likely means, "
+              "the top 2-3 likely causes, and clear step-by-step fix actions (Windows-first). "
+              "Be specific and concise.\n\n" + ctx)
+    try:
+        text = ai.complete(_BRAND, prompt, max_tokens=700)
+    except ai.AIError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
+    return {"alert_id": a.id, "kind": a.kind, "explanation": text}
 
 
 @router.post("/tickets/{ticket_id}/reply-draft")
