@@ -172,6 +172,9 @@ class SupportTicket(Base):
     # Set once the automation engine has fired a breach event for this ticket, so
     # the recurring run-checks tick doesn't re-fire every cycle. Reset on reopen.
     sla_breach_alerted: Mapped[bool] = mapped_column(Boolean, default=False)
+    csat_rating: Mapped[int | None] = mapped_column(Integer)   # v0.78 CSAT: 1=👍, -1=👎
+    csat_comment: Mapped[str | None] = mapped_column(Text)
+    csat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 

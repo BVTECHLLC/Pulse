@@ -32,6 +32,7 @@ def _serialize_ticket(t: SupportTicket, now: datetime) -> dict:
         "created_at": t.created_at.isoformat(),
         "updated_at": t.updated_at.isoformat(),
         "resolved_at": t.resolved_at.isoformat() if t.resolved_at else None,
+        "csat_rating": t.csat_rating, "csat_comment": t.csat_comment,
         "sla": sla.evaluate(t, now),
     }
 
@@ -131,6 +132,53 @@ def get_ticket(ticket_id: int, db: Session = Depends(get_db),
         data["time_logged_minutes"] = sum(e.minutes for e in entries)
         data["time_billable_minutes"] = sum(e.minutes for e in entries if e.billable)
     return data
+
+
+class RateIn(BaseModel):
+    rating: int          # 1 = 👍 satisfied, -1 = 👎 unsatisfied
+    comment: str | None = None
+
+
+@router.post("/tickets/{ticket_id}/rate")
+def rate_ticket(ticket_id: int, body: RateIn, request: Request,
+                db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Client CSAT after resolution: one 👍/👎 (+ optional comment) per ticket."""
+    t = db.get(SupportTicket, ticket_id)
+    if not t:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+    assert_client_access(user, t.client_id)
+    if t.status not in (TicketStatus.RESOLVED, TicketStatus.CLOSED):
+        raise HTTPException(status.HTTP_409_CONFLICT, "You can rate a request once it's resolved.")
+    if body.rating not in (1, -1):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "rating must be 1 (👍) or -1 (👎)")
+    t.csat_rating = body.rating
+    t.csat_comment = (body.comment or None)
+    t.csat_at = datetime.now(timezone.utc)
+    db.commit()
+    audit.record(db, action="ticket.rate", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="ticket", target_id=str(t.id),
+                 client_id=t.client_id, ip=_ip(request), detail=f"csat={body.rating}")
+    return {"ok": True, "csat_rating": t.csat_rating}
+
+
+@router.get("/tickets/csat/summary")
+def csat_summary(client_id: int | None = None, db: Session = Depends(get_db),
+                 user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """CSAT rollup for the practice (or one client): satisfaction % + recent 👎."""
+    q = db.query(SupportTicket).filter(SupportTicket.csat_rating.isnot(None))
+    if client_id:
+        q = q.filter(SupportTicket.client_id == client_id)
+    rated = q.all()
+    up = sum(1 for t in rated if t.csat_rating == 1)
+    down = sum(1 for t in rated if t.csat_rating == -1)
+    total = len(rated)
+    recent_neg = [{"id": t.id, "subject": t.subject, "client_id": t.client_id,
+                   "comment": t.csat_comment}
+                  for t in sorted(rated, key=lambda x: x.csat_at or x.updated_at, reverse=True)
+                  if t.csat_rating == -1][:10]
+    return {"rated": total, "satisfied": up, "unsatisfied": down,
+            "csat_pct": round(up / total * 100) if total else None,
+            "recent_negative": recent_neg}
 
 
 class TicketUpdate(BaseModel):

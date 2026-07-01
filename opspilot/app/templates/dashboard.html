@@ -2242,6 +2242,14 @@ async function loadPractice(){
     `<div style="text-align:center"><div class="muted" style="font-size:11px">${labels[k]||k}</div>
       <div style="font-weight:800;font-size:18px;color:${GRADE_COLOR[d.grade]}">${d.grade}</div>
       <div class="muted" style="font-size:11px">${d.score}</div></div>`).join('');
+  // CSAT (client satisfaction) — a number a franchise HQ can benchmark.
+  const csat=await api('/api/tickets/csat/summary');
+  if(csat && csat.rated>0){
+    document.getElementById('practice-domains').insertAdjacentHTML('beforeend',
+      `<div style="text-align:center"><div class="muted" style="font-size:11px">CSAT</div>
+        <div style="font-weight:800;font-size:18px;color:${csat.csat_pct>=80?'#22c55e':(csat.csat_pct>=50?'#eab308':'#ef4444')}">${csat.csat_pct}%</div>
+        <div class="muted" style="font-size:11px">${csat.satisfied}👍 ${csat.unsatisfied}👎</div></div>`);
+  }
   const recs=(h.recommendations||[]);
   document.getElementById('practice-recs').innerHTML=recs.length
     ? `<b style="font-size:12px">Do next:</b> <span class="muted" style="font-size:12px">${recs.map(esc).join(' · ')}</span>`
