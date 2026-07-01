@@ -40,7 +40,8 @@
 (function(){
   const params=new URLSearchParams(location.search);
   if(params.get('oauth_error')){
-    const m={no_account:'No Pulse account matches that sign-in.',sso_disabled:'SSO is disabled.',
+    const m={no_account:'That Microsoft/Google account isn’t linked to a Pulse login yet. Sign in with your work M365 email, or ask your MSP to invite that address.',
+      sso_disabled:'SSO is disabled.',
       exchange_failed:'Sign-in failed — please try again.',no_token:'Sign-in failed — please try again.'};
     setTimeout(()=>{const e=document.getElementById('err');if(e)e.textContent=m[params.get('oauth_error')]||'Sign-in failed.';},50);
   }

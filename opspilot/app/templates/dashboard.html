@@ -1186,11 +1186,11 @@
 
     <div class="card" style="margin-bottom:16px">
       <h3>🔐 Single Sign-On (login with Microsoft / Google) <span class="pill" id="set-sso-pill">not configured</span></h3>
-      <p class="muted" style="margin:4px 0 10px">Turn on "Sign in with Microsoft/Google" on the Pulse login page. Add the redirect URI below to your Microsoft (Entra) and/or Google OAuth app. <b>Microsoft can reuse your M365 mailbox app</b> — just add the redirect URI + delegated <code>openid email profile User.Read</code> permissions to it.</p>
+      <p class="muted" style="margin:4px 0 10px">Turn on "Sign in with Microsoft/Google" on the Pulse login page. Add the redirect URI below to your Microsoft (Entra) and/or Google OAuth app. <b>Microsoft can reuse your M365 mailbox app</b> — just add the redirect URI + delegated <code>openid email profile User.Read</code> permissions to it. In the Entra app, set <b>Supported account types → "Accounts in any organizational directory"</b> so you and every client's M365 org can sign in.</p>
       <div class="grid2">
         <label>Microsoft client ID <span class="muted" style="font-weight:normal">(blank = reuse mailbox app)</span><input id="set-sso-msid" placeholder="(unchanged / reuse mailbox)"></label>
         <label>Microsoft client secret<input id="set-sso-mssecret" type="password" placeholder="(unchanged / reuse mailbox)"></label>
-        <label>Microsoft tenant <span class="muted" style="font-weight:normal">(common = any account)</span><input id="set-sso-mstenant" placeholder="common"></label>
+        <label>Microsoft tenant <span class="muted" style="font-weight:normal">(blank = organizations · work/school accounts)</span><input id="set-sso-mstenant" placeholder="organizations"></label>
         <label>Google client ID<input id="set-sso-gid" placeholder="...apps.googleusercontent.com"></label>
         <label>Google client secret<input id="set-sso-gsecret" type="password" placeholder="(unchanged)"></label>
       </div>
@@ -1200,7 +1200,9 @@
         <input id="set-sso-g-redirect" readonly onclick="this.select()" style="font-family:monospace;font-size:12px;margin-top:6px">
       </div>
       <div class="flex" style="margin-top:10px"><button class="btn sm" onclick="saveSSO()">Save</button>
+        <button class="btn sm ghost" onclick="checkSSO()">🔎 Check my SSO setup</button>
         <span class="muted" id="set-sso-msg" style="font-size:12px"></span></div>
+      <div id="set-sso-diag" style="margin-top:10px"></div>
     </div>
 
     <div class="card" style="margin-bottom:16px">
@@ -3151,8 +3153,33 @@ async function loadSSO(){
   const pill=document.getElementById('set-sso-pill');
   if(active.length)pill.textContent=active.join(' + ')+' live';
   document.getElementById('set-sso-mstenant').value=s.ms_tenant||'';
+  const eff=document.getElementById('set-sso-mstenant');
+  if(eff&&s.ms_tenant_effective)eff.title='Effective tenant: '+s.ms_tenant_effective;
   document.getElementById('set-sso-ms-redirect').value=(s.redirect_uris||{}).microsoft||'';
   document.getElementById('set-sso-g-redirect').value=(s.redirect_uris||{}).google||'';
+}
+async function checkSSO(){
+  const box=document.getElementById('set-sso-diag'); box.innerHTML='<span class="muted" style="font-size:12px">checking…</span>';
+  const d=await api('/api/oauth/sso-diagnostics'); if(!d){box.innerHTML='<span class="muted">Could not load diagnostics.</span>';return;}
+  const ms=d.microsoft||{};
+  const ic=v=>v===true?'✅':(v===false?'❌':'ℹ️');
+  let h='<div style="border:1px solid var(--line);border-radius:10px;padding:12px;font-size:13px">';
+  h+=`<div style="margin-bottom:6px"><b>Microsoft sign-in</b> — tenant mode: <code>${esc(ms.effective_tenant||'')}</code> ${ms.work_accounts_only?'(work/school accounts ✅)':'(⚠ allows personal accounts)'}</div>`;
+  h+=(ms.checklist||[]).map(x=>`<div style="padding:3px 0">${ic(x.ok)} ${esc(x.label)}<div class="muted" style="font-size:12px;margin-left:22px">${esc(x.hint)}</div></div>`).join('');
+  h+=`<div class="muted" style="font-size:12px;margin-top:8px">Redirect URI to register in Entra:<br><code>${esc(ms.redirect_uri||'')}</code></div>`;
+  const lf=d.last_failed_attempt;
+  if(lf){
+    h+=`<div style="margin-top:10px;padding:8px;border-radius:8px;background:${lf.resolved_now?'rgba(26,157,90,.12)':'rgba(192,57,43,.12)'}">`;
+    h+=`<b>Last failed sign-in</b> (${esc((lf.when||'').slice(0,16).replace('T',' '))} UTC)<br>`;
+    h+=`Microsoft/Google returned: <code>${esc((lf.emails_returned||[]).join(', ')||'—')}</code><br>`;
+    h+=`<span style="font-size:12px">${esc(lf.hint||'')}</span></div>`;
+  } else {
+    h+='<div class="muted" style="font-size:12px;margin-top:10px">No failed SSO attempts on record yet.</div>';
+  }
+  const ls=d.last_successful_attempt;
+  if(ls)h+=`<div class="muted" style="font-size:12px;margin-top:6px">✅ Last successful SSO: ${esc(ls.email||'')} (${esc((ls.when||'').slice(0,16).replace('T',' '))} UTC)</div>`;
+  h+='</div>';
+  box.innerHTML=h;
 }
 async function saveSSO(){
   const msg=document.getElementById('set-sso-msg'); msg.textContent='saving…';

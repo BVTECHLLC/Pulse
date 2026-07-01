@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # --- Identity ---
     APP_NAME: str = "BVTech OpsPilot"
-    APP_VERSION: str = "0.85.0"
+    APP_VERSION: str = "0.86.0"
     ENV: str = "development"  # development | production
 
     # --- Security ---
@@ -65,8 +65,17 @@ class Settings(BaseSettings):
     # --- OAuth2 / SSO sign-in & connectors (authorization-code + PKCE) ---
     # Microsoft reuses M365_CLIENT_ID/SECRET; Google uses its own pair. When a
     # provider's credentials are present it lights up automatically (SSO button +
-    # connector). Tenant 'common' allows any work/school/personal account.
-    MS_OAUTH_TENANT: str = "common"
+    # connector).
+    #
+    # Tenant choice matters a lot for an MSP portal:
+    #   'organizations' — ANY work/school (Entra/M365) account, across tenants.
+    #                     This is the right default: it onboards clients from their
+    #                     own M365 orgs AND blocks the personal-account (outlook/
+    #                     live.com) login path that causes "account.live.com" prompts.
+    #   '<tenant-guid>' — lock sign-in to a single M365 tenant (most restrictive).
+    #   'common'        — work/school OR personal accounts (avoid: invites the
+    #                     personal-account trap for addresses that exist as both).
+    MS_OAUTH_TENANT: str = "organizations"
     GOOGLE_CLIENT_ID: str | None = None
     GOOGLE_CLIENT_SECRET: str | None = None
     OAUTH_ALLOW_SSO: bool = True   # allow signing in via a matched provider account

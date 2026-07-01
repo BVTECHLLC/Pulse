@@ -1,5 +1,34 @@
 # BVTech OpsPilot — Changelog
 
+## v0.86.0 — Microsoft SSO that just works (July 2026)
+- **🔐 Fixes the "account.live.com / the portal doesn't know who I am" login.**
+  The Microsoft sign-in defaulted to the `common` tenant, which let a work email
+  that *also* exists as a personal Microsoft account get routed to the personal
+  (outlook/live.com) login — so the account that came back never matched a Pulse
+  user. SSO now defaults to **`organizations`** (work/school M365 accounts, across
+  any tenant), and any saved `common`/blank value is auto-healed to it. Perfect
+  for an MSP: you and every client's M365 org can sign in, personal accounts can't.
+- **Always show the account picker** (`prompt=select_account`) so a cached personal
+  login can't silently hijack the flow — you pick your work account.
+- **Rock-solid identity matching.** The signed-in email is now read from the
+  Microsoft **id_token** (reliable across account types) with Graph `/me` as a
+  fallback, and matched to a Pulse user **case-insensitively** across every
+  email/UPN the sign-in presents. SSO still only signs in an already-provisioned
+  user — it never creates or elevates accounts.
+- **🔎 "Check my SSO setup" diagnostics** (Settings → SSO, owner/tech): a live
+  checklist showing the effective tenant, the exact **redirect URI** to paste into
+  Entra, the required app settings — and, crucially, **the last failed sign-in
+  with the exact email Microsoft returned** and whether a Pulse login exists for
+  it. "The portal doesn't know who I am" is now a visible, fixable line, not a
+  mystery. New endpoint `GET /api/oauth/sso-diagnostics`.
+- Clearer login-page error when an account isn't linked yet (tells the user to use
+  their work M365 email or ask their MSP to invite it).
+- Verified offline (smoke): tenant normalization (common/blank→organizations, GUID
+  preserved), `select_account` on the authorize URL, id_token email extraction,
+  case-insensitive user match, unmatched sign-ins never open a session, and the
+  diagnostics checklist + last-attempt surfacing (staff-only). Existing OAuth
+  SSO/connector/CSRF tests still pass.
+
 ## v0.85.0 — Weekly "State of the Practice" digest (July 2026)
 - **🗓️ One email a week that runs your practice for you.** Every Monday morning
   the owner gets a digest that opens with the **overall practice grade (A–F)** and
