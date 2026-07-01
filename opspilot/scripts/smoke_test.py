@@ -986,6 +986,30 @@ def main():
         assert ca_c.get("/api/tickets/csat/summary").status_code==403   # staff-only rollup
         print("ticket CSAT: rate-after-resolve + rollup + recent-negative + RBAC OK")
 
+        # ===================== v0.83: one-step client onboarding =====================
+        ob=c.post("/api/clients/onboard", json={"name":"Onboarded Co",
+                  "contact_email":"dana@onboardedco.com","contact_name":"Dana Owner","phone":"555-1000"})
+        assert ob.status_code==201, ob.text
+        oj=ob.json()
+        assert oj["client_id"] and oj["portal_user"]=="dana@onboardedco.com" and oj["temp_password"], oj
+        assert oj["enroll_token"], "should hand back an agent enroll token"
+        # The provisioned portal login actually works (real end-to-end login).
+        # Unique cf-connecting-ip -> own rate-limit bucket (the smoke shares one IP).
+        nc=TestClient(app); nc.cookies.clear()
+        assert nc.post("/api/auth/login", json={"email":"dana@onboardedco.com","password":oj["temp_password"]},
+                       headers={"cf-connecting-ip":"203.0.113.77"}).status_code==200
+        # That user is a CLIENT_ADMIN scoped to the new client.
+        me=nc.get("/api/auth/me").json(); assert me["role"]=="client_admin" and me["client_id"]==oj["client_id"], me
+        # The enroll token works to bring a device online for that client.
+        en=TestClient(app); en.cookies.clear()
+        _oent=en.post("/api/agent/enroll", json={"enroll_token":oj["enroll_token"],"hostname":"ONBOARD-PC","os":"Windows 11"})
+        assert _oent.status_code==200, _oent.text
+        # Validation + RBAC: duplicate email, bad email, and clients can't onboard.
+        assert c.post("/api/clients/onboard", json={"name":"Dup","contact_email":"dana@onboardedco.com"}).status_code==409
+        assert c.post("/api/clients/onboard", json={"name":"Bad","contact_email":"notanemail"}).status_code==400
+        assert ca_c.post("/api/clients/onboard", json={"name":"X","contact_email":"x@y.test"}).status_code==403
+        print("client onboarding: client+login+welcome+enroll-token, real login, RBAC OK")
+
         # ===================== v0.60: power dialer + call coaching =====================
         from app.services import power_dialer as _pd
         _orig_caller = _pd.CALLER
@@ -2057,7 +2081,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.82 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.83 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

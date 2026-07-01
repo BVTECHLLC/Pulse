@@ -248,7 +248,20 @@
       <div id="ch-board" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin-top:14px"></div>
     </div>
     <div class="card" style="margin-bottom:16px">
-      <h3>Add Client</h3>
+      <h3 style="margin-top:0">🚀 Onboard a new client <span class="pill">one step</span></h3>
+      <p class="muted" style="margin:4px 0 8px">Creates the client, sets up their portal login, emails a welcome, and gives you an agent-install token — the same way every time.</p>
+      <div class="flex" style="flex-wrap:wrap;gap:8px">
+        <input id="ob-name" placeholder="Client / company name" style="flex:1;min-width:150px">
+        <input id="ob-contact" placeholder="Contact name" style="flex:1;min-width:130px">
+        <input id="ob-email" placeholder="Contact email (their login)" style="flex:1;min-width:170px">
+        <input id="ob-phone" placeholder="Phone" style="width:130px">
+        <button class="btn sm" onclick="onboardClient()">Onboard client</button>
+      </div>
+      <div id="ob-result" class="hidden" style="margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(34,197,94,.08)"></div>
+      <div class="err" id="ob-msg"></div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <h3>Add Client <span class="muted" style="font-size:12px">(record only — no portal login)</span></h3>
       <div class="flex">
         <input id="cl-name" placeholder="Client / company name" style="flex:1;min-width:160px">
         <input id="cl-contact" placeholder="Primary contact" style="flex:1;min-width:140px">
@@ -2070,6 +2083,24 @@ async function createFinding(){
 async function setFinding(id,st){await patch(`/api/security/findings/${id}`,{status:st});loadSecurity();refreshBadges();loadAlerts();}
 
 // ---- Clients ----
+async function onboardClient(){
+  const msg=document.getElementById('ob-msg'); msg.textContent='';
+  const name=val('ob-name'), email=val('ob-email');
+  if(!name||!email){msg.textContent='Client name and contact email are required.';return;}
+  msg.textContent='onboarding…';
+  const r=await post('/api/clients/onboard',{name,contact_email:email,contact_name:val('ob-contact')||null,phone:val('ob-phone')||null});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){
+    msg.textContent='';
+    ['ob-name','ob-contact','ob-email','ob-phone'].forEach(i=>document.getElementById(i).value='');
+    const box=document.getElementById('ob-result'); box.classList.remove('hidden');
+    box.innerHTML=`<b>✅ ${esc(name)} is onboarded!</b>
+      <div style="font-size:13px;margin-top:6px">Portal login: <b>${esc(j.portal_user)}</b>${j.emailed?' (welcome email sent)':' — <span class="muted">set SMTP to auto-email; share these now:</span>'}</div>
+      <div style="font-size:13px">Temp password: <code>${esc(j.temp_password)}</code></div>
+      ${j.enroll_token?`<div style="font-size:12px;margin-top:6px"><a class="btn sm ghost" href="/download/deploy.cmd?token=${encodeURIComponent(j.enroll_token)}">⬇️ Download their agent installer</a></div>`:''}`;
+    loadClients&&loadClients();
+  } else msg.textContent=j.detail||'Onboarding failed';
+}
 async function createClient(){
   const msg=document.getElementById('cl-msg');msg.textContent='';
   const name=document.getElementById('cl-name').value.trim();

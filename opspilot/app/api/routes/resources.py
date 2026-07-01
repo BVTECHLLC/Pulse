@@ -60,6 +60,55 @@ def create_client(body: ClientIn, request: Request, db: Session = Depends(get_db
     return {"id": c.id}
 
 
+class OnboardIn(BaseModel):
+    name: str
+    contact_email: str          # becomes the client's first portal login
+    contact_name: str | None = None
+    phone: str | None = None
+    site_address: str | None = None
+
+
+@router.post("/clients/onboard", status_code=201)
+def onboard_client(body: OnboardIn, request: Request, db: Session = Depends(get_db),
+                   user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """One-action client onboarding: create the client, provision their first
+    CLIENT_ADMIN portal login, email a welcome, and hand back an agent-enrollment
+    token — so a new client (or a new franchise location's client) is fully set up
+    in a single step, the same way every time."""
+    from ...core.security import hash_password, random_token, mint_enrollment_token
+    from ...services import email as email_svc
+
+    email_l = (body.contact_email or "").strip().lower()
+    if "@" not in email_l:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A valid contact email is required.")
+    if db.query(User).filter(User.email == email_l).first():
+        raise HTTPException(status.HTTP_409_CONFLICT, "That email already has a login.")
+
+    c = Client(name=body.name[:200], primary_contact=body.contact_name, email=email_l,
+               phone=body.phone, site_address=body.site_address)
+    db.add(c)
+    db.flush()
+
+    temp_pw = random_token(12)
+    admin = User(email=email_l, full_name=body.contact_name,
+                 password_hash=hash_password(temp_pw), role=Role.CLIENT_ADMIN,
+                 client_id=c.id, is_active=True)
+    db.add(admin)
+    db.commit()
+
+    emailed = email_svc.send_invite(email_l, body.contact_name, temp_pw, "client admin")
+    # A ready-to-use enrollment token so the client can install the agent now.
+    try:
+        enroll_token = mint_enrollment_token(client_id=c.id)
+    except Exception:
+        enroll_token = None
+    audit.record(db, action="client.onboard", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="client", target_id=str(c.id),
+                 client_id=c.id, ip=_ip(request), detail=f"onboarded {c.name}")
+    return {"client_id": c.id, "portal_user": email_l, "temp_password": temp_pw,
+            "emailed": emailed, "enroll_token": enroll_token}
+
+
 # --------------------------------------------------------------------------- #
 # Devices
 # --------------------------------------------------------------------------- #
