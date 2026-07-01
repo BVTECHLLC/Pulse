@@ -936,6 +936,16 @@ def main():
         assert ca_c.put("/api/branding", json={"company":"Hacked"}).status_code==403
         print("white-label branding: public read + owner rebrand + color guard + RBAC OK")
 
+        # ===================== v0.76: MSP Practice Health =====================
+        ph=c.get("/api/practice/health").json()
+        assert "grade" in ph and "domains" in ph and "recommendations" in ph, ph
+        # By now the smoke has devices + invoices + posture, so ≥2 domains score.
+        assert len([d for d in ph["domains"]])>=2 and ph["score"] is not None, ph
+        for k, d in ph["domains"].items():
+            assert "score" in d and d["grade"] in ("A","B","C","D","F"), (k, d)
+        assert ca_c.get("/api/practice/health").status_code==403   # staff-only
+        print("MSP Practice Health: graded domains + recommendations + RBAC OK")
+
         # ===================== v0.60: power dialer + call coaching =====================
         from app.services import power_dialer as _pd
         _orig_caller = _pd.CALLER
@@ -2000,7 +2010,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.75 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.76 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
