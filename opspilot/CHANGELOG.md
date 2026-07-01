@@ -1,5 +1,17 @@
 # BVTech OpsPilot — Changelog
 
+## v0.81.0 — First-run setup wizard (dummy-proof onboarding) (July 2026)
+- **A brand-new operator (or franchise location) is walked through setup.** On
+  first login, a friendly **🚀 Welcome wizard** appears with a progress bar and
+  every step — deploy the agent, connect M365 / Stripe / payment methods /
+  QuickBooks / Dialpad / LinkedIn / Google Business, turn on auto-posting, set up
+  email — each with a **Go →** that jumps to the right screen.
+- **Never nags:** it auto-hides once you're basically set up, remembers "don't
+  show again", and can be reopened anytime from the ⌘K palette ("Open setup
+  guide"). Pure front-end over the existing `/api/setup/status`.
+- Smoke guards that the dashboard shell ships the wizard (with the copilot,
+  command palette, and branding script).
+
 ## v0.80.0 — AI marketing pack: Claude writes the month's posts (July 2026)
 - **✨ AI write** button in the Auto-post queue: Claude composes a batch of
   **distinct, on-brand, locally-relevant** social posts from your city + keywords
