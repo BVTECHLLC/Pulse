@@ -1129,6 +1129,12 @@ def main():
             assert "no-store" in cc, (pth, cc)
         print("HTML no-store cache headers OK")
 
+        # v0.74/0.79: the dashboard ships the AI copilot + ⌘K command palette + brand.js.
+        _dash=c.get("/dashboard").text
+        assert 'id="cmdk"' in _dash and "cmdkCommands" in _dash, "command palette missing"
+        assert "Ask Pulse" in _dash and "/static/js/brand.js" in _dash, "copilot/branding missing"
+        print("dashboard shell: AI copilot + command palette + branding wired OK")
+
         # ===================== v0.19: software inventory =====================
         # SMOKE-PC was enrolled earlier (hdr). Agent reports installed software;
         # staff + the owning client can read it; fleet search aggregates by app.
@@ -2039,7 +2045,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.78 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.79 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

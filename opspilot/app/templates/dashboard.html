@@ -1346,6 +1346,15 @@
     <tbody id="t-audit"></tbody></table></div></section>
 </div>
 
+<!-- ⌘K command palette -->
+<div id="cmdk" class="hidden" style="position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;padding-top:12vh" onclick="if(event.target===this)closeCmdk()">
+  <div style="width:560px;max-width:94vw;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.6);overflow:hidden">
+    <input id="cmdk-input" placeholder="Jump to… or run a command   (Esc to close)" autocomplete="off"
+      style="width:100%;border:none;border-bottom:1px solid var(--line);background:transparent;color:var(--ink);font-size:16px;padding:14px 16px;outline:none" oninput="cmdkRender()" onkeydown="cmdkKey(event)">
+    <div id="cmdk-list" style="max-height:52vh;overflow:auto;padding:6px"></div>
+  </div>
+</div>
+
 <!-- ✨ Ask Pulse — AI copilot (floating) -->
 <button id="copilot-fab" onclick="toggleCopilot()" title="Ask Pulse AI"
   style="position:fixed;bottom:22px;right:22px;z-index:60;border:none;border-radius:30px;padding:12px 18px;
@@ -1457,6 +1466,50 @@ async function bulkAlerts(action){
   if(r.ok){loadAlerts();refreshBadges();}else{alert(j.detail||'Bulk action failed');}
 }
 async function ackAlert(id){await post(`/api/alerts/${id}/ack`);loadAlerts();refreshBadges();}
+// ---- ⌘K command palette ----
+let CMDK_SEL=0;
+function cmdkCommands(){
+  const cmds=[];
+  document.querySelectorAll('.nav a[data-tab]').forEach(a=>{
+    cmds.push({label:'Go to '+a.textContent.trim().replace(/^[^A-Za-z0-9]+/,'').trim(),
+               hint:'tab', run:()=>tab(a.dataset.tab)});
+  });
+  cmds.push({label:'Ask Pulse (AI copilot)',hint:'AI',run:()=>{closeCmdk();if(document.getElementById('copilot').classList.contains('hidden'))toggleCopilot();document.getElementById('copilot-q').focus();}});
+  cmds.push({label:'Run automation checks now',hint:'action',run:async()=>{closeCmdk();await post('/api/automation/run-checks');if(typeof loadAlerts==='function')loadAlerts();}});
+  cmds.push({label:'Generate social posts',hint:'marketing',run:()=>{tab('content');}});
+  cmds.push({label:'MSP Practice Health',hint:'report',run:()=>{tab('overview');}});
+  cmds.push({label:'Sign out',hint:'account',run:()=>logout()});
+  return cmds;
+}
+function openCmdk(){document.getElementById('cmdk').classList.remove('hidden');
+  const i=document.getElementById('cmdk-input');i.value='';CMDK_SEL=0;cmdkRender();i.focus();}
+function closeCmdk(){document.getElementById('cmdk').classList.add('hidden');}
+function cmdkFiltered(){
+  const q=(document.getElementById('cmdk-input').value||'').toLowerCase().trim();
+  const all=cmdkCommands();
+  if(!q)return all;
+  return all.filter(c=>c.label.toLowerCase().includes(q)||(c.hint||'').includes(q));
+}
+function cmdkRender(){
+  const list=cmdkFiltered(); if(CMDK_SEL>=list.length)CMDK_SEL=0;
+  document.getElementById('cmdk-list').innerHTML=list.map((c,i)=>
+    `<div class="cmdk-item" onmousedown="event.preventDefault()" onclick="cmdkRun(${i})"
+      style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:8px;cursor:pointer;${i===CMDK_SEL?'background:rgba(108,92,231,.18)':''}">
+      <span>${esc(c.label)}</span><span class="muted" style="font-size:11px">${esc(c.hint||'')}</span></div>`).join('')
+    ||'<div class="muted" style="padding:12px">No matches.</div>';
+}
+function cmdkRun(i){const list=cmdkFiltered();const c=list[i];if(c){closeCmdk();c.run();}}
+function cmdkKey(e){
+  const list=cmdkFiltered();
+  if(e.key==='ArrowDown'){e.preventDefault();CMDK_SEL=Math.min(CMDK_SEL+1,list.length-1);cmdkRender();}
+  else if(e.key==='ArrowUp'){e.preventDefault();CMDK_SEL=Math.max(CMDK_SEL-1,0);cmdkRender();}
+  else if(e.key==='Enter'){e.preventDefault();cmdkRun(CMDK_SEL);}
+  else if(e.key==='Escape'){closeCmdk();}
+}
+document.addEventListener('keydown',e=>{
+  if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){e.preventDefault();
+    const el=document.getElementById('cmdk');el.classList.contains('hidden')?openCmdk():closeCmdk();}
+});
 async function explainAlert(id){
   // Reuse the copilot panel to show the AI explanation.
   const el=document.getElementById('copilot'); if(el.classList.contains('hidden'))toggleCopilot();
