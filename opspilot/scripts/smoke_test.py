@@ -920,6 +920,10 @@ def main():
                 assert ex["explanation"].startswith("AI:") and ex["alert_id"]==_aid, ex
                 assert ca_c.post(f"/api/ai/alerts/{_aid}/explain").status_code==403   # staff-only
             assert c.post("/api/ai/alerts/999999/explain").status_code==404
+            # v0.80: AI marketing pack — Claude-written posts into the autopost queue.
+            gai=c.post("/api/autopost/generate", json={"count":3,"use_ai":True,
+                       "city":"El Campo, TX","keywords":["managed IT"],"channels":["linkedin"]}).json()
+            assert gai["ok"] and gai["created"]==3, gai   # AI stub returns 1, topped up to 3
             # RBAC: clients can't use the copilot.
             assert ca_c.post("/api/ai/ask", json={"question":"x"}).status_code==403
             assert ca_c.get("/api/ai/status").status_code==403
@@ -2045,7 +2049,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.79 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.80 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

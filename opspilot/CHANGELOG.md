@@ -1,5 +1,16 @@
 # BVTech OpsPilot — Changelog
 
+## v0.80.0 — AI marketing pack: Claude writes the month's posts (July 2026)
+- **✨ AI write** button in the Auto-post queue: Claude composes a batch of
+  **distinct, on-brand, locally-relevant** social posts from your city + keywords
+  and drops them straight into the queue — a month of content in one click.
+- **Bulletproof:** always returns exactly the count you asked for (tops up from
+  the template engine if Claude returns fewer), and **falls back entirely to the
+  templates** when Claude isn't connected — so the button always works.
+  `post_generator.generate_ai_drafts` + `use_ai` on `POST /api/autopost/generate`.
+- Verified offline (smoke): with Claude stubbed, `use_ai` enqueues the full count
+  (AI output + template top-up); the template fallback path is unit-tested.
+
 ## v0.79.0 — ⌘K command palette (July 2026)
 - **Press ⌘K (or Ctrl-K) anywhere** to jump to any tab or run a quick action —
   Ask Pulse, run automation checks, generate posts, sign out — by typing. Arrow

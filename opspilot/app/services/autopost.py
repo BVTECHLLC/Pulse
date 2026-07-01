@@ -180,14 +180,15 @@ def publish_one(db: Session, post: SocialPost, now: datetime | None = None, *,
 
 def generate_and_queue(db: Session, count: int, *, city: str = "", keywords=None,
                        cta_url: str = "", image_url: str = "", channels=None,
-                       biz: str = "BVTech") -> list[dict]:
-    """Generate `count` SEO-tuned drafts and add them to the queue. Rotation
-    continues from the current post count so re-runs don't repeat."""
+                       biz: str = "BVTech", use_ai: bool = False) -> list[dict]:
+    """Generate `count` drafts and add them to the queue. `use_ai=True` writes them
+    with Claude (falling back to templates). Rotation continues from the current
+    post count so re-runs don't repeat."""
     from . import post_generator
     channels = [c for c in (channels or ["linkedin"]) if c in CHANNELS] or ["linkedin"]
     start = db.query(SocialPost).count()
-    drafts = post_generator.generate_drafts(count, city=city, keywords=keywords,
-                                            biz=biz, cta_url=cta_url, start=start)
+    gen = post_generator.generate_ai_drafts if use_ai else post_generator.generate_drafts
+    drafts = gen(count, city=city, keywords=keywords, biz=biz, cta_url=cta_url, start=start)
     created = []
     for d in drafts:
         p = SocialPost(body=d["body"], link=d.get("link"), image_url=(image_url or None),
