@@ -912,6 +912,14 @@ def main():
             rd=c.post(f"/api/ai/tickets/{_tk}/reply-draft").json()
             assert rd["draft"].startswith("AI:"), rd
             assert c.post(f"/api/ai/tickets/999999/reply-draft").status_code==404
+            # v0.77: AI "explain this alert" — senior-tech guidance on any alert.
+            _alerts=c.get("/api/alerts").json()
+            if _alerts:
+                _aid=_alerts[0]["id"]
+                ex=c.post(f"/api/ai/alerts/{_aid}/explain").json()
+                assert ex["explanation"].startswith("AI:") and ex["alert_id"]==_aid, ex
+                assert ca_c.post(f"/api/ai/alerts/{_aid}/explain").status_code==403   # staff-only
+            assert c.post("/api/ai/alerts/999999/explain").status_code==404
             # RBAC: clients can't use the copilot.
             assert ca_c.post("/api/ai/ask", json={"question":"x"}).status_code==403
             assert ca_c.get("/api/ai/status").status_code==403
@@ -919,7 +927,7 @@ def main():
             _ai.enabled, _ai._CALLER = _o_en, _o_call
         # Graceful when Claude isn't connected (no API key) → clear 503, not a crash.
         assert c.post("/api/ai/ask", json={"question":"x"}).status_code==503
-        print("AI copilot: ask + draft + ticket-reply + graceful-unconfigured + RBAC OK")
+        print("AI copilot: ask + draft + ticket-reply + explain-alert + graceful + RBAC OK")
 
         # ===================== v0.75: white-label branding =====================
         b0=c.get("/api/branding").json()   # public, safe defaults
@@ -2010,7 +2018,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.76 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.77 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

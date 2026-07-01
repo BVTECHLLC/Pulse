@@ -1437,7 +1437,8 @@ async function loadAlerts(){
      <td class="muted">${esc(a.message)}</td>
      <td><span class="badge ${a.status==='resolved'?'ok':(a.status==='acknowledged'?'warn':'bad')}">${a.status}</span></td>
      <td class="muted">${ago(a.first_seen)}</td>
-     <td class="flex">${a.status==='resolved'?'':
+     <td class="flex"><button class="btn sm ghost" title="AI explain + fix" onclick="explainAlert(${a.id})">✨</button>
+        ${a.status==='resolved'?'':
         `${a.status==='active'?`<button class="btn sm ghost" onclick="ackAlert(${a.id})">Ack</button>`:''}
          <button class="btn sm" onclick="resolveAlert(${a.id})">Resolve</button>`}</td></tr>`).join('')
     ||`<tr><td colspan=8 class="muted">No ${showRes?'resolved':'active'} alerts.</td></tr>`;
@@ -1456,6 +1457,13 @@ async function bulkAlerts(action){
   if(r.ok){loadAlerts();refreshBadges();}else{alert(j.detail||'Bulk action failed');}
 }
 async function ackAlert(id){await post(`/api/alerts/${id}/ack`);loadAlerts();refreshBadges();}
+async function explainAlert(id){
+  // Reuse the copilot panel to show the AI explanation.
+  const el=document.getElementById('copilot'); if(el.classList.contains('hidden'))toggleCopilot();
+  copilotAdd('you',`Explain alert #${id} and how to fix it`);
+  const r=await post(`/api/ai/alerts/${id}/explain`); const j=await r.json().catch(()=>({}));
+  copilotAdd('ai', r.ok? j.explanation : (j.detail||'Claude isn\'t connected yet — add your Anthropic API key on the server.'));
+}
 async function resolveAlert(id){await post(`/api/alerts/${id}/resolve`);loadAlerts();refreshBadges();}
 // ---- Maintenance windows ----
 async function loadMaint(){
