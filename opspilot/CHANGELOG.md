@@ -1,5 +1,19 @@
 # BVTech OpsPilot — Changelog
 
+## v0.89.0 — Session control & sign-out-everywhere (July 2026)
+- **🔓 "Sign out everywhere" per user** in Users & Access — revokes all of a
+  user's live sessions instantly (a lost laptop or a shared login is one click
+  from locked out). The row shows the live session count on the button.
+- **Deactivating a user now kills their live sessions immediately**, not just
+  future logins — so "deactivate" is a true kill switch.
+- **Password resets revoke existing sessions**, so a leaked/stale session can't
+  outlive the old password.
+- Uses the existing `auth_sessions` table (no schema change); counts are batched
+  (no N+1). New endpoint `POST /api/users/{id}/sign-out-all` (owner-only), with
+  the same self/staff guardrails as the rest of the panel.
+- Verified offline (smoke): a live SSO session shows in the list, sign-out-all
+  revokes it and the session immediately reads 401, and it's owner-only.
+
 ## v0.88.0 — Users & Access management center (July 2026)
 - **👥 A single place to see and manage every login.** New "Users & Access" tab:
   staff, client admins, and the read-only viewers who **self-registered via SSO**

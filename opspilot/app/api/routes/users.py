@@ -68,6 +68,17 @@ def set_active(user_id: int, body: ActiveIn, request: Request, db: Session = Dep
     return out
 
 
+@router.post("/{user_id}/sign-out-all")
+def sign_out_all(user_id: int, request: Request, db: Session = Depends(get_db),
+                 user: User = Depends(require_roles(Role.OWNER))):
+    out = _guard(lambda: user_admin.sign_out_all(db, user, user_id))
+    audit.record(db, action="user.sign_out_all", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="user", target_id=str(user_id),
+                 client_id=out.get("client_id"), ip=_ip(request),
+                 detail=f"revoked={out.get('revoked_sessions')}")
+    return out
+
+
 @router.post("/{user_id}/reset-password")
 def reset_password(user_id: int, request: Request, db: Session = Depends(get_db),
                    user: User = Depends(require_roles(Role.OWNER))):

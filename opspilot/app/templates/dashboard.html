@@ -1548,6 +1548,7 @@ function renderUsers(){
       if(u.role==='client_admin')actions+=`<button class="btn sm ghost" onclick="userRole(${u.id},'client_viewer')">⬇ Make viewer</button> `;
       actions+=u.is_active?`<button class="btn sm ghost" onclick="userActive(${u.id},false)">Deactivate</button> `
                           :`<button class="btn sm ghost" onclick="userActive(${u.id},true)">Reactivate</button> `;
+      if(u.active_sessions>0)actions+=`<button class="btn sm ghost" onclick="userSignOut(${u.id})">Sign out (${u.active_sessions})</button> `;
       actions+=`<button class="btn sm ghost" onclick="userReset(${u.id})">Reset pw</button>`;
     }
     return `<tr${u.is_active?'':' style="opacity:.55"'}>
@@ -1569,6 +1570,11 @@ async function userActive(id,active){
   if(!active&&!confirm('Deactivate this user? They will be signed out and unable to log in.'))return;
   const r=await patch('/api/users/'+id+'/active',{active}); const j=await r.json().catch(()=>({}));
   if(r.ok)loadUsers(); else alert(j.detail||'Could not update status');
+}
+async function userSignOut(id){
+  if(!confirm('Sign this user out of all devices now? They will need to log in again.'))return;
+  const r=await post('/api/users/'+id+'/sign-out-all'); const j=await r.json().catch(()=>({}));
+  if(r.ok){loadUsers();} else alert(j.detail||'Could not sign out sessions');
 }
 async function userReset(id){
   if(!confirm('Issue a new temporary password for this user?'))return;
