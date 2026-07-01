@@ -1321,6 +1321,24 @@
     <tbody id="t-audit"></tbody></table></div></section>
 </div>
 
+<!-- ✨ Ask Pulse — AI copilot (floating) -->
+<button id="copilot-fab" onclick="toggleCopilot()" title="Ask Pulse AI"
+  style="position:fixed;bottom:22px;right:22px;z-index:60;border:none;border-radius:30px;padding:12px 18px;
+  background:linear-gradient(135deg,#6c5ce7,#3b82f6);color:#fff;font-weight:700;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.35)">✨ Ask Pulse</button>
+<div id="copilot" class="hidden" style="position:fixed;bottom:78px;right:22px;z-index:60;width:380px;max-width:92vw;
+  background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.5);overflow:hidden">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:rgba(108,92,231,.12);border-bottom:1px solid var(--line)">
+    <b>✨ Pulse Copilot</b><button class="btn sm ghost" onclick="toggleCopilot()" style="padding:3px 9px">✕</button>
+  </div>
+  <div id="copilot-body" style="max-height:46vh;overflow:auto;padding:12px 14px;font-size:14px">
+    <p class="muted" style="margin:0">Ask me anything about your business — "who's overdue?", "how's security looking?", "draft a reply for ticket 12", or "write a LinkedIn post about backups."</p>
+  </div>
+  <div style="display:flex;gap:6px;padding:10px 12px;border-top:1px solid var(--line)">
+    <input id="copilot-q" placeholder="Ask Pulse…" style="flex:1" onkeydown="if(event.key==='Enter')askCopilot()">
+    <button class="btn sm" onclick="askCopilot()" id="copilot-send">Ask</button>
+  </div>
+</div>
+
 <div class="brand-footer">
   <span>© BVTech LLC · El Campo, TX · OpsPilot v{{ version }}</span>
   <span class="scripture">"Whatever you do, work heartily." — Col 3:23</span>
@@ -1351,6 +1369,35 @@ function badge(v,good,warn){if(v==null)return '<span class="badge">—</span>';
 function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));}
 function ago(iso){if(!iso)return 'never';return new Date(iso).toLocaleString();}
 async function logout(){await fetch('/api/auth/logout',{method:'POST'});location.href='/';}
+// ---- ✨ Ask Pulse copilot ----
+function toggleCopilot(){const el=document.getElementById('copilot');el.classList.toggle('hidden');
+  if(!el.classList.contains('hidden'))document.getElementById('copilot-q').focus();}
+function copilotAdd(who,text){
+  const b=document.getElementById('copilot-body');
+  const mine=who==='you';
+  b.insertAdjacentHTML('beforeend',
+    `<div style="margin:8px 0"><div class="muted" style="font-size:11px">${mine?'You':'✨ Pulse'}</div>
+     <div style="white-space:pre-wrap;${mine?'':'background:rgba(108,92,231,.08);border-radius:8px;padding:8px'}">${esc(text)}</div></div>`);
+  b.scrollTop=b.scrollHeight;
+}
+async function askCopilot(){
+  const inp=document.getElementById('copilot-q'); const q=inp.value.trim(); if(!q)return;
+  copilotAdd('you',q); inp.value='';
+  const btn=document.getElementById('copilot-send'); btn.disabled=true; const old=btn.textContent; btn.textContent='…';
+  // Route a "draft reply for ticket N" straight to the ticket-reply drafter.
+  const m=q.match(/ticket\s*#?(\d+)/i);
+  try{
+    let r,j;
+    if(m && /repl|draft|respond/i.test(q)){
+      r=await post(`/api/ai/tickets/${m[1]}/reply-draft`); j=await r.json().catch(()=>({}));
+      copilotAdd('ai', r.ok? j.draft : (j.detail||'Could not draft.'));
+    } else {
+      r=await post('/api/ai/ask',{question:q}); j=await r.json().catch(()=>({}));
+      copilotAdd('ai', r.ok? j.answer : (j.detail||'Claude isn\'t connected yet — add your Anthropic API key on the server.'));
+    }
+  }catch(e){ copilotAdd('ai','Something went wrong reaching Claude.'); }
+  btn.disabled=false; btn.textContent=old;
+}
 
 let CLIENTS={},DEVICES={};
 
