@@ -1,5 +1,24 @@
 # BVTech OpsPilot — Changelog
 
+## v0.72.0 — Smoother onboarding: one-click location picker + guided setup (July 2026)
+- **No more typing Google IDs.** After you Connect Google Business, click **Load
+  my locations** in Settings → Google Business Profile and **pick your listing
+  from a dropdown** — it fills the account + location for you. (`GET
+  /api/gbp/locations` lists every location the connected account manages via the
+  Business Profile Account/Info APIs.) The "Post now" box also takes an image.
+- **Guided setup checklist.** A new **🚀 Getting started** card on the Overview
+  shows exactly what's connected and what's left — deploy the agent, connect
+  Microsoft 365 / Stripe / payment methods / QuickBooks / Dialpad / LinkedIn /
+  Google Business, turn on auto-posting, set up email — with a progress bar and
+  one-click jumps to the right tab. It auto-hides once you're set up.
+  (`GET /api/setup/status`, staff-only.)
+- `services/gbp` can now list accounts+locations with just the OAuth connection
+  (IDs no longer required to construct the client); `routes/setup.py` aggregates
+  connection state across the vault + devices. No schema change.
+- Verified offline (smoke + unit): the location picker returns pickable
+  account/location/title/address (Google listing stubbed); the setup checklist
+  returns structured items + progress; both are staff-only (RBAC).
+
 ## v0.71.0 — Auto-post to Google Business Profile (with photos), weekly (July 2026)
 - **Google Business Profile is now an auto-post channel.** The auto-poster can
   publish to **LinkedIn and/or Google Business Profile**; each queued post can

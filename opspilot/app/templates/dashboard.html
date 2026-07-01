@@ -68,6 +68,16 @@
   </div>
 
   <section id="overview">
+    <div class="card" id="setup-card" style="margin-bottom:16px;display:none">
+      <div class="flex" style="justify-content:space-between;flex-wrap:wrap">
+        <h3 style="margin:0">🚀 Getting started <span class="pill" id="setup-pill">—</span></h3>
+        <button class="btn sm ghost" onclick="document.getElementById('setup-card').style.display='none'">dismiss</button>
+      </div>
+      <div style="background:var(--line);border-radius:8px;height:8px;overflow:hidden;margin:10px 0">
+        <div id="setup-bar" style="height:8px;width:0;background:var(--ok,#22c55e);transition:width .3s"></div>
+      </div>
+      <div id="setup-items" class="grid cols-2" style="gap:6px"></div>
+    </div>
     <div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
       <div><b>Command Center</b> <span class="muted" id="ov-ts">live</span></div>
       <div class="flex"><button class="btn sm ghost" onclick="showBriefing()">📋 Morning Briefing</button>
@@ -1235,16 +1245,21 @@
 
     <div class="card" style="margin-bottom:16px">
       <h3>📍 Google Business Profile <span class="pill" id="set-gbp-pill">not configured</span></h3>
-      <p class="muted" style="margin:4px 0 10px">Publish updates to your Google listing. OAuth client + refresh token + account/location names.</p>
+      <p class="muted" style="margin:4px 0 10px">Publish updates to your Google listing. 1) paste your OAuth Client ID + secret &amp; Save · 2) <b>Connect</b> in the Connections card above · 3) click <b>Load my locations</b> and pick yours — no ID typing.</p>
       <div class="grid2">
         <label>Client ID<input id="set-gbp-cid" placeholder="(unchanged)"></label>
         <label>Client secret<input id="set-gbp-secret" type="password" placeholder="(unchanged)"></label>
-        <label>Refresh token<input id="set-gbp-refresh" type="password" placeholder="(unchanged)"></label>
+        <label>Refresh token (auto-filled by Connect)<input id="set-gbp-refresh" type="password" placeholder="(set via Connect)"></label>
+        <label>&nbsp;<button class="btn sm ghost" style="width:100%" onclick="loadGbpLocations()">📍 Load my locations</button></label>
+        <label style="grid-column:1/-1">Pick your location
+          <select id="set-gbp-picker" onchange="pickGbpLocation()" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:9px;color:var(--ink)">
+            <option value="">— click "Load my locations" after connecting —</option></select></label>
         <label>Account name<input id="set-gbp-acct" placeholder="accounts/123"></label>
         <label>Location name<input id="set-gbp-loc" placeholder="locations/456"></label>
       </div>
       <div class="flex" style="margin-top:10px"><button class="btn sm" onclick="saveGbp()">Save</button>
-        <input id="set-gbp-text" placeholder="post an update now…" style="flex:1;min-width:160px">
+        <input id="set-gbp-text" placeholder="post an update now…" style="flex:1;min-width:140px">
+        <input id="set-gbp-img" placeholder="image URL (optional)" style="flex:1;min-width:140px">
         <button class="btn sm ghost" onclick="postGbp()">Post now</button>
         <span class="muted" id="set-gbp-msg" style="font-size:12px"></span></div>
     </div>
@@ -2105,7 +2120,22 @@ async function loadRecentTime(){
 
 // ---- Live command-center overview ----
 let OV_TIMER=null;
+async function loadSetup(){
+  const s=await api('/api/setup/status'); if(!s)return;
+  const card=document.getElementById('setup-card');
+  // Only nag while there's meaningful setup left (hide once ~everything is done).
+  if(s.done>=s.total-1){card.style.display='none';return;}
+  card.style.display='';
+  document.getElementById('setup-pill').textContent=`${s.done}/${s.total} done`;
+  document.getElementById('setup-bar').style.width=s.pct+'%';
+  document.getElementById('setup-items').innerHTML=s.items.map(i=>
+    `<div class="flex" style="gap:8px;padding:4px 0;cursor:pointer" onclick="tab('${i.tab}')">
+      <span style="font-size:15px">${i.done?'✅':'⬜'}</span>
+      <div><div style="${i.done?'color:var(--muted);text-decoration:line-through':''}">${esc(i.label)}</div>
+        ${i.done?'':`<div class="muted" style="font-size:11px">${esc(i.hint)}</div>`}</div></div>`).join('');
+}
 async function loadOverview(){
+  loadSetup();
   const o=await api('/api/overview');if(!o)return;
   const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
   set('ov-online',`${o.devices.online}/${o.devices.total}`);
@@ -2863,9 +2893,26 @@ async function postGbp(){
   const msg=document.getElementById('set-gbp-msg'); const t=val('set-gbp-text');
   if(!t){msg.textContent='Enter an update.';return;}
   msg.textContent='posting…';
-  const r=await post('/api/gbp/post',{summary:t}); const j=await r.json().catch(()=>({}));
-  if(r.ok){msg.textContent='Posted to Google ✓';document.getElementById('set-gbp-text').value='';}
+  const r=await post('/api/gbp/post',{summary:t,image_url:val('set-gbp-img')||null}); const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent='Posted to Google ✓';document.getElementById('set-gbp-text').value='';document.getElementById('set-gbp-img').value='';}
   else msg.textContent=j.detail||'Post failed';
+}
+async function loadGbpLocations(){
+  const msg=document.getElementById('set-gbp-msg'); msg.textContent='loading locations…';
+  const r=await fetch('/api/gbp/locations'); const j=await r.json().catch(()=>({}));
+  if(!r.ok){msg.textContent=j.detail||'Could not load — connect Google Business first.';return;}
+  const sel=document.getElementById('set-gbp-picker');
+  const locs=j.locations||[];
+  sel.innerHTML='<option value="">— '+(locs.length?'pick your location':'no locations found')+' —</option>'+
+    locs.map(l=>`<option value="${esc(l.account)}|${esc(l.location)}">${esc(l.title)}${l.address?' — '+esc(l.address):''}</option>`).join('');
+  msg.textContent=locs.length?`Found ${locs.length} location(s) — pick one.`:'No locations on this account.';
+}
+function pickGbpLocation(){
+  const v=document.getElementById('set-gbp-picker').value; if(!v)return;
+  const [acct,loc]=v.split('|');
+  document.getElementById('set-gbp-acct').value=acct;
+  document.getElementById('set-gbp-loc').value=loc;
+  saveGbp();
 }
 async function saveStripe(){
   const msg=document.getElementById('set-sp-msg'); msg.textContent='saving…';
