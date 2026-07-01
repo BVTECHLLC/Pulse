@@ -1,5 +1,27 @@
 # BVTech OpsPilot — Changelog
 
+## v0.85.0 — Weekly "State of the Practice" digest (July 2026)
+- **🗓️ One email a week that runs your practice for you.** Every Monday morning
+  the owner gets a digest that opens with the **overall practice grade (A–F)** and
+  the week's headline numbers, then the full what-needs-attention briefing (active
+  alerts, SLA breaches, offline devices, failing integrations, overdue invoices,
+  new leads, expiring contracts). No cron to configure — it rides the existing
+  run-checks tick.
+- **Idempotent + no-op-safe.** Sends at most **once per ISO week**, only on/after
+  the configured weekday + hour, tracked on the vault so a scheduler firing every
+  few minutes can't double-send. Harmless until email (SMTP/M365) is on (the send
+  is logged), so it's enabled by default.
+- **Owner controls** in Settings → Weekly Digest: on/off, send day, send-after
+  hour, and recipients (blank = every owner). **Preview** renders the exact email;
+  **Send now** fires it immediately without consuming the weekly guard.
+- Endpoints (owner/tech): `GET/PUT /api/automation/weekly-digest`,
+  `GET /api/automation/weekly-digest/preview`,
+  `POST /api/automation/weekly-digest/send-now`. Also surfaced in the run-checks
+  response.
+- Verified offline (smoke): grade+briefing render, weekday/hour gating,
+  once-per-week idempotency across two ISO weeks, disable stops it, send-now +
+  recipient parsing, and RBAC (client roles can't read or change it).
+
 ## v0.84.0 — Public branded status page (July 2026)
 - **📣 A shareable status page you can hand to every client** — a branded,
   public uptime & incident page at `/status`, the transparency layer

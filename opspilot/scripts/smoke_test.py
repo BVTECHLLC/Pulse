@@ -2127,7 +2127,61 @@ def main():
         assert ca_c.post("/api/status/incidents", json={"title": "hax", "impact": "minor"}).status_code == 403
         print("public status page: enable+brand + incident lifecycle + uptime + no-leak + RBAC OK")
 
-    print("\n=== OpsPilot v0.84 SMOKE TEST PASSED ===")
+        # --- v0.85 weekly "state of the practice" digest ------------------- #
+        from app.services import weekly_digest as _wd
+        from app.core.db import SessionLocal as _WSL
+        # config: default enabled, Monday, owner is an effective recipient
+        wcfg = c.get("/api/automation/weekly-digest").json()
+        assert wcfg["enabled"] is True and wcfg["weekday"] == 0
+        assert "help@bvtech.org" in wcfg["effective_recipients"]
+        # preview renders the practice grade + attention briefing
+        pv = c.get("/api/automation/weekly-digest/preview").json()
+        assert "State of the Practice" in pv["body"] and "grade" in pv["subject"].lower()
+        # scheduler send: idempotent + weekday/hour gated, using an injected sender
+        _sent = []
+        def _cap(to, subj, body): _sent.append((to, subj)); return True
+        _wdb = _WSL()
+        try:
+            import datetime as _dt
+            # a Wednesday -> not due
+            wed = _dt.datetime(2026, 7, 1, 9, 0, tzinfo=_dt.timezone.utc)
+            assert _wd.maybe_send(_wdb, wed, sender=_cap)["reason"] == "not_due"
+            # Monday 6am -> before send hour (7) -> not due
+            mon_early = _dt.datetime(2026, 7, 6, 6, 0, tzinfo=_dt.timezone.utc)
+            assert _wd.maybe_send(_wdb, mon_early, sender=_cap)["reason"] == "not_due"
+            # Monday 8am -> sends once
+            mon = _dt.datetime(2026, 7, 6, 8, 0, tzinfo=_dt.timezone.utc)
+            r1 = _wd.maybe_send(_wdb, mon, sender=_cap)
+            assert r1["sent"] is True and r1["delivered"] >= 1, r1
+            # same week again -> already_sent (no double email)
+            r2 = _wd.maybe_send(_wdb, _dt.datetime(2026, 7, 6, 12, 0, tzinfo=_dt.timezone.utc), sender=_cap)
+            assert r2["sent"] is False and r2["reason"] == "already_sent", r2
+            # next ISO week -> sends again
+            r3 = _wd.maybe_send(_wdb, _dt.datetime(2026, 7, 13, 8, 0, tzinfo=_dt.timezone.utc), sender=_cap)
+            assert r3["sent"] is True, r3
+            assert len(_sent) == 2, _sent    # exactly two weeks delivered
+        finally:
+            _wdb.close()
+        # owner can reconfigure + send-now; disabling stops the scheduler
+        assert c.put("/api/automation/weekly-digest", json={"weekday": 4, "hour": 6,
+                     "recipients": "boss@bvtech.org, ops@bvtech.org"}).json()["weekday"] == 4
+        assert c.get("/api/automation/weekly-digest").json()["recipients"] == ["boss@bvtech.org", "ops@bvtech.org"]
+        assert c.post("/api/automation/weekly-digest/send-now").json()["recipients"] == 2
+        assert c.put("/api/automation/weekly-digest", json={"enabled": False}).json()["enabled"] is False
+        _wdb2 = _WSL()
+        try:
+            import datetime as _dt2
+            assert _wd.maybe_send(_wdb2, _dt2.datetime(2026, 7, 17, 8, 0, tzinfo=_dt2.timezone.utc),
+                                  sender=_cap)["reason"] == "disabled"
+        finally:
+            _wdb2.close()
+        # RBAC: client roles can't read or change the digest
+        assert ca_c.get("/api/automation/weekly-digest").status_code == 403
+        assert ca_c.put("/api/automation/weekly-digest", json={"enabled": True}).status_code == 403
+        assert ca_c.post("/api/automation/weekly-digest/send-now").status_code == 403
+        print("weekly digest: grade+briefing render + weekday/hour gate + once-per-week + send-now + RBAC OK")
+
+    print("\n=== OpsPilot v0.85 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
