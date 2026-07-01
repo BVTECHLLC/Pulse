@@ -852,7 +852,26 @@ def main():
             assert c.delete(f"/api/autopost/{p3['id']}").status_code==200
             assert ca_c.get("/api/autopost").status_code==403
             assert ca_c.post("/api/autopost", json={"body":"x","channels":["google_business"]}).status_code==403
-            print("auto-posting: LinkedIn + Google Business (image, weekly cadence, post-now) + RBAC OK")
+            # v0.73: auto-write drafts + auto-refill so the queue never runs dry.
+            gen=c.post("/api/autopost/generate", json={"count":5,"city":"El Campo, TX",
+                       "keywords":["managed IT","backups"],"cta_url":"https://bvtech.org/contact",
+                       "channels":["google_business"]}).json()
+            assert gen["ok"] and gen["created"]==5, gen
+            rows=c.get("/api/autopost").json()
+            draft=[x for x in rows if "El Campo" in (x["body"] or "")][0]
+            assert draft["status"]=="queued" and draft["channels"]==["google_business"], draft
+            assert "bvtech.org/contact" in draft["body"]   # CTA woven in (SEO)
+            # Save a brand profile + turn on auto-refill; the tick tops the queue up.
+            c.put("/api/autopost/settings", json={"auto_generate":True,"min_queue":8,
+                  "city":"El Campo, TX","keywords":["cybersecurity"],"gen_channels":["linkedin"]})
+            stt=c.get("/api/autopost/settings").json()
+            assert stt["auto_generate"] is True and stt["city"]=="El Campo, TX" and stt["min_queue"]==8, stt
+            c.post("/api/automation/run-checks")   # auto-refill tops the queue up to min_queue
+            _after=len([x for x in c.get("/api/autopost").json() if x["status"]=="queued"])
+            assert _after>=8, ("queue not refilled to min_queue", _after)
+            # RBAC: clients can't generate.
+            assert ca_c.post("/api/autopost/generate", json={"count":2}).status_code==403
+            print("auto-posting: LinkedIn + Google Business (image, weekly, generate + auto-refill) + RBAC OK")
         finally:
             _ap._linkedin_poster, _ap._gbp_poster = _o_li, _o_gb
 
@@ -1941,7 +1960,7 @@ def main():
         assert ca_c.put("/api/payments/settings", json={"secret_key": "x"}).status_code == 403
         print("Stripe payments: masked key + webhook signature verify + auto-reconcile + RBAC OK")
 
-    print("\n=== OpsPilot v0.72 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.73 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

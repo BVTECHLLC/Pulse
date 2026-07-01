@@ -44,18 +44,53 @@ def get_settings(db: Session = Depends(get_db),
 
 
 class SettingsIn(BaseModel):
-    enabled: bool = False
-    gap_hours: int = 20
+    enabled: bool | None = None
+    gap_hours: int | None = None
+    auto_generate: bool | None = None
+    min_queue: int | None = None
+    city: str | None = None
+    keywords: list[str] | None = None
+    cta_url: str | None = None
+    image_url: str | None = None
+    gen_channels: list[str] | None = None
 
 
 @router.put("/settings")
 def save_settings(body: SettingsIn, request: Request, db: Session = Depends(get_db),
                   user: User = Depends(require_roles(Role.OWNER))):
-    cfg = autopost.save_config(db, enabled=body.enabled, gap_hours=body.gap_hours)
+    cfg = autopost.save_config(db, **{k: v for k, v in body.model_dump().items() if v is not None})
     audit.record(db, action="autopost.configure", actor_user_id=user.id, actor_email=user.email,
                  actor_role=user.role.value, target_type="autopost", ip=_ip(request),
-                 detail=f"enabled={cfg['enabled']} gap={cfg['gap_hours']}h")
+                 detail=f"enabled={cfg['enabled']} gap={cfg['gap_hours']}h auto_gen={cfg['auto_generate']}")
     return cfg
+
+
+class GenerateIn(BaseModel):
+    count: int = 6
+    city: str | None = None
+    keywords: list[str] | None = None
+    cta_url: str | None = None
+    image_url: str | None = None
+    channels: list[str] = ["linkedin"]
+
+
+@router.post("/generate")
+def generate(body: GenerateIn, request: Request, db: Session = Depends(get_db),
+             user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Generate SEO-tuned post drafts and add them to the queue (no AI key needed).
+    Falls back to the saved brand profile for anything not passed."""
+    cfg = autopost.get_config(db)
+    created = autopost.generate_and_queue(
+        db, max(1, min(body.count, 52)),
+        city=body.city if body.city is not None else cfg["city"],
+        keywords=body.keywords if body.keywords is not None else cfg["keywords"],
+        cta_url=body.cta_url if body.cta_url is not None else cfg["cta_url"],
+        image_url=body.image_url if body.image_url is not None else cfg["image_url"],
+        channels=body.channels or cfg["gen_channels"])
+    audit.record(db, action="autopost.generate", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="autopost", ip=_ip(request),
+                 detail=f"generated={len(created)}")
+    return {"ok": True, "created": len(created)}
 
 
 @router.get("")

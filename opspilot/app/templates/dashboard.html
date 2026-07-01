@@ -172,6 +172,24 @@
         <input id="ap-gap" type="number" value="168" min="1" style="width:70px" title="min hours between posts (168 = weekly)">
         <span class="muted" style="font-size:12px">hours between posts (168 = weekly, 24 = daily)</span>
         <span class="muted" id="ap-msg" style="font-size:12px"></span></div>
+
+      <div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)">
+        <div class="flex" style="justify-content:space-between;flex-wrap:wrap">
+          <b style="font-size:13px">✨ Auto-write posts for me (no writing, no AI key needed)</b>
+          <label class="flex" style="margin:0;gap:5px;color:var(--muted);font-size:12px"><input type="checkbox" id="ap-autogen" style="width:auto" onchange="saveAutopost()"> keep the queue topped up automatically</label>
+        </div>
+        <p class="muted" style="margin:4px 0 8px;font-size:12px">Set your city + keywords once; OpsPilot writes SEO-tuned, on-brand posts and (with auto-refill on) keeps the queue full so you never run dry.</p>
+        <div class="grid2">
+          <label>Your city / market<input id="ap-gen-city" placeholder="El Campo, TX"></label>
+          <label>Keywords (comma-sep, for SEO)<input id="ap-gen-kw" placeholder="managed IT, cybersecurity, backups"></label>
+          <label>Call-to-action URL<input id="ap-gen-cta" placeholder="https://bvtech.org/contact"></label>
+          <label>Image URL for generated posts (optional)<input id="ap-gen-img" placeholder="https://bvtech.org/img/post.jpg"></label>
+        </div>
+        <div class="flex" style="margin-top:8px"><button class="btn sm" onclick="generatePosts()">✨ Generate 6 drafts</button>
+          <button class="btn sm ghost" onclick="saveAutopost()">Save brand profile</button>
+          <span class="muted" id="ap-gen-msg" style="font-size:12px"></span></div>
+      </div>
+
       <table style="margin-top:10px"><thead><tr><th>Post</th><th>Status</th><th>When</th><th></th></tr></thead>
         <tbody id="t-autopost"></tbody></table>
     </div>
@@ -2229,7 +2247,12 @@ async function acCreateTicket(id,btn){
 async function loadAutopost(){
   const st=await api('/api/autopost/settings'); if(!st)return;
   document.getElementById('ap-enabled').checked=!!st.enabled;
-  document.getElementById('ap-gap').value=st.gap_hours||20;
+  document.getElementById('ap-gap').value=st.gap_hours||168;
+  document.getElementById('ap-autogen').checked=!!st.auto_generate;
+  document.getElementById('ap-gen-city').value=st.city||'';
+  document.getElementById('ap-gen-kw').value=(st.keywords||[]).join(', ');
+  document.getElementById('ap-gen-cta').value=st.cta_url||'';
+  document.getElementById('ap-gen-img').value=st.image_url||'';
   const pill=document.getElementById('ap-state');
   pill.textContent=st.enabled?'on':'off'; pill.className='pill'+(st.enabled?' ok':'');
   document.getElementById('ap-li-rdy').textContent=st.linkedin_ready?'(connected ✓)':'(connect in Settings)';
@@ -2248,10 +2271,23 @@ async function loadAutopost(){
     :'<tr><td colspan=4 class="muted">Queue is empty — add a post above.</td></tr>';
 }
 async function saveAutopost(){
+  const kws=val('ap-gen-kw').split(',').map(s=>s.trim()).filter(Boolean);
   const r=await put('/api/autopost/settings',{enabled:document.getElementById('ap-enabled').checked,
-    gap_hours:parseInt(val('ap-gap')||'20')});
-  if(!r.ok){alert('Only an owner can change auto-post settings.');document.getElementById('ap-enabled').checked=!document.getElementById('ap-enabled').checked;}
+    gap_hours:parseInt(val('ap-gap')||'168'),auto_generate:document.getElementById('ap-autogen').checked,
+    city:val('ap-gen-city'),keywords:kws,cta_url:val('ap-gen-cta'),image_url:val('ap-gen-img')});
+  if(!r.ok){alert('Only an owner can change auto-post settings.');}
   loadAutopost();
+}
+async function generatePosts(){
+  const msg=document.getElementById('ap-gen-msg'); msg.textContent='writing…';
+  const kws=val('ap-gen-kw').split(',').map(s=>s.trim()).filter(Boolean);
+  const channels=[]; if(document.getElementById('ap-ch-linkedin').checked)channels.push('linkedin');
+  if(document.getElementById('ap-ch-gbp').checked)channels.push('google_business');
+  const r=await post('/api/autopost/generate',{count:6,city:val('ap-gen-city'),keywords:kws,
+    cta_url:val('ap-gen-cta')||null,image_url:val('ap-gen-img')||null,channels:channels.length?channels:['linkedin']});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent=`Added ${j.created} draft(s) to the queue ✓`;loadAutopost();}
+  else msg.textContent=j.detail||'Failed';
 }
 async function queuePost(){
   const msg=document.getElementById('ap-msg'); const body=val('ap-body');
