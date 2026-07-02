@@ -2474,13 +2474,17 @@ async function loadRecentTime(){
 let OV_TIMER=null;
 // ---- 🚀 First-run setup wizard ----
 async function openWizard(force){
-  const s=await api('/api/setup/status'); if(!s)return;
+  let s;
+  try{ s=await api('/api/setup/status'); }catch(e){ s=null; }
+  // Never let a missing/malformed response pop an empty, un-closable modal.
+  if(!s || !Array.isArray(s.items) || !s.items.length) return;
+  const total=s.total||s.items.length, done=s.done||0;
   if(!force){
     if(localStorage.getItem('wizardDismissed')==='1') return;
-    if(s.done>=s.total-1) return;   // basically set up — don't nag
+    if(done>=total-1) return;   // basically set up — don't nag
   }
-  document.getElementById('wiz-bar').style.width=s.pct+'%';
-  document.getElementById('wiz-count').textContent=`${s.done} of ${s.total} steps done`;
+  document.getElementById('wiz-bar').style.width=(s.pct||0)+'%';
+  document.getElementById('wiz-count').textContent=`${done} of ${total} steps done`;
   document.getElementById('wiz-steps').innerHTML=s.items.map(i=>
     `<div class="flex" style="justify-content:space-between;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px">
       <div class="flex" style="gap:9px;align-items:center">
