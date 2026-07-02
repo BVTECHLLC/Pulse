@@ -1,5 +1,28 @@
 # BVTech OpsPilot — Changelog
 
+## v1.0.0 — Configure any integration straight from .env (env → vault loader) (July 2026)
+- **🔌 Put your API keys in `.env` and they "just work."** Previously most
+  integrations (Stripe, QuickBooks, Google Business, LinkedIn, Dialpad, HubSpot,
+  Tactical RMM, M365 mailbox, payment methods) could ONLY be configured through
+  the Settings UI (the encrypted vault) — anything you dropped in `.env` was
+  silently ignored. On every boot the app now copies recognized env vars into the
+  right vault provider/field, so environment-based setup lights up each
+  integration automatically. The Settings UI then shows them "connected ✓".
+- **Env is authoritative, UI is preserved:** a present env var updates the stored
+  value each boot; an absent one leaves whatever you set in the UI alone. Secrets
+  are encrypted at rest and never echoed back. Boolean-ish flags (e.g. QuickBooks
+  sandbox) only enable on truthy values, so `=false` can't accidentally turn them on.
+- Recognized env names (with common aliases) are documented in
+  `app/services/env_credentials.py` — e.g. `STRIPE_SECRET_KEY`,
+  `STRIPE_WEBHOOK_SECRET`, `QUICKBOOKS_CLIENT_ID/SECRET/REFRESH_TOKEN/REALM_ID`,
+  `GBP_CLIENT_ID/SECRET/REFRESH_TOKEN/ACCOUNT_NAME/LOCATION_NAME`,
+  `LINKEDIN_CLIENT_ID/SECRET`, `DIALPAD_API_KEY/USER_ID`, `HUBSPOT_API_KEY`,
+  `TACTICAL_BASE_URL/API_KEY`, `M365_CLIENT_ID/SECRET/TENANT_ID/MAILBOX`.
+- Verified offline (smoke): env keys activate Stripe/Dialpad/QuickBooks (configured
+  ✓), the secret is never returned by the settings API, and a falsy sandbox flag
+  is ignored.
+
+
 ## v0.99.0 — Auto-poster targets your real metros + on-brand voice; Content Studio & Ask Pulse verified (July 2026)
 - **🎯 Auto-poster now targets the metros with money — Sugar Land, Houston,
   Austin, San Antonio — not El Campo.** The "Target metros" field takes a
