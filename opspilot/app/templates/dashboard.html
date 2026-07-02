@@ -1439,7 +1439,7 @@
 </div>
 
 <!-- 🚀 First-run setup wizard -->
-<div id="wizard" class="hidden" style="position:fixed;inset:0;z-index:75;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeWizard()">
+<div id="wizard" class="hidden" style="position:fixed;inset:0;z-index:75;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeWizard()">
   <div style="width:600px;max-width:96vw;max-height:88vh;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.6)">
     <div style="padding:20px 22px;background:linear-gradient(135deg,rgba(108,92,231,.16),rgba(59,130,246,.08));border-bottom:1px solid var(--line)">
       <h2 style="margin:0">👋 Welcome — let's get you live</h2>
@@ -1457,13 +1457,10 @@
 </div>
 
 <!-- ⌘K command palette -->
-<div id="cmdk" class="hidden" style="position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;padding-top:12vh" onclick="if(event.target===this)closeCmdk()">
-  <div style="width:560px;max-width:94vw;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.6);overflow:hidden">
-    <input id="cmdk-input" placeholder="Jump to… or run a command   (Esc to close)" autocomplete="off"
-      style="width:100%;border:none;border-bottom:1px solid var(--line);background:transparent;color:var(--ink);font-size:16px;padding:14px 16px;outline:none" oninput="cmdkRender()" onkeydown="cmdkKey(event)">
-    <div id="cmdk-list" style="max-height:52vh;overflow:auto;padding:6px"></div>
-  </div>
-</div>
+<!-- (removed a duplicate #cmdk overlay here — the real command palette lives near
+     the top of the page. Two elements shared id="cmdk", so getElementById only
+     ever controlled the first; this ghost couldn't be closed and, with a stale
+     cached stylesheet, showed on every load.) -->
 
 <!-- ✨ Ask Pulse — AI copilot (floating) -->
 <button id="copilot-fab" onclick="toggleCopilot()" title="Ask Pulse AI"
@@ -2493,10 +2490,10 @@ async function openWizard(force){
           ${i.done?'':`<div class="muted" style="font-size:11px">${esc(i.hint)}</div>`}</div>
       </div>
       ${i.done?'':`<button class="btn sm" onclick="wizGo('${i.tab}')">Go →</button>`}</div>`).join('');
-  document.getElementById('wizard').classList.remove('hidden');
+  const w=document.getElementById('wizard'); w.classList.remove('hidden'); w.style.display='flex';
 }
 function wizGo(tabName){closeWizard();tab(tabName);}
-function closeWizard(){document.getElementById('wizard').classList.add('hidden');}
+function closeWizard(){const w=document.getElementById('wizard'); w.classList.add('hidden'); w.style.display='none';}
 function dismissWizard(){localStorage.setItem('wizardDismissed','1');closeWizard();}
 async function loadSetup(){
   const s=await api('/api/setup/status'); if(!s)return;
