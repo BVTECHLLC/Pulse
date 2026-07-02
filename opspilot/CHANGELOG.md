@@ -1,5 +1,17 @@
 # BVTech OpsPilot — Changelog
 
+## v0.92.0 — Fix: setup wizard / command palette could trap the page (July 2026)
+- **🐛 Fixed the "Welcome" wizard (and ⌘K command palette) freezing the whole
+  dashboard.** Their overlays set an inline `display:flex`, which overrode the
+  `.hidden` utility (it lacked `!important`) — so clicking "I'll finish later" /
+  "Don't show again" (or Esc) couldn't actually dismiss them, and the modal
+  backdrop blocked every click. `.hidden` is now authoritative (`display:none
+  !important`), so both overlays open and close correctly.
+- **Hardened `openWizard`**: a missing/malformed `/api/setup/status` response can
+  no longer pop an empty, un-closable modal (guards for a non-array/empty item
+  list and wraps the fetch).
+
+
 ## v0.91.0 — Explicit per-client SSO domains (July 2026)
 - **🔑 Authorize a client's email domains for zero-touch SSO up front** — so their
   team can self-provision read-only logins **from day one**, before anyone has
