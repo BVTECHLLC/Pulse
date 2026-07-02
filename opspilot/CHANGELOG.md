@@ -1,5 +1,30 @@
 # BVTech OpsPilot — Changelog
 
+## v0.99.0 — Auto-poster targets your real metros + on-brand voice; Content Studio & Ask Pulse verified (July 2026)
+- **🎯 Auto-poster now targets the metros with money — Sugar Land, Houston,
+  Austin, San Antonio — not El Campo.** The "Target metros" field takes a
+  comma-separated list and every post rotates across them (one metro per post) so
+  the feed spreads evenly. The default (if you leave it blank) is those four
+  metros; small towns/rural are explicitly excluded from the AI prompt.
+- **🗣️ Tone + SEO matching.** New "Brand voice" field feeds the AI writer so posts
+  read like one consistent brand; the prompt is tuned for local SEO (natural metro
+  + service keywords, no hashtag/emoji spam). **Auto-refill now writes with Claude
+  when connected** (falling back to the on-brand template engine when it isn't).
+- **✅ Content Studio & Ask Pulse were not actually broken** — they were casualties
+  of the v0.98 dead-script bug. Verified in a real browser: Content Studio
+  **preview renders** the exact publish HTML. **Ask Pulse works once Claude is
+  connected** — it's currently `enabled:false` only because `ANTHROPIC_API_KEY`
+  isn't set on the server yet (see below).
+- **🌱 Personal site (jordanpolasek.com) writer broadened + Google-safe.** The JP
+  persona now rotates general founder/small-business topics, everyday tech, and a
+  plants/gardening lane (tx-plants.com) — with explicit E-E-A-T guardrails
+  (original, helpful, no keyword/city-name stuffing, avoid YMYL claims) so Google
+  stays happy. El Campo de-emphasized.
+- Verified offline (smoke): default targeting rotates the four metros and never
+  emits El Campo; explicit metro lists rotate correctly; brand voice persists;
+  2-letter state codes are filtered so "Sugar Land, TX" can't rotate "TX" as a city.
+
+
 ## v0.98.0 — THE fix: dashboard was dead from a duplicate JS declaration (July 2026)
 - **🩹 Root cause found with a real browser: the entire dashboard script was
   aborting on a fatal `SyntaxError: Identifier 'CMDK_SEL' has already been

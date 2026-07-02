@@ -42,6 +42,8 @@ def get_config(db: Session) -> dict:
             "auto_generate": _truthy(cfg.get("auto_generate")),
             "min_queue": int(cfg.get("min_queue") or 3),
             "city": cfg.get("city") or "",
+            "cities": [c.strip() for c in (cfg.get("city") or "").split(",") if c.strip()],
+            "voice": cfg.get("voice") or "",
             "keywords": kws,
             "cta_url": cfg.get("cta_url") or "",
             "image_url": cfg.get("image_url") or "",
@@ -61,7 +63,9 @@ def save_config(db: Session, **fields) -> dict:
     if "min_queue" in fields and fields["min_queue"] is not None:
         payload["min_queue"] = str(max(1, min(int(fields["min_queue"]), 20)))
     if "city" in fields and fields["city"] is not None:
-        payload["city"] = str(fields["city"])[:120]
+        payload["city"] = str(fields["city"])[:200]   # comma-separated target metros
+    if "voice" in fields and fields["voice"] is not None:
+        payload["voice"] = str(fields["voice"])[:400]
     if "keywords" in fields and fields["keywords"] is not None:
         kws = fields["keywords"]
         payload["keywords"] = ",".join(kws) if isinstance(kws, list) else str(kws)
@@ -180,15 +184,20 @@ def publish_one(db: Session, post: SocialPost, now: datetime | None = None, *,
 
 def generate_and_queue(db: Session, count: int, *, city: str = "", keywords=None,
                        cta_url: str = "", image_url: str = "", channels=None,
-                       biz: str = "BVTech", use_ai: bool = False) -> list[dict]:
+                       biz: str = "BVTech", voice: str = "", use_ai: bool = False) -> list[dict]:
     """Generate `count` drafts and add them to the queue. `use_ai=True` writes them
-    with Claude (falling back to templates). Rotation continues from the current
-    post count so re-runs don't repeat."""
+    with Claude (falling back to templates). `city` may be comma-separated metros —
+    the generator rotates across them. Rotation continues from the current post
+    count so re-runs don't repeat."""
     from . import post_generator
     channels = [c for c in (channels or ["linkedin"]) if c in CHANNELS] or ["linkedin"]
     start = db.query(SocialPost).count()
-    gen = post_generator.generate_ai_drafts if use_ai else post_generator.generate_drafts
-    drafts = gen(count, city=city, keywords=keywords, biz=biz, cta_url=cta_url, start=start)
+    if use_ai:
+        drafts = post_generator.generate_ai_drafts(count, city=city, keywords=keywords,
+                    biz=biz, cta_url=cta_url, voice=voice, start=start)
+    else:
+        drafts = post_generator.generate_drafts(count, city=city, keywords=keywords,
+                    biz=biz, cta_url=cta_url, start=start)
     created = []
     for d in drafts:
         p = SocialPost(body=d["body"], link=d.get("link"), image_url=(image_url or None),
@@ -211,9 +220,11 @@ def maybe_refill(db: Session, now: datetime | None = None) -> list[dict]:
     if queued >= cfg["min_queue"]:
         return []
     need = cfg["min_queue"] - queued
+    # Auto-refill writes with Claude when connected (matching tone/SEO), and
+    # transparently falls back to the on-brand template engine when it isn't.
     return generate_and_queue(db, need, city=cfg["city"], keywords=cfg["keywords"],
                               cta_url=cfg["cta_url"], image_url=cfg["image_url"],
-                              channels=cfg["gen_channels"])
+                              channels=cfg["gen_channels"], voice=cfg["voice"], use_ai=True)
 
 
 def publish_due(db: Session, now: datetime | None = None, *, posters: dict | None = None) -> list[dict]:

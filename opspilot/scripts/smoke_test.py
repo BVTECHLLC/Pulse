@@ -871,7 +871,23 @@ def main():
             assert _after>=8, ("queue not refilled to min_queue", _after)
             # RBAC: clients can't generate.
             assert ca_c.post("/api/autopost/generate", json={"count":2}).status_code==403
-            print("auto-posting: LinkedIn + Google Business (image, weekly, generate + auto-refill) + RBAC OK")
+            # v0.99: multi-metro targeting — with NO city set, drafts rotate the default
+            # Texas metros and NEVER use El Campo; brand voice persists.
+            c.put("/api/autopost/settings", json={"city":"", "voice":"Confident TX MSP owner"})
+            vst=c.get("/api/autopost/settings").json()
+            assert vst["voice"]=="Confident TX MSP owner", vst
+            _prev_max=max([x["id"] for x in c.get("/api/autopost").json()] or [0])
+            mg=c.post("/api/autopost/generate", json={"count":8,"channels":["linkedin"]}).json()
+            assert mg["created"]==8
+            _new=[x for x in c.get("/api/autopost").json() if x["id"]>_prev_max]   # only the fresh batch
+            _bodies=" ".join(x["body"] for x in _new)
+            assert "El Campo" not in _bodies, "default targeting must not use El Campo"
+            for _m in ["Sugar Land","Houston","Austin","San Antonio"]:
+                assert _m in _bodies, f"expected metro {_m} in rotation"
+            # explicit multi-metro list rotates across the given metros
+            c.put("/api/autopost/settings", json={"city":"Sugar Land, Austin"})
+            assert c.get("/api/autopost/settings").json()["cities"]==["Sugar Land","Austin"]
+            print("auto-posting: LinkedIn + Google Business (image, weekly, generate + auto-refill) + multi-metro targeting + voice + RBAC OK")
         finally:
             _ap._linkedin_poster, _ap._gbp_poster = _o_li, _o_gb
 
@@ -2446,7 +2462,7 @@ def main():
         assert ca_c.post("/api/automation/weekly-digest/send-now").status_code == 403
         print("weekly digest: grade+briefing render + weekday/hour gate + once-per-week + send-now + RBAC OK")
 
-    print("\n=== OpsPilot v0.98 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.99 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
