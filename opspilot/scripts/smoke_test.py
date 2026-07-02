@@ -2488,7 +2488,7 @@ def main():
             _os.environ.pop(_k, None)   # don't leak into later runs
         print(".env->vault loader: env keys activate integrations + secret masked + falsy-bool guard OK")
 
-    print("\n=== OpsPilot v1.0.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.0.1 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
