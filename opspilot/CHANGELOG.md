@@ -1,5 +1,16 @@
 # BVTech OpsPilot — Changelog
 
+## v0.95.0 — One-shot setup.sh (the SSH steps, done for you) (July 2026)
+- **🧰 `setup.sh`** — run it once on the Linode box and it does all the SSH-side
+  Tier-1 setup interactively: installs the auto-deploy poller cron, installs the
+  **run-checks scheduler cron** (the heartbeat that powers the weekly digest,
+  auto-posting, A/R reminders, recurring invoices, posture snapshots, SLA
+  escalation, scheduled reports…), writes your **SMTP** + **Anthropic** keys into
+  `.env`, and restarts the app. Idempotent — safe to re-run; it updates in place
+  and never duplicates crons or `.env` lines. Auto-detects the repo dir and skips
+  any step you leave blank.
+
+
 ## v0.94.0 — Green CI + kill the stuck-overlay bugs for good (July 2026)
 - **✅ Fixed the failing CI job** (red since v0.85). The weekly-digest smoke check
   hard-coded `help@bvtech.org` as the owner, but CI bootstraps `admin@bvtech.org`
