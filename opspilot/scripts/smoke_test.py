@@ -1646,6 +1646,32 @@ def main():
         assert tc.post(f"/api/users/{nh_id}/sign-out-all").status_code == 403   # owner-only
         print("Users & Access: directory + summary + filters + promote(clears SSO flag) + active + reset + session control (sign-out-all) + guardrails + RBAC OK")
 
+        # --- v0.97: permission-scoped Document Library (seeded on startup) ---
+        olib = c.get("/api/library").json()
+        assert olib["counts"]["total"] >= 60, olib["counts"]           # ~70 docs seeded
+        assert olib["counts"]["client_visible"] >= 1 and olib["counts"]["internal"] >= 1
+        # staff can download BOTH a client-facing and an internal doc
+        assert c.get("/api/library/BVT-LGL-001/download").status_code == 200
+        rint = c.get("/api/library/BVT-RUN-053/download")
+        assert rint.status_code == 200 and "application/pdf" in rint.headers.get("content-type", "")
+        # client (client-admin) sees ONLY client docs, and never the visibility field
+        clib = ca_c.get("/api/library").json()
+        assert 0 < clib["counts"]["total"] < olib["counts"]["total"], clib["counts"]
+        cats = {g["category"] for g in clib["groups"]}
+        assert cats and "RUN" not in cats and "INT" not in cats, cats     # internal series hidden
+        assert "visibility" not in clib["groups"][0]["docs"][0]            # classification hidden from clients
+        # client downloads a client doc, is 404'd on an internal one (no existence leak)
+        assert ca_c.get("/api/library/BVT-LGL-001/download").status_code == 200
+        assert ca_c.get("/api/library/BVT-RUN-053/download").status_code == 404
+        # client cannot reclassify; owner can, and the client's view follows
+        assert ca_c.patch("/api/library/BVT-LGL-001/visibility", json={"visibility": "internal"}).status_code == 403
+        before = ca_c.get("/api/library").json()["counts"]["total"]
+        assert c.patch("/api/library/BVT-LGL-015/visibility", json={"visibility": "internal"}).json()["visibility"] == "internal"
+        assert ca_c.get("/api/library").json()["counts"]["total"] == before - 1    # doc left the client's view
+        assert ca_c.get("/api/library/BVT-LGL-015/download").status_code == 404     # and its download too
+        assert c.patch("/api/library/BVT-LGL-015/visibility", json={"visibility": "bogus"}).status_code == 400
+        print("Document Library: seeded + staff-all + client-only-scope + download gating (no leak) + owner reclassify + RBAC OK")
+
         # ===================== v0.24: PSA projects + Kanban =====================
         pj=c.post("/api/projects", json={"client_id":cid,"name":"M365 Migration","budget_hours":40})
         assert pj.status_code==201, pj.text
@@ -2420,7 +2446,7 @@ def main():
         assert ca_c.post("/api/automation/weekly-digest/send-now").status_code == 403
         print("weekly digest: grade+briefing render + weekday/hour gate + once-per-week + send-now + RBAC OK")
 
-    print("\n=== OpsPilot v0.96 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.97 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

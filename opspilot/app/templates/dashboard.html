@@ -58,6 +58,7 @@
     <a data-tab="network" onclick="tab('network')">Network</a>
     <a data-tab="kb" onclick="tab('kb')">Knowledge Base</a>
     <a data-tab="docs" onclick="tab('docs')">📚 Docs &amp; Passwords</a>
+    <a data-tab="library" onclick="tab('library')">📄 Document Library</a>
     <a data-tab="content" onclick="tab('content')">✍️ Content Studio</a>
     <a data-tab="rmm" onclick="tab('rmm')">🖥️ RMM</a>
     <a data-tab="mailbox" onclick="tab('mailbox')">📬 Mailbox</a>
@@ -1410,6 +1411,17 @@
     </div>
   </section>
 
+  <section id="library" class="hidden">
+    <div class="card">
+      <div class="flex" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <div><b>📄 Document Library</b><div class="muted" style="font-size:12px">Your MSP/MSSP document suite — contracts, policies, runbooks. <b>Client</b> docs show in each client's portal; <b>Internal</b> docs are staff-only.</div></div>
+        <div id="lib-summary" class="muted" style="font-size:12px"></div>
+      </div>
+      <div class="muted" style="font-size:11px;margin-top:8px">Tip: click a doc's <b>Internal / Client</b> toggle to change who can see it. Clients only ever see docs marked <b>Client</b>.</div>
+      <div id="lib-body" style="margin-top:12px"><div class="muted">Loading…</div></div>
+    </div>
+  </section>
+
   <section id="users" class="hidden">
     <div class="card">
       <div class="flex" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
@@ -1509,6 +1521,7 @@ function tab(name){
   if(name==='content'){loadAutopost();}
   if(name==='rmm'){loadRmm();}
   if(name==='users'){loadUsers();}
+  if(name==='library'){loadLibrary();}
   if(name==='settings'&&!_tabLoaded.settings){_tabLoaded.settings=true;loadSettings();}
 }
 function badge(v,good,warn){if(v==null)return '<span class="badge">—</span>';
@@ -1516,6 +1529,31 @@ function badge(v,good,warn){if(v==null)return '<span class="badge">—</span>';
 function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));}
 function ago(iso){if(!iso)return 'never';return new Date(iso).toLocaleString();}
 async function logout(){await fetch('/api/auth/logout',{method:'POST'});location.href='/';}
+// ---- 📄 Document Library ----
+function _fmtKB(n){return n?Math.max(1,Math.round(n/1024))+' KB':'';}
+async function loadLibrary(){
+  const j=await api('/api/library'); const box=document.getElementById('lib-body'); if(!j){box.innerHTML='<div class="muted">Could not load the library.</div>';return;}
+  const cc=j.counts||{};
+  document.getElementById('lib-summary').textContent=`${cc.total||0} documents · ${cc.client_visible||0} client-facing · ${cc.internal||0} internal`;
+  if(!(j.groups||[]).length){box.innerHTML='<div class="muted">No documents catalogued.</div>';return;}
+  box.innerHTML=(j.groups||[]).map(g=>`
+    <div style="margin-bottom:18px">
+      <div style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">${esc(g.category_label||g.category)}</div>
+      ${g.docs.map(d=>{
+        const cl=d.visibility==='client';
+        const badge=`<button class="btn sm ghost" title="Click to toggle who can see this" onclick="toggleLibVis('${d.doc_id}','${cl?'internal':'client'}')">${cl?'👥 Client':'🔒 Internal'}</button>`;
+        return `<div class="flex" style="justify-content:space-between;align-items:center;gap:10px;padding:7px 10px;border:1px solid var(--line);border-radius:9px;margin-bottom:5px">
+          <div style="min-width:0"><div style="font-weight:600">${esc(d.title)}</div>
+            <div class="muted" style="font-size:11px">${esc(d.doc_id)}${d.size?' · '+_fmtKB(d.size):''}</div></div>
+          <div class="flex" style="gap:6px;align-items:center;flex:none">${badge}
+            <a class="btn sm" href="${d.download_url}" target="_blank">Open ↗</a></div>
+        </div>`;}).join('')}
+    </div>`).join('');
+}
+async function toggleLibVis(docId,to){
+  const r=await patch('/api/library/'+docId+'/visibility',{visibility:to}); const j=await r.json().catch(()=>({}));
+  if(r.ok)loadLibrary(); else alert(j.detail||'Only an owner can change document visibility.');
+}
 // ---- 👥 Users & Access ----
 let _usersCache=[];
 async function loadUsers(){

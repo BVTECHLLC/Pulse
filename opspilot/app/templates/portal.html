@@ -103,6 +103,10 @@
   <div class="card hidden" id="kb-card" style="margin-top:16px"><h3>Documentation</h3><table>
     <thead><tr><th>Title</th><th>Category</th></tr></thead>
     <tbody id="t-kb"></tbody></table></div>
+
+  <div class="card hidden" id="lib-card" style="margin-top:16px"><h3>Documents</h3>
+    <div class="muted" style="font-size:12px;margin-bottom:8px">Agreements, policies, and forms your provider has shared with you.</div>
+    <div id="lib-list"></div></div>
 </div>
 <div class="brand-footer">
   <span>© BVTech LLC · El Campo, TX</span>
@@ -273,6 +277,17 @@ async function load(){
   loadKB();
   loadSecurity();
   loadInvoices();
+  loadLibraryDocs();
+}
+async function loadLibraryDocs(){
+  const j=await api('/api/library'); if(!j||!(j.groups||[]).length)return;
+  document.getElementById('lib-card').classList.remove('hidden');
+  document.getElementById('lib-list').innerHTML=(j.groups||[]).map(g=>`
+    <div style="margin-bottom:12px">
+      <div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">${esc(g.category_label||g.category)}</div>
+      ${g.docs.map(d=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line)">
+        <span>${esc(d.title)}</span><a class="pill-btn" href="${d.download_url}" target="_blank" style="flex:none">Open ↗</a></div>`).join('')}
+    </div>`).join('');
 }
 load();
 </script>
