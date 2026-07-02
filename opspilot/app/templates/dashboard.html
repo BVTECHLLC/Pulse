@@ -1688,50 +1688,10 @@ async function bulkAlerts(action){
 }
 async function ackAlert(id){await post(`/api/alerts/${id}/ack`);loadAlerts();refreshBadges();}
 // ---- ⌘K command palette ----
-let CMDK_SEL=0;
-function cmdkCommands(){
-  const cmds=[];
-  document.querySelectorAll('.nav a[data-tab]').forEach(a=>{
-    cmds.push({label:'Go to '+a.textContent.trim().replace(/^[^A-Za-z0-9]+/,'').trim(),
-               hint:'tab', run:()=>tab(a.dataset.tab)});
-  });
-  cmds.push({label:'Ask Pulse (AI copilot)',hint:'AI',run:()=>{closeCmdk();if(document.getElementById('copilot').classList.contains('hidden'))toggleCopilot();document.getElementById('copilot-q').focus();}});
-  cmds.push({label:'Run automation checks now',hint:'action',run:async()=>{closeCmdk();await post('/api/automation/run-checks');if(typeof loadAlerts==='function')loadAlerts();}});
-  cmds.push({label:'Generate social posts',hint:'marketing',run:()=>{tab('content');}});
-  cmds.push({label:'MSP Practice Health',hint:'report',run:()=>{tab('overview');}});
-  cmds.push({label:'Open setup guide',hint:'onboarding',run:()=>{closeCmdk();openWizard(true);}});
-  cmds.push({label:'Sign out',hint:'account',run:()=>logout()});
-  return cmds;
-}
-function openCmdk(){document.getElementById('cmdk').classList.remove('hidden');
-  const i=document.getElementById('cmdk-input');i.value='';CMDK_SEL=0;cmdkRender();i.focus();}
-function closeCmdk(){document.getElementById('cmdk').classList.add('hidden');}
-function cmdkFiltered(){
-  const q=(document.getElementById('cmdk-input').value||'').toLowerCase().trim();
-  const all=cmdkCommands();
-  if(!q)return all;
-  return all.filter(c=>c.label.toLowerCase().includes(q)||(c.hint||'').includes(q));
-}
-function cmdkRender(){
-  const list=cmdkFiltered(); if(CMDK_SEL>=list.length)CMDK_SEL=0;
-  document.getElementById('cmdk-list').innerHTML=list.map((c,i)=>
-    `<div class="cmdk-item" onmousedown="event.preventDefault()" onclick="cmdkRun(${i})"
-      style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:8px;cursor:pointer;${i===CMDK_SEL?'background:rgba(108,92,231,.18)':''}">
-      <span>${esc(c.label)}</span><span class="muted" style="font-size:11px">${esc(c.hint||'')}</span></div>`).join('')
-    ||'<div class="muted" style="padding:12px">No matches.</div>';
-}
-function cmdkRun(i){const list=cmdkFiltered();const c=list[i];if(c){closeCmdk();c.run();}}
-function cmdkKey(e){
-  const list=cmdkFiltered();
-  if(e.key==='ArrowDown'){e.preventDefault();CMDK_SEL=Math.min(CMDK_SEL+1,list.length-1);cmdkRender();}
-  else if(e.key==='ArrowUp'){e.preventDefault();CMDK_SEL=Math.max(CMDK_SEL-1,0);cmdkRender();}
-  else if(e.key==='Enter'){e.preventDefault();cmdkRun(CMDK_SEL);}
-  else if(e.key==='Escape'){closeCmdk();}
-}
-document.addEventListener('keydown',e=>{
-  if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){e.preventDefault();
-    const el=document.getElementById('cmdk');el.classList.contains('hidden')?openCmdk():closeCmdk();}
-});
+// (The command-palette implementation lives further down — a single source of
+// truth. A duplicate copy here previously re-declared `let CMDK_SEL`, which is a
+// fatal SyntaxError that aborted the ENTIRE dashboard script — so nothing loaded
+// and nothing was clickable. Removed.)
 async function explainAlert(id){
   // Reuse the copilot panel to show the AI explanation.
   const el=document.getElementById('copilot'); if(el.classList.contains('hidden'))toggleCopilot();
@@ -2890,6 +2850,7 @@ function cmdkCommands(){
     {icon:'➕',label:'Add a client',hint:'create',run:()=>{tab('clients');const e=document.getElementById('cl-name');if(e)e.focus();}},
     {icon:'🧹',label:'Run monitoring sweep now',hint:'rmm',run:()=>{if(typeof runSweep==='function')runSweep();}},
     {icon:'🔄',label:'Refresh everything',hint:'reload',run:()=>load()},
+    {icon:'🚀',label:'Open setup guide',hint:'onboarding',run:()=>{closeCmdk();openWizard(true);}},
   );
   return cmds;
 }
@@ -4152,7 +4113,8 @@ async function load(){
   await Promise.allSettled([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
     loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations(),loadProjects(),loadOverview(),loadTime(),loadAssets(),loadActionCenter(),loadClientHealth(),loadMaint(),loadSlaPerf()]);
   toggleOvAuto();   // start the command-center live refresh
-  try{ openWizard(false); }catch(e){}   // first-run guided setup (never fatal)
+  // Setup guidance is available on demand (Settings → Setup checklist, or the
+  // ⌘K palette) — it no longer auto-opens as a modal over the dashboard.
 }
 load();
 </script>
