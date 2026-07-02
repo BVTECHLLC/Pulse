@@ -48,7 +48,8 @@ class SettingsIn(BaseModel):
     gap_hours: int | None = None
     auto_generate: bool | None = None
     min_queue: int | None = None
-    city: str | None = None
+    city: str | None = None          # comma-separated target metros
+    voice: str | None = None         # brand-voice note for the AI writer
     keywords: list[str] | None = None
     cta_url: str | None = None
     image_url: str | None = None
@@ -87,7 +88,7 @@ def generate(body: GenerateIn, request: Request, db: Session = Depends(get_db),
         keywords=body.keywords if body.keywords is not None else cfg["keywords"],
         cta_url=body.cta_url if body.cta_url is not None else cfg["cta_url"],
         image_url=body.image_url if body.image_url is not None else cfg["image_url"],
-        channels=body.channels or cfg["gen_channels"], use_ai=body.use_ai)
+        channels=body.channels or cfg["gen_channels"], voice=cfg["voice"], use_ai=body.use_ai)
     audit.record(db, action="autopost.generate", actor_user_id=user.id, actor_email=user.email,
                  actor_role=user.role.value, target_type="autopost", ip=_ip(request),
                  detail=f"generated={len(created)}")
