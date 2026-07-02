@@ -1,5 +1,19 @@
 # BVTech OpsPilot — Changelog
 
+## v1.0.1 — env loader now accepts your existing key names (July 2026)
+- The `.env` → vault loader now also recognizes the lowercase key names from an
+  existing config (e.g. `dialpad_key`, `dialpad_user_id`, `dialpad_number`,
+  `hubspot_token`, `trmm_api_url`, `trmm_api_key`, `linkedin_access_token`,
+  `linkedin_person_urn`, `linkedin_client_id`/`_secret`, `gbp_refresh_token`,
+  `gbp_account_name`, `gbp_location_name`, `google_client_id`/`_secret`,
+  `google_api_key`, `sender_email`) — in addition to the UPPERCASE canonical
+  names — so keys can be pasted straight from an existing secrets list.
+- `M365_CLIENT_ID/SECRET/TENANT_ID` (+ mailbox) loaded into the M365 vault now
+  also power **Microsoft SSO login** via the mailbox-app fallback (verified).
+- Verified: the exact lowercase names activate HubSpot, Tactical RMM, Prospecting,
+  LinkedIn, Dialpad, and Google Business; Microsoft SSO lights up; secrets masked.
+
+
 ## v1.0.0 — Configure any integration straight from .env (env → vault loader) (July 2026)
 - **🔌 Put your API keys in `.env` and they "just work."** Previously most
   integrations (Stripe, QuickBooks, Google Business, LinkedIn, Dialpad, HubSpot,
