@@ -182,40 +182,38 @@ def _reconcile_schema():
     except Exception as e:  # noqa: BLE001
         print(f"[schema] create_all warning: {e}")
 
-    # (table, column, DDL type) for columns added after their table existed.
-    wanted = [
-        ("integration_connections", "last_health_at", "TIMESTAMP WITH TIME ZONE"),
-        ("integration_connections", "last_health_ok", "BOOLEAN"),
-        ("integration_connections", "last_health_error", "VARCHAR(300)"),
-        ("devices", "agent_version", "VARCHAR(40)"),
-        ("devices", "platform", "VARCHAR(40)"),
-        ("contracts", "auto_invoice", "BOOLEAN DEFAULT FALSE"),
-        ("contracts", "last_invoiced_at", "TIMESTAMP WITH TIME ZONE"),
-        ("invoices", "last_reminded_at", "TIMESTAMP WITH TIME ZONE"),
-        ("invoices", "reminder_count", "INTEGER DEFAULT 0"),
-        ("social_posts", "image_url", "VARCHAR(800)"),
-        ("users", "provisioned_via", "VARCHAR(20)"),
-        ("clients", "sso_domains", "JSON"),
-        ("support_tickets", "csat_rating", "INTEGER"),
-        ("support_tickets", "csat_comment", "TEXT"),
-        ("support_tickets", "csat_at", "TIMESTAMP WITH TIME ZONE"),
-    ]
+    # Auto-heal COLUMN drift: for every mapped table that already exists, add any
+    # column the model declares but the DB lacks. This is generated from the model
+    # metadata (not a hand-kept list), so a newly-added column can never silently
+    # 500 every query against its table on an older prod DB. Added columns are
+    # nullable + no default (safe to add to a populated table); the app supplies
+    # values on write. Best-effort per column — one failure never aborts the rest.
     insp = inspect(engine)
-    is_sqlite = engine.dialect.name == "sqlite"
-    for table, col, ddl in wanted:
+    try:
+        existing_tables = set(insp.get_table_names())
+    except Exception:  # noqa: BLE001
+        existing_tables = set()
+
+    for table in Base.metadata.sorted_tables:
+        if table.name not in existing_tables:
+            continue   # create_all just made it (with all columns) or will
         try:
-            cols = {c["name"] for c in insp.get_columns(table)}
-        except Exception:
-            continue   # table doesn't exist yet — create_all/alembic will make it
-        if col in cols:
+            have = {c["name"] for c in insp.get_columns(table.name)}
+        except Exception:  # noqa: BLE001
             continue
-        ddl_type = "DATETIME" if (is_sqlite and ddl.startswith("TIMESTAMP")) else ddl
-        try:
-            with engine.begin() as conn:
-                conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {col} {ddl_type}'))
-            print(f"[schema] added missing column {table}.{col}")
-        except Exception as e:  # noqa: BLE001
-            print(f"[schema] could not add {table}.{col}: {e}")
+        for col in table.columns:
+            if col.name in have:
+                continue
+            try:
+                coltype = col.type.compile(dialect=engine.dialect)
+            except Exception:  # noqa: BLE001
+                coltype = "VARCHAR(255)"
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {coltype}'))
+                print(f"[schema] added missing column {table.name}.{col.name} ({coltype})")
+            except Exception as e:  # noqa: BLE001
+                print(f"[schema] could not add {table.name}.{col.name}: {e}")
 
 
 @app.on_event("startup")
