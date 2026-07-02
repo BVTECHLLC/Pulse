@@ -2462,7 +2462,33 @@ def main():
         assert ca_c.post("/api/automation/weekly-digest/send-now").status_code == 403
         print("weekly digest: grade+briefing render + weekday/hour gate + once-per-week + send-now + RBAC OK")
 
-    print("\n=== OpsPilot v0.99 SMOKE TEST PASSED ===")
+        # --- v1.0: .env -> vault credential loader (keys in env light up integrations) ---
+        import os as _os
+        from app.services import env_credentials as _envc
+        from app.core.db import SessionLocal as _ESL
+        _os.environ["STRIPE_SECRET_KEY"] = "sk_live_SMOKEONLY"
+        _os.environ["STRIPE_WEBHOOK_SECRET"] = "whsec_SMOKE"
+        _os.environ["DIALPAD_API_KEY"] = "dp_SMOKE"; _os.environ["DIALPAD_USER_ID"] = "u1"
+        _os.environ["QUICKBOOKS_SANDBOX"] = "false"   # falsy -> must NOT enable sandbox
+        _os.environ["QUICKBOOKS_CLIENT_ID"] = "qbid"; _os.environ["QUICKBOOKS_CLIENT_SECRET"] = "qbsec"
+        _os.environ["QUICKBOOKS_REFRESH_TOKEN"] = "qbrt"
+        _edb = _ESL()
+        try:
+            applied = _envc.load(_edb)
+            assert "stripe" in applied and "dialpad" in applied and "quickbooks" in applied, applied
+            assert "sandbox" not in applied["quickbooks"], "falsy sandbox must be ignored"
+        finally:
+            _edb.close()
+        # the integrations now read as configured, and the secret is never echoed back
+        assert c.get("/api/payments/settings").json()["configured"] is True
+        assert "sk_live_SMOKEONLY" not in c.get("/api/payments/settings").text
+        assert c.get("/api/quickbooks/settings").json()["configured"] is True
+        for _k in ("STRIPE_SECRET_KEY","STRIPE_WEBHOOK_SECRET","DIALPAD_API_KEY","DIALPAD_USER_ID",
+                   "QUICKBOOKS_SANDBOX","QUICKBOOKS_CLIENT_ID","QUICKBOOKS_CLIENT_SECRET","QUICKBOOKS_REFRESH_TOKEN"):
+            _os.environ.pop(_k, None)   # don't leak into later runs
+        print(".env->vault loader: env keys activate integrations + secret masked + falsy-bool guard OK")
+
+    print("\n=== OpsPilot v1.0.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

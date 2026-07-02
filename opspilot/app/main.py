@@ -258,5 +258,16 @@ def _startup():
                 print(f"[library] catalogued {n} document(s)")
         except Exception as e:  # noqa: BLE001
             print(f"[library] seed warning: {e}")
+
+        # Bridge integration credentials from .env into the vault, so keys set in
+        # the environment light up their integrations without the Settings UI.
+        try:
+            from .services import env_credentials
+            applied = env_credentials.load(db)
+            if applied:
+                print("[env-creds] loaded from env: " +
+                      ", ".join(f"{k}({len(v)})" for k, v in applied.items()))
+        except Exception as e:  # noqa: BLE001
+            print(f"[env-creds] warning: {e}")
     finally:
         db.close()
