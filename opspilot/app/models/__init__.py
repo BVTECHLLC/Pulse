@@ -1292,3 +1292,23 @@ class StatusIncident(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by_user_id: Mapped[int | None] = mapped_column(Integer)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class LibraryDoc(Base):
+    """A catalogued file in the MSP document library (v0.97). Files live in the
+    repo (app/library/files); this row carries the metadata + the visibility that
+    gates who can see/download it:
+        internal → staff (OWNER/TECH) only
+        client   → staff AND every client user
+    Seeded from app/library/manifest.json on boot (missing entries only, so an
+    owner's visibility edits persist)."""
+    __tablename__ = "library_docs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    doc_id: Mapped[str] = mapped_column(String(40), unique=True, index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    category: Mapped[str] = mapped_column(String(20), default="", index=True)
+    category_label: Mapped[str] = mapped_column(String(80), default="")
+    visibility: Mapped[str] = mapped_column(String(20), default="internal", index=True)  # internal|client
+    filename: Mapped[str] = mapped_column(String(200), nullable=False)
+    size: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

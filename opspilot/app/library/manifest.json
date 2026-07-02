@@ -1,0 +1,634 @@
+{
+ "items": [
+  {
+   "doc_id": "BVT-000",
+   "title": "Master Document Index",
+   "category": "000",
+   "category_label": "Library Index",
+   "visibility": "internal",
+   "filename": "BVT-000_Master_Document_Index.pdf",
+   "size": 10830
+  },
+  {
+   "doc_id": "BVT-INT-063",
+   "title": "Employee Handbook Core",
+   "category": "INT",
+   "category_label": "Internal Business Ops",
+   "visibility": "internal",
+   "filename": "BVT-INT-063_Employee_Handbook_Core.pdf",
+   "size": 6547
+  },
+  {
+   "doc_id": "BVT-INT-064",
+   "title": "Employee Confidentiality IP Agreement",
+   "category": "INT",
+   "category_label": "Internal Business Ops",
+   "visibility": "internal",
+   "filename": "BVT-INT-064_Employee_Confidentiality_IP_Agreement.pdf",
+   "size": 8831
+  },
+  {
+   "doc_id": "BVT-INT-065",
+   "title": "Ticket Handling SOP",
+   "category": "INT",
+   "category_label": "Internal Business Ops",
+   "visibility": "internal",
+   "filename": "BVT-INT-065_Ticket_Handling_SOP.pdf",
+   "size": 4319
+  },
+  {
+   "doc_id": "BVT-INT-066",
+   "title": "QBR Template",
+   "category": "INT",
+   "category_label": "Internal Business Ops",
+   "visibility": "internal",
+   "filename": "BVT-INT-066_QBR_Template.pdf",
+   "size": 6174
+  },
+  {
+   "doc_id": "BVT-INT-067",
+   "title": "Client Communication Templates",
+   "category": "INT",
+   "category_label": "Internal Business Ops",
+   "visibility": "internal",
+   "filename": "BVT-INT-067_Client_Communication_Templates.pdf",
+   "size": 5428
+  },
+  {
+   "doc_id": "BVT-INT-068",
+   "title": "Proposal Pricing Template",
+   "category": "INT",
+   "category_label": "Internal Business Ops",
+   "visibility": "internal",
+   "filename": "BVT-INT-068_Proposal_Pricing_Template.pdf",
+   "size": 6241
+  },
+  {
+   "doc_id": "BVT-INT-069",
+   "title": "Risk Register Template",
+   "category": "INT",
+   "category_label": "Internal Business Ops",
+   "visibility": "internal",
+   "filename": "BVT-INT-069_Risk_Register_Template.pdf",
+   "size": 4560
+  },
+  {
+   "doc_id": "BVT-IRP-045",
+   "title": "Incident Response Plan",
+   "category": "IRP",
+   "category_label": "Incident Response & Continuity",
+   "visibility": "internal",
+   "filename": "BVT-IRP-045_Incident_Response_Plan.pdf",
+   "size": 7259
+  },
+  {
+   "doc_id": "BVT-IRP-046",
+   "title": "Ransomware Playbook",
+   "category": "IRP",
+   "category_label": "Incident Response & Continuity",
+   "visibility": "internal",
+   "filename": "BVT-IRP-046_Ransomware_Playbook.pdf",
+   "size": 6353
+  },
+  {
+   "doc_id": "BVT-IRP-047",
+   "title": "BEC Account Compromise Playbook",
+   "category": "IRP",
+   "category_label": "Incident Response & Continuity",
+   "visibility": "internal",
+   "filename": "BVT-IRP-047_BEC_Account_Compromise_Playbook.pdf",
+   "size": 4653
+  },
+  {
+   "doc_id": "BVT-IRP-048",
+   "title": "Incident Report Template",
+   "category": "IRP",
+   "category_label": "Incident Response & Continuity",
+   "visibility": "internal",
+   "filename": "BVT-IRP-048_Incident_Report_Template.pdf",
+   "size": 5891
+  },
+  {
+   "doc_id": "BVT-IRP-049",
+   "title": "Disaster Recovery Plan",
+   "category": "IRP",
+   "category_label": "Incident Response & Continuity",
+   "visibility": "internal",
+   "filename": "BVT-IRP-049_Disaster_Recovery_Plan.pdf",
+   "size": 6733
+  },
+  {
+   "doc_id": "BVT-IRP-050",
+   "title": "Business Continuity Plan",
+   "category": "IRP",
+   "category_label": "Incident Response & Continuity",
+   "visibility": "internal",
+   "filename": "BVT-IRP-050_Business_Continuity_Plan.pdf",
+   "size": 6003
+  },
+  {
+   "doc_id": "BVT-IRP-051",
+   "title": "Backup Policy and Standards",
+   "category": "IRP",
+   "category_label": "Incident Response & Continuity",
+   "visibility": "internal",
+   "filename": "BVT-IRP-051_Backup_Policy_and_Standards.pdf",
+   "size": 5987
+  },
+  {
+   "doc_id": "BVT-IRP-052",
+   "title": "Data Breach Notification Procedure",
+   "category": "IRP",
+   "category_label": "Incident Response & Continuity",
+   "visibility": "internal",
+   "filename": "BVT-IRP-052_Data_Breach_Notification_Procedure.pdf",
+   "size": 6511
+  },
+  {
+   "doc_id": "BVT-LGL-001",
+   "title": "Master Services Agreement",
+   "category": "LGL",
+   "category_label": "Legal \u2014 Client Contracts",
+   "visibility": "client",
+   "filename": "BVT-LGL-001_Master_Services_Agreement.pdf",
+   "size": 15023
+  },
+  {
+   "doc_id": "BVT-LGL-002",
+   "title": "Managed Services Agreement",
+   "category": "LGL",
+   "category_label": "Legal \u2014 Client Contracts",
+   "visibility": "client",
+   "filename": "BVT-LGL-002_Managed_Services_Agreement.pdf",
+   "size": 14026
+  },
+  {
+   "doc_id": "BVT-LGL-003",
+   "title": "Service Level Agreement",
+   "category": "LGL",
+   "category_label": "Legal \u2014 Client Contracts",
+   "visibility": "client",
+   "filename": "BVT-LGL-003_Service_Level_Agreement.pdf",
+   "size": 6636
+  },
+  {
+   "doc_id": "BVT-LGL-004",
+   "title": "Statement of Work Template",
+   "category": "LGL",
+   "category_label": "Legal \u2014 Client Contracts",
+   "visibility": "client",
+   "filename": "BVT-LGL-004_Statement_of_Work_Template.pdf",
+   "size": 6373
+  },
+  {
+   "doc_id": "BVT-LGL-005",
+   "title": "Mutual NDA",
+   "category": "LGL",
+   "category_label": "Legal \u2014 Client Contracts",
+   "visibility": "client",
+   "filename": "BVT-LGL-005_Mutual_NDA.pdf",
+   "size": 9387
+  },
+  {
+   "doc_id": "BVT-LGL-006",
+   "title": "Unilateral NDA",
+   "category": "LGL",
+   "category_label": "Legal \u2014 Client Contracts",
+   "visibility": "client",
+   "filename": "BVT-LGL-006_Unilateral_NDA.pdf",
+   "size": 7107
+  },
+  {
+   "doc_id": "BVT-LGL-007",
+   "title": "Acceptable Use Policy",
+   "category": "LGL",
+   "category_label": "Legal \u2014 Client Contracts",
+   "visibility": "client",
+   "filename": "BVT-LGL-007_Acceptable_Use_Policy.pdf",
+   "size": 5492
+  },
+  {
+   "doc_id": "BVT-LGL-008",
+   "title": "OpsPilot Portal Terms of Service",
+   "category": "LGL",
+   "category_label": "Legal \u2014 Client Contracts",
+   "visibility": "client",
+   "filename": "BVT-LGL-008_OpsPilot_Portal_Terms_of_Service.pdf",
+   "size": 4198
+  },
+  {
+   "doc_id": "BVT-LGL-009",
+   "title": "Privacy Policy",
+   "category": "LGL",
+   "category_label": "Legal \u2014 Client Contracts",
+   "visibility": "client",
+   "filename": "BVT-LGL-009_Privacy_Policy.pdf",
+   "size": 5236
+  },
+  {
+   "doc_id": "BVT-LGL-010",
+   "title": "HIPAA Business Associate Agreement",
+   "category": "LGL",
+   "category_label": "Legal \u2014 Client Contracts",
+   "visibility": "client",
+   "filename": "BVT-LGL-010_HIPAA_Business_Associate_Agreement.pdf",
+   "size": 6235
+  },
+  {
+   "doc_id": "BVT-LGL-011",
+   "title": "Data Processing Addendum",
+   "category": "LGL",
+   "category_label": "Legal \u2014 Client Contracts",
+   "visibility": "client",
+   "filename": "BVT-LGL-011_Data_Processing_Addendum.pdf",
+   "size": 5772
+  },
+  {
+   "doc_id": "BVT-LGL-012",
+   "title": "Subcontractor Agreement",
+   "category": "LGL",
+   "category_label": "Legal \u2014 Client Contracts",
+   "visibility": "internal",
+   "filename": "BVT-LGL-012_Subcontractor_Agreement.pdf",
+   "size": 9682
+  },
+  {
+   "doc_id": "BVT-LGL-013",
+   "title": "Independent Contractor Agreement",
+   "category": "LGL",
+   "category_label": "Legal \u2014 Client Contracts",
+   "visibility": "internal",
+   "filename": "BVT-LGL-013_Independent_Contractor_Agreement.pdf",
+   "size": 8955
+  },
+  {
+   "doc_id": "BVT-LGL-014",
+   "title": "Hardware Procurement Agreement",
+   "category": "LGL",
+   "category_label": "Legal \u2014 Client Contracts",
+   "visibility": "client",
+   "filename": "BVT-LGL-014_Hardware_Procurement_Agreement.pdf",
+   "size": 5090
+  },
+  {
+   "doc_id": "BVT-LGL-015",
+   "title": "Change Order Form",
+   "category": "LGL",
+   "category_label": "Legal \u2014 Client Contracts",
+   "visibility": "client",
+   "filename": "BVT-LGL-015_Change_Order_Form.pdf",
+   "size": 4628
+  },
+  {
+   "doc_id": "BVT-OPS-024",
+   "title": "Client Onboarding Checklist",
+   "category": "OPS",
+   "category_label": "Operations",
+   "visibility": "internal",
+   "filename": "BVT-OPS-024_Client_Onboarding_Checklist.pdf",
+   "size": 4581
+  },
+  {
+   "doc_id": "BVT-OPS-025",
+   "title": "Client Offboarding Checklist",
+   "category": "OPS",
+   "category_label": "Operations",
+   "visibility": "internal",
+   "filename": "BVT-OPS-025_Client_Offboarding_Checklist.pdf",
+   "size": 5537
+  },
+  {
+   "doc_id": "BVT-OPS-026",
+   "title": "Network Documentation Template",
+   "category": "OPS",
+   "category_label": "Operations",
+   "visibility": "internal",
+   "filename": "BVT-OPS-026_Network_Documentation_Template.pdf",
+   "size": 5417
+  },
+  {
+   "doc_id": "BVT-OPS-027",
+   "title": "Client Environment Questionnaire",
+   "category": "OPS",
+   "category_label": "Operations",
+   "visibility": "client",
+   "filename": "BVT-OPS-027_Client_Environment_Questionnaire.pdf",
+   "size": 3576
+  },
+  {
+   "doc_id": "BVT-OPS-028",
+   "title": "Authorized Contacts Escalation Form",
+   "category": "OPS",
+   "category_label": "Operations",
+   "visibility": "client",
+   "filename": "BVT-OPS-028_Authorized_Contacts_Escalation_Form.pdf",
+   "size": 3878
+  },
+  {
+   "doc_id": "BVT-OPS-029",
+   "title": "Credentials Custody Form",
+   "category": "OPS",
+   "category_label": "Operations",
+   "visibility": "client",
+   "filename": "BVT-OPS-029_Credentials_Custody_Form.pdf",
+   "size": 3804
+  },
+  {
+   "doc_id": "BVT-OPS-030",
+   "title": "Third Party Authorization LOA",
+   "category": "OPS",
+   "category_label": "Operations",
+   "visibility": "client",
+   "filename": "BVT-OPS-030_Third_Party_Authorization_LOA.pdf",
+   "size": 3991
+  },
+  {
+   "doc_id": "BVT-POL-031",
+   "title": "Written Information Security Policy",
+   "category": "POL",
+   "category_label": "Security Policies (NIST CSF)",
+   "visibility": "internal",
+   "filename": "BVT-POL-031_Written_Information_Security_Policy.pdf",
+   "size": 6236
+  },
+  {
+   "doc_id": "BVT-POL-032",
+   "title": "Access Control Policy",
+   "category": "POL",
+   "category_label": "Security Policies (NIST CSF)",
+   "visibility": "internal",
+   "filename": "BVT-POL-032_Access_Control_Policy.pdf",
+   "size": 4378
+  },
+  {
+   "doc_id": "BVT-POL-033",
+   "title": "Password MFA Policy",
+   "category": "POL",
+   "category_label": "Security Policies (NIST CSF)",
+   "visibility": "internal",
+   "filename": "BVT-POL-033_Password_MFA_Policy.pdf",
+   "size": 4384
+  },
+  {
+   "doc_id": "BVT-POL-034",
+   "title": "Data Classification Policy",
+   "category": "POL",
+   "category_label": "Security Policies (NIST CSF)",
+   "visibility": "internal",
+   "filename": "BVT-POL-034_Data_Classification_Policy.pdf",
+   "size": 5778
+  },
+  {
+   "doc_id": "BVT-POL-035",
+   "title": "Encryption Policy",
+   "category": "POL",
+   "category_label": "Security Policies (NIST CSF)",
+   "visibility": "internal",
+   "filename": "BVT-POL-035_Encryption_Policy.pdf",
+   "size": 4321
+  },
+  {
+   "doc_id": "BVT-POL-036",
+   "title": "Patch Vulnerability Management Policy",
+   "category": "POL",
+   "category_label": "Security Policies (NIST CSF)",
+   "visibility": "internal",
+   "filename": "BVT-POL-036_Patch_Vulnerability_Management_Policy.pdf",
+   "size": 5695
+  },
+  {
+   "doc_id": "BVT-POL-037",
+   "title": "Remote Access Policy",
+   "category": "POL",
+   "category_label": "Security Policies (NIST CSF)",
+   "visibility": "internal",
+   "filename": "BVT-POL-037_Remote_Access_Policy.pdf",
+   "size": 4216
+  },
+  {
+   "doc_id": "BVT-POL-038",
+   "title": "Mobile BYOD Policy",
+   "category": "POL",
+   "category_label": "Security Policies (NIST CSF)",
+   "visibility": "internal",
+   "filename": "BVT-POL-038_Mobile_BYOD_Policy.pdf",
+   "size": 4184
+  },
+  {
+   "doc_id": "BVT-POL-039",
+   "title": "Email Communication Security Policy",
+   "category": "POL",
+   "category_label": "Security Policies (NIST CSF)",
+   "visibility": "internal",
+   "filename": "BVT-POL-039_Email_Communication_Security_Policy.pdf",
+   "size": 4308
+  },
+  {
+   "doc_id": "BVT-POL-040",
+   "title": "Physical Security Policy",
+   "category": "POL",
+   "category_label": "Security Policies (NIST CSF)",
+   "visibility": "internal",
+   "filename": "BVT-POL-040_Physical_Security_Policy.pdf",
+   "size": 4207
+  },
+  {
+   "doc_id": "BVT-POL-041",
+   "title": "Vendor Risk Management Policy",
+   "category": "POL",
+   "category_label": "Security Policies (NIST CSF)",
+   "visibility": "internal",
+   "filename": "BVT-POL-041_Vendor_Risk_Management_Policy.pdf",
+   "size": 4475
+  },
+  {
+   "doc_id": "BVT-POL-042",
+   "title": "Audit Logging Monitoring Policy",
+   "category": "POL",
+   "category_label": "Security Policies (NIST CSF)",
+   "visibility": "internal",
+   "filename": "BVT-POL-042_Audit_Logging_Monitoring_Policy.pdf",
+   "size": 5793
+  },
+  {
+   "doc_id": "BVT-POL-043",
+   "title": "Security Awareness Policy",
+   "category": "POL",
+   "category_label": "Security Policies (NIST CSF)",
+   "visibility": "internal",
+   "filename": "BVT-POL-043_Security_Awareness_Policy.pdf",
+   "size": 4173
+  },
+  {
+   "doc_id": "BVT-POL-044",
+   "title": "NIST CSF Gap Assessment Workbook",
+   "category": "POL",
+   "category_label": "Security Policies (NIST CSF)",
+   "visibility": "internal",
+   "filename": "BVT-POL-044_NIST_CSF_Gap_Assessment_Workbook.pdf",
+   "size": 6418
+  },
+  {
+   "doc_id": "BVT-RUN-053",
+   "title": "M365 Administration Runbook",
+   "category": "RUN",
+   "category_label": "Runbooks & Troubleshooting",
+   "visibility": "internal",
+   "filename": "BVT-RUN-053_M365_Administration_Runbook.pdf",
+   "size": 5866
+  },
+  {
+   "doc_id": "BVT-RUN-054",
+   "title": "M365 Troubleshooting Guide",
+   "category": "RUN",
+   "category_label": "Runbooks & Troubleshooting",
+   "visibility": "internal",
+   "filename": "BVT-RUN-054_M365_Troubleshooting_Guide.pdf",
+   "size": 7382
+  },
+  {
+   "doc_id": "BVT-RUN-055",
+   "title": "GuardZ Operations Runbook",
+   "category": "RUN",
+   "category_label": "Runbooks & Troubleshooting",
+   "visibility": "internal",
+   "filename": "BVT-RUN-055_GuardZ_Operations_Runbook.pdf",
+   "size": 5895
+  },
+  {
+   "doc_id": "BVT-RUN-056",
+   "title": "iDrive Backup Runbook",
+   "category": "RUN",
+   "category_label": "Runbooks & Troubleshooting",
+   "visibility": "internal",
+   "filename": "BVT-RUN-056_iDrive_Backup_Runbook.pdf",
+   "size": 6710
+  },
+  {
+   "doc_id": "BVT-RUN-057",
+   "title": "Workstation Troubleshooting Guide",
+   "category": "RUN",
+   "category_label": "Runbooks & Troubleshooting",
+   "visibility": "internal",
+   "filename": "BVT-RUN-057_Workstation_Troubleshooting_Guide.pdf",
+   "size": 6634
+  },
+  {
+   "doc_id": "BVT-RUN-058",
+   "title": "Network Troubleshooting Guide",
+   "category": "RUN",
+   "category_label": "Runbooks & Troubleshooting",
+   "visibility": "internal",
+   "filename": "BVT-RUN-058_Network_Troubleshooting_Guide.pdf",
+   "size": 6255
+  },
+  {
+   "doc_id": "BVT-RUN-059",
+   "title": "Server AD Troubleshooting Guide",
+   "category": "RUN",
+   "category_label": "Runbooks & Troubleshooting",
+   "visibility": "internal",
+   "filename": "BVT-RUN-059_Server_AD_Troubleshooting_Guide.pdf",
+   "size": 7042
+  },
+  {
+   "doc_id": "BVT-RUN-060",
+   "title": "Printer Peripherals Guide",
+   "category": "RUN",
+   "category_label": "Runbooks & Troubleshooting",
+   "visibility": "internal",
+   "filename": "BVT-RUN-060_Printer_Peripherals_Guide.pdf",
+   "size": 6009
+  },
+  {
+   "doc_id": "BVT-RUN-061",
+   "title": "VoIP Dialpad Troubleshooting Guide",
+   "category": "RUN",
+   "category_label": "Runbooks & Troubleshooting",
+   "visibility": "internal",
+   "filename": "BVT-RUN-061_VoIP_Dialpad_Troubleshooting_Guide.pdf",
+   "size": 6018
+  },
+  {
+   "doc_id": "BVT-RUN-062",
+   "title": "New PC Deployment Runbook",
+   "category": "RUN",
+   "category_label": "Runbooks & Troubleshooting",
+   "visibility": "internal",
+   "filename": "BVT-RUN-062_New_PC_Deployment_Runbook.pdf",
+   "size": 4505
+  },
+  {
+   "doc_id": "BVT-SEC-016",
+   "title": "Managed Security Services Addendum",
+   "category": "SEC",
+   "category_label": "Legal \u2014 Security (MSSP)",
+   "visibility": "client",
+   "filename": "BVT-SEC-016_Managed_Security_Services_Addendum.pdf",
+   "size": 6427
+  },
+  {
+   "doc_id": "BVT-SEC-017",
+   "title": "Incident Response Retainer",
+   "category": "SEC",
+   "category_label": "Legal \u2014 Security (MSSP)",
+   "visibility": "client",
+   "filename": "BVT-SEC-017_Incident_Response_Retainer.pdf",
+   "size": 11485
+  },
+  {
+   "doc_id": "BVT-SEC-018",
+   "title": "Penetration Testing Authorization",
+   "category": "SEC",
+   "category_label": "Legal \u2014 Security (MSSP)",
+   "visibility": "client",
+   "filename": "BVT-SEC-018_Penetration_Testing_Authorization.pdf",
+   "size": 6163
+  },
+  {
+   "doc_id": "BVT-SEC-019",
+   "title": "Vulnerability Assessment Agreement",
+   "category": "SEC",
+   "category_label": "Legal \u2014 Security (MSSP)",
+   "visibility": "client",
+   "filename": "BVT-SEC-019_Vulnerability_Assessment_Agreement.pdf",
+   "size": 3989
+  },
+  {
+   "doc_id": "BVT-SEC-020",
+   "title": "Security Monitoring Consent",
+   "category": "SEC",
+   "category_label": "Legal \u2014 Security (MSSP)",
+   "visibility": "client",
+   "filename": "BVT-SEC-020_Security_Monitoring_Consent.pdf",
+   "size": 3779
+  },
+  {
+   "doc_id": "BVT-SEC-021",
+   "title": "Cyber Risk Acknowledgment",
+   "category": "SEC",
+   "category_label": "Legal \u2014 Security (MSSP)",
+   "visibility": "client",
+   "filename": "BVT-SEC-021_Cyber_Risk_Acknowledgment.pdf",
+   "size": 3757
+  },
+  {
+   "doc_id": "BVT-SEC-022",
+   "title": "vCISO Services Agreement",
+   "category": "SEC",
+   "category_label": "Legal \u2014 Security (MSSP)",
+   "visibility": "client",
+   "filename": "BVT-SEC-022_vCISO_Services_Agreement.pdf",
+   "size": 10242
+  },
+  {
+   "doc_id": "BVT-SEC-023",
+   "title": "Security Awareness Training Agreement",
+   "category": "SEC",
+   "category_label": "Legal \u2014 Security (MSSP)",
+   "visibility": "client",
+   "filename": "BVT-SEC-023_Security_Awareness_Training_Agreement.pdf",
+   "size": 3681
+  }
+ ]
+}

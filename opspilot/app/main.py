@@ -22,6 +22,7 @@ from .api.routes import (
     maintenance, analytics, mailbox, publishers, comms, rmm, crm, prospecting,
     campaigns, remote, quickbooks, gbp, hubspot, docs, payments, dialer, posture,
     remediation, inventory, autopost, setup, ai, branding, practice, status, users,
+    library,
 )
 
 _s = get_settings()
@@ -154,6 +155,7 @@ app.include_router(branding.router)
 app.include_router(practice.router)
 app.include_router(status.router)
 app.include_router(users.router)
+app.include_router(library.router)
 app.include_router(ui.router)
 
 
@@ -246,5 +248,15 @@ def _startup():
                 print(f"  TEMP PASSWORD (shown once): {pw}")
             print("  -> Log in, enable MFA, then rotate this password.")
             print("=" * 60)
+
+        # Seed the document library catalog (missing entries only; visibility
+        # edits made in the UI are never overwritten).
+        try:
+            from .services import library as _library
+            n = _library.seed(db)
+            if n:
+                print(f"[library] catalogued {n} document(s)")
+        except Exception as e:  # noqa: BLE001
+            print(f"[library] seed warning: {e}")
     finally:
         db.close()

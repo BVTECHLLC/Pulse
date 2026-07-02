@@ -1,5 +1,30 @@
 # BVTech OpsPilot — Changelog
 
+## v0.97.0 — Document Library (permission-scoped) (July 2026)
+- **📄 Your full BVTech MSP/MSSP document suite, in the portal** — 70 catalogued
+  PDFs (contracts, MSSP agreements, NIST CSF policies, IR/DR plans, runbooks,
+  internal ops). New **Document Library** tab.
+- **Separated by permission, exactly as asked:** each doc is **Client** or
+  **Internal**. Staff/owner see everything; a client sees ONLY the docs marked
+  **Client**, right in their portal under "Documents." Downloads are gated
+  server-side, and an internal doc 404s for a client (its existence never leaks).
+- **Sensible defaults you control:** client-facing = the LGL client contracts,
+  the SEC/MSSP agreements clients sign, and the client-completed OPS forms
+  (questionnaire, authorized contacts, credentials custody, LOA). Everything else
+  (policies, runbooks, IR playbooks, internal ops, subcontractor/1099) is
+  internal. **Flip any doc's visibility with one click** (owner) — the client's
+  view updates immediately.
+- Files ship in the repo (`app/library/files`) and the catalog seeds from a
+  manifest on boot (missing entries only, so your visibility edits persist). New
+  `library_docs` table (Alembic migration verified up→down→up; also covered by the
+  auto-heal). Endpoints: `GET /api/library`, `GET /api/library/{id}/download`,
+  `PATCH /api/library/{id}/visibility` (owner).
+- Verified offline (smoke): 70 docs seeded, staff see all + download both classes,
+  a client sees only client docs (internal series hidden, classification field
+  hidden) and is 404'd on internal downloads, non-owners can't reclassify, and an
+  owner reclassify immediately changes the client's view.
+
+
 ## v0.96.0 — Fix the frozen dashboard (auto-heal schema + crash-proof load) (July 2026)
 - **🩺 Root cause: a missing DB column 500'd core endpoints and froze the whole
   dashboard.** The startup schema self-heal used a hand-maintained column list, and
