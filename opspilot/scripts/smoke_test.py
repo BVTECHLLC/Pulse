@@ -2446,7 +2446,7 @@ def main():
         assert ca_c.post("/api/automation/weekly-digest/send-now").status_code == 403
         print("weekly digest: grade+briefing render + weekday/hour gate + once-per-week + send-now + RBAC OK")
 
-    print("\n=== OpsPilot v0.97 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.98 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

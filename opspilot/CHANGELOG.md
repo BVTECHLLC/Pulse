@@ -1,5 +1,23 @@
 # BVTech OpsPilot — Changelog
 
+## v0.98.0 — THE fix: dashboard was dead from a duplicate JS declaration (July 2026)
+- **🩹 Root cause found with a real browser: the entire dashboard script was
+  aborting on a fatal `SyntaxError: Identifier 'CMDK_SEL' has already been
+  declared`.** Two copies of the ⌘K command-palette code both did `let CMDK_SEL`
+  at the same scope — a hard parse error that stops the WHOLE inline script, so
+  `tab()`, `load()`, and every onclick were never defined. That's why the overview
+  "did nothing," data never loaded, and nothing was clickable. Removed the
+  duplicate palette block (kept the newer one). Verified in headless Chromium:
+  no page errors, KPIs/Ops Score load, and clicking nav tabs works.
+- **Setup wizard no longer auto-opens as a modal over the dashboard.** With the
+  script now running, the first-run wizard would pop on an un-configured portal
+  and its overlay sat on top of everything. It's now available on demand (Settings
+  → Setup checklist, or ⌘K → "Open setup guide") and never blocks the page.
+- Note: earlier dashboard hardening (v0.96 crash-proof `load()` + auto-heal schema)
+  was correct but had never actually executed because of this parse error; it's
+  now live too.
+
+
 ## v0.97.0 — Document Library (permission-scoped) (July 2026)
 - **📄 Your full BVTech MSP/MSSP document suite, in the portal** — 70 catalogued
   PDFs (contracts, MSSP agreements, NIST CSF policies, IR/DR plans, runbooks,
