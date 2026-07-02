@@ -1,5 +1,21 @@
 # BVTech OpsPilot — Changelog
 
+## v0.94.0 — Green CI + kill the stuck-overlay bugs for good (July 2026)
+- **✅ Fixed the failing CI job** (red since v0.85). The weekly-digest smoke check
+  hard-coded `help@bvtech.org` as the owner, but CI bootstraps `admin@bvtech.org`
+  — so the assertion failed only in CI. Now it uses the actual bootstrapped owner
+  email (`owner_email`), so local and CI agree. Verified by running the full
+  migration chain (upgrade → downgrade base → upgrade) and smoke under CI's exact
+  env.
+- **🐛 Removed a duplicate `#cmdk` element.** Two nodes shared `id="cmdk"`, so
+  `getElementById` only ever controlled the first — the second was a ghost command
+  palette that no close handler could reach and that showed on load under a stale
+  cached stylesheet. Deleted it.
+- **🛡️ Made the setup wizard cache-proof.** It now initializes `display:none` and
+  toggles its own inline `display`, so it can't be forced open by a stale
+  stylesheet (belt-and-suspenders alongside the v0.93 cache-bust).
+
+
 ## v0.93.0 — Cache-bust static assets (fixes stale CSS/JS after deploy) (July 2026)
 - **🚿 Version-stamp `pulse.css` and `brand.js` on every page** (`?v={APP_VERSION}`)
   so a new build always fetches fresh assets. Without this, Cloudflare's edge

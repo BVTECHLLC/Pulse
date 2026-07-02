@@ -2372,7 +2372,7 @@ def main():
         # config: default enabled, Monday, owner is an effective recipient
         wcfg = c.get("/api/automation/weekly-digest").json()
         assert wcfg["enabled"] is True and wcfg["weekday"] == 0
-        assert "help@bvtech.org" in wcfg["effective_recipients"]
+        assert owner_email in wcfg["effective_recipients"]   # owner is a default recipient
         # preview renders the practice grade + attention briefing
         pv = c.get("/api/automation/weekly-digest/preview").json()
         assert "State of the Practice" in pv["body"] and "grade" in pv["subject"].lower()
@@ -2420,7 +2420,7 @@ def main():
         assert ca_c.post("/api/automation/weekly-digest/send-now").status_code == 403
         print("weekly digest: grade+briefing render + weekday/hour gate + once-per-week + send-now + RBAC OK")
 
-    print("\n=== OpsPilot v0.93 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v0.94 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
