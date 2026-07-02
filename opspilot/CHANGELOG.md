@@ -1,5 +1,26 @@
 # BVTech OpsPilot — Changelog
 
+## v0.96.0 — Fix the frozen dashboard (auto-heal schema + crash-proof load) (July 2026)
+- **🩺 Root cause: a missing DB column 500'd core endpoints and froze the whole
+  dashboard.** The startup schema self-heal used a hand-maintained column list, and
+  a few recently-added columns (e.g. `devices.logged_in_user`) weren't on it — so
+  on the live Postgres DB (where those tables predate the columns) `/api/devices`
+  and `/api/clients` returned 500, and the dashboard stuck on "Loading…"/"—".
+  The self-heal is now **automatic**: it diffs the models against the live DB on
+  boot and adds ANY missing column (nullable, safe on populated tables). No more
+  hand-list; this class of drift can't silently break prod again. Verified by
+  dropping columns and confirming reconcile re-adds them and queries recover.
+- **🛡️ The dashboard can no longer be white-screened by one bad endpoint.**
+  `load()` now coerces list responses to arrays, wraps the initial render, and runs
+  the section loaders with `Promise.allSettled` — so a single failing/500 API call
+  degrades just that panel instead of halting KPIs, Ops Score, activity, and
+  navigation. `api()` now returns `null` on a non-OK response (and on network
+  errors) instead of handing back an error body that downstream code treats as
+  data.
+- Verified offline: full smoke passes; auto-heal re-adds dropped columns and Client
+  /Device queries recover.
+
+
 ## v0.95.0 — One-shot setup.sh (the SSH steps, done for you) (July 2026)
 - **🧰 `setup.sh`** — run it once on the Linode box and it does all the SSH-side
   Tier-1 setup interactively: installs the auto-deploy poller cron, installs the

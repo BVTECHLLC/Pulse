@@ -1486,7 +1486,12 @@
 </div>
 
 <script>
-async function api(p){const r=await fetch(p);if(r.status===401){location.href='/';return null;}return r.json();}
+async function api(p){
+  let r; try{ r=await fetch(p); }catch(e){ return null; }        // network error -> null, never throw
+  if(r.status===401){location.href='/';return null;}
+  if(!r.ok) return null;                                          // 500/404/etc -> null (don't hand back error bodies as data)
+  return r.json().catch(()=>null);
+}
 async function post(p,b){return fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});}
 async function patch(p,b){return fetch(p,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});}
 async function put(p,b){return fetch(p,{method:'PUT',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});}
@@ -4038,9 +4043,12 @@ function val(id){return (document.getElementById(id).value||'').trim();}
 async function load(){
   const me=await api('/api/auth/me'); if(!me)return;
   document.getElementById('who').textContent=`${me.email} · ${me.role}`;
-  const [clients,devices,licenses,audit]=await Promise.all([
-    api('/api/clients'),api('/api/devices'),api('/api/licenses'),api('/api/audit?limit=100').catch(()=>[])
+  const _arr=x=>Array.isArray(x)?x:[];
+  let [clients,devices,licenses,audit]=await Promise.all([
+    api('/api/clients'),api('/api/devices'),api('/api/licenses'),api('/api/audit?limit=100')
   ]);
+  // Never let one failing/500 endpoint white-screen the whole dashboard.
+  clients=_arr(clients); devices=_arr(devices); licenses=_arr(licenses); audit=_arr(audit);
   clients.forEach(c=>CLIENTS[c.id]=c.name);
   // Populate the KB "client" selector (blank = all clients).
   const kbSel=document.getElementById('kb-client');
@@ -4100,12 +4108,13 @@ async function load(){
        <td>${a.success?'✓':'✗'}</td></tr>`).join('');
   }
 
-  await loadStaff();
-  ruleExample();
-  await Promise.all([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
+  try{ await loadStaff(); }catch(e){}
+  try{ ruleExample(); }catch(e){}
+  // allSettled: a single loader throwing must NOT stop the others from rendering.
+  await Promise.allSettled([refreshBadges(),loadAlerts(),loadTickets(),refreshTicketStats(),loadBilling(),
     loadKB(),loadRules(),loadRuns(),loadNotifications(),loadSecurity(),loadScripts(),loadDeployments(),loadSignups(),loadM365(),loadInvoices(),loadNetworks(),loadDiag(),loadContracts(),loadChannels(),loadSchedules(),loadIntegrations(),loadProjects(),loadOverview(),loadTime(),loadAssets(),loadActionCenter(),loadClientHealth(),loadMaint(),loadSlaPerf()]);
   toggleOvAuto();   // start the command-center live refresh
-  openWizard(false);   // first-run guided setup (auto-hides once configured / dismissed)
+  try{ openWizard(false); }catch(e){}   // first-run guided setup (never fatal)
 }
 load();
 </script>
