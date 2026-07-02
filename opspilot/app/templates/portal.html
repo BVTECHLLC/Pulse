@@ -4,7 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{ app_name }} — Client Portal</title>
 <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/static/css/pulse.css">
+<link rel="stylesheet" href="/static/css/pulse.css?v={{ version }}">
 <style>
   .hero{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;
     background:linear-gradient(135deg,rgba(59,130,246,.12),rgba(34,197,94,.06));
@@ -276,6 +276,6 @@ async function load(){
 }
 load();
 </script>
-<script src="/static/js/brand.js"></script>
+<script src="/static/js/brand.js?v={{ version }}"></script>
 </body>
 </html>

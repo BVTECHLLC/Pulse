@@ -1,5 +1,13 @@
 # BVTech OpsPilot — Changelog
 
+## v0.93.0 — Cache-bust static assets (fixes stale CSS/JS after deploy) (July 2026)
+- **🚿 Version-stamp `pulse.css` and `brand.js` on every page** (`?v={APP_VERSION}`)
+  so a new build always fetches fresh assets. Without this, Cloudflare's edge
+  cache (and the browser) kept serving the OLD stylesheet after a deploy — which
+  is why the v0.92 wizard fix didn't appear until the cache expired. Now each
+  release is a new asset URL that blows past both caches on the first load.
+
+
 ## v0.92.0 — Fix: setup wizard / command palette could trap the page (July 2026)
 - **🐛 Fixed the "Welcome" wizard (and ⌘K command palette) freezing the whole
   dashboard.** Their overlays set an inline `display:flex`, which overrode the
