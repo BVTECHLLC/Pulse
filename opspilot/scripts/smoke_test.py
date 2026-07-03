@@ -2488,7 +2488,89 @@ def main():
             _os.environ.pop(_k, None)   # don't leak into later runs
         print(".env->vault loader: env keys activate integrations + secret masked + falsy-bool guard OK")
 
-    print("\n=== OpsPilot v1.0.1 SMOKE TEST PASSED ===")
+        # ===================== v1.1: Autopilot + AI ticket triage =====================
+        import json as _j11
+        from app.core.db import SessionLocal as _SL11
+        from app.models import SchedulerRun as _SR11, SupportTicket as _ST11, TicketComment as _TC11
+        from app.services import ai as _ai11, ai_triage as _ait11
+
+        # Autopilot: manual tick runs the heartbeat and records a SchedulerRun.
+        r = c.post("/api/automation/autopilot/tick")
+        assert r.status_code == 200, r.text
+        assert "sla_breaches_fired" in r.json()["result"], r.json()
+        st = c.get("/api/automation/autopilot").json()
+        assert st["interval_seconds"] == 120 and st["recent_runs"], st
+        assert st["recent_runs"][0]["source"] == "manual"
+        _sdb = _SL11()
+        try:
+            assert _sdb.query(_SR11).filter(_SR11.source == "manual").count() >= 1
+        finally:
+            _sdb.close()
+        _anon = TestClient(app); _anon.cookies.clear()
+        assert _anon.post("/api/automation/autopilot/tick").status_code in (401, 403), "autopilot must be staff-only"
+
+        # AI triage config: on by default, suggest-only by default; owner can flip.
+        cfg = c.get("/api/automation/ai-triage").json()
+        assert cfg["enabled"] is True and cfg["auto_apply"] is False, cfg
+        assert c.put("/api/automation/ai-triage", json={"auto_apply": True}).json()["auto_apply"] is True
+
+        # With Claude stubbed: sweep triages the ticket, auto-applies the HIGHER
+        # priority, tightens the SLA clock, and leaves an internal AI note.
+        _o_en11, _o_call11 = _ai11.enabled, _ai11._CALLER
+        _ai11.enabled = lambda: True
+        _ai11._CALLER = lambda system, user, model, max_tokens: _j11.dumps({
+            "priority": "urgent", "summary": "Company-wide email outage.",
+            "next_step": "Check Exchange services on the mail server and restart."})
+        try:
+            tid11 = c.post("/api/tickets", json={"subject": "EMAIL DOWN whole office",
+                                                 "body": "nobody can send or receive",
+                                                 "priority": "low", "client_id": cid}).json()["id"]
+            _sdb = _SL11()
+            try:
+                _t = _sdb.get(_ST11, tid11)
+                _due_before = _t.first_response_due_at
+                assert _t.ai_triaged_at is None
+            finally:
+                _sdb.close()
+            _sdb = _SL11()
+            try:
+                triaged = _ait11.sweep(_sdb, limit=1000)
+                assert any(x["ticket_id"] == tid11 for x in triaged), triaged
+            finally:
+                _sdb.close()
+            _sdb = _SL11()
+            try:
+                _t = _sdb.get(_ST11, tid11)
+                assert _t.ai_priority == "urgent" and _t.ai_triaged_at is not None
+                assert _t.priority == "urgent", "auto-apply must bump low -> urgent"
+                _db_due = _t.first_response_due_at
+                _b = _due_before.replace(tzinfo=None) if _due_before.tzinfo else _due_before
+                _a = _db_due.replace(tzinfo=None) if _db_due.tzinfo else _db_due
+                assert _a < _b, "SLA clock must tighten on bump"
+                _note = (_sdb.query(_TC11).filter(_TC11.ticket_id == tid11,
+                                                  _TC11.internal.is_(True),
+                                                  _TC11.author_role == "ai").first())
+                assert _note and "urgent" in _note.body, "internal AI note missing"
+            finally:
+                _sdb.close()
+            # Serializer exposes the AI read; manual re-triage endpoint works.
+            tj = c.get(f"/api/tickets/{tid11}").json()
+            assert tj["ai"]["priority"] == "urgent" and tj["ai"]["summary"], tj.get("ai")
+            rr = c.post(f"/api/tickets/{tid11}/ai-triage")
+            assert rr.status_code == 200 and rr.json()["ok"] is True, rr.text
+        finally:
+            _ai11.enabled, _ai11._CALLER = _o_en11, _o_call11
+
+        # Degrade path: AI off -> sweep is a clean no-op, manual triage is a clear 400.
+        _sdb = _SL11()
+        try:
+            assert _ait11.sweep(_sdb, limit=10) == []
+        finally:
+            _sdb.close()
+        assert c.post(f"/api/tickets/{tid11}/ai-triage").status_code == 400
+        print("autopilot heartbeat + AI triage (auto-apply, SLA restamp, internal note, degrade) OK")
+
+    print("\n=== OpsPilot v1.1.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

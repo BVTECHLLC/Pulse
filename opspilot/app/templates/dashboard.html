@@ -555,6 +555,18 @@
 
   <section id="automation" class="hidden">
     <div class="card" style="margin-bottom:16px">
+      <h3>🚁 Autopilot <span class="pill" id="ap-state">…</span>
+        <button class="btn sm ghost" style="float:right" onclick="autopilotTick()">Run tick now</button></h3>
+      <p class="muted" style="margin:4px 0 10px">Pulse runs its own maintenance heartbeat every 2 minutes inside the app — offline sweeps, SLA breaches, scheduled reports, recurring invoices, the weekly digest, auto-posts, connector health, and AI ticket triage. No cron, nothing to install.</p>
+      <div class="flex" style="margin-bottom:8px">
+        <label style="margin:0"><input type="checkbox" id="ap-ai-on" onchange="saveAITriage()"> AI ticket triage (Claude reads new tickets, suggests priority + first step)</label>
+        <label style="margin:0"><input type="checkbox" id="ap-ai-apply" onchange="saveAITriage()"> Auto-apply higher priorities</label>
+        <span class="muted" id="ap-ai-state"></span>
+      </div>
+      <table><thead><tr><th>When</th><th>Source</th><th>OK</th><th>ms</th><th>Did</th></tr></thead>
+      <tbody id="t-autopilot"><tr><td colspan=5 class="muted">Loading…</td></tr></tbody></table>
+    </div>
+    <div class="card" style="margin-bottom:16px">
       <h3>Notifications <button class="btn sm ghost" style="float:right" onclick="markAllRead()">Mark all read</button></h3>
       <div id="t-notifs"></div>
     </div>
@@ -1523,6 +1535,7 @@ function tab(name){
   if(name==='rmm'){loadRmm();}
   if(name==='users'){loadUsers();}
   if(name==='library'){loadLibrary();}
+  if(name==='automation'){loadAutopilot();}
   if(name==='settings'&&!_tabLoaded.settings){_tabLoaded.settings=true;loadSettings();}
 }
 function badge(v,good,warn){if(v==null)return '<span class="badge">—</span>';
@@ -1788,6 +1801,11 @@ async function openTicket(id){
       <h3 style="margin:0">#${t.id} · ${esc(t.subject)}</h3>
       <button class="btn sm ghost" onclick="document.getElementById('ticket-detail').classList.add('hidden')">Close</button></div>
     <p class="muted" style="margin:6px 0">${esc(CLIENTS[t.client_id]||'')} · ${slaLine}</p>
+    ${t.ai?`<div style="border:1px solid var(--line);border-left:3px solid var(--brand,#6c5ce7);border-radius:10px;padding:10px;margin:8px 0">
+      <b>🤖 AI triage</b> <span class="badge ${t.ai.priority==='urgent'||t.ai.priority==='high'?'warn':''}">${esc(t.ai.priority)}</span><br>
+      <span>${esc(t.ai.summary)}</span><br>
+      <span class="muted">First step: ${esc(t.ai.next_step)}</span></div>`
+    :`<div class="muted" style="margin:8px 0">🤖 Not AI-triaged yet <button class="btn sm ghost" onclick="aiTriage(${t.id})">Triage now</button></div>`}
     <p>${esc(t.body)||'<span class=muted>No description.</span>'}</p>
     <div class="flex" style="margin:10px 0">
       <label style="margin:0">Status</label><select id="td-status" style="width:auto;padding:8px">${sopts}</select>
@@ -1882,6 +1900,48 @@ async function deleteRule(id){if(!confirm('Delete this rule?'))return;
 async function runChecks(){const r=await post('/api/automation/run-checks');const j=await r.json();
   alert(`Ran checks — ${j.offline.offline_opened} new offline, ${j.sla_breaches_fired} SLA breach action(s).`);
   loadRuns();loadAlerts();refreshBadges();loadNotifications();}
+async function aiTriage(id){
+  const r=await post(`/api/tickets/${id}/ai-triage`);
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){openTicket(id);}else{alert(j.detail||'AI triage failed.');}
+}
+async function loadAutopilot(){
+  const st=await api('/api/automation/autopilot');
+  if(st){
+    const pill=document.getElementById('ap-state');
+    pill.textContent=st.running?`running · next tick ~${st.next_tick_eta_seconds??'?'}s`:(st.enabled?'starting…':'disabled');
+    pill.style.background=st.running?'#123d2a':'#3d1a1a';
+    const sum=r=>{const s=r.summary||{};if(s.error)return esc(String(s.error).slice(0,60));
+      const bits=[];if(s.offline&&s.offline.offline_opened)bits.push(`${s.offline.offline_opened} offline`);
+      if(s.sla_breaches_fired)bits.push(`${s.sla_breaches_fired} SLA`);
+      if(s.ai_triaged)bits.push(`${s.ai_triaged} AI-triaged`);
+      if(s.posts_published)bits.push(`${s.posts_published} posted`);
+      if(s.recurring_invoices)bits.push(`${s.recurring_invoices} invoiced`);
+      if(s.reports&&s.reports.reports_sent)bits.push(`${s.reports.reports_sent} reports`);
+      if(s.weekly_digest&&s.weekly_digest.sent)bits.push('digest sent');
+      return bits.length?bits.join(' · '):'all quiet';};
+    document.getElementById('t-autopilot').innerHTML=(st.recent_runs||[]).map(r=>
+      `<tr><td class="muted">${new Date(r.ran_at).toLocaleTimeString()}</td><td>${esc(r.source)}</td>
+       <td>${r.ok?'<span class="badge ok">ok</span>':'<span class="badge bad">err</span>'}</td>
+       <td class="muted">${r.duration_ms??''}</td><td class="muted">${sum(r)}</td></tr>`).join('')
+      ||'<tr><td colspan=5 class="muted">First tick lands ~90s after boot.</td></tr>';
+  }
+  const ai=await api('/api/automation/ai-triage');
+  if(ai){
+    document.getElementById('ap-ai-on').checked=!!ai.enabled;
+    document.getElementById('ap-ai-apply').checked=!!ai.auto_apply;
+    document.getElementById('ap-ai-state').textContent=ai.ai_connected?'· Claude connected':'· connect ANTHROPIC_API_KEY to activate';
+  }
+}
+async function autopilotTick(){
+  const r=await post('/api/automation/autopilot/tick');
+  if(r.ok){loadAutopilot();loadRuns();refreshBadges();}else{alert('Tick failed — check permissions.');}
+}
+async function saveAITriage(){
+  await put('/api/automation/ai-triage',{enabled:document.getElementById('ap-ai-on').checked,
+    auto_apply:document.getElementById('ap-ai-apply').checked});
+  loadAutopilot();
+}
 async function loadNotifications(){
   const ns=await api('/api/notifications?limit=30');if(!ns)return;
   const unread=ns.filter(n=>!n.read).length;

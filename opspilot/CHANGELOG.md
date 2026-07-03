@@ -1,5 +1,27 @@
 # BVTech OpsPilot — Changelog
 
+## v1.1.0 — Autopilot: Pulse runs itself + AI ticket triage (July 2026)
+- **🚁 Autopilot — no more external cron.** A scheduler inside the API now runs
+  the master maintenance tick every 2 minutes: offline sweeps, SLA breach
+  detection + escalation, time-based automations, recurring invoices, A/R
+  reminders, posture snapshots, auto-posts, the weekly digest, scheduled client
+  reports, and connector health. Previously ALL of that only happened if an
+  external cron hit `/api/automation/run-checks` — a setup step that's now gone.
+  Every tick is recorded and shown in Automation → Autopilot (with a Run-now
+  button); disable with `SCHEDULER_ENABLED=0`. Multi-worker-safe (recency guard)
+  and every job stays idempotent/deduped.
+- **🤖 AI ticket triage.** Within ~2 minutes of a ticket arriving, Claude reads
+  it and files an internal note: one-line summary, suggested priority, and the
+  concrete first troubleshooting step. Optional **auto-apply** raises the
+  ticket's priority when the AI reads it as hotter than filed (never lowers it)
+  and re-stamps the SLA clock to match. On-demand re-triage per ticket, staff
+  toggles in Automation → Autopilot, clean degrade when Claude isn't connected.
+- Ticket API now returns the AI read (`ai.priority/summary/next_step`), and the
+  ticket detail view shows the AI triage card.
+- Verified offline: manual tick records runs + RBAC; stubbed-Claude triage
+  bumps low→urgent, tightens SLA due dates, writes the internal note; degrade
+  paths are clean no-ops. Full smoke suite passed.
+
 ## v1.0.2 — Microsoft SSO uses a dedicated sign-in app (fixes AADSTS500113) (July 2026)
 - **Fixed "No reply address is registered for the application" (AADSTS500113).**
   Microsoft SSO was falling back to the **M365 mailbox** app's client ID — but the
