@@ -142,14 +142,36 @@ def sso_diagnostics(request: Request, db: Session = Depends(get_db),
             return None
         return (db.query(User).filter(func.lower(User.email) == email.strip().lower()).first())
 
-    # Most recent failed + successful SSO attempts (either provider).
-    last_fail = (db.query(AuditLog).filter(AuditLog.action == "login.oauth_no_match")
+    # Most recent failed + successful SSO attempts (either provider). "Failed"
+    # covers both no-account-match and a token-exchange error (bad/expired secret,
+    # redirect/PKCE mismatch) so the panel explains either failure mode.
+    last_fail = (db.query(AuditLog)
+                 .filter(AuditLog.action.in_(["login.oauth_no_match",
+                                              "login.oauth_exchange_failed"]))
                  .order_by(AuditLog.ts.desc()).first())
     last_ok = (db.query(AuditLog).filter(AuditLog.action == "login.oauth_success")
                .order_by(AuditLog.ts.desc()).first())
 
     fail_view = None
-    if last_fail:
+    if last_fail and last_fail.action == "login.oauth_exchange_failed":
+        # Token exchange blew up before we ever saw an email. The detail carries
+        # the provider's own reason (e.g. AADSTS7000215 invalid_client).
+        d = last_fail.detail or ""
+        invalid_secret = "invalid_client" in d or "7000215" in d
+        redirect_pkce = "invalid_grant" in d or "redirect" in d.lower()
+        fail_view = {
+            "when": last_fail.ts.isoformat() if last_fail.ts else None,
+            "detail": d,
+            "emails_returned": [],
+            "resolved_now": False,
+            "hint": ("The OAuth app's client secret is wrong or expired — create a "
+                     "fresh secret on THAT app and set M365_SSO_CLIENT_SECRET, then "
+                     "restart." if invalid_secret else
+                     "Redirect URI or PKCE mismatch — confirm the Entra app's Web "
+                     "redirect URI is exactly the one shown below." if redirect_pkce else
+                     "Sign-in failed at token exchange. See the reason in `detail`."),
+        }
+    elif last_fail:
         tried = [e.strip() for e in (last_fail.actor_email or "").split(",") if e.strip()]
         matched_now = next((e for e in tried if _user_for(e)), None)
         fail_view = {
@@ -295,7 +317,17 @@ def callback(provider: str, request: Request, response: Response,
     try:
         tok = oauth.exchange_code(provider, code=code, code_verifier=verifier,
                                   redirect_uri=redirect_uri)
-    except Exception:
+    except Exception as e:  # noqa: BLE001
+        # Surface the provider's real reason in the logs (safe: no secret is ever
+        # echoed by a token endpoint — just an error code + correlation id). This
+        # turns an opaque "please try again" into a one-line diagnosis, e.g.
+        # invalid_client (wrong/expired secret) vs invalid_grant (redirect/PKCE).
+        print(f"[oauth] {provider} token exchange failed: {e}")
+        try:
+            audit.record(db, action="login.oauth_exchange_failed", ip=_ip(request),
+                         success=False, detail=f"provider={provider} {str(e)[:400]}")
+        except Exception:  # noqa: BLE001
+            pass
         return RedirectResponse("/?oauth_error=exchange_failed", status_code=302)
     access = tok.get("access_token")
     # For SSO we only need identity (the id_token), which is present even when no

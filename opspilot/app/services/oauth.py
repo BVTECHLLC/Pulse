@@ -174,13 +174,34 @@ def authorize_url(provider_key: str, *, state: str, code_challenge: str,
     return f"{p['authorize_url']}?{urlencode(params)}"
 
 
+class TokenError(Exception):
+    """A token endpoint returned an OAuth error. Carries the provider's own
+    error/description (e.g. Microsoft's `invalid_client` + `AADSTS7000215...`)
+    so failures are diagnosable in the logs. NEVER contains the client secret —
+    the token endpoint echoes only error codes, request/correlation ids, and the
+    (already public) client_id."""
+    def __init__(self, status: int, error: str | None, description: str | None):
+        self.status = status
+        self.error = error or "error"
+        self.description = (description or "")[:400]
+        super().__init__(f"{status} {self.error}: {self.description}")
+
+
 def _post_form(url: str, data: dict) -> dict:
     body = urlencode(data).encode()
     req = urlreq.Request(url, data=body, method="POST",
                          headers={"Content-Type": "application/x-www-form-urlencoded",
                                   "Accept": "application/json"})
-    with urlreq.urlopen(req, timeout=15) as r:
-        return json.loads(r.read().decode() or "{}")
+    try:
+        with urlreq.urlopen(req, timeout=15) as r:
+            return json.loads(r.read().decode() or "{}")
+    except urlreq.HTTPError as he:  # 4xx/5xx from the token endpoint
+        try:
+            payload = json.loads(he.read().decode() or "{}")
+        except Exception:  # noqa: BLE001
+            payload = {}
+        raise TokenError(he.code, payload.get("error"),
+                         payload.get("error_description")) from None
 
 
 def exchange_code(provider_key: str, *, code: str, code_verifier: str,
