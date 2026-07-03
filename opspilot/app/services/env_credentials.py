@@ -67,9 +67,16 @@ _MAP: dict[str, dict[str, list[str]]] = {
         "mailbox": ["M365_MAILBOX", "sender_email"],
     },
     "sso_login": {
-        "ms_client_id": ["SSO_MS_CLIENT_ID"],
-        "ms_client_secret": ["SSO_MS_CLIENT_SECRET"],
-        "ms_tenant": ["SSO_MS_TENANT"],
+        # Microsoft SSO sign-in app. Use a DEDICATED app (with the redirect URI
+        # registered) — NOT the mailbox app. id + secret must come from the SAME
+        # app or Microsoft rejects the token exchange. Names are matched
+        # case-insensitively, so M356_OAUTH_ID / m365_oauth_id also resolve.
+        "ms_client_id": ["SSO_MS_CLIENT_ID", "M365_SSO_CLIENT_ID", "M365_OAUTH_CLIENT_ID",
+                         "M365_OAUTH_ID", "M356_OAUTH_ID"],
+        "ms_client_secret": ["SSO_MS_CLIENT_SECRET", "M365_SSO_CLIENT_SECRET",
+                             "M365_OAUTH_CLIENT_SECRET", "M365_OAUTH_SECRET"],
+        # Falls back to the mailbox tenant when a dedicated one isn't given.
+        "ms_tenant": ["SSO_MS_TENANT", "M365_SSO_TENANT", "M365_TENANT_ID"],
         "google_client_id": ["SSO_GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_ID", "google_client_id"],
         "google_client_secret": ["SSO_GOOGLE_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET", "google_client_secret"],
     },
@@ -104,16 +111,24 @@ _TRUTHY = {"1", "true", "yes", "on", "y", "t"}
 
 def load(db: Session) -> dict:
     """Copy recognized env vars into the vault. Returns {provider: [fields set]}."""
+    # Case-insensitive index so a mis-cased key (M356_OAuth_ID, google_api_key)
+    # still resolves. Exact matches always win over the folded fallback.
+    env_ci = {k.lower(): v for k, v in os.environ.items()}
+
+    def _resolve(names: list[str]) -> str | None:
+        for name in names:
+            v = os.environ.get(name)
+            if v is None:
+                v = env_ci.get(name.lower())
+            if v is not None and str(v).strip() != "":
+                return str(v).strip()
+        return None
+
     applied: dict[str, list[str]] = {}
     for provider, fields in _MAP.items():
         payload: dict[str, str] = {}
         for vault_field, env_names in fields.items():
-            val = None
-            for name in env_names:
-                v = os.environ.get(name)
-                if v is not None and str(v).strip() != "":
-                    val = str(v).strip()
-                    break
+            val = _resolve(env_names)
             if val is None:
                 continue
             if vault_field == "sandbox":       # bool-ish: only store when truthy
