@@ -1,5 +1,20 @@
 # BVTech OpsPilot — Changelog
 
+## v1.0.2 — Microsoft SSO uses a dedicated sign-in app (fixes AADSTS500113) (July 2026)
+- **Fixed "No reply address is registered for the application" (AADSTS500113).**
+  Microsoft SSO was falling back to the **M365 mailbox** app's client ID — but the
+  redirect URI is registered on your **dedicated OAuth sign-in app**, so Microsoft
+  rejected the sign-in. The env loader now recognizes a separate sign-in app:
+  `M365_SSO_CLIENT_ID` / `M365_SSO_CLIENT_SECRET` (aliases: `M365_OAUTH_ID`,
+  `M365_OAUTH_CLIENT_ID`/`_SECRET`, `M365_OAUTH_SECRET`, and the transposed
+  `M356_OAUTH_ID`). SSO tenant falls back to `M365_TENANT_ID` when unset.
+- **Never mixes one app's ID with another app's secret.** The OAuth resolver now
+  uses the dedicated sign-in app only when BOTH its id and secret are present;
+  otherwise it uses the mailbox app as a matched id+secret pair. This prevents
+  trading `AADSTS500113` for an opaque `invalid client secret` error.
+- **Env var names are matched case-insensitively** now, so `M356_OAuth_ID`,
+  `google_api_key`, etc. resolve regardless of casing.
+
 ## v1.0.1 — env loader now accepts your existing key names (July 2026)
 - The `.env` → vault loader now also recognizes the lowercase key names from an
   existing config (e.g. `dialpad_key`, `dialpad_user_id`, `dialpad_number`,

@@ -109,10 +109,22 @@ def sync_vault_providers(db) -> None:
     mbox_cfg = (mbox.config if mbox else None) or {}
 
     # --- Microsoft ---
-    ms_id = secure_config.get_secret(sso_cfg, "ms_client_id") or sso_cfg.get("ms_client_id") \
-        or secure_config.get_secret(mbox_cfg, "client_id") or mbox_cfg.get("client_id")
-    ms_secret = secure_config.get_secret(sso_cfg, "ms_client_secret") \
-        or secure_config.get_secret(mbox_cfg, "client_secret")
+    # A confidential OAuth app authenticates with BOTH its client_id and its own
+    # client_secret; the redirect URI must be registered on THAT SAME app. So we
+    # never mix a dedicated SSO app's id with the mailbox app's secret (that would
+    # trade a "no reply address" error for an opaque "invalid client" one). Prefer
+    # a fully-configured dedicated SSO app; otherwise fall back to the mailbox app
+    # as a matched id+secret pair.
+    sso_id = secure_config.get_secret(sso_cfg, "ms_client_id") or sso_cfg.get("ms_client_id")
+    sso_secret = secure_config.get_secret(sso_cfg, "ms_client_secret") or sso_cfg.get("ms_client_secret")
+    mbox_id = secure_config.get_secret(mbox_cfg, "client_id") or mbox_cfg.get("client_id")
+    mbox_secret = secure_config.get_secret(mbox_cfg, "client_secret")
+    if sso_id and sso_secret:
+        ms_id, ms_secret = sso_id, sso_secret
+    elif mbox_id and mbox_secret:
+        ms_id, ms_secret = mbox_id, mbox_secret
+    else:
+        ms_id = ms_secret = None
     ms_tenant = (sso_cfg.get("ms_tenant")
                  or secure_config.get_secret(mbox_cfg, "tenant_id") or mbox_cfg.get("tenant_id")
                  or s.MS_OAUTH_TENANT)
