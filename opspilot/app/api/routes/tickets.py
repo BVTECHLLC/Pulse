@@ -34,6 +34,10 @@ def _serialize_ticket(t: SupportTicket, now: datetime) -> dict:
         "resolved_at": t.resolved_at.isoformat() if t.resolved_at else None,
         "csat_rating": t.csat_rating, "csat_comment": t.csat_comment,
         "sla": sla.evaluate(t, now),
+        "ai": ({"priority": t.ai_priority, "summary": t.ai_summary,
+                "next_step": t.ai_next_step,
+                "triaged_at": t.ai_triaged_at.isoformat() if t.ai_triaged_at else None}
+               if t.ai_triaged_at else None),
     }
 
 
@@ -132,6 +136,34 @@ def get_ticket(ticket_id: int, db: Session = Depends(get_db),
         data["time_logged_minutes"] = sum(e.minutes for e in entries)
         data["time_billable_minutes"] = sum(e.minutes for e in entries if e.billable)
     return data
+
+
+@router.post("/tickets/{ticket_id}/ai-triage")
+def ai_triage_ticket(ticket_id: int, request: Request, db: Session = Depends(get_db),
+                     user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Re-run Claude triage on one ticket, on demand (staff). The Autopilot
+    sweep triages new tickets automatically; this refreshes a stale read after
+    the conversation has evolved, or triages with AI newly connected."""
+    t = db.get(SupportTicket, ticket_id)
+    if not t:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+    from ...services import ai, ai_triage
+    if not ai.enabled():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Claude is not connected — add ANTHROPIC_API_KEY.")
+    t.ai_triaged_at = None   # force a fresh read
+    try:
+        res = ai_triage.triage_ticket(db, t)
+    except ai.AIError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
+    if not res:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY,
+                            "Claude returned an unparseable triage — try again.")
+    audit.record(db, action="ticket.ai_triage", actor_user_id=user.id,
+                 actor_email=user.email, actor_role=user.role.value,
+                 target_type="ticket", target_id=str(t.id), ip=_ip(request),
+                 detail=f"suggested={res['priority']} applied={res['applied']}")
+    return {"ok": True, **res}
 
 
 class RateIn(BaseModel):

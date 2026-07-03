@@ -153,109 +153,67 @@ def list_runs(limit: int = 100, db: Session = Depends(get_db),
 @router.post("/run-checks")
 def run_checks(db: Session = Depends(get_db),
                user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
-    """The cron entrypoint. In production a scheduler hits this on an interval;
-    staff can also run it on demand. It (1) sweeps for offline devices and fires
-    alert.opened automation for new ones, and (2) fires ticket.sla_breached for
-    open tickets that have newly breached (de-duplicated via sla_breach_alerted)."""
-    sweep, new_offline = monitoring.sweep_offline(db)
-    from ...services import auto_remediation
-    for alert in new_offline:
-        from ...models import Device
-        dev = db.get(Device, alert.device_id)
-        automation.dispatch(db, "alert.opened", automation.build_alert_context(alert, dev))
-        try:
-            auto_remediation.on_alert(db, alert, dev)   # detect → fix
-        except Exception:
-            pass
-
-    now = datetime.now(timezone.utc)
-    open_tickets = (db.query(SupportTicket)
-                    .filter(SupportTicket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS]))
-                    .all())
-    from ...services import sla_escalation
-    sla_fired = 0
-    escalated = 0
-    for t in open_tickets:
-        s = sla.evaluate(t, now)
-        if s["breached"] and not t.sla_breach_alerted:
-            t.sla_breach_alerted = True
-            # Built-in escalation: bump priority + internal note + notification.
-            esc = sla_escalation.escalate(db, t, now)
-            if esc["priority_bumped"]:
-                escalated += 1
-            db.commit()  # persist the flag + escalation before custom rules dispatch
-            ctx = automation.build_ticket_context(t)
-            ctx["breach"] = True
-            automation.dispatch(db, "ticket.sla_breached", ctx)
-            sla_fired += 1
-
-    # Run any due scheduled automation rules (v0.53) — time-based automations.
-    scheduled = automation.run_scheduled(db, now)
-
-    # Recurring billing (v0.58): auto-generate invoices for due contracts.
-    from ...services import recurring_billing
-    recurring = []
-    try:
-        recurring = recurring_billing.generate_due(db, now)
-    except Exception:
-        pass
-
-    # A/R payment reminders (v0.62): nudge overdue unpaid invoices (7-day cadence).
-    from ...services import ar_aging
-    reminders = []
-    try:
-        reminders = ar_aging.send_due_reminders(db, now)
-    except Exception:
-        pass
-
-    # Posture snapshots (v0.67): capture each client's security grade ~daily and
-    # alert staff if a grade slipped since the last snapshot.
-    from ...services import posture_history
-    snapshots = []
-    try:
-        snapshots = posture_history.snapshot_all(db, now)
-    except Exception:
-        pass
-
-    # Auto-posting (v0.70): publish the next queued social post (~daily cadence).
-    from ...services import autopost
-    posts = []
-    try:
-        posts = autopost.publish_due(db, now)
-    except Exception:
-        pass
-
-    # Weekly "State of the Practice" digest (v0.85) — once per ISO week, on the
-    # configured weekday, emailed to the owner. Idempotent + no-op-safe.
-    from ...services import weekly_digest
-    digest = {"sent": False}
-    try:
-        digest = weekly_digest.maybe_send(db, now)
-    except Exception:
-        pass
-
-    # Deliver any due scheduled client reports (v0.20).
-    reports = scheduled_reports.send_due(db, now)
-
-    # Connector health watchdog (v0.52.2) — auto-sweep at most hourly so a dead
-    # token / exhausted credit raises an alert without anyone clicking "Test".
-    from ...services import integration_health
-    health = None
-    try:
-        health = integration_health.maybe_sweep(db, min_interval_minutes=60)
-    except Exception:
-        pass
-
+    """Run the master maintenance tick on demand. The same tick runs
+    automatically every couple of minutes via the in-process Autopilot
+    scheduler (see /autopilot below) — this endpoint remains for staff
+    "run now" and for any external cron that still points here."""
+    from ...services import heartbeat
+    result = heartbeat.run_all(db)
     audit.record(db, action="automation.run_checks", actor_user_id=user.id, actor_email=user.email,
                  actor_role=user.role.value, target_type="automation", ip=None,
-                 detail=f"offline_opened={sweep['offline_opened']} sla_breaches_fired={sla_fired} "
-                        f"escalated={escalated} reports_sent={reports['reports_sent']}")
-    return {"offline": sweep, "sla_breaches_fired": sla_fired, "escalated": escalated,
-            "reports": reports, "health_checked": (health or {}).get("checked", 0),
-            "scheduled_fired": len(scheduled), "recurring_invoices": len(recurring),
-            "reminders_sent": len(reminders), "posture_snapshots": len(snapshots),
-            "posts_published": len([p for p in posts if p.get("ok")]),
-            "weekly_digest": digest}
+                 detail=f"offline_opened={result['offline']['offline_opened']} "
+                        f"sla_breaches_fired={result['sla_breaches_fired']} "
+                        f"escalated={result['escalated']} "
+                        f"reports_sent={result['reports']['reports_sent']}")
+    return result
+
+
+# --------------------------------------------------------------------------- #
+# Autopilot (v1.1) — the built-in scheduler. Status panel + manual tick.
+# --------------------------------------------------------------------------- #
+@router.get("/autopilot")
+def autopilot_status(db: Session = Depends(get_db),
+                     user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    from ...services import scheduler
+    return scheduler.status(db)
+
+
+@router.post("/autopilot/tick")
+def autopilot_tick(request: Request, db: Session = Depends(get_db),
+                   user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    from ...services import scheduler
+    result = scheduler.tick(db, source="manual")
+    audit.record(db, action="automation.autopilot_tick", actor_user_id=user.id,
+                 actor_email=user.email, actor_role=user.role.value,
+                 target_type="automation", ip=_ip(request), detail="manual tick")
+    return {"ok": True, "result": result}
+
+
+# --------------------------------------------------------------------------- #
+# AI ticket triage settings (v1.1)
+# --------------------------------------------------------------------------- #
+class AITriageIn(BaseModel):
+    enabled: bool | None = None
+    auto_apply: bool | None = None
+
+
+@router.get("/ai-triage")
+def get_ai_triage(db: Session = Depends(get_db),
+                  user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    from ...services import ai_triage
+    return ai_triage.get_config(db)
+
+
+@router.put("/ai-triage")
+def save_ai_triage(body: AITriageIn, request: Request, db: Session = Depends(get_db),
+                   user: User = Depends(require_roles(Role.OWNER))):
+    from ...services import ai_triage
+    out = ai_triage.save_config(db, enabled=body.enabled, auto_apply=body.auto_apply)
+    audit.record(db, action="automation.ai_triage_config", actor_user_id=user.id,
+                 actor_email=user.email, actor_role=user.role.value,
+                 target_type="automation", ip=_ip(request),
+                 detail=f"enabled={out['enabled']} auto_apply={out['auto_apply']}")
+    return out
 
 
 # --------------------------------------------------------------------------- #

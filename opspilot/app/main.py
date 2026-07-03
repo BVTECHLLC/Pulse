@@ -271,3 +271,16 @@ def _startup():
             print(f"[env-creds] warning: {e}")
     finally:
         db.close()
+
+    # Autopilot (v1.1): the in-process scheduler that drives every recurring
+    # check (SLA breaches, offline sweeps, digests, invoices, posts, AI triage)
+    # with no external cron. Disable with SCHEDULER_ENABLED=0.
+    try:
+        from .services import scheduler
+        if scheduler.start():
+            print(f"[autopilot] running — first tick in {scheduler.FIRST_DELAY_SEC}s, "
+                  f"then every {scheduler.INTERVAL_SEC}s")
+        else:
+            print("[autopilot] disabled via SCHEDULER_ENABLED")
+    except Exception as e:  # noqa: BLE001
+        print(f"[autopilot] failed to start: {e}")

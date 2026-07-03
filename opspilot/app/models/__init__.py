@@ -182,6 +182,13 @@ class SupportTicket(Base):
     csat_rating: Mapped[int | None] = mapped_column(Integer)   # v0.78 CSAT: 1=👍, -1=👎
     csat_comment: Mapped[str | None] = mapped_column(Text)
     csat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # AI triage (v1.1) — Claude's read of the ticket, filled in by the Autopilot
+    # sweep shortly after creation (or on demand). Suggestions only; the ticket's
+    # real priority changes only when auto-apply is enabled.
+    ai_priority: Mapped[str | None] = mapped_column(String(20))
+    ai_summary: Mapped[str | None] = mapped_column(Text)
+    ai_next_step: Mapped[str | None] = mapped_column(Text)
+    ai_triaged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
@@ -1312,3 +1319,17 @@ class LibraryDoc(Base):
     filename: Mapped[str] = mapped_column(String(200), nullable=False)
     size: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class SchedulerRun(Base):
+    """One row per Autopilot heartbeat (v1.1) — the in-process scheduler that
+    drives the master run-checks tick without any external cron. `source` is
+    'auto' for the background thread and 'manual' for a staff-triggered run;
+    `summary` stores the tick's JSON result for the Settings panel."""
+    __tablename__ = "scheduler_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ran_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+    source: Mapped[str] = mapped_column(String(10), default="auto")   # auto|manual
+    ok: Mapped[bool] = mapped_column(Boolean, default=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    summary: Mapped[str | None] = mapped_column(Text)                 # JSON result
