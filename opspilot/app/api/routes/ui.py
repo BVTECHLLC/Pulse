@@ -52,6 +52,14 @@ def portal(request: Request):
     return _page("portal.html", request)
 
 
+@router.get("/academy", response_class=HTMLResponse)
+def academy_page(request: Request):
+    """Pulse Cyber Academy (v1.2) — mobile-first gamified security training for
+    staff and client users alike. The page itself is public shell; every API it
+    calls requires a session, and the JS bounces to login on 401."""
+    return _page("academy.html", request)
+
+
 @router.get("/invoice/{invoice_id}", response_class=HTMLResponse)
 def invoice_view(invoice_id: int, request: Request):
     return _page("invoice.html", request, invoice_id=invoice_id)

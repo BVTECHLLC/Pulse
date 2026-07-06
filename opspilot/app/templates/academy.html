@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a0f24">
+<title>Pulse Cyber Academy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<style>
+:root{--bg:#0a0f24;--card:#111834;--card2:#0c1430;--line:#232c52;--ink:#e8ecff;--mut:#8b93b8;
+--brand:#6c5ce7;--brand2:#a29bfe;--ok:#00d68f;--warn:#ffb020;--bad:#ff5c7a;--gold:#ffd166}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+min-height:100%;overscroll-behavior-y:none}
+body{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
+.wrap{max-width:640px;margin:0 auto;padding:16px}
+h1{font-size:22px}h2{font-size:18px;margin:18px 0 10px}h4{margin:14px 0 6px;color:var(--brand2)}
+p,li{color:#c7cdec;font-size:15px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px}
+.mut{color:var(--mut);font-size:13px}
+.hidden{display:none!important}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--brand);color:#fff;border:0;
+border-radius:14px;padding:14px 20px;font-size:16px;font-weight:600;cursor:pointer;width:100%;min-height:48px}
+.btn:active{transform:scale(.98)}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+.btn.ok{background:var(--ok);color:#06301f}.btn.bad{background:var(--bad)}
+.btn.half{width:calc(50% - 5px)}
+.row{display:flex;gap:10px}
+/* top hero */
+.hero{background:linear-gradient(135deg,#1b1150,#0e1a4d 60%,#0a0f24);border:1px solid var(--line);
+border-radius:20px;padding:18px;margin-bottom:14px;position:relative;overflow:hidden}
+.hero:before{content:"";position:absolute;inset:-40%;background:radial-gradient(circle at 70% 20%,rgba(108,92,231,.25),transparent 55%)}
+.xpbar{height:10px;background:#0b1130;border-radius:99px;overflow:hidden;margin:8px 0 4px;border:1px solid var(--line)}
+.xpbar>div{height:100%;background:linear-gradient(90deg,var(--brand),var(--brand2));border-radius:99px;transition:width .6s ease}
+.streak{font-size:14px;font-weight:700}
+.pill{display:inline-block;background:#1a2247;border:1px solid var(--line);border-radius:99px;padding:3px 10px;font-size:12px;color:var(--mut)}
+/* lesson list */
+.lesson{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--line);border-radius:14px;
+background:var(--card2);margin-bottom:8px;cursor:pointer}
+.lesson:active{background:#101a3e}
+.lesson .ico{font-size:26px;width:40px;text-align:center;flex:none}
+.lesson .t{flex:1;min-width:0}
+.lesson .t b{display:block;font-size:15px}
+.done{color:var(--ok);font-weight:800;flex:none}
+/* quiz */
+.choice{display:block;width:100%;text-align:left;background:var(--card2);border:1px solid var(--line);color:var(--ink);
+border-radius:14px;padding:14px;font-size:15px;margin-bottom:10px;cursor:pointer;min-height:48px}
+.choice.sel{border-color:var(--brand);background:#171f47}
+.choice.right{border-color:var(--ok);background:#0d2b22}
+.choice.wrong{border-color:var(--bad);background:#2b0d16}
+.explain{border-left:3px solid var(--brand);background:var(--card2);border-radius:0 12px 12px 0;padding:10px 12px;margin:10px 0;font-size:14px;color:#c7cdec}
+/* phish game */
+.mail{background:#fff;color:#111;border-radius:14px;padding:14px;margin-bottom:12px}
+.mail .from{font-size:13px;color:#555;word-break:break-all}
+.mail .subj{font-weight:700;margin:6px 0;font-size:15px;color:#111}
+.mail .body{font-size:14px;color:#333}
+/* leaderboard */
+.rankrow{display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line)}
+.rankrow:last-child{border-bottom:0}
+.rankrow.you{background:#171f47;border-radius:10px}
+.rankrow .n{width:30px;font-weight:800;color:var(--mut)}
+.rankrow .nm{flex:1;font-weight:600}
+/* badges */
+.badges{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.badge{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:12px 8px;text-align:center}
+.badge .i{font-size:30px}.badge b{display:block;font-size:12px;margin-top:4px}.badge .d{font-size:10.5px;color:var(--mut)}
+.badge.locked{opacity:.35;filter:grayscale(1)}
+/* bottom nav */
+nav{position:fixed;bottom:0;left:0;right:0;background:rgba(13,19,44,.96);backdrop-filter:blur(10px);
+border-top:1px solid var(--line);display:flex;z-index:50;padding-bottom:env(safe-area-inset-bottom)}
+nav a{flex:1;text-align:center;padding:10px 0 8px;color:var(--mut);text-decoration:none;font-size:11px;font-weight:600}
+nav a .i{display:block;font-size:22px;line-height:1.2}
+nav a.on{color:var(--brand2)}
+/* toast + confetti */
+#toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--brand);
+border-radius:14px;padding:12px 18px;z-index:99;font-weight:700;box-shadow:0 8px 30px rgba(0,0,0,.5);display:none;max-width:92vw;text-align:center}
+.pop{animation:pop .5s ease}
+@keyframes pop{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.08)}100%{transform:scale(1)}}
+.confetti{position:fixed;top:-10px;font-size:18px;z-index:98;animation:fall linear forwards;pointer-events:none}
+@keyframes fall{to{transform:translateY(105vh) rotate(720deg);opacity:.2}}
+/* meter (password lab) */
+.meter{height:14px;border-radius:99px;background:#0b1130;border:1px solid var(--line);overflow:hidden;margin:10px 0 4px}
+.meter>div{height:100%;width:0;transition:width .3s,background .3s;border-radius:99px}
+input[type=text]{width:100%;background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px;
+color:var(--ink);font-size:16px}
+.topbar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.back{background:var(--card);border:1px solid var(--line);color:var(--ink);border-radius:12px;padding:8px 14px;
+font-size:14px;cursor:pointer;flex:none}
+@media(min-width:700px){body{padding-bottom:20px}nav{position:sticky;max-width:640px;margin:0 auto;border-radius:16px;bottom:12px;border:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<div id="toast"></div>
+<div class="wrap">
+
+  <!-- ============ LEARN (home) ============ -->
+  <div id="v-learn">
+    <div class="hero">
+      <div style="position:relative">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <h1>🎓 Cyber Academy</h1>
+          <span class="streak" id="h-streak">🔥 0</span>
+        </div>
+        <div class="mut" id="h-level" style="margin-top:2px">—</div>
+        <div class="xpbar"><div id="h-xp" style="width:0%"></div></div>
+        <div class="mut" id="h-xptext"></div>
+      </div>
+    </div>
+    <div id="modules"></div>
+  </div>
+
+  <!-- ============ LESSON ============ -->
+  <div id="v-lesson" class="hidden">
+    <div class="topbar"><button class="back" onclick="go('learn')">← Back</button><h2 id="l-title" style="margin:0"></h2></div>
+    <div class="card" id="l-body"></div>
+    <button class="btn" id="l-start" onclick="startQuiz()">Take the quiz →</button>
+    <div id="l-quiz" class="hidden">
+      <div class="card">
+        <div class="mut" id="q-progress"></div>
+        <h2 id="q-q" style="margin-top:6px"></h2>
+        <div id="q-choices"></div>
+        <div id="q-explain"></div>
+        <button class="btn hidden" id="q-next" onclick="nextQ()">Next →</button>
+      </div>
+    </div>
+    <div id="l-result" class="hidden"></div>
+  </div>
+
+  <!-- ============ PLAY ============ -->
+  <div id="v-play" class="hidden">
+    <h1 style="margin-bottom:12px">🎮 Games</h1>
+    <div id="games"></div>
+  </div>
+
+  <!-- ============ PHISH GAME ============ -->
+  <div id="v-phish" class="hidden">
+    <div class="topbar"><button class="back" onclick="go('play')">← Quit</button><h2 style="margin:0">🎣 Phish or Legit?</h2></div>
+    <div class="mut" id="p-progress" style="margin-bottom:8px"></div>
+    <div id="p-mail"></div>
+    <div id="p-explain"></div>
+    <div class="row" id="p-btns">
+      <button class="btn bad half" onclick="answerPhish(true)">🎣 Phish</button>
+      <button class="btn ok half" onclick="answerPhish(false)">✅ Legit</button>
+    </div>
+    <button class="btn hidden" id="p-next" onclick="nextPhish()">Next email →</button>
+    <div id="p-result"></div>
+  </div>
+
+  <!-- ============ PASSWORD LAB ============ -->
+  <div id="v-lab" class="hidden">
+    <div class="topbar"><button class="back" onclick="go('play')">← Back</button><h2 style="margin:0">🧪 Password Lab</h2></div>
+    <div class="card">
+      <p>Type candidate passwords and watch how long a modern cracking rig (100 billion guesses/sec) would need. <b>Mission: forge one rated UNCRACKABLE.</b></p>
+      <p class="mut" style="margin-top:6px">Tip from the lesson: 4+ random words beat any pile of symbols. Don't use a real password of yours here.</p>
+      <input type="text" id="lab-in" placeholder="try: maple-rocket-thursday…" autocomplete="off" autocapitalize="off" spellcheck="false" oninput="labCheck()">
+      <div class="meter"><div id="lab-bar"></div></div>
+      <div style="display:flex;justify-content:space-between"><b id="lab-rating">—</b><span class="mut" id="lab-time"></span></div>
+      <div class="explain" id="lab-why" style="margin-top:10px">Start typing to analyze.</div>
+      <button class="btn hidden" id="lab-claim" onclick="labWin()">🏆 Claim victory (+75 XP)</button>
+    </div>
+  </div>
+
+  <!-- ============ RANKS ============ -->
+  <div id="v-ranks" class="hidden">
+    <h1 style="margin-bottom:12px">🏆 Leaderboard</h1>
+    <div class="card" id="board"></div>
+    <p class="mut" style="margin-top:8px">Earn XP from lessons (+50, +25 for perfect quizzes) and games (+75). Streaks count days in a row with any completed item.</p>
+  </div>
+
+  <!-- ============ ME ============ -->
+  <div id="v-me" class="hidden">
+    <h1 style="margin-bottom:12px">👤 My Progress</h1>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><b id="m-level" style="font-size:18px">—</b><div class="mut" id="m-xp"></div></div>
+        <span class="streak" style="font-size:22px" id="m-streak">🔥 0</span>
+      </div>
+      <div class="xpbar"><div id="m-xpbar" style="width:0%"></div></div>
+      <div class="mut" id="m-active"></div>
+    </div>
+    <h2>Badges</h2>
+    <div class="badges" id="m-badges"></div>
+    <div style="margin-top:16px"><a class="btn ghost" href="/dashboard" style="text-decoration:none">← Back to Pulse portal</a></div>
+  </div>
+</div>
+
+<nav>
+  <a href="#learn" id="n-learn" class="on"><span class="i">📚</span>Learn</a>
+  <a href="#play" id="n-play"><span class="i">🎮</span>Play</a>
+  <a href="#ranks" id="n-ranks"><span class="i">🏆</span>Ranks</a>
+  <a href="#me" id="n-me"><span class="i">👤</span>Me</a>
+</nav>
+
+<script>
+let CAT=null,PROF=null,LESSON=null,QI=0,ANS=[],GAME=null,PI=0,PANS=[],LAB_DONE=false;
+const $=id=>document.getElementById(id);
+const esc=s=>(s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+async function api(p,opt){const r=await fetch(p,opt);if(r.status===401){location.href='/?next=/academy';throw new Error('auth')}return r}
+async function getJ(p){return (await api(p)).json()}
+async function postJ(p,b){return (await api(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})).json()}
+
+function toast(msg){const t=$('toast');t.textContent=msg;t.style.display='block';t.classList.remove('pop');void t.offsetWidth;t.classList.add('pop');
+  clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',2600)}
+function confetti(){const em=['🎉','✨','⭐','💜','🔥'];for(let i=0;i<26;i++){const s=document.createElement('span');
+  s.className='confetti';s.textContent=em[i%em.length];s.style.left=Math.random()*100+'vw';
+  s.style.animationDuration=(1.4+Math.random()*1.6)+'s';s.style.animationDelay=(Math.random()*.4)+'s';
+  document.body.appendChild(s);setTimeout(()=>s.remove(),3400)}}
+
+const VIEWS=['learn','lesson','play','phish','lab','ranks','me'];
+function show(v){VIEWS.forEach(x=>$('v-'+x).classList.toggle('hidden',x!==v));
+  ['learn','play','ranks','me'].forEach(x=>$('n-'+x).classList.toggle('on',x===v||(v==='lesson'&&x==='learn')||((v==='phish'||v==='lab')&&x==='play')));
+  window.scrollTo(0,0)}
+function go(v){location.hash=v}
+window.addEventListener('hashchange',()=>route());
+function route(){const h=(location.hash||'#learn').slice(1);
+  if(h==='ranks'){loadBoard();show('ranks')}
+  else if(h==='me'){renderMe();show('me')}
+  else if(h==='play'){show('play')}
+  else if(h==='learn'){show('learn')}
+  // lesson/game views are pushed programmatically; hash fallbacks land on learn/play
+  else show('learn')}
+
+function applyProfile(p){PROF=p;
+  $('h-streak').textContent='🔥 '+p.streak_days+(p.active_today?'':' ');
+  $('h-level').textContent='Level '+p.level.n+' — '+p.level.title;
+  const pct=p.level.xp_needed?Math.min(100,Math.round(100*p.level.xp_into/p.level.xp_needed)):100;
+  $('h-xp').style.width=pct+'%';
+  $('h-xptext').textContent=p.xp+' XP total'+(p.level.xp_needed?(' · '+(p.level.xp_needed-p.level.xp_into)+' to next level'):' · max level!');
+}
+
+function renderCatalog(){
+  $('modules').innerHTML=CAT.modules.map(m=>{
+    const done=m.lessons.filter(l=>l.completed).length;
+    return `<h2>${m.icon} ${esc(m.title)} <span class="pill">${done}/${m.lessons.length}</span></h2>
+    <p class="mut" style="margin:-4px 0 10px">${esc(m.blurb)}</p>`+
+    m.lessons.map(l=>`<div class="lesson" onclick="openLesson('${l.id}')">
+      <span class="ico">${l.icon}</span>
+      <span class="t"><b>${esc(l.title)}</b><span class="mut">${l.minutes} min · ${l.questions} questions · +${l.xp} XP</span></span>
+      ${l.completed?`<span class="done">✓ ${l.score!=null?l.score+'/'+l.questions:''}</span>`:'<span class="mut">›</span>'}
+    </div>`).join('')}).join('');
+  $('games').innerHTML=CAT.games.map(g=>`<div class="lesson" onclick="openGame('${g.id}','${g.kind}')">
+      <span class="ico">${g.icon}</span>
+      <span class="t"><b>${esc(g.title)}</b><span class="mut">${esc(g.blurb)} · +${g.xp} XP</span></span>
+      ${g.completed?`<span class="done">✓ ${g.score!=null?g.score+'/'+g.rounds:''}</span>`:'<span class="mut">›</span>'}
+    </div>`).join('');
+}
+
+async function load(){const c=await getJ('/api/academy/catalog');CAT=c;applyProfile(c.profile);renderCatalog();route()}
+
+/* ---------- lesson flow ---------- */
+async function openLesson(id){LESSON=await getJ('/api/academy/lessons/'+id);QI=0;ANS=[];
+  $('l-title').textContent=LESSON.icon+' '+LESSON.title;
+  $('l-body').innerHTML=LESSON.body;
+  $('l-start').classList.remove('hidden');$('l-quiz').classList.add('hidden');$('l-result').classList.add('hidden');$('l-result').innerHTML='';
+  show('lesson')}
+function startQuiz(){$('l-start').classList.add('hidden');$('l-body').classList.add('hidden');$('l-quiz').classList.remove('hidden');renderQ()}
+function renderQ(){const q=LESSON.quiz[QI];
+  $('q-progress').textContent=`Question ${QI+1} of ${LESSON.quiz.length}`;
+  $('q-q').textContent=q.q;$('q-explain').innerHTML='';$('q-next').classList.add('hidden');
+  $('q-choices').innerHTML=q.choices.map((c,i)=>`<button class="choice" onclick="pick(${i})">${esc(c)}</button>`).join('')}
+function pick(i){if(ANS.length>QI)return;ANS.push(i);
+  document.querySelectorAll('#q-choices .choice')[i].classList.add('sel');
+  $('q-next').textContent=(QI+1<LESSON.quiz.length)?'Next →':'See results 🎯';
+  $('q-next').classList.remove('hidden')}
+async function nextQ(){QI++;
+  if(QI<LESSON.quiz.length){renderQ();return}
+  const res=await postJ('/api/academy/lessons/'+LESSON.id+'/submit',{answers:ANS});
+  applyProfile(res.profile);
+  const perfect=res.score===res.total;
+  if(res.xp_gained>0){confetti();toast(`+${res.xp_gained} XP${perfect?' · PERFECT! 💯':''}`)}
+  (res.new_badges||[]).forEach((b,i)=>setTimeout(()=>toast(`${b.icon} Badge earned: ${b.name}!`),900*(i+1)));
+  $('l-quiz').classList.add('hidden');
+  $('l-result').classList.remove('hidden');
+  $('l-result').innerHTML=`<div class="card" style="text-align:center">
+      <div style="font-size:44px">${perfect?'🏆':res.score>=res.total*0.6?'👏':'📖'}</div>
+      <h2 style="margin:6px 0">${res.score}/${res.total}</h2>
+      <p class="mut">${perfect?'Flawless. The phishers fear you.':res.score>=res.total*0.6?'Solid! Review the misses below.':'Worth a re-read — the answers below explain everything.'}</p>
+    </div>`+
+    res.results.map((r,i)=>`<div class="card" style="padding:12px">
+      <b>${r.correct?'✅':'❌'} Q${i+1}: ${esc(LESSON.quiz[i].q)}</b>
+      ${r.correct?'':`<div class="mut" style="margin-top:4px">Correct answer: ${esc(LESSON.quiz[i].choices[r.answer])}</div>`}
+      <div class="explain">${esc(r.explain)}</div></div>`).join('')+
+    `<div class="row"><button class="btn ghost half" onclick="openLesson('${LESSON.id}')">Retake</button>
+     <button class="btn half" onclick="reload_home()">Continue →</button></div>`}
+async function reload_home(){await load();go('learn');show('learn')}
+
+/* ---------- games ---------- */
+async function openGame(id,kind){
+  if(kind==='phish'){GAME=await getJ('/api/academy/games/'+id);PI=0;PANS=[];$('p-result').innerHTML='';renderPhish();show('phish')}
+  else{LAB_DONE=CAT.games.find(g=>g.id==='password-lab')?.completed||false;$('lab-in').value='';labCheck();show('lab')}}
+function renderPhish(){const it=GAME.items[PI];
+  $('p-progress').textContent=`Email ${PI+1} of ${GAME.items.length}`;
+  $('p-explain').innerHTML='';$('p-next').classList.add('hidden');$('p-btns').classList.remove('hidden');
+  $('p-mail').innerHTML=`<div class="mail">
+    <div class="from"><b>${esc(it.from_name)}</b> &lt;${esc(it.from_addr)}&gt;</div>
+    <div class="subj">${esc(it.subject)}</div>
+    <div class="body">${esc(it.body)}</div></div>`}
+function answerPhish(saysPhish){if(PANS.length>PI)return;PANS.push(saysPhish);
+  $('p-btns').classList.add('hidden');
+  $('p-next').textContent=(PI+1<GAME.items.length)?'Next email →':'Final score 🎯';
+  $('p-next').classList.remove('hidden');
+  $('p-explain').innerHTML=`<div class="explain">Answer locked in — verdict on the results screen. Trust your read of the sender + link + pressure.</div>`;
+  nextPhishMaybeAuto()}
+function nextPhishMaybeAuto(){}
+async function nextPhish(){PI++;
+  if(PI<GAME.items.length){renderPhish();return}
+  const res=await postJ('/api/academy/games/'+GAME.id+'/submit',{answers:PANS});
+  applyProfile(res.profile);
+  if(res.xp_gained>0){confetti();toast(`+${res.xp_gained} XP`)}
+  (res.new_badges||[]).forEach((b,i)=>setTimeout(()=>toast(`${b.icon} Badge earned: ${b.name}!`),900*(i+1)));
+  $('p-mail').innerHTML='';$('p-explain').innerHTML='';$('p-next').classList.add('hidden');$('p-btns').classList.add('hidden');
+  $('p-result').innerHTML=`<div class="card" style="text-align:center">
+      <div style="font-size:44px">${res.score===res.total?'🎣🏆':'🎣'}</div>
+      <h2>${res.score}/${res.total}</h2>
+      <p class="mut">${res.score===res.total?'Perfect — certified Phish Master.':'Review the misses — each one is a pattern seen in real life every day.'}</p></div>`+
+    res.results.map((r,i)=>{const it=GAME.items[i];return `<div class="card" style="padding:12px">
+      <b>${r.correct?'✅':'❌'} ${esc(it.subject)}</b>
+      <div class="mut">${r.is_phish?'🎣 It was PHISH':'✅ It was LEGIT'}</div>
+      <div class="explain">${esc(r.explain)}</div></div>`}).join('')+
+    `<div class="row"><button class="btn ghost half" onclick="openGame('phish-or-legit','phish')">Play again</button>
+     <button class="btn half" onclick="afterGame()">Done →</button></div>`}
+async function afterGame(){await load();go('play');show('play')}
+
+/* ---------- password lab (all client-side math) ---------- */
+function labEntropy(s){
+  if(!s)return 0;
+  let pool=0;
+  if(/[a-z]/.test(s))pool+=26; if(/[A-Z]/.test(s))pool+=26; if(/[0-9]/.test(s))pool+=10;
+  if(/[^A-Za-z0-9]/.test(s))pool+=33;
+  let bits=s.length*Math.log2(pool||1);
+  // words bonus: 4+ distinct word-chunks ≈ diceware-style
+  const words=s.toLowerCase().split(/[^a-z]+/).filter(w=>w.length>=3);
+  if(new Set(words).size>=4)bits=Math.max(bits,new Set(words).size*12.9);
+  // common patterns penalty
+  if(/^(password|letmein|qwerty|123456|admin|welcome)/i.test(s))bits=Math.min(bits,20);
+  if(/(.)\1{2,}/.test(s))bits-=8;
+  if(/(19|20)\d\d/.test(s))bits-=10;
+  return Math.max(0,bits)}
+function labTime(bits){const guesses=Math.pow(2,bits)/2;const secs=guesses/1e11;
+  if(secs<1)return 'instantly';
+  const u=[[60,'seconds'],[60,'minutes'],[24,'hours'],[365,'days'],[1000,'years'],[1e6,'thousand years'],[1e9,'million years']];
+  let v=secs,name='seconds';
+  for(const [div,nm] of [[1,'seconds'],[60,'minutes'],[3600,'hours'],[86400,'days'],[31557600,'years'],[31557600e3,'thousand years'],[31557600e6,'million years'],[31557600e9,'billion years']]){
+    if(secs>=div){v=secs/div;name=nm}}
+  return (v>=100?Math.round(v).toLocaleString():v.toFixed(1))+' '+name}
+function labCheck(){const s=$('lab-in').value;const bits=labEntropy(s);
+  const pct=Math.min(100,Math.round(bits/90*100));
+  const bar=$('lab-bar');bar.style.width=pct+'%';
+  let rating,color,why;
+  if(bits<28){rating='TRIVIAL 💀';color='var(--bad)';why='A cracking rig eats this before you finish blinking. Length is your friend — add more.'}
+  else if(bits<45){rating='WEAK 😬';color='var(--bad)';why='Falls in a coffee break. Add more length — every character multiplies the work.'}
+  else if(bits<60){rating='FAIR 🤔';color='var(--warn)';why='Surviving hours-to-days. Good start — a real attacker with focus still wins. Keep going.'}
+  else if(bits<75){rating='STRONG 💪';color='var(--warn)';why='Years of cracking. Nice. Want UNCRACKABLE? Try 4+ unrelated words — maple-rocket-thursday-lantern style.'}
+  else{rating='UNCRACKABLE 🛡️';color='var(--ok)';why='Centuries+ even for nation-state rigs. THIS is what your email + password manager deserve. Mission accomplished!'}
+  bar.style.background=color;$('lab-rating').textContent=rating;$('lab-rating').style.color=color;
+  $('lab-time').textContent=s?('cracked in: '+labTime(bits)):'';
+  $('lab-why').textContent=why||'Start typing to analyze.';
+  $('lab-claim').classList.toggle('hidden',!(bits>=75&&!LAB_DONE))}
+async function labWin(){LAB_DONE=true;$('lab-claim').classList.add('hidden');
+  const res=await postJ('/api/academy/games/password-lab/submit',{answers:[]});
+  applyProfile(res.profile);
+  if(res.xp_gained>0){confetti();toast('+'+res.xp_gained+' XP · Lab complete! 🧪')}
+  (res.new_badges||[]).forEach((b,i)=>setTimeout(()=>toast(`${b.icon} Badge earned: ${b.name}!`),900*(i+1)));
+  await load()}
+
+/* ---------- ranks + me ---------- */
+async function loadBoard(){const b=await getJ('/api/academy/leaderboard');
+  $('board').innerHTML=(b.leaderboard||[]).map(r=>`<div class="rankrow ${r.you?'you':''}">
+    <span class="n">${r.rank<=3?['🥇','🥈','🥉'][r.rank-1]:r.rank}</span>
+    <span class="nm">${esc(r.name)}${r.you?' (you)':''}</span>
+    <span class="pill">L${r.level.n}</span>
+    <span>🔥${r.streak}</span>
+    <b style="width:70px;text-align:right">${r.xp} XP</b></div>`).join('')
+  ||'<p class="mut">Nobody on the board yet — finish one lesson and claim 🥇.</p>'}
+function renderMe(){if(!PROF)return;
+  $('m-level').textContent='Level '+PROF.level.n+' — '+PROF.level.title;
+  $('m-xp').textContent=PROF.xp+' XP total';
+  $('m-streak').textContent='🔥 '+PROF.streak_days;
+  const pct=PROF.level.xp_needed?Math.min(100,Math.round(100*PROF.level.xp_into/PROF.level.xp_needed)):100;
+  $('m-xpbar').style.width=pct+'%';
+  $('m-active').textContent=PROF.active_today?'✅ Streak safe — you trained today.':'⏳ Complete anything today to keep your streak.';
+  $('m-badges').innerHTML=(PROF.all_badges||[]).map(b=>`<div class="badge ${b.earned?'':'locked'}">
+    <div class="i">${b.icon}</div><b>${esc(b.name)}</b><div class="d">${esc(b.desc)}</div></div>`).join('')}
+
+load();
+</script>
+</body>
+</html>

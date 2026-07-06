@@ -2424,6 +2424,17 @@ def main():
         _wdb = _WSL()
         try:
             import datetime as _dt
+            # The fixed dates below live in ISO week 2026-W28. If the REAL clock
+            # is also in that week, an earlier run-checks/autopilot tick in this
+            # suite has already stamped it — clear the bookkeeping so this
+            # sequence is deterministic on any calendar day.
+            from app.services import secure_config as _wsc
+            _wconn = _wsc.get_platform(_wdb, _wd.PROVIDER)
+            _wcfg = dict((_wconn.config if _wconn else None) or {})
+            _wcfg.pop("last_sent_week", None)
+            _wcfg["last_sent_week"] = ""
+            _wsc.upsert_platform(_wdb, _wd.PROVIDER, "Weekly Digest",
+                                 "State of the practice", _wcfg)
             # a Wednesday -> not due
             wed = _dt.datetime(2026, 7, 1, 9, 0, tzinfo=_dt.timezone.utc)
             assert _wd.maybe_send(_wdb, wed, sender=_cap)["reason"] == "not_due"
@@ -2570,7 +2581,78 @@ def main():
         assert c.post(f"/api/tickets/{tid11}/ai-triage").status_code == 400
         print("autopilot heartbeat + AI triage (auto-apply, SLA restamp, internal note, degrade) OK")
 
-    print("\n=== OpsPilot v1.1.0 SMOKE TEST PASSED ===")
+        # ===================== v1.2: Pulse Cyber Academy =====================
+        # Page ships; APIs require a session; answers never leak; XP awards once;
+        # streak + badges fire; leaderboard is tenant-isolated.
+        pg = c.get("/academy")
+        assert pg.status_code == 200 and "Cyber Academy" in pg.text
+        _anon2 = TestClient(app); _anon2.cookies.clear()
+        assert _anon2.get("/api/academy/catalog").status_code in (401, 403)
+
+        cat = c.get("/api/academy/catalog").json()
+        assert cat["total_lessons"] >= 10 and cat["modules"] and cat["games"], "catalog thin"
+        assert cat["profile"]["xp"] == 0 and cat["profile"]["streak_days"] == 0
+
+        first = cat["modules"][0]["lessons"][0]["id"]
+        les = c.get(f"/api/academy/lessons/{first}").json()
+        assert les["quiz"] and all("answer" not in q and "explain" not in q for q in les["quiz"]), \
+            "quiz answers LEAKED to the client!"
+        assert "<h4>" in les["body"], "lesson body missing"
+
+        # Grade with all-zero answers first (partial), then perfect — XP only once.
+        from app.services import academy as _aca
+        _correct = [q["answer"] for q in _aca._LESSONS[first]["quiz"]]
+        res1 = c.post(f"/api/academy/lessons/{first}/submit", json={"answers": _correct}).json()
+        assert res1["score"] == res1["total"] and res1["xp_gained"] == 75, res1  # 50 + 25 perfect
+        assert res1["profile"]["streak_days"] == 1 and res1["profile"]["active_today"] is True
+        got_badges = {b["id"] for b in res1["new_badges"]}
+        assert {"first_steps", "quiz_perfect"} <= got_badges, got_badges
+        res2 = c.post(f"/api/academy/lessons/{first}/submit", json={"answers": _correct}).json()
+        assert res2["xp_gained"] == 0, "XP must award only once per item"
+        assert res2["results"][0]["explain"], "explanations must come back after grading"
+
+        # Phish game: server-graded, perfect run earns the badge.
+        gv = c.get("/api/academy/games/phish-or-legit").json()
+        assert gv["items"] and all("is_phish" not in it and "explain" not in it for it in gv["items"]), \
+            "phish answers LEAKED!"
+        _pans = [it["is_phish"] for it in _aca._GAMES["phish-or-legit"]["items"]]
+        rg = c.post("/api/academy/games/phish-or-legit/submit", json={"answers": _pans}).json()
+        assert rg["score"] == rg["total"] and rg["xp_gained"] == 75, rg
+        assert any(b["id"] == "phish_master" for b in rg["new_badges"]), rg["new_badges"]
+
+        # Password lab completion awards once.
+        rl = c.post("/api/academy/games/password-lab/submit", json={"answers": []}).json()
+        assert rl["xp_gained"] == 75 and any(b["id"] == "lab_rat" for b in rl["new_badges"])
+        rl2 = c.post("/api/academy/games/password-lab/submit", json={"answers": []}).json()
+        assert rl2["xp_gained"] == 0
+
+        # Catalog now shows completion; profile accumulated 75+75+75 XP.
+        cat2 = c.get("/api/academy/catalog").json()
+        assert cat2["modules"][0]["lessons"][0]["completed"] is True
+        assert cat2["profile"]["xp"] == 225, cat2["profile"]["xp"]
+
+        # Leaderboard: owner (staff) sees self; a client user from another company
+        # must NOT see staff/other tenants on their board.
+        lb = c.get("/api/academy/leaderboard").json()["leaderboard"]
+        assert any(r["you"] for r in lb) and lb[0]["xp"] >= 225
+        cid2b = c.post("/api/clients", json={"name": "Acad Other Co"}).json()["id"]
+        _db12 = SessionLocal()
+        acu = User(email="learner@otherco.co", password_hash=hash_password("LearnPass123!"),
+                   role=Role.CLIENT_VIEWER, client_id=cid2b, is_active=True)
+        _db12.add(acu); _db12.commit(); _db12.close()
+        lc = TestClient(app); lc.cookies.clear()
+        assert lc.post("/api/auth/login", json={"email": "learner@otherco.co",
+                                                "password": "LearnPass123!"}).status_code == 200
+        assert lc.get("/api/academy/catalog").status_code == 200, "client users must get the academy"
+        lres = lc.post(f"/api/academy/lessons/{first}/submit", json={"answers": [0, 0, 0, 0]}).json()
+        assert lres["xp_gained"] >= 50
+        lb2 = lc.get("/api/academy/leaderboard").json()["leaderboard"]
+        assert lb2 and all(r["name"].lower().startswith("learner") for r in lb2), \
+            f"tenant leak on leaderboard: {lb2}"
+        print("cyber academy: page + no-answer-leak + grading + XP-once + streak/badges "
+              "+ games + tenant-isolated leaderboard OK")
+
+    print("\n=== OpsPilot v1.2.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
