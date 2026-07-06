@@ -12,8 +12,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ...core.db import get_db
-from ...core.deps import current_user, is_staff
-from ...models import User
+from ...core.deps import current_user, is_staff, require_roles
+from ...models import Role, User
 from ...services import academy
 
 router = APIRouter(prefix="/api/academy", tags=["academy"])
@@ -32,8 +32,9 @@ def catalog(db: Session = Depends(get_db), user: User = Depends(current_user)):
 
 
 @router.get("/lessons/{lesson_id}")
-def lesson(lesson_id: str, user: User = Depends(current_user)):
-    l = academy.lesson_view(lesson_id)
+def lesson(lesson_id: str, db: Session = Depends(get_db),
+           user: User = Depends(current_user)):
+    l = academy.lesson_view(db, lesson_id)
     if not l:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Lesson not found")
     return l
@@ -76,3 +77,11 @@ def submit_game(game_id: str, body: GameAnswersIn, db: Session = Depends(get_db)
 @router.get("/leaderboard")
 def board(db: Session = Depends(get_db), user: User = Depends(current_user)):
     return {"leaderboard": academy.leaderboard(db, user, staff=is_staff(user))}
+
+
+@router.get("/compliance")
+def compliance(db: Session = Depends(get_db),
+               user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Per-client training adoption (staff) — the QBR/renewal number."""
+    return {"clients": academy.compliance_all(db),
+            "total_lessons": academy.TOTAL_LESSONS}

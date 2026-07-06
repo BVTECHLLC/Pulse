@@ -1348,6 +1348,7 @@ class AcademyProfile(Base):
     xp: Mapped[int] = mapped_column(Integer, default=0)
     streak_days: Mapped[int] = mapped_column(Integer, default=0)
     last_active_on: Mapped[date | None] = mapped_column(Date)
+    last_reminder_on: Mapped[date | None] = mapped_column(Date)   # streak-saver email dedupe
     badges: Mapped[str | None] = mapped_column(Text, default="[]")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
@@ -1363,3 +1364,20 @@ class AcademyCompletion(Base):
     score: Mapped[int | None] = mapped_column(Integer)
     xp: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+class AcademyAiQuestion(Base):
+    """AI-refreshed quiz questions (v1.3). Once a month Claude writes fresh
+    scenario questions per lesson; the newest batch is active and merged into
+    that lesson's quiz (after the hand-written base questions). Old batches are
+    deactivated, never deleted."""
+    __tablename__ = "academy_ai_questions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lesson_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    month: Mapped[str] = mapped_column(String(7), index=True, nullable=False)   # YYYY-MM
+    q: Mapped[str] = mapped_column(Text, nullable=False)
+    choices: Mapped[str] = mapped_column(Text, nullable=False)   # JSON array of 4
+    answer: Mapped[int] = mapped_column(Integer, nullable=False)
+    explain: Mapped[str | None] = mapped_column(Text)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

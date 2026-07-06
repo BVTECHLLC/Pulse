@@ -80,6 +80,10 @@ def _build_summary(db: Session, client: Client, now: datetime) -> dict:
     contract_mrr = sum(monthly_value(c) for c in active_contracts)
     mrr = round(license_mrr + contract_mrr, 2)
 
+    # Security-awareness training adoption (v1.3) — the QBR/renewal number.
+    from ...services import academy
+    training = academy.client_compliance(db, client_id)
+
     return {
         "client": {"id": client.id, "name": client.name,
                    "primary_contact": client.primary_contact, "email": client.email},
@@ -99,6 +103,7 @@ def _build_summary(db: Session, client: Client, now: datetime) -> dict:
         "revenue": {"mrr": mrr, "arr": round(mrr * 12, 2),
                     "license_mrr": round(license_mrr, 2), "contract_mrr": round(contract_mrr, 2),
                     "active_contracts": len(active_contracts), "licenses": len(lic)},
+        "training": training,
     }
 
 
@@ -179,6 +184,8 @@ def summary_csv(s: dict) -> str:
         ("Warranties expiring (60d)", s["assets"]["warranty_expiring"]),
         ("Hours delivered (90d)", s["service"]["hours_90d"]),
         ("Billable hours (90d)", s["service"]["billable_hours_90d"]),
+        ("Staff trained (security awareness) %", s.get("training", {}).get("trained_pct")),
+        ("Training curriculum completed %", s.get("training", {}).get("curriculum_pct")),
         ("MRR", s["revenue"]["mrr"]),
         ("ARR", s["revenue"]["arr"]),
         ("Active contracts", s["revenue"]["active_contracts"]),

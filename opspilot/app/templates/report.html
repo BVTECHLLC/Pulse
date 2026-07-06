@@ -84,6 +84,11 @@ async function load(){
         <p>Contracts: ${money(rev.contract_mrr)}/mo (${rev.active_contracts||0} active)</p>
         <p>Licenses: ${money(rev.license_mrr)}/mo (${rev.licenses||0})</p>
         <p><b>Total MRR: ${money(rev.mrr)}</b> · ${money(rev.arr)}/yr</p></div>
+      <div class="card"><h3>🎓 Security Training</h3>
+        <p>Staff trained: <b>${(d.training||{}).trained_users||0}</b> of ${(d.training||{}).users||0}
+           ${(d.training||{}).trained_pct!=null?`(<b>${d.training.trained_pct}%</b>)`:''}</p>
+        <p>Curriculum completed: <b>${(d.training||{}).curriculum_pct!=null?d.training.curriculum_pct+'%':'—'}</b></p>
+        <p>${(d.training||{}).top_learner?('Top learner: <b>'+esc(d.training.top_learner.name)+'</b> ('+d.training.top_learner.xp+' XP)'):'No one has started yet — the academy is at portal.bvtech.org/academy'}</p></div>
       <div class="card"><h3>Infrastructure</h3>
         <p>Managed devices: <b>${dv.total||0}</b> (avg health ${dv.avg_health!=null?dv.avg_health:'—'})</p>
         <p>Patch compliance: <b>${pa.compliance_pct!=null?pa.compliance_pct+'%':'—'}</b></p>
