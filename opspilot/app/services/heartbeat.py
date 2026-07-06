@@ -129,9 +129,27 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         pass
 
+    # 12) Academy streak-saver emails (v1.3) — afternoon nudge for streaks that
+    #     die at midnight; once per user per day.
+    from . import academy
+    streaks_saved = []
+    try:
+        streaks_saved = academy.streak_reminders(db, now)
+    except Exception:  # noqa: BLE001
+        pass
+
+    # 13) Academy AI question refresh (v1.3) — monthly, only when Claude is
+    #     connected; cheap month-key check otherwise.
+    academy_ai = {"refreshed": False}
+    try:
+        academy_ai = academy.ai_refresh(db, now)
+    except Exception:  # noqa: BLE001
+        pass
+
     return {"offline": sweep, "sla_breaches_fired": sla_fired, "escalated": escalated,
             "reports": reports, "health_checked": (health or {}).get("checked", 0),
             "scheduled_fired": len(scheduled), "recurring_invoices": len(recurring),
             "reminders_sent": len(reminders), "posture_snapshots": len(snapshots),
             "posts_published": len([p for p in posts if p.get("ok")]),
-            "weekly_digest": digest, "ai_triaged": len(triaged)}
+            "weekly_digest": digest, "ai_triaged": len(triaged),
+            "streak_reminders": len(streaks_saved), "academy_ai": academy_ai}

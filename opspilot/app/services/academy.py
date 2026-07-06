@@ -763,13 +763,14 @@ def catalog_view(db: Session, user: User) -> dict:
     return {"modules": mods, "games": games, "total_lessons": TOTAL_LESSONS}
 
 
-def lesson_view(lesson_id: str) -> dict | None:
+def lesson_view(db: Session, lesson_id: str) -> dict | None:
     l = _LESSONS.get(lesson_id)
     if not l:
         return None
+    quiz = _merged_quiz(db, l)   # base + this month's AI-refreshed questions
     return {"id": l["id"], "title": l["title"], "icon": l["icon"],
             "minutes": l["minutes"], "body": l["body"],
-            "quiz": [{"q": q["q"], "choices": q["choices"]} for q in l["quiz"]]}
+            "quiz": [{"q": q["q"], "choices": q["choices"]} for q in quiz]}
 
 
 def grade_lesson(db: Session, user: User, lesson_id: str,
@@ -777,7 +778,7 @@ def grade_lesson(db: Session, user: User, lesson_id: str,
     l = _LESSONS.get(lesson_id)
     if not l:
         return None
-    quiz = l["quiz"]
+    quiz = _merged_quiz(db, l)   # same merge as lesson_view or grading skews
     results = []
     score = 0
     for i, q in enumerate(quiz):
@@ -851,3 +852,185 @@ def leaderboard(db: Session, user: User, *, staff: bool) -> list[dict]:
                     "level": _level(prof.xp or 0), "streak": prof.streak_days or 0,
                     "you": u.id == user.id})
     return out
+
+
+# --------------------------------------------------------------------------- #
+# v1.3 — training compliance, streak-saver reminders, AI-refreshed questions
+# --------------------------------------------------------------------------- #
+def client_compliance(db: Session, client_id: int) -> dict:
+    """Per-client training adoption — the QBR number: how many of this client's
+    people train, and how much of the curriculum they've covered."""
+    users = (db.query(User)
+             .filter(User.client_id == client_id, User.is_active.is_(True)).all())
+    uids = [u.id for u in users]
+    if not uids:
+        return {"users": 0, "trained_users": 0, "trained_pct": None,
+                "lessons_done": 0, "curriculum_pct": None, "top_learner": None}
+    comps = (db.query(AcademyCompletion)
+             .filter(AcademyCompletion.user_id.in_(uids),
+                     AcademyCompletion.kind == "lesson").all())
+    per_user: dict[int, set] = {}
+    for c in comps:
+        if c.item_id in _LESSONS:
+            per_user.setdefault(c.user_id, set()).add(c.item_id)
+    trained = len(per_user)
+    lessons_done = sum(len(v) for v in per_user.values())
+    top = None
+    profs = (db.query(AcademyProfile, User)
+             .join(User, User.id == AcademyProfile.user_id)
+             .filter(AcademyProfile.user_id.in_(uids), AcademyProfile.xp > 0)
+             .order_by(AcademyProfile.xp.desc()).first())
+    if profs:
+        p, u = profs
+        nm = (u.full_name or u.email.split("@")[0]).strip()
+        top = {"name": nm, "xp": p.xp}
+    return {
+        "users": len(uids),
+        "trained_users": trained,
+        "trained_pct": round(100 * trained / len(uids)) if uids else None,
+        "lessons_done": lessons_done,
+        "curriculum_pct": round(100 * lessons_done / (len(uids) * TOTAL_LESSONS)),
+        "top_learner": top,
+    }
+
+
+def compliance_all(db: Session) -> list[dict]:
+    """Training adoption for every client — the staff dashboard table."""
+    from ..models import Client
+    out = []
+    for cli in db.query(Client).order_by(Client.name.asc()).all():
+        row = client_compliance(db, cli.id)
+        row["client_id"] = cli.id
+        row["client"] = cli.name
+        out.append(row)
+    return out
+
+
+REMINDER_HOUR_UTC = 16   # ~11am Central: the nudge lands during the workday
+
+
+def streak_reminders(db: Session, now: datetime | None = None) -> list[dict]:
+    """Email users whose streak dies at midnight UTC (trained yesterday, not yet
+    today). At most one reminder per user per day; only streaks worth saving
+    (>= 2 days). Email sending is a safe no-op when SMTP isn't configured."""
+    from . import email as email_svc
+    now = now or _utcnow()
+    if now.hour < REMINDER_HOUR_UTC:
+        return []
+    today = now.date()
+    yesterday = today - timedelta(days=1)
+    rows = (db.query(AcademyProfile, User)
+            .join(User, User.id == AcademyProfile.user_id)
+            .filter(AcademyProfile.last_active_on == yesterday,
+                    AcademyProfile.streak_days >= 2,
+                    User.is_active.is_(True)).all())
+    sent = []
+    for prof, u in rows:
+        if prof.last_reminder_on == today or not u.email:
+            continue
+        first = (u.full_name or u.email.split("@")[0]).split()[0]
+        subject = f"🔥 Your {prof.streak_days}-day streak expires tonight"
+        body = (f"Hey {first},\n\n"
+                f"Your {prof.streak_days}-day learning streak on the Pulse Cyber "
+                f"Academy ends at midnight — one quick lesson or game keeps it alive "
+                f"(most take about 5 minutes).\n\n"
+                f"Save it here: https://portal.bvtech.org/academy\n\n"
+                f"— Pulse Cyber Academy")
+        try:
+            email_svc.send(u.email, subject, body)
+            prof.last_reminder_on = today
+            sent.append({"user_id": u.id, "streak": prof.streak_days})
+        except Exception:  # noqa: BLE001
+            pass
+    if sent:
+        db.commit()
+    return sent
+
+
+# ---- AI-refreshed quiz questions (monthly, via Claude) ---------------------- #
+AI_QUESTIONS_PER_LESSON = 2
+
+_AI_QGEN_SYSTEM = (
+    "You write quiz questions for a workplace security-awareness course. "
+    "Reply with ONLY a JSON array (no prose, no markdown fences) of exactly "
+    "{n} objects, each with keys: "
+    '"q" (one clear scenario-based question, max 200 chars), '
+    '"choices" (array of exactly 4 plausible answers, one correct), '
+    '"answer" (0-based index of the correct choice), '
+    '"explain" (1-2 sentences on why, max 250 chars). '
+    "Questions must test judgment on realistic situations, never trivia, and "
+    "must be answerable from the lesson content alone."
+)
+
+
+def _active_ai_questions(db: Session, lesson_id: str) -> list:
+    from ..models import AcademyAiQuestion
+    return (db.query(AcademyAiQuestion)
+            .filter(AcademyAiQuestion.lesson_id == lesson_id,
+                    AcademyAiQuestion.active.is_(True))
+            .order_by(AcademyAiQuestion.id.asc()).all())
+
+
+def _merged_quiz(db: Session, lesson: dict) -> list[dict]:
+    """Base (hand-written) questions plus the active AI batch, in stable order —
+    lesson_view and grade_lesson MUST use the same merge or grading skews."""
+    quiz = list(lesson["quiz"])
+    for row in _active_ai_questions(db, lesson["id"]):
+        try:
+            choices = json.loads(row.choices)
+        except Exception:  # noqa: BLE001
+            continue
+        quiz.append({"q": row.q, "choices": choices, "answer": row.answer,
+                     "explain": row.explain})
+    return quiz
+
+
+def ai_refresh(db: Session, now: datetime | None = None) -> dict:
+    """Once a month, ask Claude for fresh questions per lesson so the quiz bank
+    never goes stale. Old AI questions are deactivated (kept for history);
+    hand-written base questions are never touched. Per-lesson best-effort."""
+    from . import ai
+    from ..models import AcademyAiQuestion
+    now = now or _utcnow()
+    if not ai.enabled():
+        return {"refreshed": False, "reason": "ai_off"}
+    month = now.strftime("%Y-%m")
+    already = (db.query(AcademyAiQuestion)
+               .filter(AcademyAiQuestion.month == month).first())
+    if already:
+        return {"refreshed": False, "reason": "current", "month": month}
+
+    added = 0
+    for lesson_id, lesson in _LESSONS.items():
+        try:
+            raw = ai.complete(
+                _AI_QGEN_SYSTEM.replace("{n}", str(AI_QUESTIONS_PER_LESSON)),
+                f"Lesson title: {lesson['title']}\n\nLesson content:\n{lesson['body'][:5000]}",
+                max_tokens=900)
+            start, end = raw.find("["), raw.rfind("]")
+            batch = json.loads(raw[start:end + 1])
+            valid = []
+            for item in batch[:AI_QUESTIONS_PER_LESSON]:
+                ch = item.get("choices")
+                ans = item.get("answer")
+                if (isinstance(ch, list) and len(ch) == 4
+                        and isinstance(ans, int) and 0 <= ans <= 3
+                        and item.get("q") and item.get("explain")):
+                    valid.append(item)
+            if not valid:
+                continue
+            (db.query(AcademyAiQuestion)
+             .filter(AcademyAiQuestion.lesson_id == lesson_id,
+                     AcademyAiQuestion.active.is_(True))
+             .update({"active": False}, synchronize_session=False))
+            for item in valid:
+                db.add(AcademyAiQuestion(
+                    lesson_id=lesson_id, month=month, q=str(item["q"])[:400],
+                    choices=json.dumps([str(c)[:250] for c in item["choices"]]),
+                    answer=int(item["answer"]), explain=str(item["explain"])[:400],
+                    active=True))
+                added += 1
+            db.commit()
+        except Exception:  # noqa: BLE001
+            db.rollback()
+    return {"refreshed": added > 0, "month": month, "questions_added": added}

@@ -2652,7 +2652,86 @@ def main():
         print("cyber academy: page + no-answer-leak + grading + XP-once + streak/badges "
               "+ games + tenant-isolated leaderboard OK")
 
-    print("\n=== OpsPilot v1.2.0 SMOKE TEST PASSED ===")
+        # ===================== v1.3: compliance + streak savers + AI questions ==========
+        import datetime as _dt13
+
+        # Training compliance: staff endpoint + client report summary + RBAC.
+        comp = c.get("/api/academy/compliance")
+        assert comp.status_code == 200
+        rows = {r["client"]: r for r in comp.json()["clients"]}
+        oc = rows["Acad Other Co"]
+        assert oc["users"] == 1 and oc["trained_users"] == 1 and oc["trained_pct"] == 100, oc
+        assert oc["top_learner"] and oc["top_learner"]["name"].lower().startswith("learner")
+        assert lc.get("/api/academy/compliance").status_code == 403, "compliance must be staff-only"
+        rs = c.get(f"/api/reports/{cid2b}/summary").json()
+        assert rs["training"]["trained_pct"] == 100, rs.get("training")
+        csvtxt = c.get(f"/api/reports/{cid2b}/export.csv").text
+        assert "Staff trained (security awareness) %" in csvtxt
+
+        # Streak-saver reminders: trained yesterday + streak>=2 -> one email/day.
+        from app.services import academy as _aca13, email as _email13
+        _sdb = _SL11()
+        try:
+            _lu = _sdb.query(User).filter(User.email == "learner@otherco.co").first()
+            _lp = _aca13.get_profile(_sdb, _lu)
+            _now13 = _dt13.datetime.now(_dt13.timezone.utc)
+            _lp.streak_days = 4
+            _lp.last_active_on = (_now13 - _dt13.timedelta(days=1)).date()
+            _lp.last_reminder_on = None
+            _sdb.commit()
+            _mails = []
+            _o_send13 = _email13.send
+            _email13.send = lambda to, subj, body: (_mails.append((to, subj)), True)[1]
+            try:
+                early = _now13.replace(hour=8)
+                assert _aca13.streak_reminders(_sdb, early) == [], "no nudges before the afternoon"
+                late = _now13.replace(hour=17)
+                r1 = _aca13.streak_reminders(_sdb, late)
+                assert len(r1) == 1 and r1[0]["streak"] == 4, r1
+                assert _mails and "4-day streak" in _mails[0][1], _mails
+                assert _aca13.streak_reminders(_sdb, late) == [], "must not double-send same day"
+            finally:
+                _email13.send = _o_send13
+        finally:
+            _sdb.close()
+
+        # AI question refresh: stubbed Claude adds 2 fresh Qs per lesson, merged
+        # into lesson + grading; monthly guard blocks a second run.
+        _o_en13, _o_call13 = _ai11.enabled, _ai11._CALLER
+        _ai11.enabled = lambda: True
+        _ai11._CALLER = lambda system, user, model, max_tokens: _j11.dumps([
+            {"q": "Fresh scenario question A?", "choices": ["w", "x", "correct", "z"],
+             "answer": 2, "explain": "Because C."},
+            {"q": "Fresh scenario question B?", "choices": ["correct", "b", "c", "d"],
+             "answer": 0, "explain": "Because A."}])
+        try:
+            _sdb = _SL11()
+            try:
+                rref = _aca13.ai_refresh(_sdb, _dt13.datetime.now(_dt13.timezone.utc))
+                assert rref["refreshed"] is True and rref["questions_added"] == 2 * _aca13.TOTAL_LESSONS, rref
+                rref2 = _aca13.ai_refresh(_sdb, _dt13.datetime.now(_dt13.timezone.utc))
+                assert rref2["refreshed"] is False and rref2["reason"] == "current", rref2
+            finally:
+                _sdb.close()
+            base_n = len(_aca13._LESSONS[first]["quiz"])
+            les13 = c.get(f"/api/academy/lessons/{first}").json()
+            assert len(les13["quiz"]) == base_n + 2, "AI questions must merge into the quiz"
+            assert all("answer" not in q for q in les13["quiz"]), "AI answers LEAKED!"
+            # grading covers the merged quiz: perfect run = base answers + [2, 0]
+            _sdb = _SL11()
+            try:
+                merged = _aca13._merged_quiz(_sdb, _aca13._LESSONS[first])
+            finally:
+                _sdb.close()
+            rg13 = c.post(f"/api/academy/lessons/{first}/submit",
+                          json={"answers": [q["answer"] for q in merged]}).json()
+            assert rg13["score"] == base_n + 2 and rg13["total"] == base_n + 2, rg13
+        finally:
+            _ai11.enabled, _ai11._CALLER = _o_en13, _o_call13
+        print("training compliance (report+csv+RBAC) + streak-saver emails + "
+              "AI monthly question refresh (merge, no-leak, guard) OK")
+
+    print("\n=== OpsPilot v1.3.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

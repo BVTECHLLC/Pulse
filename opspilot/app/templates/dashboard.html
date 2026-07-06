@@ -645,6 +645,12 @@
       <tbody id="t-posture"></tbody></table>
       <div id="posture-detail" class="hidden" style="margin-top:12px"></div>
     </div>
+    <div class="card" style="margin-bottom:16px">
+      <h3>🎓 Security Training Adoption <span class="muted" style="font-size:12px">— Cyber Academy, per client</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Who's actually taking the security-awareness training. This is the QBR/renewal number — it also appears on each client's branded report.</p>
+      <table><thead><tr><th>Client</th><th>Users</th><th>Trained</th><th>Curriculum</th><th>Top learner</th></tr></thead>
+      <tbody id="t-training"><tr><td colspan=5 class="muted">Loading…</td></tr></tbody></table>
+    </div>
     <div class="card" style="margin-bottom:16px"><h3>Security Posture by Client</h3><table>
       <thead><tr><th>Client</th><th>Score</th><th>Open</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th></tr></thead>
       <tbody id="t-scorecard"></tbody></table></div>
@@ -1537,6 +1543,7 @@ function tab(name){
   if(name==='users'){loadUsers();}
   if(name==='library'){loadLibrary();}
   if(name==='automation'){loadAutopilot();}
+  if(name==='security'){loadTraining();}
   if(name==='settings'&&!_tabLoaded.settings){_tabLoaded.settings=true;loadSettings();}
 }
 function badge(v,good,warn){if(v==null)return '<span class="badge">—</span>';
@@ -1905,6 +1912,17 @@ async function aiTriage(id){
   const r=await post(`/api/tickets/${id}/ai-triage`);
   const j=await r.json().catch(()=>({}));
   if(r.ok){openTicket(id);}else{alert(j.detail||'AI triage failed.');}
+}
+async function loadTraining(){
+  const d=await api('/api/academy/compliance'); if(!d)return;
+  document.getElementById('t-training').innerHTML=(d.clients||[]).map(r=>{
+    const pct=r.trained_pct!=null?r.trained_pct:0;
+    const cls=pct>=80?'ok':(pct>=40?'warn':'bad');
+    return `<tr><td>${esc(r.client)}</td><td>${r.users}</td>
+     <td><span class="badge ${r.users?cls:''}">${r.trained_pct!=null?r.trained_pct+'%':'—'}</span> (${r.trained_users})</td>
+     <td>${r.curriculum_pct!=null?r.curriculum_pct+'%':'—'}</td>
+     <td class="muted">${r.top_learner?esc(r.top_learner.name)+' · '+r.top_learner.xp+' XP':'—'}</td></tr>`;}).join('')
+    ||'<tr><td colspan=5 class="muted">No clients yet.</td></tr>';
 }
 async function loadAutopilot(){
   const st=await api('/api/automation/autopilot');

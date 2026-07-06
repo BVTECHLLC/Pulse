@@ -1,5 +1,24 @@
 # BVTech OpsPilot — Changelog
 
+## v1.3.0 — Academy grows teeth: compliance, streak savers, AI-fresh quizzes (July 2026)
+- **📊 Training compliance — the QBR number.** Every client's branded service
+  report (+ CSV export) now includes a Security Training card: % of staff
+  trained, curriculum completion, top learner. Staff dashboard: Security tab →
+  "Security Training Adoption" table across all clients. API:
+  `GET /api/academy/compliance` (staff-only).
+- **🔥 Streak-saver emails.** When someone's ≥2-day streak would die at
+  midnight, Autopilot emails them one afternoon nudge (max one per user per
+  day). No cron, no setup — it rides the heartbeat; safe no-op without SMTP.
+- **🤖 AI-refreshed quiz bank.** Once a month (when Claude is connected),
+  every lesson gets 2 fresh scenario questions written by AI, merged after the
+  hand-written base questions. Old batches deactivate automatically; answers
+  stay server-side; validation rejects malformed output. Content never goes
+  stale.
+- Verified offline: compliance math + report/CSV wiring + RBAC; reminder
+  gating (afternoon-only, once/day, streak≥2, email content); AI refresh
+  (2×lessons added, monthly guard, merged grading end-to-end, no answer leak).
+  Migration cycle + full smoke suite passed.
+
 ## v1.2.0 — 🎓 Pulse Cyber Academy (July 2026)
 - **A gamified, mobile-first security-awareness trainer at `/academy`** — the
   KnowBe4-style product, built into the portal for staff AND client users.
