@@ -315,38 +315,39 @@
 
   <section id="devices" class="hidden">
     <div class="card" style="margin-bottom:16px">
-      <h3>Deploy Agent <span class="pill">onboard a device</span></h3>
-      <p class="muted" style="margin:4px 0 10px">Pick a client, generate a one-click installer, and run it on the endpoint. The agent reports back here automatically.</p>
-      <div class="flex">
-        <select id="ag-client" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select>
-        <button class="btn sm" onclick="genAgent()">Generate installer</button>
+      <h3>🖥️ Onboard a device <span class="pill">1-click agent</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Pick the client, download the installer, run it on the endpoint. It self-elevates, enrolls, and starts reporting in seconds — no Python, no typing, nothing else to download.</p>
+      <div class="flex" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
+        <label style="margin:0">Client
+          <select id="ag-client" style="display:block;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink);min-width:220px"></select></label>
+        <button class="btn sm" onclick="genAgent()">Create installer →</button>
       </div>
-      <div id="ag-out" class="hidden" style="margin-top:12px">
+      <div id="ag-out" class="hidden" style="margin-top:14px">
         <div class="card" style="background:#0a1228;border-color:var(--brand,#6c5ce7)">
-          <label><b>Enrollment token</b> <span class="pill">valid 72h</span></label>
-          <input id="ag-token" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
+          <div class="flex" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <b>Step 1 · Get the installer</b><span class="pill">token baked in · valid 72h</span>
+          </div>
           <p style="margin:10px 0 0">
-            <a id="ag-deploy" class="btn" href="#" download style="text-decoration:none">⬇ Download ready-to-run installer (.cmd)</a>
-            <span class="pill">token baked in · zero copy-paste</span></p>
-          <p class="muted" style="margin:6px 0 0">
-            <b>Truly the easiest:</b> send this file to the client. They double-click it — it self-elevates,
-            downloads the agent, enrolls with the token already inside, and starts reporting. Nothing to type.</p>
-          <p class="muted" style="margin:8px 0 0">
-            Prefer the bare .exe? <a href="/download/agent.exe">Download it</a>, double-click,
-            and paste the token above when it asks.</p>
-          <label style="margin-top:8px">Already downloaded the .exe? Run this in its folder (PowerShell):</label>
-          <input id="ag-bare" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
+            <a id="ag-deploy" class="btn" href="#" download style="text-decoration:none">⬇ Download Windows installer (.cmd)</a></p>
+          <p class="muted" style="margin:6px 0 0">Send this one file to the client (or run it yourself). They double-click it → “Yes” to the admin prompt → done. Everything is inside the file.</p>
+          <details style="margin-top:10px">
+            <summary class="muted" style="cursor:pointer">Other options (one-liners, Mac/Linux)</summary>
+            <label style="margin-top:8px">Windows — paste in an <b>Administrator</b> PowerShell (no download)</label>
+            <input id="ag-win" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
+            <label style="margin-top:8px">Linux / macOS</label>
+            <input id="ag-nix" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
+            <p class="muted" style="margin-top:8px">Raw agent: <a id="ag-dl-ps" href="/download/agent.ps1">Windows (.ps1)</a> · <a href="/download/agent">Python (.py)</a></p>
+          </details>
         </div>
-        <label style="margin-top:10px">One-line install — Windows standalone .exe <span class="pill">no Python needed</span></label>
-        <input id="ag-exe" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
-        <label style="margin-top:8px">Windows (PowerShell, as Administrator) — installs Python if missing</label>
-        <input id="ag-win" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
-        <label style="margin-top:8px">Linux / macOS</label>
-        <input id="ag-nix" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
-        <p class="muted" style="margin-top:8px">Downloads:
-          <a id="ag-dl" href="/download/agent">raw agent (.py)</a> ·
-          <a href="/download/agent.exe">Windows .exe</a> ·
-          <a href="/download/agent-linux">Linux binary</a></p>
+        <div class="card" id="ag-live" style="border-color:var(--line);margin-top:12px">
+          <div class="flex" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <b>Step 2 · Waiting for the device…</b>
+            <span class="pill" id="ag-live-pill">listening</span>
+          </div>
+          <div id="ag-live-body" class="muted" style="margin-top:8px">
+            <span class="spin">◐</span> Run the installer on the endpoint — this panel turns green the moment it checks in.
+          </div>
+        </div>
       </div>
     </div>
     <div class="card"><table>
@@ -2382,20 +2383,51 @@ async function createClient(){
 // ---- Agent deployment ----
 async function genAgent(){
   const cid=document.getElementById('ag-client').value;
-  if(!cid){alert('Add a client first (Clients tab), then come back to deploy an agent.');return;}
+  if(!cid){alert('Add a client first (Clients tab), then come back to onboard a device.');return;}
   const r=await post(`/api/agent/enroll-token/${cid}`);
   const j=await r.json().catch(()=>({}));
-  if(!r.ok){alert(j.detail||'Failed to generate token');return;}
-  const base=location.origin, raw=j.enroll_token, tok=encodeURIComponent(raw);
-  document.getElementById('ag-token').value=raw;
+  if(!r.ok){alert(j.detail||'Failed to generate installer');return;}
+  const base=location.origin, tok=encodeURIComponent(j.enroll_token);
   document.getElementById('ag-deploy').href=`${base}/download/deploy.cmd?token=${tok}`;
-  document.getElementById('ag-bare').value=`.\\opspilot-agent.exe enroll ${raw} --url ${base}`;
-  document.getElementById('ag-exe').value=`powershell -ExecutionPolicy Bypass -c "irm '${base}/download/install-exe.ps1?token=${tok}' | iex"`;
   document.getElementById('ag-win').value=`powershell -ExecutionPolicy Bypass -c "irm '${base}/download/install.ps1?token=${tok}' | iex"`;
   document.getElementById('ag-nix').value=`curl -fsSL "${base}/download/install.sh?token=${tok}" | bash`;
   document.getElementById('ag-out').classList.remove('hidden');
+  watchOnboarding(cid, j.baseline_device_id||0);
 }
-
+let _onbTimer=null;
+function watchOnboarding(cid, baseline){
+  if(_onbTimer){clearInterval(_onbTimer);_onbTimer=null;}
+  const pill=document.getElementById('ag-live-pill'), body=document.getElementById('ag-live-body');
+  pill.textContent='listening'; pill.className='pill'; 
+  document.getElementById('ag-live').style.borderColor='var(--line)';
+  body.innerHTML='<span class="spin">◐</span> Run the installer on the endpoint — this panel turns green the moment it checks in.';
+  let ticks=0;
+  const poll=async()=>{
+    ticks++;
+    const d=await api(`/api/agent/onboarding/${cid}?after=${baseline}`);
+    if(d&&d.enrolled){
+      const dev=d.device;
+      if(dev.checked_in){
+        clearInterval(_onbTimer);_onbTimer=null;
+        pill.textContent='✓ live'; pill.className='pill ok';
+        document.getElementById('ag-live').style.borderColor='var(--ok,#00d68f)';
+        body.innerHTML=`<b style="color:var(--ok,#00d68f)">✅ ${esc(dev.hostname)} is online and reporting.</b>
+          <div style="margin-top:6px">Health <b>${dev.health_score??'—'}</b> · CPU ${dev.cpu_pct??'—'}% · RAM ${dev.ram_pct??'—'}% · Disk ${dev.disk_pct??'—'}% ·
+          AV ${esc(dev.av_status||'—')} · ${esc(dev.patch_status||'—')}</div>
+          <div class="muted" style="margin-top:6px">It’ll keep checking in every few minutes. <a onclick="tab('devices');loadDevices&&loadDevices()" style="cursor:pointer">View in Devices →</a></div>`;
+        refreshBadges&&refreshBadges();
+      } else {
+        pill.textContent='enrolling…'; 
+        body.innerHTML=`<span class="spin">◐</span> <b>${esc(dev.hostname)}</b> enrolled — waiting for its first health check-in…`;
+      }
+    } else if(ticks>150){   // ~5 min
+      clearInterval(_onbTimer);_onbTimer=null;
+      pill.textContent='still waiting'; 
+      body.innerHTML='Still no check-in after 5 minutes. Make sure the installer was run <b>as Administrator</b> on the endpoint and that it can reach this portal. The installer prints a clear error if enrollment fails.';
+    }
+  };
+  _onbTimer=setInterval(poll, 2000); poll();
+}
 // ---- Software inventory ----
 async function showSoftware(devId, host){
   const box=document.getElementById('dev-sw'), body=document.getElementById('t-dev-sw');

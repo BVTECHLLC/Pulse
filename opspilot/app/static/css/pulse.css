@@ -128,3 +128,6 @@ body{
 .scripture{color:var(--peri-2);opacity:.75;font-style:italic}
 textarea{font-family:inherit}
 textarea:focus,select:focus{outline:none;border-color:var(--peri)}
+
+.spin{display:inline-block;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
