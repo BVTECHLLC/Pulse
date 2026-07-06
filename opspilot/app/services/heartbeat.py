@@ -138,6 +138,15 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         pass
 
+    # 13.5) Website auto-blogger (v1.4) — Claude writes + publishes a bvtech.org
+    #        article on its cadence; off by default, guarded, never silent.
+    from . import blog_autopilot
+    blog = {"published": False}
+    try:
+        blog = blog_autopilot.maybe_publish(db, now)
+    except Exception:  # noqa: BLE001
+        pass
+
     # 13) Academy AI question refresh (v1.3) — monthly, only when Claude is
     #     connected; cheap month-key check otherwise.
     academy_ai = {"refreshed": False}
@@ -152,4 +161,5 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
             "reminders_sent": len(reminders), "posture_snapshots": len(snapshots),
             "posts_published": len([p for p in posts if p.get("ok")]),
             "weekly_digest": digest, "ai_triaged": len(triaged),
-            "streak_reminders": len(streaks_saved), "academy_ai": academy_ai}
+            "streak_reminders": len(streaks_saved), "academy_ai": academy_ai,
+            "blog": blog}

@@ -1,5 +1,32 @@
 # BVTech OpsPilot — Changelog
 
+## v1.4.0 — 🌐 WordPress publishing: Pulse now posts to bvtech.org (July 2026)
+- **The missing bridge is built.** Content no longer stops at "staged" — Pulse
+  publishes straight to the connected WordPress site via the REST API with an
+  Application Password (stored encrypted in the vault, never echoed back).
+- **✍️ AI Auto-Blogger.** On the Autopilot heartbeat, Claude writes a full
+  600–900-word SEO article in your brand voice — rotating your target metros
+  and a 10-topic pool (override with your own topics) — and publishes it every
+  N days (default 3). Off by default; "draft mode" keeps a human in the loop.
+- **Cross-post to LinkedIn:** each published article queues a teaser into the
+  social auto-poster (which has its own cadence, retry, and brand guards) —
+  closing the long-dead `cross_post_linkedin` flag.
+- **Same reliability rules as everything else:** empty/off-brand articles
+  (El Campo) rejected before any network call; failures recorded as visible
+  BlogPost rows + staff notification; 1-hour cool-down after a failure; live
+  **Test connection** button proves creds before anything auto-publishes.
+- New Content tab card: WordPress connection, cadence, publish/draft mode,
+  topics, "Write & publish one now", article history with links/errors.
+- API: GET/PUT /api/website/settings, POST /test, POST /publish-now,
+  POST /publish (your own title+HTML, e.g. from Content Studio), GET /posts.
+- `.env` support: wp_url / wp_user / wp_app_password (and many aliases) load
+  into the vault on boot like every other integration.
+- Verified offline: masked secret + RBAC, Basic-auth header (app-password
+  spaces normalized), full generate→publish→cross-post flow against a stubbed
+  WP API, cadence gate, brand guard rejects before network, env aliases.
+  Migration cycle + full smoke suite passed.
+
+
 ## v1.3.1 — Launch-hardening QA sweep (July 2026)
 Full pre-launch audit of every client-facing page, posting flow, and automation.
 - **🚨 Fixed: the client portal was dead.** A bad apostrophe escape in a

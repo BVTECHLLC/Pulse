@@ -2822,7 +2822,116 @@ def main():
         print("v1.3.1 hardening: publish guard + retry/notify + no-double-post + requeue "
               "+ linkedin truncation/empty guard + staff invite + portal JS OK")
 
-    print("\n=== OpsPilot v1.3.1 SMOKE TEST PASSED ===")
+        # ===================== v1.4: WordPress publishing + auto-blogger =====================
+        from app.models import BlogPost as _BP14, SocialPost as _SP14
+        from app.services import blog_autopilot as _blog14, wordpress as _wp14
+
+        # Unconfigured: clean errors, no crashes.
+        assert c.post("/api/website/test").status_code == 400
+        assert c.post("/api/website/publish-now").status_code == 400
+        st = c.get("/api/website/settings").json()
+        assert st["enabled"] is False and st["wp_configured"] is False, st
+
+        # Configure via API (owner); secret is stored but never echoed back.
+        r = c.put("/api/website/settings", json={
+            "base_url": "https://bvtech.org", "username": "jordan",
+            "app_password": "abcd efgh ijkl mnop", "enabled": True,
+            "every_days": 2, "wp_status": "publish", "cross_post_linkedin": True})
+        assert r.status_code == 200, r.text
+        st = r.json()
+        assert st["wp_configured"] is True and st["enabled"] is True and st["every_days"] == 2
+        assert "abcd" not in c.get("/api/website/settings").text, "WP app password echoed!"
+        assert ca_c.get("/api/website/settings").status_code == 403, "website must be staff-only"
+
+        # Stub the WP REST API + Claude; verify the full publish flow.
+        import base64 as _b64
+        wp_calls = []
+        def _fake_wp_urlopen(req, timeout=30):
+            wp_calls.append({"url": req.full_url, "method": req.get_method(),
+                             "auth": req.headers.get("Authorization"),
+                             "body": _j11.loads(req.data.decode()) if req.data else None})
+            class R:
+                def __enter__(self): return self
+                def __exit__(self, *a): return False
+                def read(self):
+                    if "/users/me" in wp_calls[-1]["url"]:
+                        return _j11.dumps({"name": "jordan", "roles": ["administrator"]}).encode()
+                    return _j11.dumps({"id": 321, "status": "publish",
+                                       "link": "https://bvtech.org/blog/houston-msp-guide/"}).encode()
+            return R()
+        _o_wp = _wp14._urlopen
+        _wp14._urlopen = _fake_wp_urlopen
+        _o_en14, _o_call14 = _ai11.enabled, _ai11._CALLER
+        _ai11.enabled = lambda: True
+        _ai11._CALLER = lambda system, user, model, max_tokens: _j11.dumps({
+            "title": "The Houston Small-Business Guide to Managed IT",
+            "excerpt": "What Houston businesses should expect from a managed IT partner — coverage, response times, and security that actually works.",
+            "html": "<p>" + ("Managed IT for Houston businesses. " * 40) + "</p><h2>What to look for</h2><ul><li>24/7 monitoring</li><li>Tested backups</li></ul><p>Talk to BVTech today.</p>"})
+        try:
+            # Live connection test hits /users/me with Basic auth (spaces stripped).
+            t = c.post("/api/website/test").json()
+            assert t["ok"] and t["user"] == "jordan", t
+            expected = "Basic " + _b64.b64encode(b"jordan:abcdefghijklmnop").decode()
+            assert wp_calls[-1]["auth"] == expected, "auth header wrong (app password spaces?)"
+
+            # Write & publish one now -> BlogPost posted + WP payload correct +
+            # LinkedIn teaser queued with the article link.
+            pn = c.post("/api/website/publish-now").json()
+            assert pn["ok"] and pn["url"].startswith("https://bvtech.org/blog/"), pn
+            post_call = [x for x in wp_calls if x["url"].endswith("/wp-json/wp/v2/posts")][-1]
+            assert post_call["body"]["status"] == "publish" and "Houston" in post_call["body"]["title"]
+            _sdb = _SL11()
+            try:
+                brow = _sdb.query(_BP14).order_by(_BP14.id.desc()).first()
+                assert brow.status == "posted" and brow.wp_post_id == 321
+                teaser = (_sdb.query(_SP14).filter(_SP14.link == pn["url"]).first())
+                assert teaser and teaser.status == "queued" and "BVTech blog" in teaser.body, "cross-post missing"
+            finally:
+                _sdb.close()
+
+            # Heartbeat cadence: just published -> not due.
+            _sdb = _SL11()
+            try:
+                mp = _blog14.maybe_publish(_sdb)
+                assert mp["published"] is False and mp["reason"] == "not_due", mp
+            finally:
+                _sdb.close()
+
+            # Brand guard: off-brand article is rejected BEFORE any WP call.
+            n_calls = len(wp_calls)
+            _sdb = _SL11()
+            try:
+                row = _blog14.publish_article(_sdb, {"title": "IT tips for El Campo businesses",
+                                                     "excerpt": "x", "html": "<p>" + "words " * 200 + "</p>"})
+                assert row.status == "failed" and "off-brand" in row.error, row.error
+                assert len(wp_calls) == n_calls, "guard must reject before any network call"
+            finally:
+                _sdb.close()
+
+            # Manual publish (Content Studio path).
+            mr = c.post("/api/website/publish", json={"title": "Our new Sugar Land office hours",
+                                                      "html": "<p>We are expanding support coverage for Sugar Land clients.</p>",
+                                                      "excerpt": "Updated support hours."})
+            assert mr.status_code == 200 and mr.json()["ok"], mr.text
+        finally:
+            _wp14._urlopen = _o_wp
+            _ai11.enabled, _ai11._CALLER = _o_en14, _o_call14
+
+        # env-creds: his wp_* key names light the integration up from .env.
+        _os.environ["wp_url"] = "https://bvtech.org"; _os.environ["wp_user"] = "jordan"
+        _os.environ["wp_app_password"] = "qqqq wwww eeee rrrr"
+        _edb2 = _ESL()
+        try:
+            applied2 = _envc.load(_edb2)
+            assert "wp_site" in applied2 and set(applied2["wp_site"]) == {"app_password", "base_url", "username"}, applied2
+        finally:
+            _edb2.close()
+        for _k in ("wp_url", "wp_user", "wp_app_password"):
+            _os.environ.pop(_k, None)
+        print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
+              "publish flow + cross-post + cadence + brand guard + env aliases OK")
+
+    print("\n=== OpsPilot v1.4.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
