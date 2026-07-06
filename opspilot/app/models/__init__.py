@@ -7,10 +7,10 @@ to their own client_id at the query layer (see app.core.deps.scoped_query).
 from __future__ import annotations
 
 import enum
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import (
-    Boolean, DateTime, Enum, ForeignKey, Integer, JSON, String, Text, Float,
+    Boolean, Date, DateTime, Enum, ForeignKey, Integer, JSON, String, Text, Float,
     UniqueConstraint, func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -1333,3 +1333,33 @@ class SchedulerRun(Base):
     ok: Mapped[bool] = mapped_column(Boolean, default=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer)
     summary: Mapped[str | None] = mapped_column(Text)                 # JSON result
+
+
+# --------------------------------------------------------------------------- #
+# v1.2 — Pulse Cyber Academy (gamified security-awareness training)
+# --------------------------------------------------------------------------- #
+class AcademyProfile(Base):
+    """One row per user: XP, current streak, earned badges (JSON list of ids).
+    Content and grading live in services/academy.py — answers never leave the
+    server, XP awards once per item."""
+    __tablename__ = "academy_profiles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True, nullable=False)
+    xp: Mapped[int] = mapped_column(Integer, default=0)
+    streak_days: Mapped[int] = mapped_column(Integer, default=0)
+    last_active_on: Mapped[date | None] = mapped_column(Date)
+    badges: Mapped[str | None] = mapped_column(Text, default="[]")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class AcademyCompletion(Base):
+    """One row per (user, lesson/game) attempt-with-credit. The FIRST completion
+    of an item carries its XP; retakes record the new score with xp=0."""
+    __tablename__ = "academy_completions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    item_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    kind: Mapped[str] = mapped_column(String(10), default="lesson")   # lesson|game
+    score: Mapped[int | None] = mapped_column(Integer)
+    xp: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)

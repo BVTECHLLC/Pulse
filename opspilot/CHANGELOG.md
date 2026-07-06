@@ -1,5 +1,29 @@
 # BVTech OpsPilot — Changelog
 
+## v1.2.0 — 🎓 Pulse Cyber Academy (July 2026)
+- **A gamified, mobile-first security-awareness trainer at `/academy`** — the
+  KnowBe4-style product, built into the portal for staff AND client users.
+  Coffee-queue-sized lessons, streaks, XP, levels, badges, leaderboard.
+- **10 real lessons across 3 paths** (The Human Firewall, Defend the Business,
+  Security Everywhere): phishing, passwords+MFA, social engineering, safe
+  browsing, BEC, ransomware, data handling, incident response, public Wi-Fi,
+  mobile security. Each with a server-graded quiz and per-question explanations.
+- **2 games:** *Phish or Legit?* (8 realistic emails, call each one, learn the
+  tells) and *Password Lab* (live crack-time meter; forge an UNCRACKABLE
+  passphrase to win).
+- **Gamification that's real:** XP (+50/lesson, +25 perfect, +75/game, once per
+  item), 10 levels (Rookie → Legend), daily streaks, 9 badges, confetti.
+- **Tenant-isolated leaderboard** — client companies compete internally; staff
+  see the whole board. Names shown as "First L." only.
+- **No cheating by design:** quiz/game answers never leave the server; grading
+  is server-side (verified: no `answer`/`is_phish` fields in any client payload).
+- Mobile-first UI (bottom nav, thumb-sized targets, safe-area insets) — also
+  clean at desktop widths. Links from the dashboard nav + client portal header.
+- Verified offline: full smoke coverage (auth-gating, no-answer-leak, grading,
+  XP-once, streaks, badges, leaderboard isolation) + Playwright run on a phone
+  viewport (390×844): 10 lessons render, quiz flow completes, phish game +
+  badges render, zero page errors, no horizontal scroll.
+
 ## v1.1.0 — Autopilot: Pulse runs itself + AI ticket triage (July 2026)
 - **🚁 Autopilot — no more external cron.** A scheduler inside the API now runs
   the master maintenance tick every 2 minutes: offline sweeps, SLA breach
