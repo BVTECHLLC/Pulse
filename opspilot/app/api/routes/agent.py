@@ -46,7 +46,42 @@ def make_enroll_token(client_id: int, request: Request, db: Session = Depends(ge
                  actor_email=user.email, actor_role=user.role.value,
                  target_type="client", target_id=str(client_id),
                  client_id=client_id, ip=_ip(request))
-    return {"enroll_token": token, "expires_hours": 72}
+    # baseline_device_id lets the onboarding UI detect the NEW device that
+    # enrolls with this token (any device id greater than the baseline).
+    last = (db.query(Device).filter(Device.client_id == client_id)
+            .order_by(Device.id.desc()).first())
+    return {"enroll_token": token, "expires_hours": 72,
+            "baseline_device_id": last.id if last else 0}
+
+
+# --- Staff: poll for a freshly-onboarded device (live onboarding feedback) ---
+@router.get("/onboarding/{client_id}")
+def onboarding_status(client_id: int, after: int = 0, db: Session = Depends(get_db),
+                      user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Return the newest device for this client with id > `after` (the baseline
+    captured when the installer was generated), so the UI can light up the
+    moment the endpoint enrolls and checks in — SuperOps-style live onboarding."""
+    from datetime import timedelta
+    dev = (db.query(Device)
+           .filter(Device.client_id == client_id, Device.id > after)
+           .order_by(Device.id.desc()).first())
+    if not dev:
+        return {"enrolled": False}
+    lc = dev.last_checkin
+    if lc is not None and lc.tzinfo is None:
+        lc = lc.replace(tzinfo=timezone.utc)
+    online = bool(lc and lc >= datetime.now(timezone.utc) - timedelta(seconds=180))
+    # "checked_in" means real telemetry arrived (health_score is only set by a
+    # check-in) — enroll alone stamps last_checkin, so don't use that as proof.
+    reported = dev.health_score is not None
+    return {"enrolled": True, "device": {
+        "id": dev.id, "hostname": dev.hostname, "os": dev.os,
+        "checked_in": reported, "online": bool(reported and online),
+        "cpu_pct": dev.cpu_pct, "ram_pct": dev.ram_pct, "disk_pct": dev.disk_pct,
+        "av_status": dev.av_status, "patch_status": dev.patch_status,
+        "health_score": dev.health_score,
+        "last_checkin": dev.last_checkin.isoformat() if dev.last_checkin else None,
+    }}
 
 
 # --- Agent: enroll using the token ------------------------------------------

@@ -1,0 +1,250 @@
+# =====================================================================
+#  BVTech OpsPilot Agent  (native PowerShell - zero dependencies)
+#  Works on any Windows 10/11 or Server box out of the box: no Python,
+#  no .exe, no downloads. Enrolls with a one-time token, then reports a
+#  small HEALTH snapshot (CPU/RAM/disk, logged-in user, antivirus,
+#  Windows Update status) on a schedule.
+#
+#  WHAT IT DOES NOT DO (by design): no remote command execution, no
+#  screen/keystroke/file capture, no remote control. Telemetry only.
+#
+#  Actions:
+#    enroll <TOKEN> -Url <https://portal>   register this device
+#    checkin                                send one health snapshot
+#    install <TOKEN> -Url <https://portal>  enroll + schedule (every 5 min + at boot)
+#    uninstall                              remove the scheduled task + config
+#
+#  Config: %ProgramData%\BVTechOpsPilot\agent.json
+# =====================================================================
+[CmdletBinding()]
+param(
+  [Parameter(Position = 0)][string]$Action = "checkin",
+  [Parameter(Position = 1)][string]$Token = "",
+  [string]$Url = ""
+)
+
+$ErrorActionPreference = "Stop"
+$AgentVersion = "2.0.0-ps"
+$DataDir = Join-Path $env:ProgramData "BVTechOpsPilot"
+$ConfigPath = Join-Path $DataDir "agent.json"
+$AgentPath = Join-Path $DataDir "agent.ps1"
+$LogPath = Join-Path $DataDir "agent.log"
+$TaskName = "BVTechOpsPilot"
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+function Write-Log($msg) {
+  try {
+    New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+    "$(Get-Date -Format o)  $msg" | Add-Content -Path $LogPath -Encoding utf8
+  } catch {}
+}
+
+function Load-Config {
+  if (Test-Path $ConfigPath) { return (Get-Content $ConfigPath -Raw | ConvertFrom-Json) }
+  return $null
+}
+
+function Save-Config($cfg) {
+  New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+  $cfg | ConvertTo-Json | Set-Content -Path $ConfigPath -Encoding ascii
+}
+
+function Normalize-Url($u) {
+  $u = ($u + "").Trim().Trim('"').Trim("'").TrimEnd("/")
+  if ($u -and ($u -notmatch "://")) { $u = "https://$u" }
+  return $u
+}
+
+# ---- Telemetry collectors (all native, all best-effort) --------------
+function Get-CpuPct {
+  try {
+    $c = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
+    if ($c -ne $null) { return [double]$c }
+  } catch {}
+  return $null
+}
+
+function Get-RamPct {
+  try {
+    $os = Get-CimInstance Win32_OperatingSystem
+    $used = $os.TotalVisibleMemorySize - $os.FreePhysicalMemory
+    return [math]::Round(($used / $os.TotalVisibleMemorySize) * 100, 1)
+  } catch { return $null }
+}
+
+function Get-DiskPct {
+  try {
+    $d = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
+    if ($d -and $d.Size -gt 0) {
+      return [math]::Round((($d.Size - $d.FreeSpace) / $d.Size) * 100, 1)
+    }
+  } catch {}
+  return $null
+}
+
+function Get-LoggedInUser {
+  try {
+    $u = (Get-CimInstance Win32_ComputerSystem).UserName
+    if ($u) { return $u }
+  } catch {}
+  try {
+    $q = (quser 2>$null)
+    if ($q) { return (($q | Select-Object -Skip 1 | Select-Object -First 1) -split '\s+')[1] }
+  } catch {}
+  return $null
+}
+
+function Get-AvStatus {
+  # Consumer Windows exposes AntiVirusProduct via the Security Center; Server
+  # editions don't, so fall back to the Defender module.
+  try {
+    $av = Get-CimInstance -Namespace "root\SecurityCenter2" -Class AntiVirusProduct -ErrorAction Stop
+    if ($av) {
+      foreach ($p in @($av)) {
+        # productState bit 0x1000 = enabled/on-access scanning active
+        if (($p.productState -band 0x1000) -ne 0) { return "on ($($p.displayName))" }
+      }
+      return "off ($(@($av)[0].displayName))"
+    }
+  } catch {}
+  try {
+    $mp = Get-MpComputerStatus -ErrorAction Stop
+    if ($mp.RealTimeProtectionEnabled) { return "on (Microsoft Defender)" }
+    return "off (Microsoft Defender)"
+  } catch {}
+  return "unknown"
+}
+
+function Get-PatchInfo {
+  # Count pending Windows updates via the COM API (available on all Windows).
+  try {
+    $session = New-Object -ComObject Microsoft.Update.Session
+    $searcher = $session.CreateUpdateSearcher()
+    $result = $searcher.Search("IsInstalled=0 and IsHidden=0")
+    $n = $result.Updates.Count
+    if ($n -eq 0) { return @{ status = "up to date"; pending = 0 } }
+    return @{ status = "behind ($n pending)"; pending = $n }
+  } catch {
+    return @{ status = "unknown"; pending = $null }
+  }
+}
+
+function Get-LocalIp {
+  try {
+    $ip = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+           Where-Object { $_.IPAddress -notlike "169.254.*" -and $_.IPAddress -ne "127.0.0.1" } |
+           Select-Object -First 1).IPAddress
+    if ($ip) { return $ip }
+  } catch {}
+  return $null
+}
+
+# ---- HTTP helper -----------------------------------------------------
+function Invoke-Api($Method, $Uri, $Headers, $BodyObj) {
+  $json = if ($BodyObj -ne $null) { $BodyObj | ConvertTo-Json -Depth 6 } else { $null }
+  $ua = "BVTechOpsPilotAgent/$AgentVersion"
+  return Invoke-RestMethod -Method $Method -Uri $Uri -Headers $Headers `
+         -Body $json -ContentType "application/json" -UserAgent $ua -TimeoutSec 45
+}
+
+# ---- Actions ---------------------------------------------------------
+function Do-Enroll($token, $url) {
+  $url = Normalize-Url $url
+  if (-not $token) { throw "Enrollment token is required." }
+  if (-not $url)   { throw "Portal URL is required (-Url https://portal.bvtech.org)." }
+  $osCaption = try { (Get-CimInstance Win32_OperatingSystem).Caption } catch { "Windows" }
+  $serial    = try { (Get-CimInstance Win32_BIOS).SerialNumber } catch { $null }
+  $body = @{
+    enroll_token = $token
+    hostname     = $env:COMPUTERNAME
+    os           = $osCaption
+    serial       = $serial
+  }
+  $r = Invoke-Api "POST" "$url/api/agent/enroll" @{} $body
+  $cfg = [ordered]@{
+    url        = $url
+    enroll_id  = $r.enroll_id
+    agent_key  = $r.agent_key
+    device_id  = $r.device_id
+    enrolled   = (Get-Date -Format o)
+  }
+  Save-Config $cfg
+  Write-Log "Enrolled as device $($r.device_id) on $url"
+  return $cfg
+}
+
+function Do-Checkin {
+  $cfg = Load-Config
+  if (-not $cfg -or -not $cfg.enroll_id) { throw "Not enrolled - run enroll first." }
+  $patch = Get-PatchInfo
+  $body = @{
+    cpu_pct        = Get-CpuPct
+    ram_pct        = Get-RamPct
+    disk_pct       = Get-DiskPct
+    logged_in_user = Get-LoggedInUser
+    av_status      = Get-AvStatus
+    patch_status   = $patch.status
+    ip             = Get-LocalIp
+    agent_version  = $AgentVersion
+    platform       = "windows"
+  }
+  $headers = @{ "X-Enroll-Id" = $cfg.enroll_id; "X-Agent-Key" = $cfg.agent_key }
+  $r = Invoke-Api "POST" "$($cfg.url)/api/agent/checkin" $headers $body
+  Write-Log "Check-in ok (cpu=$($body.cpu_pct) ram=$($body.ram_pct) disk=$($body.disk_pct))"
+  return $r
+}
+
+function Register-Task {
+  # A Scheduled Task that runs one check-in at startup AND every 5 minutes,
+  # forever, as SYSTEM. No long-lived process to die - each tick is a fresh,
+  # ~2-second run. Far more reliable than a background loop.
+  $psexe = (Get-Command powershell.exe).Source
+  $args = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$AgentPath`" checkin"
+  $action = New-ScheduledTaskAction -Execute $psexe -Argument $args
+  $atStartup = New-ScheduledTaskTrigger -AtStartup
+  $repeating = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
+                 -RepetitionInterval (New-TimeSpan -Minutes 5) `
+                 -RepetitionDuration ([TimeSpan]::MaxValue)
+  $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+  $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries `
+                -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
+  Register-ScheduledTask -TaskName $TaskName -Action $action `
+    -Trigger @($atStartup, $repeating) -Principal $principal -Settings $settings -Force | Out-Null
+  Write-Log "Scheduled task '$TaskName' registered (startup + every 5 min)."
+}
+
+function Do-Install($token, $url) {
+  New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+  # Persist this very script so the scheduled task can re-run it (skip if we're
+  # already running from the install location).
+  if ($PSCommandPath -and ((Resolve-Path $PSCommandPath).Path -ne $AgentPath)) {
+    Copy-Item -Path $PSCommandPath -Destination $AgentPath -Force
+  }
+  $cfg = Do-Enroll $token $url
+  Register-Task
+  # Immediate first check-in so the device shows up in seconds, not minutes.
+  try { Do-Checkin | Out-Null } catch { Write-Log "First check-in failed: $_" }
+  return $cfg
+}
+
+function Do-Uninstall {
+  try { Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction Stop } catch {}
+  try { Remove-Item -Recurse -Force $DataDir -ErrorAction Stop } catch {}
+  Write-Host "BVTech OpsPilot agent removed."
+}
+
+# ---- Dispatch --------------------------------------------------------
+try {
+  switch ($Action.ToLower()) {
+    "enroll"    { Do-Enroll $Token $Url | Out-Null; Write-Host "Enrolled." }
+    "checkin"   { Do-Checkin | Out-Null }
+    "install"   { Do-Install $Token $Url | Out-Null; Write-Host "Installed and enrolled." }
+    "uninstall" { Do-Uninstall }
+    default     { Write-Host "Unknown action '$Action'. Use enroll|checkin|install|uninstall." ; exit 2 }
+  }
+  exit 0
+} catch {
+  Write-Log "ERROR ($Action): $_"
+  Write-Host "ERROR: $_"
+  exit 1
+}

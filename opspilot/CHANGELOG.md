@@ -1,5 +1,35 @@
 # BVTech OpsPilot — Changelog
 
+## v1.5.0 — Device onboarding, rebuilt: a real 1-click agent (July 2026)
+- **Root cause of the broken deploy agent:** every installer depended on a
+  prebuilt `opspilot-agent.exe` published to GitHub Releases by a CI workflow
+  that never existed — so the `.exe` always 404'd and installs failed. Removed
+  that dependency entirely.
+- **New native PowerShell agent** (`agent/opspilot_agent.ps1`) — zero
+  dependencies: no Python, no compiled binary, works on any Windows 10/11 or
+  Server out of the box. Collects CPU/RAM/disk, logged-in user, antivirus state
+  (Security Center + Defender), and pending Windows Updates using native APIs.
+  Installs as a **Scheduled Task** that runs one check-in at startup and every
+  5 minutes — no long-lived process to die.
+- **Self-contained one-click installer:** the `.cmd` (and `install.ps1`) now
+  **embed the entire agent as base64** — nothing is downloaded after you get the
+  file. It self-elevates, decodes the agent, enrolls with the baked-in token,
+  registers the task, and does an immediate first check-in. Can't be broken by a
+  missing release asset or a Cloudflare challenge. Fails loudly on real errors.
+- **Live onboarding UI** (Devices → Onboard a device): pick client → download
+  installer → a status panel **turns green the moment the endpoint checks in**,
+  showing its health, CPU/RAM/disk, AV and patch state — SuperOps-style feedback
+  instead of "generate a token and hope."
+- New `GET /api/agent/onboarding/{client_id}` (staff) drives the live panel;
+  enroll-token now returns a `baseline_device_id` so the UI detects the new box.
+- Retired the dead `/download/agent.exe` and `/download/agent-linux` endpoints;
+  `install-exe.ps1` is now an alias of the self-contained installer. Linux/macOS
+  keep the Python agent.
+- Verified: full smoke suite (embedded-agent round-trip, no-.exe assertions,
+  live enroll→check-in status, RBAC) + a real browser onboarding walk where the
+  panel flipped green on first telemetry.
+
+
 ## v1.4.0 — 🌐 WordPress publishing: Pulse now posts to bvtech.org (July 2026)
 - **The missing bridge is built.** Content no longer stops at "staged" — Pulse
   publishes straight to the connected WordPress site via the REST API with an

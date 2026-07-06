@@ -532,20 +532,54 @@ def main():
         assert ca_c.post("/api/netdiag/diagnostics", json={"device_id":target_dev,"kind":"ping","target":"8.8.8.8"}).status_code==403
         print("agent diagnostics queue + run + report + RBAC OK")
 
-        # ===================== v0.13: Agent download & installers =====================
+        # ===================== v0.13 / v1.5: Agent onboarding (self-contained) =====================
+        import base64 as _b64ag
+        # Raw agents both serve (the part that must never 404).
         ra=c.get("/download/agent")
-        assert ra.status_code==200 and "OpsPilot Agent" in ra.text, "agent download broken"
+        assert ra.status_code==200 and "OpsPilot Agent" in ra.text, "python agent download broken"
+        rps=c.get("/download/agent.ps1")
+        assert rps.status_code==200 and "BVTech OpsPilot Agent" in rps.text and "Do-Enroll" in rps.text, "ps1 agent broken"
+        # Linux/mac installer targets the serving host + carries the token.
         sh=c.get("/download/install.sh?token=TESTTOKEN")
-        assert sh.status_code==200 and "TESTTOKEN" in sh.text and "/download/agent" in sh.text and "enroll" in sh.text, sh.text[:200]
+        assert sh.status_code==200 and "TESTTOKEN" in sh.text and "http://testserver" in sh.text and "enroll" in sh.text
+        # Windows one-liner installer embeds the WHOLE agent (base64) - no download,
+        # no .exe, no Python. Decode it back and prove it's the real agent.
         ps=c.get("/download/install.ps1?token=TESTTOKEN")
-        assert ps.status_code==200 and "TESTTOKEN" in ps.text and "PULSE_URL" in ps.text and "schtasks" in ps.text, ps.text[:200]
-        # installer auto-targets the serving host (so it reports back to us)
-        assert "http://testserver" in sh.text, "installer didn't embed server URL"
-        # the agent file actually serves (this is the part that must never 404)
-        assert "opspilot_agent.py" in c.get("/download/agent").headers.get("content-disposition","")
-        # enroll-token works for a real client (the Deploy Agent button path)
-        assert c.post(f"/api/agent/enroll-token/{cid}").status_code==200
-        print("agent download + one-click installers OK")
+        assert ps.status_code==200 and "TESTTOKEN" in ps.text and "http://testserver" in ps.text
+        assert "FromBase64String" in ps.text and "install $TOKEN" in ps.text, "installer not self-contained"
+        import re as _reag
+        m=_reag.search(r'FromBase64String\("([A-Za-z0-9+/=]+)"\)', ps.text)
+        assert m, "embedded agent blob missing"
+        embedded=_b64ag.b64decode(m.group(1)).decode("utf-8")
+        assert "Register-ScheduledTask" in embedded and "api/agent/checkin" in embedded, "embedded agent is not the real agent"
+        # The double-click .cmd self-elevates and runs an EncodedCommand (no external fetch).
+        cmd=c.get("/download/deploy.cmd?token=TESTTOKEN")
+        assert cmd.status_code==200 and "RunAs" in cmd.text and "-EncodedCommand" in cmd.text
+        assert "download/agent.exe" not in cmd.text and "releases/latest" not in cmd.text, "still depends on a prebuilt .exe!"
+        # install-exe.ps1 alias still resolves (old links) and is now self-contained too.
+        assert "FromBase64String" in c.get("/download/install-exe.ps1?token=T").text
+        # enroll-token returns a baseline for live onboarding; onboarding poll works.
+        tokresp=c.post(f"/api/agent/enroll-token/{cid}").json()
+        assert "enroll_token" in tokresp and "baseline_device_id" in tokresp, tokresp
+        base_id=tokresp["baseline_device_id"]
+        # Before any enroll: not yet onboarded.
+        assert c.get(f"/api/agent/onboarding/{cid}?after={base_id}").json()["enrolled"] is False
+        # Simulate the endpoint enrolling + checking in via the PUBLIC agent API.
+        en=c.post("/api/agent/enroll", json={"enroll_token":tokresp["enroll_token"],
+                  "hostname":"ONBOARD-PC","os":"Windows 11 Pro","serial":"SN-123"}).json()
+        assert en.get("device_id") and en.get("agent_key")
+        st1=c.get(f"/api/agent/onboarding/{cid}?after={base_id}").json()
+        assert st1["enrolled"] and st1["device"]["hostname"]=="ONBOARD-PC" and st1["device"]["checked_in"] is False
+        ag=TestClient(app); ag.cookies.clear()
+        ag.post("/api/agent/checkin", headers={"X-Enroll-Id":en["enroll_id"],"X-Agent-Key":en["agent_key"]},
+                json={"cpu_pct":12,"ram_pct":40,"disk_pct":55,"av_status":"on (Microsoft Defender)",
+                      "patch_status":"up to date","agent_version":"2.0.0-ps","platform":"windows"})
+        st2=c.get(f"/api/agent/onboarding/{cid}?after={base_id}").json()
+        assert st2["device"]["checked_in"] is True and st2["device"]["online"] is True and st2["device"]["health_score"]==100, st2
+        # onboarding poll is staff-only
+        assert ca_c.get(f"/api/agent/onboarding/{cid}").status_code==403
+        print("agent onboarding: self-contained installer (embedded agent, no .exe/Python) "
+              "+ live enroll->checkin status + RBAC OK")
 
         # ===================== v0.14: Contracts + client reports =====================
         base=c.get("/api/billing/summary").json()["total_mrr"]
@@ -1123,35 +1157,22 @@ def main():
         srv.shutdown()
         print("notification channels RBAC OK")
 
-        # ===================== v0.16: standalone agent binary endpoint =====================
-        # The .py agent always serves; the binary routes serve a local file if
-        # present, else 302-redirect to the published GitHub release asset.
-        assert c.get("/download/agent").status_code==200
-        rexe=c.get("/download/agent.exe", follow_redirects=False)
-        assert rexe.status_code in (200, 302)
-        if rexe.status_code==302:
-            assert rexe.headers["location"].endswith("/opspilot-agent.exe")
-        rlin=c.get("/download/agent-linux", follow_redirects=False)
-        assert rlin.status_code in (200, 302)
-        if rlin.status_code==302:
-            assert rlin.headers["location"].endswith("/opspilot-agent")
-        print("agent binary endpoints OK (exe %s)" % ("local" if rexe.status_code==200 else "release-redirect"))
+        # ===================== v1.5: agent sources (no prebuilt binary needed) =====================
+        # The agent is native code (.ps1 for Windows, .py for *nix) — no compiled
+        # binary to build/publish/404 on. The old binary endpoints are retired.
+        assert c.get("/download/agent").status_code==200        # python agent
+        assert c.get("/download/agent.ps1").status_code==200    # powershell agent
+        assert c.get("/download/agent.exe").status_code==404, "prebuilt .exe dependency should be gone"
+        assert c.get("/download/agent-linux").status_code==404
+        print("agent sources OK (ps1 + py; no fragile prebuilt binary)")
 
-        # ===================== v0.18: no-Python .exe installer =====================
-        rexeps=c.get("/download/install-exe.ps1")
-        assert rexeps.status_code==200
-        body=rexeps.text
-        assert "/download/agent.exe" in body and "schtasks" in body and "ProgramData" in body
-        # the whole point: no Python invocation (winget/pip/python.exe) anywhere
-        assert "winget" not in body and "pip" not in body and "python " not in body.lower()
-        # install-exe drops a single-use token file so the boot task self-enrolls.
-        assert "opspilot-enroll.json" in body
-        # v0.69: pulls the .exe from the Cloudflare-free GitHub release, verifies the
-        # MZ header, checks the enroll exit code, and FAILS LOUDLY (no false success).
-        assert "releases/latest/download/opspilot-agent.exe" in body, "exe should come from GitHub release"
-        assert "0x4D" in body and "0x5A" in body, "should verify the MZ executable header"
-        assert "ENROLLMENT FAILED" in body and "$LASTEXITCODE" in body, "must report real enroll result"
-        print("no-Python .exe installer OK (GitHub-sourced + verified + honest)")
+        # ===================== v1.5: install-exe.ps1 alias is self-contained =====================
+        body=c.get("/download/install-exe.ps1?token=ALIASTOK").text
+        # No Python, no fetch of a prebuilt exe — it embeds the agent + runs install.
+        assert "winget" not in body and "pip " not in body and "python " not in body.lower()
+        assert "FromBase64String" in body and "agent.exe" not in body, "alias must be self-contained"
+        assert "ALIASTOK" in body
+        print("install-exe.ps1 alias OK (self-contained, no Python/exe)")
 
         # ============== v0.31: preconfigured ("preloaded") .cmd installer ==========
         dtok = c.post(f"/api/agent/enroll-token/{cid}").json()["enroll_token"]
@@ -1167,9 +1188,11 @@ def main():
         decoded=_b64.b64decode(enc).decode("utf-16-le")
         # The embedded PS carries the token, pulls the .exe from the GitHub release, and fails loudly.
         assert dtok in decoded, "enrollment token must be embedded in deploy.cmd"
-        assert "opspilot-agent.exe" in decoded and "ENROLLMENT FAILED" in decoded
+        # The embedded PS carries the whole agent (base64) and runs its install action.
+        assert "FromBase64String" in decoded and "install $TOKEN" in decoded
+        assert "opspilot-agent.exe" not in decoded, "must not depend on a prebuilt exe"
         # honest result reporting in the batch wrapper
-        assert "INSTALL DID NOT COMPLETE" in cb and "installed and enrolled" in cb
+        assert "INSTALL DID NOT COMPLETE" in cb and "managed by BVTech" in cb
         assert "attachment" in rcmd.headers.get("content-disposition", "")
         assert "bvtech-opspilot-install.cmd" in rcmd.headers.get("content-disposition", "")
         print("preconfigured .cmd installer OK (self-contained, honest, token baked in)")
@@ -2931,7 +2954,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.4.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.5.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
