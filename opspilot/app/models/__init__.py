@@ -1382,3 +1382,21 @@ class AcademyAiQuestion(Base):
     explain: Mapped[str | None] = mapped_column(Text)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class BlogPost(Base):
+    """A blog article written for the connected WordPress site (v1.4) — by the
+    AI auto-blogger on the Autopilot heartbeat or by hand from Content Studio.
+    One row per attempt: posted rows carry the live WP id/link; failed rows
+    carry the error so nothing disappears silently."""
+    __tablename__ = "blog_posts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(220), nullable=False)
+    excerpt: Mapped[str | None] = mapped_column(Text)
+    html: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="posted", index=True)  # posted|failed
+    wp_post_id: Mapped[int | None] = mapped_column(Integer)
+    url: Mapped[str | None] = mapped_column(String(500))
+    error: Mapped[str | None] = mapped_column(String(400))
+    source: Mapped[str] = mapped_column(String(20), default="auto")   # auto|manual
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)

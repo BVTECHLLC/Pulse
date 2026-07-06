@@ -80,6 +80,15 @@ _MAP: dict[str, dict[str, list[str]]] = {
         "google_client_id": ["SSO_GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_ID", "google_client_id"],
         "google_client_secret": ["SSO_GOOGLE_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET", "google_client_secret"],
     },
+    "wp_site": {
+        # WordPress (bvtech.org) — REST API with an Application Password.
+        "base_url": ["WP_URL", "WP_SITE_URL", "WORDPRESS_URL", "wp_url", "wp_site",
+                     "wp_site_url", "bvtech_wp_url"],
+        "username": ["WP_USERNAME", "WP_USER", "wp_user", "wp_username", "wp_login"],
+        "app_password": ["WP_APP_PASSWORD", "WP_APP_PASS", "WP_APPLICATION_PASSWORD",
+                         "wp_app_password", "wp_app_pass", "wp_password", "wp_pass",
+                         "wp_key", "wp_token", "wp_api_key"],
+    },
     "google_places": {
         "api_key": ["GOOGLE_PLACES_API_KEY", "GOOGLE_MAPS_API_KEY", "google_api_key"],
     },
@@ -102,6 +111,7 @@ _META = {
     "tacticalrmm": ("Tactical RMM", "RMM"),
     "m365_mailbox": ("Microsoft 365 Mailbox", "Email"),
     "sso_login": ("Single Sign-On", "Identity"),
+    "wp_site": ("WordPress (bvtech.org)", "Website"),
     "google_places": ("Google Places", "Prospecting"),
     "payment_methods": ("Payment Methods", "Payments"),
 }
