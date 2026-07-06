@@ -45,6 +45,7 @@ async function genNarrative(){
   }catch(e){ box.innerHTML='<p class="err">Something went wrong reaching Claude.</p>'; }
 }
 async function load(){
+  const csv0=document.getElementById('csv-link'); if(csv0)csv0.href=`/api/reports/${CID}/export.csv`;
   const r=await fetch(`/api/reports/${CID}/summary`);
   if(r.status===401){location.href='/';return;}
   if(!r.ok){document.getElementById('rep').textContent='Report unavailable.';return;}
@@ -88,7 +89,7 @@ async function load(){
         <p>Staff trained: <b>${(d.training||{}).trained_users||0}</b> of ${(d.training||{}).users||0}
            ${(d.training||{}).trained_pct!=null?`(<b>${d.training.trained_pct}%</b>)`:''}</p>
         <p>Curriculum completed: <b>${(d.training||{}).curriculum_pct!=null?d.training.curriculum_pct+'%':'—'}</b></p>
-        <p>${(d.training||{}).top_learner?('Top learner: <b>'+esc(d.training.top_learner.name)+'</b> ('+d.training.top_learner.xp+' XP)'):'No one has started yet — the academy is at portal.bvtech.org/academy'}</p></div>
+        <p>${(d.training||{}).top_learner?('Top learner: <b>'+esc(d.training.top_learner.name)+'</b> ('+d.training.top_learner.xp+' XP)'):'No one has started yet — the academy is at '+location.host+'/academy'}</p></div>
       <div class="card"><h3>Infrastructure</h3>
         <p>Managed devices: <b>${dv.total||0}</b> (avg health ${dv.avg_health!=null?dv.avg_health:'—'})</p>
         <p>Patch compliance: <b>${pa.compliance_pct!=null?pa.compliance_pct+'%':'—'}</b></p>

@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{ app_name }} — Sign in</title>
+<meta name="description" content="Sign in to BVTech OpsPilot — the managed IT command center and client portal by BVTech LLC. Monitoring, support, security and reporting in one place.">
 <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/css/pulse.css?v={{ version }}">
 </head>
@@ -32,6 +33,7 @@
       <div id="sso-btns" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
     <div class="auth-links">New here? <a href="/signup">Request access →</a></div>
+    <div class="foot">BVTech LLC · Managed IT &amp; Cybersecurity · <a href="mailto:help@bvtech.org" style="color:inherit">help@bvtech.org</a></div>
     <div class="foot">v{{ version }} · Encrypted · MFA-ready · Audit-logged</div>
   </div>
 </div>
@@ -40,7 +42,7 @@
 (function(){
   const params=new URLSearchParams(location.search);
   if(params.get('oauth_error')){
-    const m={no_account:'That Microsoft/Google account isn’t linked to a Pulse login yet. Sign in with your work M365 email, or ask your MSP to invite that address.',
+    const m={no_account:'That Microsoft/Google account isn’t linked to an OpsPilot login yet. Sign in with your work M365 email, or ask your MSP to invite that address.',
       sso_disabled:'SSO is disabled.',
       exchange_failed:'Sign-in failed — please try again.',no_token:'Sign-in failed — please try again.'};
     setTimeout(()=>{const e=document.getElementById('err');if(e)e.textContent=m[params.get('oauth_error')]||'Sign-in failed.';},50);
@@ -62,6 +64,8 @@ async function doLogin(){
   const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(r.ok){
     const d=await r.json();
+    const nxt=new URLSearchParams(location.search).get('next');
+    if(nxt && /^\/(?!\/)/.test(nxt)){ location.href=nxt; return; }
     location.href = (d.role==='client_admin'||d.role==='client_viewer') ? '/portal' : '/dashboard';
     return;
   }

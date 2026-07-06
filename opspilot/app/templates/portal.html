@@ -155,7 +155,7 @@ async function openTicket(id){
     <h3 style="margin-top:14px">Conversation</h3>
     <div id="td-comments">${comments.map(c=>
       `<div class="comment"><div class="meta">${esc(c.author_email)} · ${ago(c.created_at)}</div>${esc(c.body)}</div>`).join('')
-      ||'<p style="color:var(--muted)">No replies yet — we\\'ll respond here.</p>'}</div>
+      ||'<p style="color:var(--muted)">No replies yet — we’ll respond here.</p>'}</div>
     <label>Add a reply</label><input id="td-reply" placeholder="Add more detail or a follow-up…">
     <button class="btn" style="margin-top:10px" onclick="sendReply(${t.id})">Send reply</button>
     ${csatBlock(t)}`;

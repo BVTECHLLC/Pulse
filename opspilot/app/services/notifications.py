@@ -70,6 +70,8 @@ def fanout(db: Session, *, message: str, severity: str = "info", client_id: int 
         try:
             if deliver(ch, message, severity):
                 delivered += 1
-        except Exception:
-            pass
+            else:
+                print(f"[notify] delivery to channel '{ch.name}' ({ch.type}) failed")
+        except Exception as e:  # noqa: BLE001
+            print(f"[notify] delivery to channel '{ch.name}' ({ch.type}) raised: {e}")
     return delivered

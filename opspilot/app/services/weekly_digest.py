@@ -144,10 +144,16 @@ def maybe_send(db: Session, now: datetime | None = None, *, sender=None) -> dict
         except Exception:
             pass
 
-    # Mark the week done even if there were zero recipients / SMTP is off, so we
-    # don't retry every tick for the rest of the day. (A real send failure with
-    # SMTP configured is rare; the next week's send is unaffected.) Non-secret
-    # keys not passed here are preserved by the vault's partial-update merge.
-    secure_config.upsert_platform(
-        db, PROVIDER, "Weekly Digest", "State of the practice", {"last_sent_week": wk})
-    return {"sent": True, "week": wk, "recipients": len(recipients), "delivered": delivered}
+    # Mark the week done when anything delivered, OR when email is a no-op
+    # (SMTP unconfigured / zero recipients) so we don't retry pointlessly all
+    # day. But if SMTP IS configured and every send failed, leave the week
+    # unmarked — the next tick retries instead of silently losing the digest.
+    from ..core.config import get_settings as _gs
+    email_live = _gs().email_enabled and sender is None
+    if delivered or not email_live or not recipients:
+        secure_config.upsert_platform(
+            db, PROVIDER, "Weekly Digest", "State of the practice", {"last_sent_week": wk})
+        return {"sent": True, "week": wk, "recipients": len(recipients), "delivered": delivered}
+    print(f"[digest] all {len(recipients)} sends failed — will retry next tick")
+    return {"sent": False, "reason": "delivery_failed", "week": wk,
+            "recipients": len(recipients), "delivered": 0}

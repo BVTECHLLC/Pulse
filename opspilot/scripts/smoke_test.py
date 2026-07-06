@@ -840,7 +840,7 @@ def main():
             # Cadence: an immediate second tick publishes nothing (weekly gap not elapsed).
             assert c.post("/api/automation/run-checks").json().get("posts_published",0)==0
             # Google Business post WITH an image, via post-now (bypasses cadence).
-            gp=c.post("/api/autopost", json={"body":"Top 5 ways El Campo SMBs stay secure",
+            gp=c.post("/api/autopost", json={"body":"Top 5 ways Sugar Land SMBs stay secure",
                       "link":"https://bvtech.org/contact","image_url":"https://bvtech.org/img/post.jpg",
                       "channels":["google_business"]}).json()
             pn=c.post(f"/api/autopost/{gp['id']}/post-now").json()
@@ -853,19 +853,19 @@ def main():
             assert ca_c.get("/api/autopost").status_code==403
             assert ca_c.post("/api/autopost", json={"body":"x","channels":["google_business"]}).status_code==403
             # v0.73: auto-write drafts + auto-refill so the queue never runs dry.
-            gen=c.post("/api/autopost/generate", json={"count":5,"city":"El Campo, TX",
+            gen=c.post("/api/autopost/generate", json={"count":5,"city":"Sugar Land, TX",
                        "keywords":["managed IT","backups"],"cta_url":"https://bvtech.org/contact",
                        "channels":["google_business"]}).json()
             assert gen["ok"] and gen["created"]==5, gen
             rows=c.get("/api/autopost").json()
-            draft=[x for x in rows if "El Campo" in (x["body"] or "")][0]
+            draft=[x for x in rows if "Sugar Land" in (x["body"] or "")][0]
             assert draft["status"]=="queued" and draft["channels"]==["google_business"], draft
             assert "bvtech.org/contact" in draft["body"]   # CTA woven in (SEO)
             # Save a brand profile + turn on auto-refill; the tick tops the queue up.
             c.put("/api/autopost/settings", json={"auto_generate":True,"min_queue":8,
-                  "city":"El Campo, TX","keywords":["cybersecurity"],"gen_channels":["linkedin"]})
+                  "city":"Sugar Land, TX","keywords":["cybersecurity"],"gen_channels":["linkedin"]})
             stt=c.get("/api/autopost/settings").json()
-            assert stt["auto_generate"] is True and stt["city"]=="El Campo, TX" and stt["min_queue"]==8, stt
+            assert stt["auto_generate"] is True and stt["city"]=="Sugar Land, TX" and stt["min_queue"]==8, stt
             c.post("/api/automation/run-checks")   # auto-refill tops the queue up to min_queue
             _after=len([x for x in c.get("/api/autopost").json() if x["status"]=="queued"])
             assert _after>=8, ("queue not refilled to min_queue", _after)
@@ -2731,7 +2731,98 @@ def main():
         print("training compliance (report+csv+RBAC) + streak-saver emails + "
               "AI monthly question refresh (merge, no-leak, guard) OK")
 
-    print("\n=== OpsPilot v1.3.0 SMOKE TEST PASSED ===")
+        # ===================== v1.3.1: launch-hardening QA fixes =====================
+        from app.models import Notification as _N131, SocialPost as _SP131
+        from app.services import autopost as _ap131
+
+        # Publish guard: off-brand content is rejected at publish, never posted.
+        bad = c.post("/api/autopost", json={"body": "Why El Campo businesses need IT",
+                                            "channels": ["linkedin"]}).json()
+        pn = c.post(f"/api/autopost/{bad['id']}/post-now")
+        assert pn.status_code == 400 and "off-brand" in pn.json()["detail"], pn.text
+        row = [x for x in c.get("/api/autopost").json() if x["id"] == bad["id"]][0]
+        assert row["status"] == "failed" and "off-brand" in row["result"]
+
+        # Retry: a transient channel error re-queues (up to 3), THEN fails + notifies.
+        boom = {"n": 0}
+        def _fail_poster(t, u, img=None):
+            boom["n"] += 1
+            raise RuntimeError("LinkedIn 502 (simulated)")
+        rp = c.post("/api/autopost", json={"body": "Sugar Land cybersecurity checklist",
+                                           "channels": ["linkedin"]}).json()
+        _sdb = _SL11()
+        try:
+            post_obj = _sdb.get(_SP131, rp["id"])
+            r1 = _ap131.publish_one(_sdb, post_obj, posters={"linkedin": _fail_poster})
+            assert not r1["ok"] and post_obj.status == "queued" and post_obj.attempts == 1
+            assert "retry 1/3" in (post_obj.result or ""), post_obj.result
+            _ap131.publish_one(_sdb, post_obj, posters={"linkedin": _fail_poster})
+            r3 = _ap131.publish_one(_sdb, post_obj, posters={"linkedin": _fail_poster})
+            assert post_obj.status == "failed" and post_obj.attempts == 3, (post_obj.status, post_obj.attempts)
+            note = (_sdb.query(_N131).filter(_N131.kind == "autopost")
+                    .order_by(_N131.id.desc()).first())
+            assert note and str(rp["id"]) in note.message, "failure notification missing"
+            # Double-publish race: a non-queued post cannot be claimed again.
+            rr = _ap131.publish_one(_sdb, post_obj, posters={"linkedin": _fail_poster})
+            assert rr.get("skipped") is True, rr
+        finally:
+            _sdb.close()
+        # Requeue gives fresh attempts; a working channel then posts it.
+        rq = c.post(f"/api/autopost/{rp['id']}/requeue").json()
+        assert rq["ok"] and rq["post"]["status"] == "queued"
+        _sdb = _SL11()
+        try:
+            post_obj = _sdb.get(_SP131, rp["id"])
+            ok = _ap131.publish_one(_sdb, post_obj, posters={"linkedin": lambda t, u, img=None: "urn:li:share:retryok"})
+            assert ok["ok"] and post_obj.status == "posted"
+        finally:
+            _sdb.close()
+
+        # LinkedIn truncation: long body never mangles the trailing URL.
+        from app.services import publishers as _pub131
+        seen = {}
+        def _fake_urlopen_ok(req, timeout=15):
+            import json as _jj
+            seen["payload"] = _jj.loads(req.data.decode())
+            class R:
+                status = 201
+                headers = {"x-restli-id": "urn:li:share:trunc"}
+                def __enter__(self): return self
+                def __exit__(self, *a): return False
+                def read(self): return b'{"id":"urn:li:share:trunc"}'
+            R.headers = type("H", (), {"get": staticmethod(lambda k, d=None: "urn:li:share:trunc")})()
+            return R()
+        _o_uo = _pub131.request.urlopen
+        _pub131.request.urlopen = _fake_urlopen_ok
+        try:
+            _pub131.post_linkedin("tok", "urn:li:person:x", "A" * 4000, "https://bvtech.org/contact")
+            _txt = seen["payload"]["specificContent"]["com.linkedin.ugc.ShareContent"]["shareCommentary"]["text"]
+            assert _txt.endswith("https://bvtech.org/contact"), "URL must survive truncation"
+            assert len(_txt) <= 2900
+            try:
+                _pub131.post_linkedin("tok", "urn:li:person:x", "   ", "")
+                raise AssertionError("empty post must be refused")
+            except _pub131.PublishError:
+                pass
+        finally:
+            _pub131.request.urlopen = _o_uo
+
+        # Staff can now invite a client user directly (client_id required + validated).
+        inv = c.post("/api/client-users", json={"email": "newuser@smoke.co",
+                                                "role": "client_viewer", "client_id": cid})
+        assert inv.status_code == 201 and inv.json().get("temp_password"), inv.text
+        assert c.post("/api/client-users", json={"email": "nu2@smoke.co",
+                                                 "role": "client_viewer"}).status_code == 400
+        assert c.post("/api/client-users", json={"email": "nu3@smoke.co",
+                                                 "role": "owner", "client_id": cid}).status_code == 403
+
+        # Portal page serves valid JS (the apostrophe-escape regression guard).
+        _phtml = c.get("/portal").text
+        assert "we\\'ll" not in _phtml, "broken template-literal escape is back"
+        print("v1.3.1 hardening: publish guard + retry/notify + no-double-post + requeue "
+              "+ linkedin truncation/empty guard + staff invite + portal JS OK")
+
+    print("\n=== OpsPilot v1.3.1 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

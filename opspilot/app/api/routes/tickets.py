@@ -445,6 +445,7 @@ class InviteIn(BaseModel):
     email: EmailStr
     full_name: str | None = None
     role: Role = Role.CLIENT_VIEWER
+    client_id: int | None = None   # staff must name the client; ignored for client admins
 
 
 @router.post("/client-users", status_code=201)
@@ -462,9 +463,18 @@ def invite_client_user(body: InviteIn, request: Request, db: Session = Depends(g
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Client admins create client roles only")
         target_client = user.client_id
     else:
-        # staff path — derive client from query? Require it explicitly for safety.
-        raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                            "Staff: create client users via /api/clients flow (v0.3)")
+        # Staff path: the target client must be named explicitly (safety — never
+        # guess which company a new login belongs to). Staff may only create
+        # client-side roles here; staff accounts are managed in Users & Access.
+        if body.role not in (Role.CLIENT_ADMIN, Role.CLIENT_VIEWER):
+            raise HTTPException(status.HTTP_403_FORBIDDEN,
+                                "This endpoint creates client-side users only")
+        if not body.client_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                "client_id is required when staff invite a client user")
+        if not db.get(Client, body.client_id):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Client not found")
+        target_client = body.client_id
 
     if db.query(User).filter(User.email == body.email.lower()).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already exists")

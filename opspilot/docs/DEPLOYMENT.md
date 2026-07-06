@@ -140,7 +140,7 @@ Push backups off-box too (Cloudflare R2, B2, or rclone to another host).
 
 ```bash
 cd ~/Pulse && git pull
-cd pulse
+cd Pulse/opspilot
 docker compose up -d --build
 docker compose exec api python -m alembic upgrade head
 ```

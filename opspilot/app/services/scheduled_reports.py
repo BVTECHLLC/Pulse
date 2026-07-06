@@ -89,11 +89,32 @@ def send_due(db: Session, now: datetime | None = None) -> dict:
         summary = _build_summary(db, client, now)
         body = _report_body(summary, client)
         csv_name = f"report-{client.name.replace(' ', '_')}.csv"
-        email_svc.send(sched.recipient_email,
-                       f"{get_settings().APP_NAME} report — {client.name}",
-                       body, attachments=[(csv_name, summary_csv(summary), "text/csv")])
-        sched.last_sent_at = now
-        sent += 1
-    if sent:
+        ok = False
+        try:
+            ok = email_svc.send(sched.recipient_email,
+                                f"{get_settings().APP_NAME} report — {client.name}",
+                                body, attachments=[(csv_name, summary_csv(summary), "text/csv")])
+        except Exception as e:  # noqa: BLE001
+            print(f"[reports] send to {sched.recipient_email} raised: {e}")
+        # With SMTP unconfigured send() is a logged no-op returning False — still
+        # advance the schedule (nothing will ever deliver until SMTP is set up).
+        # With SMTP CONFIGURED, a failed send must NOT advance: the next tick
+        # retries, and staff get a notification instead of silence.
+        if ok or not get_settings().email_enabled:
+            sched.last_sent_at = now
+            sent += 1
+        else:
+            print(f"[reports] delivery failed for schedule {sched.id} "
+                  f"({sched.recipient_email}) — will retry next tick")
+            try:
+                from ..models import Notification
+                db.add(Notification(client_id=sched.client_id, target_user_id=None,
+                                    kind="report", severity="warning",
+                                    message=(f"Scheduled report for {client.name} failed to send "
+                                             f"to {sched.recipient_email} — check SMTP settings. "
+                                             f"It will retry automatically.")[:1000]))
+            except Exception:  # noqa: BLE001
+                pass
+    if schedules:
         db.commit()
     return {"schedules": len(schedules), "reports_sent": sent}

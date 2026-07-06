@@ -146,13 +146,72 @@ def next_due(db: Session, now: datetime) -> SocialPost | None:
     return None
 
 
+MAX_ATTEMPTS = 3   # transient API errors retry on later ticks, then fail loudly
+
+# Documented brand rule: BVTech targets Sugar Land / Houston / Austin / San
+# Antonio — never El Campo. Enforced at PUBLISH time so no path (AI, template,
+# or manual) can ship an off-brand post.
+_BANNED_PHRASES = ("el campo",)
+
+
+def _publish_guard(post: SocialPost) -> str | None:
+    """Return a rejection reason if this post must not go out, else None."""
+    body = (post.body or "").strip()
+    if not body:
+        return "rejected: empty body"
+    for phrase in _BANNED_PHRASES:
+        if phrase in body.lower():
+            return f"rejected: off-brand content ('{phrase}' is excluded by brand rules)"
+    return None
+
+
+def _claim(db: Session, post: SocialPost) -> bool:
+    """Atomically move queued -> publishing so two overlapping ticks (or a tick
+    racing the post-now button) can never publish the same post twice."""
+    n = (db.query(SocialPost)
+         .filter(SocialPost.id == post.id, SocialPost.status == "queued")
+         .update({"status": "publishing"}, synchronize_session=False))
+    db.commit()
+    db.refresh(post)
+    return bool(n)
+
+
+def _notify_failure(db: Session, post: SocialPost) -> None:
+    try:
+        from . import notifications
+        from ..models import Notification
+        msg = (f"Auto-post #{post.id} failed {MAX_ATTEMPTS}x and needs attention: "
+               f"{(post.result or '')[:200]} — review it in Content Studio → Auto-poster.")
+        db.add(Notification(client_id=None, target_user_id=None, kind="autopost",
+                            severity="warning", message=msg[:1000]))
+        db.commit()
+        notifications.fanout(db, message=msg, severity="warning", client_id=None)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def publish_one(db: Session, post: SocialPost, now: datetime | None = None, *,
                 posters: dict | None = None) -> dict:
     """Publish a post to each of its channels. Marks posted if ANY channel
-    succeeds, failed if all attempted channels errored, and leaves it queued if no
-    channel is configured yet (so it publishes once creds are added). Commits.
+    succeeds. On an all-channel error the post goes BACK to queued for a later
+    tick (up to MAX_ATTEMPTS), then is marked failed + staff are notified — a
+    transient LinkedIn/GBP blip never silently kills a post. Posts with every
+    channel skipped stay queued untouched (publish once creds are added). Commits.
     `posters` is a {channel: callable(text,url,image)} override for tests."""
     now = now or datetime.now(timezone.utc)
+
+    guard = _publish_guard(post)
+    if guard:
+        post.status, post.result = "failed", guard[:400]
+        db.commit()
+        return {"ok": False, "ready": True, "post_id": post.id,
+                "result": post.result, "channels": {}, "reason": guard}
+
+    if not _claim(db, post):
+        return {"ok": False, "ready": False, "post_id": post.id, "skipped": True,
+                "result": post.result, "channels": {},
+                "reason": "already being published by another worker"}
+
     channels = [c for c in (post.channels or ["linkedin"]) if c in CHANNELS] or ["linkedin"]
     results, any_ok, any_err, any_ready = {}, False, False, False
     for ch in channels:
@@ -172,14 +231,32 @@ def publish_one(db: Session, post: SocialPost, now: datetime | None = None, *,
     if any_ok:
         post.status, post.posted_at = "posted", now
     elif any_err:
-        post.status = "failed"
-    # else: nothing configured -> leave it 'queued' (don't burn it)
+        post.attempts = (post.attempts or 0) + 1
+        if post.attempts >= MAX_ATTEMPTS:
+            post.status = "failed"
+        else:
+            post.status = "queued"   # retry on a later tick
+            post.result = (f"retry {post.attempts}/{MAX_ATTEMPTS} — " + (post.result or ""))[:400]
+    else:
+        post.status = "queued"   # nothing configured -> don't burn it
     db.commit()
+    if post.status == "failed":
+        _notify_failure(db, post)
     return {"ok": any_ok, "ready": any_ready, "post_id": post.id,
             "result": post.result, "channels": results,
             "reason": (None if any_ok else
                        ("No channel configured — connect LinkedIn / Google Business in Settings."
                         if not any_ready else post.result))}
+
+
+def requeue(db: Session, post_id: int) -> SocialPost | None:
+    """Give a failed post a fresh set of attempts (the UI 'Retry' button)."""
+    post = db.get(SocialPost, post_id)
+    if not post or post.status != "failed":
+        return None
+    post.status, post.attempts, post.result = "queued", 0, None
+    db.commit()
+    return post
 
 
 def generate_and_queue(db: Session, count: int, *, city: str = "", keywords=None,
