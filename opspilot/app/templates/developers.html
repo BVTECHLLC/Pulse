@@ -31,7 +31,7 @@
 
 <div class="dev-wrap">
   <h1>Developer Hub</h1>
-  <p class="sub">Pulse is a platform — drive it from anything. Authenticate with an
+  <p class="sub">OpsPilot is a platform — drive it from anything. Authenticate with an
   API key, subscribe to events, or push events in. The full machine-readable
   spec lives at <a href="/api/openapi.json"><code>/api/openapi.json</code></a>
   (import it into Postman, Zapier, Make, or a code generator).</p>
@@ -45,7 +45,7 @@
   <p class="muted">Session cookies and <code>Authorization: Bearer &lt;token&gt;</code> also work for
   interactive use; API keys are the right choice for tools and automation.</p>
 
-  <h2>2 · Outbound webhooks — react to Pulse</h2>
+  <h2>2 · Outbound webhooks — react to OpsPilot</h2>
   <p>Subscribe any URL under <b>Integrations → Outbound Webhooks</b>. We POST a JSON
   body for each event; verify authenticity with the HMAC signature header.</p>
   <pre><code>POST your-url
@@ -62,7 +62,7 @@ def verify(secret, body_bytes, header):
     return hmac.compare_digest(expected, header)</code></pre>
   <p>Events: <code id="ev-list">loading…</code></p>
 
-  <h2>3 · Inbound ingest — push into Pulse</h2>
+  <h2>3 · Inbound ingest — push into OpsPilot</h2>
   <p>Create an endpoint under <b>Integrations → Inbound Ingest</b>; we mint a URL any
   tool can POST JSON to. We create a ticket or alert for the bound client.</p>
   <pre><code>curl -X POST https://portal.bvtech.org/api/ingest/&lt;token&gt; \

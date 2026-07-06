@@ -3,14 +3,34 @@
 Secure, cloud-hosted MSP command center, admin dashboard, and client portal for
 **BVTech LLC** — evolving toward a lightweight RMM-style platform.
 
-**Current version: v0.10.0** — a unified **RMM + PSA** platform: auth + RBAC +
-clients/devices/licenses + audit log + telemetry agent, a monitoring/alerting
-engine, billing (MRR & renewals) visibility, a **full SLA-tracked helpdesk**
-(threading, assignment, time tracking), an **IT documentation / knowledge base**,
-a **server-side automation engine** (event→action rules + notifications), a
-**defensive security-posture module** (assessments, findings, scorecard), and a
-**governed script library** (approval-gated, consent + audited deployments)
-+ deployment scaffold.
+**Current version: v1.3** — an AI-native **RMM + PSA + client portal** platform.
+Highlights (see `opspilot/CHANGELOG.md` for the full history):
+
+- **🚁 Autopilot** — an in-process scheduler drives every recurring job (offline
+  sweeps, SLA breaches + escalation, recurring invoices, A/R reminders, posture
+  snapshots, weekly digest, scheduled client reports, connector health, social
+  auto-posting, AI triage). No external cron required.
+- **🤖 AI built in (Claude)** — Ask Pulse copilot, ticket auto-triage with
+  optional priority auto-apply, reply drafting, alert explanations, AI-written
+  social posts, monthly AI-refreshed training quizzes. Degrades gracefully
+  without a key.
+- **🎓 Cyber Academy** (`/academy`) — gamified, mobile-first security-awareness
+  training for staff AND client users: lessons, server-graded quizzes, games,
+  XP/streaks/badges, tenant-isolated leaderboard, per-client compliance
+  reporting wired into QBR reports.
+- **Full PSA core** — SLA-tracked helpdesk (threading, assignment, time
+  tracking, CSAT), contracts/recurring billing, invoices + Stripe payments,
+  QBR reports + scheduled delivery, projects, assets/warranties.
+- **RMM core** — telemetry agent, monitoring/alert engine, maintenance windows,
+  auto-remediation, patch/posture scorecards, remote sessions, Tactical RMM
+  bridge.
+- **Growth stack** — CRM + prospecting (Google Places), campaigns, Content
+  Studio, LinkedIn/Google Business auto-poster (retry + dedupe + brand
+  guards), public status page, document library, weekly "State of the
+  Practice" digest.
+- **Enterprise plumbing** — RBAC + MFA + SSO (Microsoft/Google), encrypted
+  credential vault, comprehensive audit trail, per-tenant isolation, webhook
+  events + API keys (`/developers`).
 
 ---
 
@@ -39,7 +59,7 @@ Client users can only ever see their own `client_id`'s data — enforced at the 
 ## Local development
 
 ```bash
-cd pulse
+cd Pulse/opspilot
 python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 

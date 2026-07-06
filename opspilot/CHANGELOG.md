@@ -1,5 +1,44 @@
 # BVTech OpsPilot — Changelog
 
+## v1.3.1 — Launch-hardening QA sweep (July 2026)
+Full pre-launch audit of every client-facing page, posting flow, and automation.
+- **🚨 Fixed: the client portal was dead.** A bad apostrophe escape in a
+  template literal (`we\'ll`) was a fatal JS syntax error — every client login
+  landed on a page where nothing rendered or clicked. Fixed + a regression
+  guard in the smoke suite + all served pages now parse-checked.
+- **Auto-poster is now failure-proof:**
+  - Transient LinkedIn/GBP errors **retry automatically** (up to 3 ticks) then
+    mark failed AND notify staff — a post can no longer vanish silently.
+  - **No double-posting:** atomic queued→publishing claim closes the race
+    between overlapping ticks / Post-now.
+  - **Brand guard at publish time:** empty bodies and off-brand content
+    (El Campo) are rejected on every path — AI, template, or manual.
+  - New `POST /api/autopost/{id}/requeue` (retry a failed post); Post-now on a
+    failed post grants fresh attempts.
+  - LinkedIn: long bodies no longer truncate the trailing URL; empty posts
+    refused.
+- **No more silent email losses:** scheduled client reports only mark "sent"
+  when delivery succeeded (retries next tick + notifies on failure); the weekly
+  digest no longer burns the week when SMTP is configured but failing;
+  notification channel failures are logged with the channel name.
+- **Staff can now invite client users directly** (`POST /api/client-users` with
+  `client_id`) — the endpoint previously 400'd with a stale v0.3 stub despite
+  its own docs promising the feature.
+- **Trust & polish:** support contact + company identity on login/signup/status;
+  meta descriptions on all public pages; status page h1 + outage contact
+  fallback; signup footer now says "Serving Sugar Land, Houston, Austin & San
+  Antonio" (brand rule); product naming unified to OpsPilot on client-facing
+  pages; Academy title/favicon fixed and its back-link is role-aware (clients →
+  /portal, staff → /dashboard); login honors a safe `?next=` path; report CSV
+  link never dead.
+- **Docs current again:** README rewritten for v1.3 reality, ROADMAP marked
+  historical, SECURITY vault item checked off, deploy paths corrected,
+  `.env.example` now documents `ANTHROPIC_API_KEY`, `SCHEDULER_ENABLED`, and
+  every env-configurable integration.
+- Verified: full smoke suite (incl. new retry/guard/race/invite tests),
+  migration cycle, Playwright walk of the client portal (login → ticket
+  conversation → reply → academy) and JS parse of every served page.
+
 ## v1.3.0 — Academy grows teeth: compliance, streak savers, AI-fresh quizzes (July 2026)
 - **📊 Training compliance — the QBR number.** Every client's branded service
   report (+ CSV export) now includes a Security Training card: % of staff

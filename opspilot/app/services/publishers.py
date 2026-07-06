@@ -31,8 +31,15 @@ def post_linkedin(token: str, person_urn: str, text: str, url: str = "") -> str:
     """Publish a text/article share as the given person URN. Returns the post id."""
     if not (token and person_urn):
         raise PublishError("LinkedIn is not configured (need access token + person URN).")
-    body = text if not url else f"{text}\n\n{url}"
-    body = body[:_MAX_LEN]
+    if not (text or "").strip():
+        raise PublishError("Refusing to publish an empty LinkedIn post.")
+    # Truncate the TEXT first, then append the URL — a long body must never
+    # mangle the visible link.
+    if url:
+        text = text[:max(0, _MAX_LEN - len(url) - 2)]
+        body = f"{text}\n\n{url}"
+    else:
+        body = text[:_MAX_LEN]
     share: dict = {
         "shareCommentary": {"text": body},
         "shareMediaCategory": "ARTICLE" if url else "NONE",

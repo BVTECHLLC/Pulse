@@ -1260,7 +1260,8 @@ class SocialPost(Base):
     link: Mapped[str | None] = mapped_column(String(500))
     image_url: Mapped[str | None] = mapped_column(String(800))   # public https image (GBP photo)
     channels: Mapped[list] = mapped_column(JSON, default=list)   # ["linkedin","google_business"]
-    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)  # queued|posted|failed
+    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)  # queued|publishing|posted|failed
+    attempts: Mapped[int] = mapped_column(Integer, default=0)    # failed publish tries (retry cap)
     scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # earliest post time
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     result: Mapped[str | None] = mapped_column(String(400))      # post ref or error

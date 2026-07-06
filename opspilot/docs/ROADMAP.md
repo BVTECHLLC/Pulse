@@ -1,3 +1,9 @@
+> **⚠️ HISTORICAL DOCUMENT** — this roadmap tracked v0.1 → v0.10 and is kept
+> for context only. The platform is now well past it (v1.3+): see
+> `opspilot/CHANGELOG.md` for what actually shipped, which includes everything
+> below plus Autopilot, AI triage, the Cyber Academy, Stripe/QuickBooks,
+> auto-posting, SSO, and more.
+
 # BVTech OpsPilot — Roadmap
 
 ## ✅ v0.1 (this release) — Foundation

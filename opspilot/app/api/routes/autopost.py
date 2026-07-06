@@ -139,6 +139,20 @@ def delete_post(post_id: int, db: Session = Depends(get_db),
     return {"ok": True}
 
 
+@router.post("/{post_id}/requeue")
+def requeue_post(post_id: int, request: Request, db: Session = Depends(get_db),
+                 user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Put a failed post back in the queue with fresh retries (UI 'Retry')."""
+    p = autopost.requeue(db, post_id)
+    if not p:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Only failed posts can be re-queued.")
+    audit.record(db, action="autopost.requeue", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="social_post", target_id=str(p.id),
+                 ip=_ip(request), detail="requeued")
+    return {"ok": True, "post": _serialize(p)}
+
+
 @router.post("/{post_id}/post-now")
 def post_now(post_id: int, request: Request, db: Session = Depends(get_db),
              user: User = Depends(require_roles(Role.OWNER))):
@@ -147,6 +161,9 @@ def post_now(post_id: int, request: Request, db: Session = Depends(get_db),
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Post not found")
     if p.status == "posted":
         raise HTTPException(status.HTTP_409_CONFLICT, "Already posted")
+    if p.status == "failed":   # explicit human retry: fresh attempts
+        p.status, p.attempts = "queued", 0
+        db.commit()
     res = autopost.publish_one(db, p)
     if not res.get("ok"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, res.get("reason") or "Publish failed")

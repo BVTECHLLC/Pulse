@@ -37,7 +37,7 @@ planned for later phases (tracked in ROADMAP.md).
 - ✅ All secrets via environment; `.env` git-ignored; no hardcoded keys
 - ✅ Separate signing keys for user sessions vs agent enrollment
 - ✅ Non-root container user
-- ☐ Encrypt stored 3rd-party API tokens at rest (envelope encryption) — Phase 3
+- ☑ Encrypt stored 3rd-party API tokens at rest (secure vault, Fernet — shipped v0.45) (envelope encryption) — Phase 3
 - ☐ Secrets manager (Doppler / Infisical / Vault) instead of flat .env
 
 ## Auditing

@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{ app_name }} — Status</title>
+<meta name="description" content="Live service status and incident history for BVTech OpsPilot — real-time uptime for the BVTech managed IT platform.">
 <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/css/pulse.css?v={{ version }}">
 <style>
@@ -42,10 +43,12 @@
 </head>
 <body>
 <div class="status-wrap">
+  <h1 style="font-size:20px;margin:0 0 12px">{{ app_name }} — Service Status</h1>
   <div id="content">
     <div class="empty" id="loading">Loading status…</div>
   </div>
   <div class="foot" id="foot"></div>
+  <div class="foot">BVTech LLC · Managed IT &amp; Cybersecurity · <a href="mailto:help@bvtech.org" style="color:inherit">help@bvtech.org</a></div>
 </div>
 <script>
 const OVERALL = {
@@ -76,7 +79,7 @@ function incCard(i){
     if(r.status===404){ document.getElementById('content').innerHTML='<div class="empty">This status page is not available.</div>'; return; }
     if(!r.ok) throw new Error('load');
     j = await r.json();
-  }catch(e){ document.getElementById('content').innerHTML='<div class="empty">Unable to load status right now.</div>'; return; }
+  }catch(e){ document.getElementById('content').innerHTML='<div class="empty">Unable to load live status right now. If you are experiencing an outage, email <a href="mailto:help@bvtech.org">help@bvtech.org</a>.</div>'; return; }
 
   const brand = j.brand||{};
   const ov = OVERALL[j.overall]||OVERALL.operational;

@@ -728,11 +728,13 @@ def profile_view(db: Session, user: User) -> dict:
     live_streak = prof.streak_days or 0
     if prof.last_active_on and prof.last_active_on < today - timedelta(days=1):
         live_streak = 0
+    from ..models import STAFF_ROLES
     return {
         "xp": prof.xp or 0,
         "level": _level(prof.xp or 0),
         "streak_days": live_streak,
         "active_today": prof.last_active_on == today,
+        "is_staff": user.role in STAFF_ROLES,
         "badges": [{**BADGES[b], "id": b} for b in _badges(prof) if b in BADGES],
         "all_badges": [{**v, "id": k, "earned": k in _badges(prof)}
                        for k, v in BADGES.items()],
@@ -917,6 +919,8 @@ def streak_reminders(db: Session, now: datetime | None = None) -> list[dict]:
     now = now or _utcnow()
     if now.hour < REMINDER_HOUR_UTC:
         return []
+    from ..core.config import get_settings
+    base = get_settings().PUBLIC_BASE_URL.rstrip("/")
     today = now.date()
     yesterday = today - timedelta(days=1)
     rows = (db.query(AcademyProfile, User)
@@ -934,7 +938,7 @@ def streak_reminders(db: Session, now: datetime | None = None) -> list[dict]:
                 f"Your {prof.streak_days}-day learning streak on the Pulse Cyber "
                 f"Academy ends at midnight — one quick lesson or game keeps it alive "
                 f"(most take about 5 minutes).\n\n"
-                f"Save it here: https://portal.bvtech.org/academy\n\n"
+                f"Save it here: {base}/academy\n\n"
                 f"— Pulse Cyber Academy")
         try:
             email_svc.send(u.email, subject, body)
