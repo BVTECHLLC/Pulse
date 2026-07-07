@@ -1,5 +1,24 @@
 # BVTech OpsPilot — Changelog
 
+## v1.12.0 — Copilot grows up: more powers + a proactive morning briefing (July 2026)
+- **☀️ Proactive briefing.** Pulse now tells you what needs doing before you
+  ask. Every morning the Autopilot heartbeat assembles the day's priorities —
+  critical patches pending, SLA breaches, offline devices, overdue A/R, weakest
+  security grade — and (once per day) drops an action-oriented briefing into
+  notifications. Claude writes the narrative when connected; a clean template
+  otherwise. Also on demand via the Morning Briefing button.
+- **🧰 Copilot toolset expanded.** The agent gained: client report (QBR-style
+  summary), device history, security posture, financials (MRR/ARR + A/R),
+  draft-client-email (generate, don't auto-send), and create-maintenance-window
+  (governed action). So you can now say "how's Acme doing overall?", "schedule
+  a patch window for Acme tomorrow at 2am", or "draft an email to Sugar Land
+  Dental about their overdue invoice" — and it does the right thing.
+- Verified: full smoke suite drives the new maintenance-window tool through the
+  copilot (dry-run → confirm → real window created), and the briefing's
+  on-demand endpoint + heartbeat post (too-early gate, once-per-day dedup,
+  notification landing, staff-only RBAC).
+
+
 ## v1.11.0 — Pulse Copilot: an AI agent that runs your MSP (July 2026)
 - **Ask in plain English; it acts.** The Ask Pulse button is now a true agentic
   copilot — Claude runs a server-side tool-use loop over your live platform.

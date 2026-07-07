@@ -1519,6 +1519,66 @@ def main():
         print("pulse copilot: agentic tool-use loop (read) + write dry-run/confirm gating "
               "+ real action (approve patches) + tenant-scoped toolset OK")
 
+        # ===================== v1.12: expanded copilot tools + proactive briefing =====================
+        from app.services import copilot_briefing as _cb12, copilot as _cop12
+        # New read tools present for staff; new write tool gated.
+        _sd=_cop12._tool_defs(staff=True); _snm={d["name"] for d in _sd}
+        assert {"client_report","device_history","security_posture","financials",
+                "draft_client_email","create_maintenance_window"} <= _snm, _snm
+        assert "create_maintenance_window" in _cop12._WRITE_TOOLS
+        # client_report tool returns real QBR-ish data for cid.
+        # Drive create_maintenance_window through the copilot (dry-run then confirm).
+        from app.services import ai as _cai12
+        _o_tc12,_o_en12=_cai12._TOOL_CALLER,_cai12.enabled
+        _turns={"v":[]}
+        _cai12._TOOL_CALLER=lambda system,messages,tools,*,model,max_tokens:_turns["v"].pop(0)
+        _cai12.enabled=lambda: True
+        try:
+            def _mw_turns():
+                return [
+                    {"stop_reason":"tool_use","content":[{"type":"tool_use","id":"m1",
+                        "name":"create_maintenance_window",
+                        "input":{"client_id":cid,"duration_hours":2,"reason":"copilot test"}}]},
+                    {"stop_reason":"end_turn","content":[{"type":"text","text":"Scheduled."}]},
+                ]
+            _turns["v"]=_mw_turns()
+            r=c.post("/api/copilot/ask", json={"message":"schedule a maintenance window for that client"})
+            j=r.json(); assert j["proposed_actions"] and not j["actions"], j
+            _turns["v"]=_mw_turns()
+            r=c.post("/api/copilot/ask", json={"message":"do it","allow_actions":True})
+            j=r.json(); assert j["actions"] and j["actions"][0]["result"].get("window_id"), j
+            # The window now exists.
+            assert any(w for w in c.get(f"/api/maintenance-windows?client_id={cid}").json())
+        finally:
+            _cai12._TOOL_CALLER,_cai12.enabled=_o_tc12,_o_en12
+
+        # Proactive briefing: on-demand endpoint + heartbeat post (dedup per day).
+        bf=c.get("/api/copilot/briefing").json()
+        assert "narrative" in bf and "stats" in bf, bf
+        assert ca_c.get("/api/copilot/briefing").status_code==403   # staff only
+        from app.core.db import SessionLocal as _SL12
+        _bdb=_SL12()
+        try:
+            import datetime as _dt12
+            # An earlier heartbeat this run may have already posted today's
+            # briefing (real clock) — clear the bookkeeping for a deterministic test.
+            from app.services import secure_config as _sc12
+            _sc12.upsert_platform(_bdb, _cb12.PROVIDER, "Copilot Briefing", "Automation",
+                                  {"last_date": ""})
+            morning=_dt12.datetime.now(_dt12.timezone.utc).replace(hour=15)
+            early=_dt12.datetime.now(_dt12.timezone.utc).replace(hour=3)
+            assert _cb12.maybe_post(_bdb, early)["posted"] is False   # too early
+            r1=_cb12.maybe_post(_bdb, morning)
+            assert r1["posted"] is True, r1
+            assert _cb12.maybe_post(_bdb, morning)["posted"] is False  # once per day
+        finally:
+            _bdb.close()
+        # The briefing landed as a notification.
+        assert any("Morning briefing" in (n.get("message") or "")
+                   for n in c.get("/api/notifications?limit=50").json())
+        print("copilot v1.12: expanded tools (report/history/posture/financials/email/maint-window) "
+              "+ proactive daily briefing (on-demand + heartbeat, dedup, notification, RBAC) OK")
+
         # ===================== v0.68: fleet inventory + patch compliance =====================
         # Re-seed SMOKE-PC with software + pending patches for the fleet rollups.
         a.post("/api/agent/inventory", headers=hdr, json={"software":[
@@ -3224,7 +3284,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.11.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.12.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
