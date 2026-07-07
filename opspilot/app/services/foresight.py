@@ -224,3 +224,56 @@ def fleet_risks(db: Session, client_ids: list[int] | None, now: datetime | None 
             risks.append({**r, "device_id": d.id, "hostname": d.hostname,
                           "client_id": d.client_id})
     return risks
+
+
+# --------------------------------------------------------------------------- #
+# v1.13 — proactive watch: surface predicted risks BEFORE they hard-alert.
+# --------------------------------------------------------------------------- #
+def watch(db: Session, now=None, *, min_severity: str = "high") -> list[dict]:
+    """Heartbeat entrypoint. Raise a notification for each NEW predicted risk
+    (disk-fill soon, health decline, resource spike) at/above `min_severity`,
+    deduped per (device, kind) per day so we warn once, early — not every tick.
+    Returns the risks newly notified."""
+    from ..models import Notification
+    now = now or datetime.now(timezone.utc)
+    rank = {"medium": 1, "high": 2, "critical": 3}
+    threshold = rank.get(min_severity, 2)
+    risks = [r for r in fleet_risks(db, None, now)
+             if rank.get(r.get("severity"), 0) >= threshold]
+    if not risks:
+        return []
+    from . import secure_config
+    conn = secure_config.get_platform(db, "foresight_watch")
+    seen = set(((conn.config if conn else None) or {}).get("seen", "").split("|")) if conn else set()
+    today = now.date().isoformat()
+    newly = []
+    fired_keys = set()
+    for r in risks:
+        key = f"{today}:{r['device_id']}:{r['kind']}"
+        if key in seen:
+            continue
+        fired_keys.add(key)
+        icon = "🟥" if r["severity"] == "critical" else "🟧"
+        try:
+            db.add(Notification(client_id=r.get("client_id"), target_user_id=None,
+                                kind="foresight", severity="warning",
+                                message=(f"{icon} Predicted: {r['hostname']} — {r['detail']}")[:1000]))
+            newly.append(r)
+        except Exception:  # noqa: BLE001
+            pass
+    if newly:
+        db.commit()
+    # Persist today's fired keys (bounded — keep only today's).
+    keep = {k for k in (seen | fired_keys) if k.startswith(today)}
+    secure_config.upsert_platform(db, "foresight_watch", "Foresight Watch", "Automation",
+                                  {"seen": "|".join(sorted(keep))[:6000]})
+    return newly
+
+
+def top_risk(db: Session, now=None) -> dict | None:
+    """The single most urgent predicted risk (for the morning briefing)."""
+    risks = fleet_risks(db, None, now)
+    if not risks:
+        return None
+    rank = {"medium": 1, "high": 2, "critical": 3}
+    return max(risks, key=lambda r: (rank.get(r.get("severity"), 0), r.get("days") is not None))

@@ -146,6 +146,16 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         pass
 
+    # 13.25) Foresight watch (v1.13) — raise PREDICTED risks (disk full soon,
+    #        health decline, resource spikes) before they hard-alert. Deduped
+    #        per device+kind per day.
+    from . import foresight
+    predicted = []
+    try:
+        predicted = foresight.watch(db, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
     # 13.3) Proactive Copilot briefing (v1.12) — once per morning, drop an
     #       action-oriented "here's what needs doing" note into notifications.
     from . import copilot_briefing
@@ -192,4 +202,5 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
             "weekly_digest": digest, "ai_triaged": len(triaged),
             "streak_reminders": len(streaks_saved), "academy_ai": academy_ai,
             "blog": blog, "patches_auto_approved": len(patches_auto),
-            "briefing_posted": briefing.get("posted", False)}
+            "briefing_posted": briefing.get("posted", False),
+            "predicted_risks": len(predicted)}

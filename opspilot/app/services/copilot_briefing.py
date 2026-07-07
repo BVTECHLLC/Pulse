@@ -55,6 +55,13 @@ def gather(db: Session, now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         pass
     try:
+        from . import foresight
+        tr = foresight.top_risk(db, now)
+        if tr:
+            stats["top_prediction"] = f"{tr['hostname']}: {tr['detail']}"
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         from . import posture
         port = posture.portfolio(db, now)
         graded = [p for p in port if p.get("score") is not None]
@@ -79,6 +86,8 @@ def _template(stats: dict) -> str:
         bits.append(f"📴 {stats['devices_offline']} of {stats.get('devices_total', 0)} devices are offline.")
     if stats.get("ar_overdue"):
         bits.append(f"💸 ${stats['ar_overdue']:,.0f} in invoices are overdue — send reminders.")
+    if stats.get("top_prediction"):
+        bits.append(f"🔮 Predicted: {stats['top_prediction']}")
     if stats.get("worst_grade") and stats["worst_grade"] not in ("A", "A+", "A-"):
         bits.append(f"🛡️ {stats.get('worst_client')} has the weakest security grade "
                     f"({stats['worst_grade']}) — review their scorecard.")
