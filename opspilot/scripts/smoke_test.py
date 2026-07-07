@@ -1269,6 +1269,62 @@ def main():
         assert "Uninstall" in ps_src, "agent should read the uninstall registry keys"
         print("device 360 detail (health+alerts+counts+RBAC) + agent inventory/patch reporting OK")
 
+        # ===================== v1.7: Proactive Ops (auto-ticket + site health) =====================
+        from app.models import SupportTicket as _ST17, Alert as _AL17, AlertStatus as _AS17
+        # Config: off by default (opt-in), owner can flip; staff-only.
+        pc=c.get("/api/automation/proactive").json()
+        assert pc["auto_ticket_enabled"] is False and pc["min_severity"]=="critical", pc
+        assert c.put("/api/automation/proactive", json={"auto_ticket_enabled":True}).json()["auto_ticket_enabled"] is True
+        assert ca_c.get("/api/automation/proactive").status_code==403
+        # Baseline open-ticket count for this device's client, then trip a CRITICAL
+        # alert via a real agent check-in (disk 96 -> disk_high critical).
+        _tk0=len([t for t in c.get("/api/tickets").json() if t["status"] in ("open","in_progress")])
+        a.post("/api/agent/checkin", headers=hdr, json={"cpu_pct":10,"ram_pct":20,"disk_pct":96,
+               "av_status":"on","patch_status":"up to date","agent_version":"2.0.0-ps"})
+        # A ticket was auto-opened for the critical alert, linked to it.
+        from app.core.db import SessionLocal as _SL17
+        _sdb=_SL17()
+        try:
+            at=(_sdb.query(_ST17).filter(_ST17.source_alert_id.isnot(None))
+                .order_by(_ST17.id.desc()).first())
+            assert at is not None and at.priority=="urgent", "critical alert must auto-open an urgent ticket"
+            linked_alert=_sdb.get(_AL17, at.source_alert_id)
+            assert linked_alert and linked_alert.device_id==dev_id
+            _first_ticket_id=at.id
+        finally:
+            _sdb.close()
+        # Dedup: another check-in that keeps disk high (same active alert) must NOT
+        # open a second ticket.
+        a.post("/api/agent/checkin", headers=hdr, json={"cpu_pct":10,"ram_pct":20,"disk_pct":97,
+               "av_status":"on","patch_status":"up to date","agent_version":"2.0.0-ps"})
+        _sdb=_SL17()
+        try:
+            n_auto=_sdb.query(_ST17).filter(_ST17.source_alert_id.isnot(None)).count()
+        finally:
+            _sdb.close()
+        assert n_auto==1, f"auto-ticket must dedup per alert (got {n_auto})"
+        # Turn it off; disk recovers then re-trips -> still only the pre-existing one.
+        c.put("/api/automation/proactive", json={"auto_ticket_enabled":False})
+        a.post("/api/agent/checkin", headers=hdr, json={"cpu_pct":5,"ram_pct":10,"disk_pct":40,
+               "av_status":"on","patch_status":"up to date","agent_version":"2.0.0-ps"})  # resolves
+        a.post("/api/agent/checkin", headers=hdr, json={"cpu_pct":5,"ram_pct":10,"disk_pct":95,
+               "av_status":"on","patch_status":"up to date","agent_version":"2.0.0-ps"})  # new alert, but disabled
+        _sdb=_SL17()
+        try:
+            assert _sdb.query(_ST17).filter(_ST17.source_alert_id.isnot(None)).count()==1, "disabled must not open tickets"
+        finally:
+            _sdb.close()
+
+        # Site health rollup: staff see all clients, worst-first; client sees own only.
+        sh=c.get("/api/site-health").json()["sites"]
+        assert sh and any(x["client_id"]==cid for x in sh), sh
+        me_row=[x for x in sh if x["client_id"]==cid][0]
+        assert me_row["devices"]>=1 and "avg_health" in me_row and "alerts" in me_row
+        cah=ca_c.get("/api/site-health").json()["sites"]
+        assert all(x["client_id"]==cid for x in cah), "client user must only see their own site"
+        print("proactive ops: opt-in auto-ticket (critical->urgent, deduped, off=silent) + "
+              "site-health rollup (worst-first, tenant-scoped) OK")
+
         # ===================== v0.68: fleet inventory + patch compliance =====================
         # Re-seed SMOKE-PC with software + pending patches for the fleet rollups.
         a.post("/api/agent/inventory", headers=hdr, json={"software":[
@@ -2974,7 +3030,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.6.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.7.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

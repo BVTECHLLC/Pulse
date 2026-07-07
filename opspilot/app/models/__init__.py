@@ -189,6 +189,9 @@ class SupportTicket(Base):
     ai_summary: Mapped[str | None] = mapped_column(Text)
     ai_next_step: Mapped[str | None] = mapped_column(Text)
     ai_triaged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when this ticket was auto-opened from a monitoring alert (v1.7), so we
+    # never open a second ticket for the same alert.
+    source_alert_id: Mapped[int | None] = mapped_column(Integer, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 

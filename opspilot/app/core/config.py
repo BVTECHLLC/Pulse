@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # --- Identity ---
     APP_NAME: str = "BVTech OpsPilot"
-    APP_VERSION: str = "1.6.0"
+    APP_VERSION: str = "1.7.0"
     ENV: str = "development"  # development | production
 
     # --- Security ---

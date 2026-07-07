@@ -132,6 +132,12 @@
       <div class="card"><h3>Active Licenses</h3><div class="stat" id="s-lic">—</div></div>
       <div class="card"><h3>Renewals (60d)</h3><div class="stat" id="s-renew" style="color:var(--warn)">—</div></div>
     </div>
+    <div class="card" style="margin-top:16px" id="sitehealth-card">
+      <h3>🏢 Site Health <span class="muted" style="font-size:12px">— per client, worst first</span></h3>
+      <p class="muted" style="margin:4px 0 10px">One glance at how every account is doing. Click a client to jump to its worst device.</p>
+      <table><thead><tr><th>Client</th><th>Devices</th><th>Online</th><th>Avg health</th><th>Alerts</th><th>Patches</th><th>Worst device</th></tr></thead>
+      <tbody id="t-sitehealth"><tr><td colspan=7 class="muted">Loading…</td></tr></tbody></table>
+    </div>
     <div class="card hidden" id="signups-card" style="margin-top:16px">
       <h3>Access Requests</h3>
       <table><thead><tr><th>When</th><th>Name</th><th>Email</th><th>Company</th><th>Status</th><th></th></tr></thead>
@@ -597,6 +603,12 @@
         <label style="margin:0"><input type="checkbox" id="ap-ai-on" onchange="saveAITriage()"> AI ticket triage (Claude reads new tickets, suggests priority + first step)</label>
         <label style="margin:0"><input type="checkbox" id="ap-ai-apply" onchange="saveAITriage()"> Auto-apply higher priorities</label>
         <span class="muted" id="ap-ai-state"></span>
+      </div>
+      <div class="flex" style="margin-bottom:8px">
+        <label style="margin:0"><input type="checkbox" id="ap-autoticket" onchange="saveProactive()"> 🔔 Auto-open a ticket when a device alert fires</label>
+        <select id="ap-autoticket-sev" onchange="saveProactive()" style="background:#0c1430;border:1px solid var(--line);border-radius:8px;padding:6px;color:var(--ink)">
+          <option value="critical">critical only</option><option value="warning">warning+</option></select>
+        <span class="muted">so nothing slips through overnight — deduped per alert</span>
       </div>
       <table><thead><tr><th>When</th><th>Source</th><th>OK</th><th>ms</th><th>Did</th></tr></thead>
       <tbody id="t-autopilot"><tr><td colspan=5 class="muted">Loading…</td></tr></tbody></table>
@@ -1985,6 +1997,16 @@ async function loadAutopilot(){
     document.getElementById('ap-ai-apply').checked=!!ai.auto_apply;
     document.getElementById('ap-ai-state').textContent=ai.ai_connected?'· Claude connected':'· connect ANTHROPIC_API_KEY to activate';
   }
+  const pr=await api('/api/automation/proactive');
+  if(pr){
+    document.getElementById('ap-autoticket').checked=!!pr.auto_ticket_enabled;
+    document.getElementById('ap-autoticket-sev').value=pr.min_severity||'critical';
+  }
+}
+async function saveProactive(){
+  await put('/api/automation/proactive',{auto_ticket_enabled:document.getElementById('ap-autoticket').checked,
+    min_severity:document.getElementById('ap-autoticket-sev').value});
+  loadAutopilot();
 }
 async function autopilotTick(){
   const r=await post('/api/automation/autopilot/tick');
@@ -2742,7 +2764,22 @@ async function loadPractice(){
     ? `<b style="font-size:12px">Do next:</b> <span class="muted" style="font-size:12px">${recs.map(esc).join(' · ')}</span>`
     : '<span class="muted" style="font-size:12px">✓ Everything looks healthy — great work.</span>';
 }
+async function loadSiteHealth(){
+  const d=await api('/api/site-health'); if(!d)return;
+  const sites=d.sites||[];
+  document.getElementById('t-sitehealth').innerHTML=sites.map(r=>{
+    const hc=r.avg_health==null?'muted':(r.avg_health>=80?'ok':(r.avg_health>=60?'warn':'bad'));
+    const al=r.alerts||{};
+    const abadge=al.critical?`<span class="badge bad">${al.critical} crit</span>`:(al.total?`<span class="badge warn">${al.total}</span>`:'<span class="muted">0</span>');
+    const worst=r.worst?`<a onclick="tab('devices');setTimeout(()=>openDevice360(${r.worst.id}),300)" style="cursor:pointer">${esc(r.worst.hostname)} (${r.worst.health})</a>`:'—';
+    return `<tr><td><b>${esc(r.client)}</b></td><td>${r.devices}</td>
+     <td>${r.online}/${r.devices}</td>
+     <td><span class="badge ${hc}">${r.avg_health??'—'}</span></td>
+     <td>${abadge}</td><td>${r.patches_pending?`<span style="color:var(--warn)">${r.patches_pending}</span>`:'0'}</td>
+     <td>${worst}</td></tr>`;}).join('')||'<tr><td colspan=7 class="muted">No clients yet.</td></tr>';
+}
 async function loadOverview(){
+  loadSiteHealth();
   loadSetup();
   loadPractice();
   const o=await api('/api/overview');if(!o)return;
