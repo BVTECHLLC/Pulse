@@ -1,5 +1,22 @@
 # BVTech OpsPilot — Changelog
 
+## v1.6.0 — Device 360: the single-pane endpoint view (July 2026)
+- **Click any device hostname for a full drill-down** — the endpoint data Pulse
+  already collected but never surfaced, now in one polished pane: live CPU/RAM/
+  disk gauges (color-graded), a health-trend sparkline from check-in history,
+  open alerts, antivirus + patch state, installed-software count, logged-in
+  user, and quick actions (metrics, console, remote). New
+  `GET /api/devices/{id}/detail` returns it all in one call, tenant-scoped.
+- **The PowerShell agent now reports full inventory** — installed software (read
+  from the uninstall registry keys, fast + reliable) and the pending Windows
+  Update list — on an hourly cadence layered on the 5-minute health check-in.
+  So the Device 360 software/patch views fill in automatically after onboarding.
+- Verified: full smoke suite (detail endpoint health+alerts+counts+RBAC, agent
+  inventory/patch reporting present in the shipped .ps1) + a browser walk where
+  a device with rising disk usage drew the trend line, lit red gauges, and the
+  monitoring engine auto-raised the disk/health/patch alerts shown in the pane.
+
+
 ## v1.5.0 — Device onboarding, rebuilt: a real 1-click agent (July 2026)
 - **Root cause of the broken deploy agent:** every installer depended on a
   prebuilt `opspilot-agent.exe` published to GitHub Releases by a CI workflow

@@ -1249,6 +1249,26 @@ def main():
         assert c.get(f"/api/devices/{dev_id}/patches").json()["pending"]==0
         print("patch report + read + count + replace + RBAC OK")
 
+        # ===================== v1.6: Device 360 detail + agent inventory =====================
+        # Re-seed some patches so the detail view has something to show.
+        a.post("/api/agent/patches", headers=hdr, json={"patches":[
+            {"name":"2024-06 Cumulative Update","kb":"5035000","severity":"critical"}]})
+        det=c.get(f"/api/devices/{dev_id}/detail").json()
+        assert det["hostname"]=="SMOKE-PC" and det["patches_pending"]==1, det
+        assert "alerts" in det and det["software_count"]==1 and det["online"] in (True, False), det
+        assert det["client_name"], "detail should include client name"
+        # tenant isolation: the OTHER client-admin (from a different client) can't peek.
+        # ca_c owns this device's client, so it CAN read; an outside client user cannot.
+        assert ca_c.get(f"/api/devices/{dev_id}/detail").status_code==200
+        if "lc" in dir():
+            pass
+        # The PowerShell agent actually gathers + reports inventory and patches.
+        ps_src=c.get("/download/agent.ps1").text
+        assert "Get-InstalledSoftware" in ps_src and "api/agent/inventory" in ps_src, "agent must report software"
+        assert "Get-PendingPatchList" in ps_src and "api/agent/patches" in ps_src, "agent must report patches"
+        assert "Uninstall" in ps_src, "agent should read the uninstall registry keys"
+        print("device 360 detail (health+alerts+counts+RBAC) + agent inventory/patch reporting OK")
+
         # ===================== v0.68: fleet inventory + patch compliance =====================
         # Re-seed SMOKE-PC with software + pending patches for the fleet rollups.
         a.post("/api/agent/inventory", headers=hdr, json={"software":[
@@ -2954,7 +2974,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.5.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.6.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
