@@ -146,6 +146,18 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         pass
 
+    # 13.4) Patch auto-approval (v1.9) — hands-off: approve pending patches per
+    #       policy (severity + optional maintenance-window gate); the agent then
+    #       installs them on its next check-in. Off by default.
+    from . import patching
+    patches_auto = []
+    try:
+        patches_auto = patching.auto_approve_sweep(db, now)
+        if patches_auto:
+            db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
     # 13.5) Website auto-blogger (v1.4) — Claude writes + publishes a bvtech.org
     #        article on its cadence; off by default, guarded, never silent.
     from . import blog_autopilot
@@ -170,4 +182,4 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
             "posts_published": len([p for p in posts if p.get("ok")]),
             "weekly_digest": digest, "ai_triaged": len(triaged),
             "streak_reminders": len(streaks_saved), "academy_ai": academy_ai,
-            "blog": blog}
+            "blog": blog, "patches_auto_approved": len(patches_auto)}

@@ -1,5 +1,23 @@
 # BVTech OpsPilot — Changelog
 
+## v1.9.0 — Hands-off patching: set a policy, walk away (July 2026)
+- **Auto-approve patch policy.** Turn on one toggle (Automation → Autopilot) and
+  Pulse auto-approves pending Windows Updates at/above your chosen severity
+  (critical / important+ / all), per device, on the heartbeat — the agent then
+  installs them. Fully hands-off patching.
+- **Maintenance-window gated by default.** "Only during a maintenance window"
+  (on by default) means installs + reboots happen when you scheduled them, not
+  mid-workday — reusing the existing maintenance-window system. Uncheck it to
+  patch criticals the moment they're detected.
+- **Safe by construction:** off by default; only critical-and-above unless you
+  widen it; KB-pinned to exactly the matching updates; **deduped** (never stacks
+  a second job while one is still approved/running); flows through the same
+  governed approve→install→report pipeline (audit-logged) as manual approval.
+- Verified: full smoke suite — opt-in + RBAC, critical-only pins just the
+  critical KB (low excluded), dedup blocks a second sweep, and the
+  maintenance-window gate holds (no window = wait; live window = approve).
+
+
 ## v1.8.0 — Patch management: approve, and the agent installs (July 2026)
 - **One-click patch remediation.** From a device's Device 360 you can now
   **Approve & install** its pending Windows Updates (all, or a pinned KB

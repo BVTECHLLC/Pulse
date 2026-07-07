@@ -610,6 +610,12 @@
           <option value="critical">critical only</option><option value="warning">warning+</option></select>
         <span class="muted">so nothing slips through overnight — deduped per alert</span>
       </div>
+      <div class="flex" style="margin-bottom:8px">
+        <label style="margin:0"><input type="checkbox" id="ap-autopatch" onchange="savePatchPolicy()"> 🔄 Auto-approve &amp; install patches</label>
+        <select id="ap-autopatch-sev" onchange="savePatchPolicy()" style="background:#0c1430;border:1px solid var(--line);border-radius:8px;padding:6px;color:var(--ink)">
+          <option value="critical">critical only</option><option value="important">important+</option><option value="all">all</option></select>
+        <label style="margin:0"><input type="checkbox" id="ap-autopatch-maint" onchange="savePatchPolicy()"> only during a maintenance window</label>
+      </div>
       <table><thead><tr><th>When</th><th>Source</th><th>OK</th><th>ms</th><th>Did</th></tr></thead>
       <tbody id="t-autopilot"><tr><td colspan=5 class="muted">Loading…</td></tr></tbody></table>
     </div>
@@ -2002,6 +2008,18 @@ async function loadAutopilot(){
     document.getElementById('ap-autoticket').checked=!!pr.auto_ticket_enabled;
     document.getElementById('ap-autoticket-sev').value=pr.min_severity||'critical';
   }
+  const pp=await api('/api/patching/policy');
+  if(pp){
+    document.getElementById('ap-autopatch').checked=!!pp.auto_approve;
+    document.getElementById('ap-autopatch-sev').value=pp.min_severity||'critical';
+    document.getElementById('ap-autopatch-maint').checked=!!pp.only_in_maintenance;
+  }
+}
+async function savePatchPolicy(){
+  await put('/api/patching/policy',{auto_approve:document.getElementById('ap-autopatch').checked,
+    min_severity:document.getElementById('ap-autopatch-sev').value,
+    only_in_maintenance:document.getElementById('ap-autopatch-maint').checked});
+  loadAutopilot();
 }
 async function saveProactive(){
   await put('/api/automation/proactive',{auto_ticket_enabled:document.getElementById('ap-autoticket').checked,
