@@ -82,6 +82,16 @@ def _tool_defs(staff: bool) -> list[dict]:
             {"name": "financials",
              "description": "Money view: total MRR/ARR and accounts-receivable (outstanding + overdue).",
              "input_schema": {"type": "object", "properties": {}}},
+            {"name": "sla_radar",
+             "description": "PREDICTED SLA breaches: open tickets that are breached or about to breach within N hours, ranked most-urgent first. Use for 'which tickets are about to breach?' / 'what needs attention right now?'.",
+             "input_schema": {"type": "object", "properties": {
+                 "horizon_hours": {"type": "integer", "description": "look-ahead window (default 8)"}}}},
+            {"name": "contract_margin",
+             "description": "Per-contract economics: contracted MRR vs the cost of service actually delivered, margin %, effective realized hourly rate, and renewal window. Flags money-losing (underwater) contracts and upcoming renewals. Use for 'which contracts are underwater?' / 'what's up for renewal?' / renewal pricing.",
+             "input_schema": {"type": "object", "properties": {}}},
+            {"name": "revenue_leakage",
+             "description": "Money earned but not billed: unbilled billable time, contracts overdue to be invoiced, and resolved tickets with no time captured. Use for 'what am I not billing?' / 'find revenue leakage'.",
+             "input_schema": {"type": "object", "properties": {}}},
             {"name": "draft_client_email",
              "description": "Write a professional client email draft (returns text; does NOT send). Good for 'draft an email to X about Y'.",
              "input_schema": {"type": "object", "properties": {
@@ -224,6 +234,24 @@ def _run_tool(db: Session, user: User, name: str, args: dict, allow_actions: boo
                 "open_alerts": [{"kind": a.kind, "severity": a.severity.value,
                                  "message": a.message} for a in alerts],
                 "recent_health": [c.health_score for c in reversed(recent)]}
+
+    if name in ("sla_radar", "contract_margin", "revenue_leakage"):
+        if not staff:
+            return {"error": "Staff only."}
+        from . import psa_intel
+        cids = [client_scope] if client_scope is not None else None
+        if name == "sla_radar":
+            hz = int(args.get("horizon_hours") or 8)
+            r = psa_intel.sla_radar(db, horizon_hours=max(1, min(72, hz)), client_ids=cids)
+            return {"counts": r["counts"], "at_risk": r["at_risk"][:20]}
+        if name == "contract_margin":
+            r = psa_intel.contract_intel(db, client_ids=cids)
+            return {"totals": r["totals"],
+                    "contracts": [c for c in r["contracts"] if c["flags"]][:20] or r["contracts"][:20]}
+        r = psa_intel.revenue_leakage(db, client_ids=cids)
+        return {"total_recoverable": r["total_recoverable"],
+                "unbilled_time": r["unbilled_time"], "due_contracts": r["due_contracts"],
+                "untracked_tickets": {"count": r["untracked_tickets"]["count"]}}
 
     if name == "security_posture":
         from . import posture

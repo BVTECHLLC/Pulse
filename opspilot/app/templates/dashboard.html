@@ -138,6 +138,23 @@
       <table><thead><tr><th>Client</th><th>Devices</th><th>Online</th><th>Avg health</th><th>Alerts</th><th>Patches</th><th>Worst device</th></tr></thead>
       <tbody id="t-sitehealth"><tr><td colspan=7 class="muted">Loading…</td></tr></tbody></table>
     </div>
+    <div class="card" style="margin-top:16px" id="psa-card">
+      <h3>🧠 PSA Intelligence <span class="muted" style="font-size:12px">— SLA foresight · contract margin · revenue leakage</span></h3>
+      <p class="muted" style="margin:4px 0 12px">The AI brain on your book of business: what's about to breach, which contracts lose money, and what you've earned but haven't billed.</p>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+        <div class="card" style="background:#0c1430"><h3 style="font-size:13px">⏳ SLA at risk</h3>
+          <div class="stat" id="psa-sla" style="font-size:26px">—</div>
+          <div class="stat sub" id="psa-sla-sub">next 8h</div></div>
+        <div class="card" style="background:#0c1430"><h3 style="font-size:13px">📉 Underwater contracts</h3>
+          <div class="stat" id="psa-uw" style="font-size:26px">—</div>
+          <div class="stat sub" id="psa-uw-sub">blended margin —</div></div>
+        <div class="card" style="background:#0c1430"><h3 style="font-size:13px">🧾 Recoverable revenue</h3>
+          <div class="stat" id="psa-leak" style="font-size:26px;color:var(--good,#2ecc71)">—</div>
+          <div class="stat sub" id="psa-leak-sub">unbilled + due</div></div>
+      </div>
+      <table style="margin-top:12px"><thead><tr><th>Contract</th><th>Client</th><th>MRR</th><th>Margin</th><th>Realized $/h</th><th>Renews</th><th>Flags</th></tr></thead>
+      <tbody id="t-psa"><tr><td colspan=7 class="muted">Loading…</td></tr></tbody></table>
+    </div>
     <div class="card hidden" id="signups-card" style="margin-top:16px">
       <h3>Access Requests</h3>
       <table><thead><tr><th>When</th><th>Name</th><th>Email</th><th>Company</th><th>Status</th><th></th></tr></thead>
@@ -2920,8 +2937,37 @@ async function loadSiteHealth(){
      <td>${abadge}</td><td>${r.patches_pending?`<span style="color:var(--warn)">${r.patches_pending}</span>`:'0'}</td>
      <td>${worst}</td></tr>`;}).join('')||'<tr><td colspan=7 class="muted">No clients yet.</td></tr>';
 }
+async function loadPSA(){
+  const card=document.getElementById('psa-card'); if(!card)return;
+  const [ci,lk,radar]=await Promise.all([
+    api('/api/psa/contract-intel'), api('/api/psa/revenue-leakage'), api('/api/psa/sla-radar')]);
+  if(!ci&&!lk&&!radar){ card.classList.add('hidden'); return; }  // non-staff / not available
+  card.classList.remove('hidden');
+  if(radar){ const cc=radar.counts||{};
+    const risk=(cc.breached||0)+(cc.critical||0)+(cc.warning||0);
+    document.getElementById('psa-sla').textContent=risk;
+    document.getElementById('psa-sla').style.color=risk?'var(--warn)':'var(--good,#2ecc71)';
+    document.getElementById('psa-sla-sub').textContent=`${cc.breached||0} breached · ${cc.critical||0} critical`; }
+  if(ci){ const t=ci.totals||{};
+    document.getElementById('psa-uw').textContent=t.underwater||0;
+    document.getElementById('psa-uw').style.color=(t.underwater? 'var(--bad,#e74c3c)':'var(--good,#2ecc71)');
+    document.getElementById('psa-uw-sub').textContent=`blended margin ${t.blended_margin_pct!=null?Math.round(t.blended_margin_pct*100)+'%':'—'} · ${t.renewals_soon||0} renew soon`;
+    const rows=(ci.contracts||[]).slice(0,12).map(c=>{
+      const mc=c.margin<0?'bad':(c.margin_pct!=null&&c.margin_pct<0.25?'warn':'ok');
+      const fl=(c.flags||[]).map(f=>`<span class="badge ${f==='underwater'?'bad':(f==='renewal_soon'?'warn':'')}">${esc(f.replace(/_/g,' '))}</span>`).join(' ')||'<span class="muted">—</span>';
+      return `<tr><td><b>${esc(c.name||'—')}</b></td><td>${esc(c.client||'—')}</td>
+       <td>$${(c.mrr||0).toLocaleString()}</td>
+       <td><span class="badge ${mc}">$${(c.margin||0).toLocaleString()}${c.margin_pct!=null?' ('+Math.round(c.margin_pct*100)+'%)':''}</span></td>
+       <td>${c.realized_rate!=null?'$'+c.realized_rate:'—'}</td>
+       <td>${c.days_to_renewal!=null?c.days_to_renewal+'d':'—'}</td><td>${fl}</td></tr>`;}).join('');
+    document.getElementById('t-psa').innerHTML=rows||'<tr><td colspan=7 class="muted">No active contracts yet.</td></tr>'; }
+  if(lk){ document.getElementById('psa-leak').textContent='$'+Math.round(lk.total_recoverable||0).toLocaleString();
+    const ut=lk.unbilled_time||{}, dc=lk.due_contracts||{};
+    document.getElementById('psa-leak-sub').textContent=`${ut.hours||0}h unbilled · ${dc.count||0} due to bill`; }
+}
 async function loadOverview(){
   loadSiteHealth();
+  loadPSA();
   loadSetup();
   loadPractice();
   const o=await api('/api/overview');if(!o)return;

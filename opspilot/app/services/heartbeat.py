@@ -156,6 +156,15 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         db.rollback()
 
+    # 13.28) PSA SLA foresight (v1.15) — warn on tickets about to breach SLA
+    #        (critical window) BEFORE the breach, deduped per ticket per day.
+    from . import psa_intel
+    sla_watch = []
+    try:
+        sla_watch = psa_intel.sla_watch(db, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
     # 13.3) Proactive Copilot briefing (v1.12) — once per morning, drop an
     #       action-oriented "here's what needs doing" note into notifications.
     from . import copilot_briefing
@@ -203,4 +212,4 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
             "streak_reminders": len(streaks_saved), "academy_ai": academy_ai,
             "blog": blog, "patches_auto_approved": len(patches_auto),
             "briefing_posted": briefing.get("posted", False),
-            "predicted_risks": len(predicted)}
+            "predicted_risks": len(predicted), "sla_watch": len(sla_watch)}

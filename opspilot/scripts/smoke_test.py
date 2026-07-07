@@ -1676,6 +1676,81 @@ def main():
         print("multi-agent fleet sweep: parallel per-client sub-agents + portfolio synthesis "
               "+ client_scope tenant isolation (read + real write) + staff-only RBAC OK")
 
+        # ===================== v1.15: PSA Intelligence =====================
+        from app.services import psa_intel as _psa15, copilot as _cop15
+        from app.core.db import SessionLocal as _SL15
+        from app.models import (Contract as _Ct15, TimeEntry as _TE15, SupportTicket as _ST15,
+                                TicketStatus as _TS15, User as _U15, Role as _R15,
+                                Notification as _N15)
+        import datetime as _dt15
+        # Rates: default, then OWNER updates them; a client user is refused.
+        assert c.get("/api/psa/rates").json()["bill_rate"] == 150.0
+        assert c.put("/api/psa/rates", json={"bill_rate": 175, "cost_rate": 60}).json()["cost_rate"] == 60.0
+        assert ca_c.get("/api/psa/rates").status_code == 403
+        _p15 = _SL15()
+        try:
+            now15 = _dt15.datetime.now(_dt15.timezone.utc)
+            owner15 = _p15.query(_U15).filter(_U15.role == _R15.OWNER).first()
+            pc15 = c.post("/api/clients", json={"name": "PSA Margin Co"}).json()["id"]
+            # $1000/mo contract renewing in 20 days.
+            ct15 = _Ct15(client_id=pc15, name="Managed IT", amount=1000, billing_period="monthly",
+                         status="active", start_date=now15 - _dt15.timedelta(days=120),
+                         end_date=now15 + _dt15.timedelta(days=20))
+            _p15.add(ct15); _p15.commit()
+            # 40h billable, unbilled, logged in last 90d -> ~13.3h/mo * $60 = ~$800 cost.
+            for i in range(8):
+                _p15.add(_TE15(client_id=pc15, user_id=owner15.id, user_email=owner15.email,
+                               minutes=300, billable=True, invoiced=False,
+                               created_at=now15 - _dt15.timedelta(days=i * 5)))
+            _p15.commit()
+            ci15 = _psa15.contract_intel(_p15, now15)
+            row15 = next(r for r in ci15["contracts"] if r["contract_id"] == ct15.id)
+            assert abs(row15["mrr"] - 1000.0) < 1 and abs(row15["monthly_cost"] - 800.0) < 5, row15
+            assert abs(row15["margin"] - 200.0) < 5 and "renewal_soon" in row15["flags"], row15
+            assert row15["realized_rate"] and row15["days_to_renewal"] == 20, row15
+            assert ci15["totals"]["renewals_soon"] >= 1
+            # Revenue leakage: 40h * $175 = $7000 unbilled + the never-invoiced contract due.
+            lk15 = _psa15.revenue_leakage(_p15, now15)
+            assert abs(lk15["unbilled_time"]["value"] - 7000.0) < 1, lk15["unbilled_time"]
+            assert lk15["due_contracts"]["count"] >= 1 and lk15["total_recoverable"] >= 7000.0, lk15
+            # SLA radar: a ticket due in 45 min is 'critical' (about to breach, not yet).
+            tk15 = _ST15(client_id=pc15, subject="About to breach SLA", priority="high",
+                         status=_TS15.OPEN, created_at=now15,
+                         resolution_due_at=now15 + _dt15.timedelta(minutes=45),
+                         first_response_due_at=now15 + _dt15.timedelta(minutes=300),
+                         first_responded_at=now15)
+            _p15.add(tk15); _p15.commit()
+            radar15 = _psa15.sla_radar(_p15, now15)
+            top15 = next(r for r in radar15["at_risk"] if r["ticket_id"] == tk15.id)
+            assert top15["level"] == "critical" and not top15["breached"], top15
+            # sla_watch raises exactly one pre-breach notification, deduped same day.
+            w1 = _psa15.sla_watch(_p15, now15)
+            assert any(r["ticket_id"] == tk15.id for r in w1), w1
+            w2 = _psa15.sla_watch(_p15, now15)
+            assert not any(r["ticket_id"] == tk15.id for r in w2), "sla_watch must dedup per ticket/day"
+            assert _p15.query(_N15).filter(_N15.kind == "sla_watch").count() >= 1
+            # Copilot tools surface all three (staff).
+            r_sla = _cop15._run_tool(_p15, owner15, "sla_radar", {}, False)
+            assert "at_risk" in r_sla and r_sla["counts"]["critical"] >= 1, r_sla
+            r_cm = _cop15._run_tool(_p15, owner15, "contract_margin", {}, False)
+            assert r_cm["totals"]["renewals_soon"] >= 1, r_cm
+            r_rl = _cop15._run_tool(_p15, owner15, "revenue_leakage", {}, False)
+            assert r_rl["total_recoverable"] >= 7000.0, r_rl
+            # Clean up seed so it doesn't pollute later global rollups (unbilled time, MRR).
+            _p15.query(_TE15).filter(_TE15.client_id == pc15).delete(synchronize_session=False)
+            _p15.query(_ST15).filter(_ST15.client_id == pc15).delete(synchronize_session=False)
+            _p15.query(_Ct15).filter(_Ct15.client_id == pc15).delete(synchronize_session=False)
+            _p15.commit()
+        finally:
+            _p15.close()
+        # RBAC: these copilot tools are staff-only; the client toolset excludes them.
+        _cnames15 = {d["name"] for d in _cop15._tool_defs(staff=False)}
+        assert not ({"sla_radar", "contract_margin", "revenue_leakage"} & _cnames15)
+        assert {"sla_radar", "contract_margin", "revenue_leakage"} <= {d["name"] for d in _cop15._tool_defs(staff=True)}
+        assert ca_c.get("/api/psa/contract-intel").status_code == 403
+        print("PSA Intelligence: contract margin/realization/renewal + revenue leakage "
+              "+ predictive SLA radar + pre-breach sla_watch (deduped) + 3 staff copilot tools + RBAC OK")
+
         # ===================== v0.68: fleet inventory + patch compliance =====================
         # Re-seed SMOKE-PC with software + pending patches for the fleet rollups.
         a.post("/api/agent/inventory", headers=hdr, json={"software":[
@@ -3381,7 +3456,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.14.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.15.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
