@@ -249,6 +249,9 @@ function Do-Checkin {
       Save-Config $cfg
     }
   } catch { Write-Log "Full inventory skipped: $_" }
+
+  # Run any staff-approved jobs for this device (e.g. patch installs).
+  try { Poll-Jobs $cfg $headers } catch { Write-Log "Job poll skipped: $_" }
   return $r
 }
 
@@ -262,6 +265,75 @@ function Report-Patches($cfg, $headers) {
   $patches = Get-PendingPatchList
   Invoke-Api "POST" "$($cfg.url)/api/agent/patches" $headers @{ patches = @($patches) } | Out-Null
   Write-Log "Reported $($patches.Count) pending patches."
+}
+
+function Install-ApprovedPatches($kbsSpec) {
+  # Install Windows Updates via the native Update API. $kbsSpec is either the
+  # string "all" or an array of KB ids (e.g. "KB5035000"). Returns a result
+  # hashtable { exit_code, output }. NEVER installs anything not approved.
+  try {
+    $session = New-Object -ComObject Microsoft.Update.Session
+    $searcher = $session.CreateUpdateSearcher()
+    $result = $searcher.Search("IsInstalled=0 and IsHidden=0")
+    $toInstall = New-Object -ComObject Microsoft.Update.UpdateColl
+    $wantAll = ($kbsSpec -is [string] -and $kbsSpec -eq "all")
+    $wantSet = @{}
+    if (-not $wantAll) { foreach ($k in @($kbsSpec)) { $wantSet["$k".ToUpper()] = $true } }
+    $names = New-Object System.Collections.ArrayList
+    foreach ($u in $result.Updates) {
+      $match = $wantAll
+      if (-not $match) {
+        try { foreach ($id in $u.KBArticleIDs) { if ($wantSet.ContainsKey("KB$id")) { $match = $true } } } catch {}
+      }
+      if ($match) {
+        if ($u.EulaAccepted -eq $false) { try { $u.AcceptEula() } catch {} }
+        [void]$toInstall.Add($u)
+        [void]$names.Add("$($u.Title)")
+      }
+    }
+    if ($toInstall.Count -eq 0) {
+      return @{ exit_code = 0; output = "No matching approved updates were pending." }
+    }
+    $downloader = $session.CreateUpdateDownloader(); $downloader.Updates = $toInstall
+    $dl = $downloader.Download()
+    $installer = $session.CreateUpdateInstaller(); $installer.Updates = $toInstall
+    $ir = $installer.Install()
+    # ResultCode: 2 = Succeeded, 3 = Succeeded with errors, others = trouble.
+    $ok = ($ir.ResultCode -eq 2 -or $ir.ResultCode -eq 3)
+    $reboot = if ($ir.RebootRequired) { " REBOOT REQUIRED." } else { "" }
+    $out = "Installed $($toInstall.Count) update(s): " + ($names -join "; ") + ".$reboot (resultCode=$($ir.ResultCode))"
+    $code = if ($ok) { 0 } else { 1 }
+    return @{ exit_code = $code; output = $out }
+  } catch {
+    return @{ exit_code = 1; output = "Patch install failed: $_" }
+  }
+}
+
+function Poll-Jobs($cfg, $headers) {
+  # Pull approved jobs for this device and run the ones we understand. Today we
+  # only handle winupdate jobs (governed patch installs) - other job languages
+  # are left for the console/remote flow and reported as unsupported.
+  try {
+    $resp = Invoke-Api "GET" "$($cfg.url)/api/agent/jobs" $headers $null
+  } catch { return }
+  foreach ($j in @($resp.jobs)) {
+    $res = $null
+    if ($j.language -eq "winupdate") {
+      $kbs = "all"
+      try { $parsed = ($j.content | ConvertFrom-Json); if ($parsed.kbs) { $kbs = $parsed.kbs } } catch {}
+      Write-Log "Running winupdate job $($j.id) (kbs=$kbs)"
+      $res = Install-ApprovedPatches $kbs
+      # Refresh the reported pending set after installing.
+      try { Report-Patches $cfg $headers } catch {}
+    } else {
+      $res = @{ exit_code = 1; output = "Unsupported job language '$($j.language)' for this agent." }
+    }
+    try {
+      Invoke-Api "POST" "$($cfg.url)/api/agent/jobs/$($j.id)/result" $headers `
+        @{ exit_code = [int]$res.exit_code; output = "$($res.output)" } | Out-Null
+      Write-Log "Reported job $($j.id) result (exit=$($res.exit_code))"
+    } catch { Write-Log "Failed to report job $($j.id): $_" }
+  }
 }
 
 function Register-Task {

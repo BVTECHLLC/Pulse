@@ -1,5 +1,26 @@
 # BVTech OpsPilot — Changelog
 
+## v1.8.0 — Patch management: approve, and the agent installs (July 2026)
+- **One-click patch remediation.** From a device's Device 360 you can now
+  **Approve & install** its pending Windows Updates (all, or a pinned KB
+  subset). Pulse creates a governed job; the agent installs it on its next
+  check-in and reports the result (with "reboot required" surfaced) — the loop
+  closes without anyone RDP-ing into the box.
+- **Built on the existing governed pipeline, not a new backdoor.** A patch
+  install is a `winupdate` deployment: approved by OWNER/TECH only, device-
+  scoped, content-pinned to the exact KBs, audit-logged, pulled only by that
+  device's authenticated agent, result reported back. The agent's handler ONLY
+  calls the Windows Update API for the approved KBs — still no arbitrary remote
+  shell.
+- The PowerShell agent gained `Install-ApprovedPatches` (native Windows Update
+  download+install) and `Poll-Jobs` (pull → run → report), run every check-in;
+  after installing it re-reports the pending set so the count drops in the UI.
+- Verified: full smoke suite — approve all + a specific-KB subset (prefix-
+  normalized), agent pull moves the job to RUNNING, success report flips it to
+  succeeded with output, re-pull is empty (claimed once), client users get 403,
+  and the shipped agent actually contains the install+report logic.
+
+
 ## v1.7.0 — Proactive Ops: alerts become action + site-health at a glance (July 2026)
 - **🔔 Auto-ticket from critical alerts.** Flip one toggle (Automation →
   Autopilot) and Pulse opens a support ticket automatically whenever a device
