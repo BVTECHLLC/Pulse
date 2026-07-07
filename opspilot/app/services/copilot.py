@@ -70,6 +70,9 @@ def _tool_defs(staff: bool) -> list[dict]:
          "description": "The full QBR-style summary for one client: devices, patch %, security grade, tickets/SLA, service hours, MRR. Use for 'how is X doing overall' / renewal prep.",
          "input_schema": {"type": "object", "properties": {
              "client_id": {"type": "integer"}}, "required": ["client_id"]}},
+        {"name": "predicted_issues",
+         "description": "PREDICTED problems from trend + anomaly analysis of device telemetry (disk full soon, health declining, resource spikes) — before they become hard alerts.",
+         "input_schema": {"type": "object", "properties": {}}},
     ]
     if staff:
         tools += [
@@ -163,6 +166,15 @@ def _run_tool(db: Session, user: User, name: str, args: dict, allow_actions: boo
                        else d.last_checkin) < cutoff)
         patch = sum(1 for d in devs if (d.patches_pending or 0) > 0)
         return {"devices": len(devs), "offline": offline, "devices_with_pending_patches": patch}
+
+    if name == "predicted_issues":
+        from . import foresight
+        cids = None if staff else [user.client_id]
+        risks = foresight.fleet_risks(db, cids)
+        risks.sort(key=lambda r: {"critical":3,"high":2,"medium":1}.get(r.get("severity"),0), reverse=True)
+        return {"predicted": [{"hostname": r["hostname"], "severity": r["severity"],
+                               "kind": r["kind"], "detail": r["detail"]} for r in risks[:15]],
+                "count": len(risks)}
 
     if name == "device_history":
         from datetime import datetime, timezone

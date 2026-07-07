@@ -1,5 +1,23 @@
 # BVTech OpsPilot — Changelog
 
+## v1.13.0 — Foresight goes proactive: warned before it breaks (July 2026)
+- **Predicts problems, then tells you — unprompted.** Pulse already forecast
+  device trouble (days-until-disk-full via linear trend, health decline, and
+  z-score resource spikes vs each device's own baseline). Now the Autopilot
+  heartbeat WATCHES those forecasts and raises a notification for each new
+  high/critical prediction — deduped per device+kind per day — so you hear
+  "SERVER-01 will fill its disk in ~3 days" days before the disk-full alarm
+  ever fires.
+- **In the morning briefing + the Copilot.** The daily briefing now leads with
+  the top prediction, and the Copilot gained a `predicted_issues` tool — ask
+  "what's about to break?" and it lists the at-risk devices with the math.
+- Pure statistics (least-squares trend + z-score anomalies), no external ML
+  deps, tenant-scoped.
+- Verified: full smoke suite seeds a rising-disk trend, confirms the forecast
+  flags disk_fill, the watcher raises exactly one proactive notification
+  (deduped on repeat), and the Copilot tool surfaces the prediction.
+
+
 ## v1.12.0 — Copilot grows up: more powers + a proactive morning briefing (July 2026)
 - **☀️ Proactive briefing.** Pulse now tells you what needs doing before you
   ask. Every morning the Autopilot heartbeat assembles the day's priorities —

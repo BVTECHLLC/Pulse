@@ -1579,6 +1579,49 @@ def main():
         print("copilot v1.12: expanded tools (report/history/posture/financials/email/maint-window) "
               "+ proactive daily briefing (on-demand + heartbeat, dedup, notification, RBAC) OK")
 
+        # ===================== v1.13: predictive foresight watch =====================
+        from app.services import foresight as _fs13
+        from app.core.db import SessionLocal as _SL13
+        from app.models import Device as _Dev13, DeviceCheckin as _DC13, Notification as _N13
+        import datetime as _dt13b
+        # Enroll a device and seed a rising-disk trend that projects to full soon.
+        en13=c.post("/api/agent/enroll", json={"enroll_token":c.post(f"/api/agent/enroll-token/{cid}").json()["enroll_token"],
+                    "hostname":"PREDICT-PC","os":"Windows 11"}).json()
+        pdev13=en13["device_id"]
+        _fdb=_SL13()
+        try:
+            base=_dt13b.datetime.now(_dt13b.timezone.utc)
+            for i in range(6):
+                _fdb.add(_DC13(device_id=pdev13,
+                               ts=base-_dt13b.timedelta(days=2)+_dt13b.timedelta(hours=i*8),
+                               cpu_pct=15.0, ram_pct=40.0, disk_pct=70.0+i*2.5, health_score=90))
+            _fdb.commit()
+            # forecast sees the trend and flags disk_fill.
+            fc=_fs13.forecast_device(_fdb, _fdb.get(_Dev13, pdev13))
+            assert fc["enough_data"] and any(r["kind"]=="disk_fill" for r in fc["risks"]), fc["risks"]
+            # watch() raises a proactive foresight notification (deduped per day).
+            newly=_fs13.watch(_fdb, base)
+            assert any(r["device_id"]==pdev13 for r in newly), newly
+            n2=_fs13.watch(_fdb, base)   # same day -> deduped, no repeat for this device
+            assert not any(r["device_id"]==pdev13 for r in n2), "foresight must dedup per device+kind/day"
+        finally:
+            _fdb.close()
+        # The prediction landed as a notification.
+        assert any(n.get("kind")=="foresight" and "PREDICT-PC" in (n.get("message") or "")
+                   for n in c.get("/api/notifications?limit=80").json())
+        # Copilot predicted_issues tool surfaces it.
+        # Drive the predicted_issues tool directly with a real staff user object.
+        _fdb2=_SL13()
+        try:
+            from app.models import User as _U13, Role as _R13
+            owner=_fdb2.query(_U13).filter(_U13.role==_R13.OWNER).first()
+            res=_cop12._run_tool(_fdb2, owner, "predicted_issues", {}, False)
+            assert res["count"]>=1 and any(x["hostname"]=="PREDICT-PC" for x in res["predicted"]), res
+        finally:
+            _fdb2.close()
+        print("foresight watch: trend+anomaly forecast -> proactive predicted notification "
+              "(deduped) + copilot predicted_issues tool OK")
+
         # ===================== v0.68: fleet inventory + patch compliance =====================
         # Re-seed SMOKE-PC with software + pending patches for the fleet rollups.
         a.post("/api/agent/inventory", headers=hdr, json={"software":[
@@ -3284,7 +3327,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.12.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.13.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
