@@ -1,5 +1,40 @@
 # BVTech OpsPilot — Changelog
 
+## v1.15.0 — PSA Intelligence: the AI brain on your book of business (July 2026)
+Pulse is a full PSA (contracts, ticketing, SLA, time, billing, A/R). v1.15 makes
+it *think* — three deep, unique skills the incumbents don't ship:
+- **Predictive SLA foresight.** Instead of only alerting *after* a breach, Pulse
+  now ranks every open ticket by how close it is to its response/resolution SLA
+  and flags the ones about to breach in the next few hours. The Autopilot
+  heartbeat raises a **pre-breach warning** for tickets entering the critical
+  (<60 min) window — deduped per ticket per day — so you save the SLA before the
+  clock runs out. `GET /api/psa/sla-radar`.
+- **Contract margin & renewal intelligence.** Per active contract, Pulse compares
+  contracted MRR against the **fully-loaded cost of service actually delivered**
+  (time logged × your cost rate), and surfaces margin %, effective realized $/hr,
+  and the renewal window. It flags **underwater** (money-losing) contracts,
+  low-margin deals, and renewals coming due — with the numbers to reprice.
+  `GET /api/psa/contract-intel`. Bill/cost rates are vault-stored and OWNER-tunable
+  (`GET/PUT /api/psa/rates`).
+- **Revenue-leakage detector.** Finds money you earned but haven't billed:
+  unbilled billable time (dollarized at your bill rate), contracts overdue to be
+  invoiced, and resolved tickets with zero time captured. One number: total
+  recoverable. `GET /api/psa/revenue-leakage`.
+- **In the Copilot + fleet sweep + briefing.** Three new staff Copilot tools —
+  `sla_radar`, `contract_margin`, `revenue_leakage` — so you can ask "which
+  tickets are about to breach?", "which contracts are underwater?", "what am I
+  not billing?" and (via a fleet sweep) run it per-client. The morning briefing
+  now leads with recoverable revenue, underwater contracts, and renewals due.
+- **New dashboard card** — "🧠 PSA Intelligence": SLA-at-risk, underwater
+  contracts, recoverable revenue, and a per-contract margin table.
+- Deterministic math (unit-tested); AI narratives are optional and never the
+  source of a number. Staff-only; rates OWNER-only.
+- Verified: full offline smoke seeds a $1,000/mo contract with 40h of logged
+  service and proves margin ($200), realized rate, renewal flag, $7,000 of
+  unbilled time + a due contract, a ticket 45 min from breach flagged critical,
+  a deduped pre-breach notification, all three Copilot tools, and staff-only
+  RBAC — plus a Playwright check of the PSA card (0 JS errors).
+
 ## v1.14.0 — Multi-agent fleet workflows: one AI agent per client, in parallel (July 2026)
 - **The Copilot now spawns a fleet of sub-agents.** A single Copilot answers
   "how's Acme doing?"; a **Fleet Sweep** answers the real MSP question — "go

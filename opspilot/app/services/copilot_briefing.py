@@ -62,6 +62,15 @@ def gather(db: Session, now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         pass
     try:
+        from . import psa_intel
+        ci = psa_intel.contract_intel(db, now)
+        stats["contracts_underwater"] = ci["totals"]["underwater"]
+        stats["renewals_soon"] = ci["totals"]["renewals_soon"]
+        lk = psa_intel.revenue_leakage(db, now)
+        stats["recoverable"] = lk["total_recoverable"]
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         from . import posture
         port = posture.portfolio(db, now)
         graded = [p for p in port if p.get("score") is not None]
@@ -88,6 +97,14 @@ def _template(stats: dict) -> str:
         bits.append(f"💸 ${stats['ar_overdue']:,.0f} in invoices are overdue — send reminders.")
     if stats.get("top_prediction"):
         bits.append(f"🔮 Predicted: {stats['top_prediction']}")
+    if stats.get("recoverable"):
+        bits.append(f"🧾 ${stats['recoverable']:,.0f} in earned-but-unbilled revenue is recoverable "
+                    f"— ask me to 'find revenue leakage'.")
+    if stats.get("contracts_underwater"):
+        bits.append(f"📉 {stats['contracts_underwater']} contract(s) are running underwater "
+                    f"— review margins before renewal.")
+    if stats.get("renewals_soon"):
+        bits.append(f"🔁 {stats['renewals_soon']} contract(s) renew soon — prep pricing.")
     if stats.get("worst_grade") and stats["worst_grade"] not in ("A", "A+", "A-"):
         bits.append(f"🛡️ {stats.get('worst_client')} has the weakest security grade "
                     f"({stats['worst_grade']}) — review their scorecard.")
