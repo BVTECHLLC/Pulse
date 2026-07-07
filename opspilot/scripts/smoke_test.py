@@ -1363,6 +1363,72 @@ def main():
         print("patch management: approve (all + KB subset) -> agent pull(RUNNING) -> report(succeeded) "
               "+ content-pinned + RBAC + agent installer logic OK")
 
+        # ===================== v1.9: hands-off patch auto-approval policy =====================
+        from app.services import patching as _pp19
+        from app.core.db import SessionLocal as _SL19
+        import datetime as _dt19
+        # Fresh device for a clean policy test (no leftover jobs).
+        pc19=c.post(f"/api/agent/enroll-token/{cid}").json()["enroll_token"]
+        en19=c.post("/api/agent/enroll", json={"enroll_token":pc19,"hostname":"POLICY-PC","os":"Windows 11"}).json()
+        h19={"X-Enroll-Id":en19["enroll_id"],"X-Agent-Key":en19["agent_key"]}
+        pdev=en19["device_id"]
+        # Report a CRITICAL + a LOW pending patch.
+        aa=TestClient(app); aa.cookies.clear()
+        aa.post("/api/agent/patches", headers=h19, json={"patches":[
+            {"name":"Critical Cumulative","kb":"5040001","severity":"critical"},
+            {"name":"Minor tweak","kb":"5040002","severity":"low"}]})
+        # Policy: default off + RBAC.
+        assert c.get("/api/patching/policy").json()["auto_approve"] is False
+        assert ca_c.put("/api/patching/policy", json={"auto_approve":True}).status_code==403
+        # Enable: critical-only, NOT gated to maintenance (approve immediately).
+        pol=c.put("/api/patching/policy", json={"auto_approve":True,"min_severity":"critical",
+                  "only_in_maintenance":False}).json()
+        assert pol["auto_approve"] and pol["min_severity"]=="critical" and pol["only_in_maintenance"] is False
+        _sdb=_SL19()
+        try:
+            made=_pp19.auto_approve_sweep(_sdb); _sdb.commit()
+        finally:
+            _sdb.close()
+        assert any(x["device_id"]==pdev for x in made), made
+        j=[x for x in c.get(f"/api/patching/jobs?device_id={pdev}").json()["jobs"] if x["status"]=="approved"][0]
+        # Only the CRITICAL KB was pinned (low excluded).
+        assert j["kbs"]==["KB5040001"], j
+        # Dedup: a second sweep must NOT stack another job while one is open.
+        _sdb=_SL19()
+        try:
+            again=_pp19.auto_approve_sweep(_sdb); _sdb.commit()
+        finally:
+            _sdb.close()
+        assert not any(x["device_id"]==pdev for x in again), "must not re-approve while a job is open"
+
+        # Maintenance gate: new device, gated policy, no window -> nothing; with a
+        # live window -> approved.
+        en20=c.post("/api/agent/enroll", json={"enroll_token":c.post(f"/api/agent/enroll-token/{cid}").json()["enroll_token"],
+                    "hostname":"MAINT-PC","os":"Windows 11"}).json()
+        h20={"X-Enroll-Id":en20["enroll_id"],"X-Agent-Key":en20["agent_key"]}
+        mdev=en20["device_id"]
+        aa.post("/api/agent/patches", headers=h20, json={"patches":[{"name":"Crit","kb":"5041000","severity":"critical"}]})
+        c.put("/api/patching/policy", json={"only_in_maintenance":True})
+        _sdb=_SL19()
+        try:
+            gated=_pp19.auto_approve_sweep(_sdb); _sdb.commit()
+        finally:
+            _sdb.close()
+        assert not any(x["device_id"]==mdev for x in gated), "gated policy must wait for a maintenance window"
+        # Open a maintenance window covering now.
+        _now20=_dt19.datetime.now(_dt19.timezone.utc)
+        c.post("/api/maintenance-windows", json={"client_id":cid,"device_id":mdev,
+               "starts_at":(_now20-_dt19.timedelta(minutes=5)).isoformat(),
+               "ends_at":(_now20+_dt19.timedelta(hours=2)).isoformat(),"reason":"patch window"})
+        _sdb=_SL19()
+        try:
+            inwin=_pp19.auto_approve_sweep(_sdb); _sdb.commit()
+        finally:
+            _sdb.close()
+        assert any(x["device_id"]==mdev for x in inwin), "should approve inside the maintenance window"
+        print("patch policy: opt-in auto-approve (severity-gated, KB-pinned, dedup, "
+              "maintenance-window gate) + RBAC OK")
+
         # ===================== v0.68: fleet inventory + patch compliance =====================
         # Re-seed SMOKE-PC with software + pending patches for the fleet rollups.
         a.post("/api/agent/inventory", headers=hdr, json={"software":[
@@ -3068,7 +3134,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.8.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.9.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

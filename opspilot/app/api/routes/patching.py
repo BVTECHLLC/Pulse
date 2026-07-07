@@ -50,3 +50,29 @@ def jobs(device_id: int, db: Session = Depends(get_db),
     if not db.get(Device, device_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
     return {"jobs": patching.list_jobs(db, device_id)}
+
+
+class PolicyIn(BaseModel):
+    auto_approve: bool | None = None
+    min_severity: str | None = None          # critical | important | all
+    only_in_maintenance: bool | None = None
+
+
+@router.get("/policy")
+def get_policy(db: Session = Depends(get_db),
+               user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    return patching.get_policy(db)
+
+
+@router.put("/policy")
+def save_policy(body: PolicyIn, request: Request, db: Session = Depends(get_db),
+                user: User = Depends(require_roles(Role.OWNER))):
+    out = patching.save_policy(db, auto_approve=body.auto_approve,
+                               min_severity=body.min_severity,
+                               only_in_maintenance=body.only_in_maintenance)
+    audit.record(db, action="patching.policy", actor_user_id=user.id,
+                 actor_email=user.email, actor_role=user.role.value,
+                 target_type="patch_policy", ip=_ip(request),
+                 detail=f"auto={out['auto_approve']} sev={out['min_severity']} "
+                        f"maint={out['only_in_maintenance']}")
+    return out
