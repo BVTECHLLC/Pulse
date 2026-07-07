@@ -353,6 +353,7 @@
     <div class="card"><table>
     <thead><tr><th>Host</th><th>Status</th><th>OS</th><th>CPU</th><th>Disk</th><th>AV</th><th>Patches</th><th>Health</th><th>Last seen</th><th>Details</th></tr></thead>
     <tbody id="t-devices"></tbody></table></div>
+    <div id="dev360" class="card hidden" style="margin-top:12px;border-color:var(--brand,#6c5ce7)"></div>
     <div id="dev-sw" class="card hidden" style="margin-top:12px">
       <div class="flex" style="justify-content:space-between"><h3 id="dev-sw-title" style="margin:0">Installed software</h3>
         <button class="btn sm" onclick="document.getElementById('dev-sw').classList.add('hidden')">Close</button></div>
@@ -2429,6 +2430,68 @@ function watchOnboarding(cid, baseline){
   _onbTimer=setInterval(poll, 2000); poll();
 }
 // ---- Software inventory ----
+function _gauge(label,val){
+  if(val==null)return `<div class="g"><div class="gv muted">—</div><div class="gl">${label}</div></div>`;
+  const c=val>=90?'var(--bad)':(val>=75?'var(--warn)':'var(--ok)');
+  return `<div class="g"><div class="gring" style="background:conic-gradient(${c} ${val*3.6}deg,#0b1130 0)"><span>${Math.round(val)}%</span></div><div class="gl">${label}</div></div>`;
+}
+function _spark(series,key){
+  const pts=series.map(p=>p[key]).filter(v=>v!=null);
+  if(pts.length<2)return '<span class="muted" style="font-size:12px">not enough history yet</span>';
+  const w=260,h=44,max=100,min=0;
+  const step=w/(pts.length-1);
+  const d=pts.map((v,i)=>`${i?'L':'M'}${(i*step).toFixed(1)},${(h-(v-min)/(max-min)*h).toFixed(1)}`).join(' ');
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none">
+    <path d="${d}" fill="none" stroke="var(--brand2,#a29bfe)" stroke-width="2"/></svg>`;
+}
+async function openDevice360(id){
+  const box=document.getElementById('dev360');
+  box.classList.remove('hidden');
+  box.innerHTML='<div class="muted">Loading device…</div>';
+  box.scrollIntoView({behavior:'smooth',block:'nearest'});
+  const [d,m]=await Promise.all([api(`/api/devices/${id}/detail`),api(`/api/devices/${id}/metrics?limit=48`).catch(()=>({series:[]}))]);
+  if(!d){box.innerHTML='<div class="err">Could not load device.</div>';return;}
+  const dot=d.online?'<span style="color:var(--ok)">● online</span>':'<span style="color:var(--bad)">● offline</span>';
+  const sev=s=>s==='critical'?'bad':(s==='warning'?'warn':'');
+  const alertsHtml=(d.alerts&&d.alerts.length)
+    ? d.alerts.map(a=>`<div class="flex" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)">
+        <span><span class="badge ${sev(a.severity)}">${esc(a.severity)}</span> ${esc(a.message)}</span>
+        <span class="muted" style="font-size:11px">${ago(a.first_seen)}</span></div>`).join('')
+    : '<div class="muted">No open alerts — this device is healthy. ✅</div>';
+  box.innerHTML=`
+    <div class="flex" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div><h3 style="margin:0">🖥️ ${esc(d.hostname)} <span class="muted" style="font-size:13px">#${d.id} · ${dot}</span></h3>
+        <div class="muted" style="font-size:12px;margin-top:2px">${esc(d.os)||'—'} · ${esc(d.client_name)||''} · ${esc(d.ip)||'no ip'} ${d.agent_version?'· agent v'+esc(d.agent_version):''}</div></div>
+      <button class="btn sm ghost" onclick="document.getElementById('dev360').classList.add('hidden')">Close</button>
+    </div>
+    <div class="flex" style="gap:18px;margin:14px 0;flex-wrap:wrap;align-items:center">
+      ${_gauge('CPU',d.cpu_pct)} ${_gauge('RAM',d.ram_pct)} ${_gauge('Disk',d.disk_pct)}
+      <div class="g"><div class="gv" style="color:${d.health_score>=80?'var(--ok)':d.health_score>=60?'var(--warn)':'var(--bad)'}">${d.health_score??'—'}</div><div class="gl">Health</div></div>
+    </div>
+    <div class="grid cols-2" style="align-items:start;gap:14px">
+      <div>
+        <h4 style="margin:0 0 6px">Health trend</h4>
+        <div class="card" style="padding:10px">${_spark(m.series||[],'health_score')}
+          <div class="muted" style="font-size:11px;margin-top:4px">last ${(m.series||[]).length} check-ins</div></div>
+        <div style="margin-top:8px;font-size:13px">
+          <div>🛡️ Antivirus: <b>${esc(d.av_status)||'unknown'}</b></div>
+          <div>🔄 Patches: <b>${d.patches_pending?d.patches_pending+' pending':'up to date'}</b> ${d.patches_pending?`· <a onclick="showPatches(${d.id},'${esc(d.hostname)}')" style="cursor:pointer">view</a>`:''}</div>
+          <div>💿 Software: <b>${d.software_count}</b> apps ${d.software_count?`· <a onclick="showSoftware(${d.id},'${esc(d.hostname)}')" style="cursor:pointer">view</a>`:''}</div>
+          <div>👤 User: <b>${esc(d.logged_in_user)||'—'}</b></div>
+          <div class="muted">Last seen ${ago(d.last_checkin)}</div>
+        </div>
+      </div>
+      <div>
+        <h4 style="margin:0 0 6px">Open alerts ${d.alerts&&d.alerts.length?`<span class="badge bad">${d.alerts.length}</span>`:''}</h4>
+        <div class="card" style="padding:10px">${alertsHtml}</div>
+        <div class="flex" style="gap:8px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn sm" onclick="showMetrics(${d.id},'${esc(d.hostname)}')">📈 Full metrics</button>
+          <button class="btn sm ghost" onclick="deviceConsole(${d.id},'${esc(d.hostname)}')">⌨ Console</button>
+          <button class="btn sm ghost" onclick="deviceRemote(${d.id})">🖥 Remote</button>
+        </div>
+      </div>
+    </div>`;
+}
 async function showSoftware(devId, host){
   const box=document.getElementById('dev-sw'), body=document.getElementById('t-dev-sw');
   document.getElementById('dev-sw-title').textContent=`Installed software — ${host}`;
@@ -4278,7 +4341,7 @@ async function load(){
     const dot=d.online?'<span style="color:var(--ok)">●</span> online':'<span style="color:var(--bad)">●</span> offline';
     const ver=d.agent_version?`<span class="muted" style="font-size:11px"> v${esc(d.agent_version)}</span>`:'';
     const usr=d.logged_in_user?`<div class="muted" style="font-size:11px">👤 ${esc(d.logged_in_user)}</div>`:'';
-    return `<tr><td>${esc(d.hostname)} <span class="muted">#${d.id}</span>${ver}${usr}</td>
+    return `<tr><td><a onclick="openDevice360(${d.id})" style="cursor:pointer;font-weight:600;color:var(--brand,#a29bfe)">${esc(d.hostname)}</a> <span class="muted">#${d.id}</span>${ver}${usr}</td>
      <td style="font-size:12px">${dot}</td><td>${esc(d.os)||'—'}</td><td>${d.cpu_pct??'—'}</td>
      <td>${d.disk_pct??'—'}</td><td>${esc(d.av_status)||'—'}</td><td>${pcell}</td><td>${badge(d.health_score,80,60)}</td>
      <td class="muted">${ago(d.last_checkin)}</td>

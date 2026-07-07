@@ -139,6 +139,51 @@ function Get-LocalIp {
   return $null
 }
 
+function Get-InstalledSoftware {
+  # Read the uninstall registry keys (fast + reliable - unlike Win32_Product,
+  # which is slow and triggers MSI reconfiguration). Covers 64-bit, 32-bit, and
+  # per-user installs; de-duplicates by name+version.
+  $paths = @(
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+  )
+  $seen = @{}
+  $out = New-Object System.Collections.ArrayList
+  foreach ($p in $paths) {
+    try {
+      Get-ItemProperty $p -ErrorAction SilentlyContinue | ForEach-Object {
+        $name = $_.DisplayName
+        if ($name -and -not $_.SystemComponent -and -not $_.ParentKeyName) {
+          $ver = "$($_.DisplayVersion)"
+          $key = ($name + "|" + $ver).ToLower()
+          if (-not $seen.ContainsKey($key)) {
+            $seen[$key] = $true
+            [void]$out.Add(@{ name = "$name"; version = $ver; publisher = "$($_.Publisher)" })
+          }
+        }
+      }
+    } catch {}
+  }
+  return $out
+}
+
+function Get-PendingPatchList {
+  try {
+    $session = New-Object -ComObject Microsoft.Update.Session
+    $searcher = $session.CreateUpdateSearcher()
+    $result = $searcher.Search("IsInstalled=0 and IsHidden=0")
+    $out = New-Object System.Collections.ArrayList
+    foreach ($u in $result.Updates) {
+      $sev = "$($u.MsrcSeverity)"; if (-not $sev) { $sev = "unspecified" }
+      $kb = ""
+      try { if ($u.KBArticleIDs.Count -gt 0) { $kb = "KB$($u.KBArticleIDs.Item(0))" } } catch {}
+      [void]$out.Add(@{ name = "$($u.Title)"; kb = $kb; severity = $sev })
+    }
+    return $out
+  } catch { return @() }
+}
+
 # ---- HTTP helper -----------------------------------------------------
 function Invoke-Api($Method, $Uri, $Headers, $BodyObj) {
   $json = if ($BodyObj -ne $null) { $BodyObj | ConvertTo-Json -Depth 6 } else { $null }
@@ -191,7 +236,32 @@ function Do-Checkin {
   $headers = @{ "X-Enroll-Id" = $cfg.enroll_id; "X-Agent-Key" = $cfg.agent_key }
   $r = Invoke-Api "POST" "$($cfg.url)/api/agent/checkin" $headers $body
   Write-Log "Check-in ok (cpu=$($body.cpu_pct) ram=$($body.ram_pct) disk=$($body.disk_pct))"
+
+  # Full inventory (installed software + pending patch list) is heavier, so send
+  # it at most hourly instead of every 5-minute tick.
+  try {
+    $lastFull = $null
+    if ($cfg.last_full) { $lastFull = [datetime]::Parse($cfg.last_full) }
+    if (-not $lastFull -or ((Get-Date) - $lastFull).TotalMinutes -ge 55) {
+      Report-Inventory $cfg $headers
+      Report-Patches $cfg $headers
+      $cfg | Add-Member -NotePropertyName last_full -NotePropertyValue (Get-Date -Format o) -Force
+      Save-Config $cfg
+    }
+  } catch { Write-Log "Full inventory skipped: $_" }
   return $r
+}
+
+function Report-Inventory($cfg, $headers) {
+  $sw = Get-InstalledSoftware
+  Invoke-Api "POST" "$($cfg.url)/api/agent/inventory" $headers @{ software = @($sw) } | Out-Null
+  Write-Log "Reported $($sw.Count) installed apps."
+}
+
+function Report-Patches($cfg, $headers) {
+  $patches = Get-PendingPatchList
+  Invoke-Api "POST" "$($cfg.url)/api/agent/patches" $headers @{ patches = @($patches) } | Out-Null
+  Write-Log "Reported $($patches.Count) pending patches."
 }
 
 function Register-Task {

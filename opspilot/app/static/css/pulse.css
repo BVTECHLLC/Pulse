@@ -131,3 +131,11 @@ textarea:focus,select:focus{outline:none;border-color:var(--peri)}
 
 .spin{display:inline-block;animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* Device 360 gauges */
+.g{text-align:center}
+.gring{width:66px;height:66px;border-radius:50%;display:flex;align-items:center;justify-content:center;position:relative}
+.gring:before{content:"";position:absolute;inset:6px;border-radius:50%;background:var(--card,#111834)}
+.gring span{position:relative;font-weight:700;font-size:14px}
+.gv{font-size:26px;font-weight:800}
+.gl{font-size:11px;color:var(--mut,#8b93b8);margin-top:4px}

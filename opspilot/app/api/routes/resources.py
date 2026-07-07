@@ -187,6 +187,43 @@ def list_devices(client_id: int | None = None, db: Session = Depends(get_db),
 # --------------------------------------------------------------------------- #
 # Software inventory (v0.19) — reported by the agent, read here with tenant RBAC
 # --------------------------------------------------------------------------- #
+@router.get("/devices/{device_id}/detail")
+def device_detail(device_id: int, db: Session = Depends(get_db),
+                  user: User = Depends(current_user)):
+    """Device 360 — everything about one endpoint in a single call: live health,
+    open alerts, and inventory/patch counts. Powers the drill-down modal."""
+    from datetime import datetime, timedelta, timezone
+    from ...models import Alert, AlertStatus, DevicePatch, DeviceSoftware
+    dev = db.get(Device, device_id)
+    if not dev:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    assert_client_access(user, dev.client_id)
+    now = datetime.now(timezone.utc)
+    lc = dev.last_checkin
+    if lc is not None and lc.tzinfo is None:
+        lc = lc.replace(tzinfo=timezone.utc)
+    alerts = (db.query(Alert)
+              .filter(Alert.device_id == device_id, Alert.status != AlertStatus.RESOLVED)
+              .order_by(Alert.severity, Alert.last_seen.desc()).all())
+    sw_count = db.query(DeviceSoftware).filter(DeviceSoftware.device_id == device_id).count()
+    return {
+        "id": dev.id, "client_id": dev.client_id, "client_name": (dev.client.name if dev.client else None),
+        "hostname": dev.hostname, "os": dev.os, "serial": dev.serial, "ip": dev.ip,
+        "platform": dev.platform, "agent_version": dev.agent_version,
+        "logged_in_user": dev.logged_in_user, "av_status": dev.av_status,
+        "patch_status": dev.patch_status, "patches_pending": dev.patches_pending or 0,
+        "cpu_pct": dev.cpu_pct, "ram_pct": dev.ram_pct, "disk_pct": dev.disk_pct,
+        "health_score": dev.health_score,
+        "last_checkin": dev.last_checkin.isoformat() if dev.last_checkin else None,
+        "online": bool(lc and lc >= now - timedelta(seconds=180)),
+        "software_count": sw_count,
+        "alerts": [{"id": a.id, "kind": a.kind, "severity": a.severity.value,
+                    "message": a.message, "status": a.status.value,
+                    "first_seen": a.first_seen.isoformat() if a.first_seen else None}
+                   for a in alerts],
+    }
+
+
 @router.get("/devices/{device_id}/software")
 def device_software(device_id: int, db: Session = Depends(get_db),
                     user: User = Depends(current_user)):
