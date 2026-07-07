@@ -1569,7 +1569,7 @@
     <b>✨ Pulse Copilot</b><button class="btn sm ghost" onclick="toggleCopilot()" style="padding:3px 9px">✕</button>
   </div>
   <div id="copilot-body" style="max-height:46vh;overflow:auto;padding:12px 14px;font-size:14px">
-    <p class="muted" style="margin:0">Ask me anything about your business — "who's overdue?", "how's security looking?", "draft a reply for ticket 12", or "write a LinkedIn post about backups."</p>
+    <p class="muted" style="margin:0">I can query your whole fleet <b>and take action</b>. Try: "which clients are behind on patches?", "how's security looking?", "approve critical patches for Acme", or "open a ticket for Sugar Land Dental about the offline server."</p>
   </div>
   <div style="display:flex;gap:6px;padding:10px 12px;border-top:1px solid var(--line)">
     <input id="copilot-q" placeholder="Ask Pulse…" style="flex:1" onkeydown="if(event.key==='Enter')askCopilot()">
@@ -1722,23 +1722,44 @@ function copilotAdd(who,text){
      <div style="white-space:pre-wrap;${mine?'':'background:rgba(108,92,231,.08);border-radius:8px;padding:8px'}">${esc(text)}</div></div>`);
   b.scrollTop=b.scrollHeight;
 }
-async function askCopilot(){
-  const inp=document.getElementById('copilot-q'); const q=inp.value.trim(); if(!q)return;
-  copilotAdd('you',q); inp.value='';
+function copilotActionsBadge(res){
+  const b=document.getElementById('copilot-body');
+  if(res.actions&&res.actions.length){
+    b.insertAdjacentHTML('beforeend',`<div class="muted" style="font-size:11px;margin:2px 0 8px">✅ Did: ${res.actions.map(a=>esc(a.tool)).join(', ')}</div>`);
+  }
+  if(res.proposed_actions&&res.proposed_actions.length){
+    const summary=res.proposed_actions.map(a=>esc((a.result&&a.result.would)||a.tool)).join('; ');
+    const id='confirm-'+Math.random().toString(36).slice(2,8);
+    b.insertAdjacentHTML('beforeend',
+      `<div style="background:rgba(255,176,32,.1);border:1px solid var(--warn);border-radius:10px;padding:10px;margin:4px 0">
+        <div style="font-size:13px">⚡ I can do this: <b>${summary}</b></div>
+        <button class="btn sm" id="${id}" style="margin-top:8px">Confirm &amp; run it</button></div>`);
+    document.getElementById(id).onclick=()=>{const el=document.getElementById(id);el.disabled=true;el.textContent='Running…';
+      runCopilot(res._msg, true);};
+  }
+  b.scrollTop=b.scrollHeight;
+}
+async function runCopilot(q, allow){
   const btn=document.getElementById('copilot-send'); btn.disabled=true; const old=btn.textContent; btn.textContent='…';
-  // Route a "draft reply for ticket N" straight to the ticket-reply drafter.
-  const m=q.match(/ticket\s*#?(\d+)/i);
   try{
-    let r,j;
-    if(m && /repl|draft|respond/i.test(q)){
-      r=await post(`/api/ai/tickets/${m[1]}/reply-draft`); j=await r.json().catch(()=>({}));
+    // "draft reply for ticket N" still routes to the dedicated drafter.
+    const m=q.match(/ticket\s*#?(\d+)/i);
+    if(m && /repl|draft|respond/i.test(q) && !allow){
+      const r=await post(`/api/ai/tickets/${m[1]}/reply-draft`); const j=await r.json().catch(()=>({}));
       copilotAdd('ai', r.ok? j.draft : (j.detail||'Could not draft.'));
     } else {
-      r=await post('/api/ai/ask',{question:q}); j=await r.json().catch(()=>({}));
-      copilotAdd('ai', r.ok? j.answer : (j.detail||'Claude isn\'t connected yet — add your Anthropic API key on the server.'));
+      const r=await post('/api/copilot/ask',{message:q,allow_actions:!!allow});
+      const j=await r.json().catch(()=>({}));
+      if(r.ok){ copilotAdd('ai', j.answer||'(no answer)'); j._msg=q; copilotActionsBadge(j); }
+      else { copilotAdd('ai', j.detail||'Claude isn\'t connected yet — add your Anthropic API key on the server.'); }
     }
   }catch(e){ copilotAdd('ai','Something went wrong reaching Claude.'); }
   btn.disabled=false; btn.textContent=old;
+}
+async function askCopilot(){
+  const inp=document.getElementById('copilot-q'); const q=inp.value.trim(); if(!q)return;
+  copilotAdd('you',q); inp.value='';
+  runCopilot(q, false);
 }
 
 let CLIENTS={},DEVICES={};
