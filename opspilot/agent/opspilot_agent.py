@@ -93,7 +93,7 @@ LOG_FILE = CONF_DIR / "agent.log"
 _BANNER = r"""
   ╔══════════════════════════════════════════════════════════╗
   ║   B V T E C H   O p s P i l o t   ·   Endpoint Agent      ║
-  ║   Secure RMM telemetry   ·   bvtech.org · El Campo, TX    ║
+  ║   Secure RMM telemetry   ·   bvtech.org · Sugar Land, TX    ║
   ╚══════════════════════════════════════════════════════════╝
 """
 

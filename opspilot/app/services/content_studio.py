@@ -291,7 +291,7 @@ color:var(--muted);font-size:13px;display:flex;justify-content:space-between;fle
 {body_html}
 </main>
 <footer class="site-foot">
-<span>© {year} {org} · El Campo, TX</span>
+<span>© {year} {org} · Sugar Land, TX</span>
 <span><a href="/">{site_host}</a></span>
 </footer>
 </body>

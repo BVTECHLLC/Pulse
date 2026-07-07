@@ -43,7 +43,7 @@ async function load(){
   document.getElementById('inv').innerHTML=`
     <div class="inv-head">
       <div><div class="lockup"><img src="/static/img/mark.svg" style="width:40px;height:40px"><span class="wm"><b>BVTech</b> OpsPilot</span></div>
-        <p class="muted" style="margin:10px 0 0">BVTech LLC · El Campo, TX · help@bvtech.org</p></div>
+        <p class="muted" style="margin:10px 0 0">BVTech LLC · Sugar Land, TX · help@bvtech.org</p></div>
       <div class="right"><h2 style="margin:0">INVOICE</h2>
         <p class="muted" style="margin:4px 0">${esc(i.number||('#'+i.id))}</p>
         <span class="badge ${i.status==='paid'?'ok':(i.status==='void'?'bad':'warn')}">${esc(i.status)}</span></div>

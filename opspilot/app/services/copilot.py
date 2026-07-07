@@ -117,36 +117,60 @@ _WRITE_TOOLS = {"approve_patches_for_client", "create_ticket", "create_maintenan
 # --------------------------------------------------------------------------- #
 # Tool implementations — all scoped to the calling user
 # --------------------------------------------------------------------------- #
-def _run_tool(db: Session, user: User, name: str, args: dict, allow_actions: bool) -> dict:
+def _run_tool(db: Session, user: User, name: str, args: dict, allow_actions: bool,
+              client_scope: int | None = None) -> dict:
     staff = is_staff(user)
     if name in _WRITE_TOOLS and not staff:
         return {"error": "Not permitted."}
 
+    def _cid(explicit):
+        """Resolve the client filter for a tool. When this agent is pinned to a
+        single client (a fleet-sweep sub-agent), that scope wins over everything;
+        otherwise non-staff are pinned to their own client, staff use the arg."""
+        if client_scope is not None:
+            return client_scope
+        if not staff:
+            return user.client_id
+        return explicit
+
     if name == "site_health":
         from . import proactive
-        return {"sites": proactive.site_health(db, user)}
+        sites = proactive.site_health(db, user)
+        if client_scope is not None:
+            sites = [s for s in sites if s.get("client_id") == client_scope]
+        return {"sites": sites}
 
     if name == "fleet_patch_status":
         if not staff:
             return {"error": "Staff only."}
         from . import patching
-        return patching.fleet(db)
+        fl = patching.fleet(db)
+        if client_scope is not None:
+            devs = [d for d in fl.get("devices", []) if d.get("client_id") == client_scope]
+            crit = sum(d.get("critical", 0) for d in devs)
+            fl = {"devices": devs,
+                  "totals": {"devices": len(devs),
+                             "pending": sum(d.get("pending", 0) for d in devs),
+                             "critical": crit}}
+        return fl
 
     if name == "find_client":
         q = (args.get("name") or "").strip().lower()
         cq = db.query(Client)
-        if not staff:
+        if client_scope is not None:
+            cq = cq.filter(Client.id == client_scope)
+        elif not staff:
             cq = cq.filter(Client.id == user.client_id)
-        matches = [c for c in cq.all() if q in c.name.lower()] if q else []
+        pool = cq.all()
+        matches = [c for c in pool if q in c.name.lower()] if q else pool[:8]
         return {"matches": [{"id": c.id, "name": c.name} for c in matches[:8]]}
 
     if name == "open_tickets":
         q = db.query(SupportTicket).filter(
             SupportTicket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS]))
-        if not staff:
-            q = q.filter(SupportTicket.client_id == user.client_id)
-        elif args.get("client_id"):
-            q = q.filter(SupportTicket.client_id == args["client_id"])
+        cid = _cid(args.get("client_id"))
+        if cid:
+            q = q.filter(SupportTicket.client_id == cid)
         rows = q.order_by(SupportTicket.created_at.desc()).limit(15).all()
         return {"count": q.count(),
                 "tickets": [{"id": t.id, "subject": t.subject, "priority": t.priority,
@@ -158,8 +182,9 @@ def _run_tool(db: Session, user: User, name: str, args: dict, allow_actions: boo
         now = datetime.now(timezone.utc)
         cutoff = now - timedelta(minutes=30)
         dq = db.query(Device)
-        if not staff:
-            dq = dq.filter(Device.client_id == user.client_id)
+        cid = _cid(None)
+        if cid:
+            dq = dq.filter(Device.client_id == cid)
         devs = dq.all()
         offline = sum(1 for d in devs if not d.last_checkin or
                       (d.last_checkin.replace(tzinfo=timezone.utc) if d.last_checkin.tzinfo is None
@@ -169,7 +194,10 @@ def _run_tool(db: Session, user: User, name: str, args: dict, allow_actions: boo
 
     if name == "predicted_issues":
         from . import foresight
-        cids = None if staff else [user.client_id]
+        if client_scope is not None:
+            cids = [client_scope]
+        else:
+            cids = None if staff else [user.client_id]
         risks = foresight.fleet_risks(db, cids)
         risks.sort(key=lambda r: {"critical":3,"high":2,"medium":1}.get(r.get("severity"),0), reverse=True)
         return {"predicted": [{"hostname": r["hostname"], "severity": r["severity"],
@@ -180,7 +208,11 @@ def _run_tool(db: Session, user: User, name: str, args: dict, allow_actions: boo
         from datetime import datetime, timezone
         from ..models import Alert, AlertStatus, Device, DeviceCheckin
         dev = db.get(Device, args.get("device_id"))
-        if not dev or (not staff and dev.client_id != user.client_id):
+        if client_scope is not None:
+            ok = dev and dev.client_id == client_scope
+        else:
+            ok = dev and (staff or dev.client_id == user.client_id)
+        if not ok:
             return {"error": "Device not found or not permitted."}
         recent = (db.query(DeviceCheckin).filter(DeviceCheckin.device_id == dev.id)
                   .order_by(DeviceCheckin.ts.desc()).limit(10).all())
@@ -196,16 +228,15 @@ def _run_tool(db: Session, user: User, name: str, args: dict, allow_actions: boo
     if name == "security_posture":
         from . import posture
         port = posture.portfolio(db)
-        if not staff:
-            port = [p for p in port if p.get("client_id") == user.client_id]
-        elif args.get("client_id"):
-            port = [p for p in port if p.get("client_id") == args["client_id"]]
+        cid = _cid(args.get("client_id"))
+        if cid:
+            port = [p for p in port if p.get("client_id") == cid]
         return {"clients": [{"client": p.get("client_name"), "grade": p.get("grade"),
                              "score": p.get("score"), "open_findings": p.get("open_findings")}
                             for p in port]}
 
     if name == "client_report":
-        cid = args.get("client_id")
+        cid = _cid(args.get("client_id"))
         if not staff and cid != user.client_id:
             return {"error": "Not permitted."}
         client = db.get(Client, cid)
@@ -249,7 +280,8 @@ def _run_tool(db: Session, user: User, name: str, args: dict, allow_actions: boo
     if name == "draft_client_email":
         if not staff:
             return {"error": "Staff only."}
-        client = db.get(Client, args.get("client_id")) if args.get("client_id") else None
+        _dc = _cid(args.get("client_id"))
+        client = db.get(Client, _dc) if _dc else None
         who = client.name if client else "the client"
         prompt = (f"Write a short, professional email from BVTech (a managed IT provider) "
                   f"to {who} about: {args.get('about')}. Tone: {args.get('tone') or 'friendly, clear'}. "
@@ -261,7 +293,7 @@ def _run_tool(db: Session, user: User, name: str, args: dict, allow_actions: boo
         return {"draft": draft, "client": who, "note": "Draft only — review and send yourself."}
 
     if name == "create_maintenance_window":
-        cid = args.get("client_id")
+        cid = _cid(args.get("client_id"))
         client = db.get(Client, cid) if cid else None
         if not client:
             return {"error": "Unknown client_id — use find_client first."}
@@ -290,7 +322,7 @@ def _run_tool(db: Session, user: User, name: str, args: dict, allow_actions: boo
                 "starts_at": start.isoformat(), "ends_at": end.isoformat()}
 
     if name == "approve_patches_for_client":
-        cid = args.get("client_id")
+        cid = _cid(args.get("client_id"))
         sev = args.get("min_severity") or "critical"
         client = db.get(Client, cid) if cid else None
         if not client:
@@ -320,7 +352,7 @@ def _run_tool(db: Session, user: User, name: str, args: dict, allow_actions: boo
         return {"approved_devices": len(made), "jobs": made, "client": client.name}
 
     if name == "create_ticket":
-        cid = args.get("client_id")
+        cid = _cid(args.get("client_id"))
         client = db.get(Client, cid) if cid else None
         if not client:
             return {"error": "Unknown client_id — use find_client first."}
@@ -348,9 +380,14 @@ def _run_tool(db: Session, user: User, name: str, args: dict, allow_actions: boo
 # --------------------------------------------------------------------------- #
 # The agentic loop
 # --------------------------------------------------------------------------- #
-def run(db: Session, user: User, message: str, *, allow_actions: bool = False) -> dict:
+def run(db: Session, user: User, message: str, *, allow_actions: bool = False,
+        client_scope: int | None = None) -> dict:
     """Run the Copilot on one operator message. Returns
-    {answer, actions, proposed_actions, tools_used}."""
+    {answer, actions, proposed_actions, tools_used}.
+
+    When `client_scope` is set, every tool is pinned to that single client — this
+    is how a fleet-sweep sub-agent (copilot_fleet) analyses one client in isolation
+    even though the operator is staff with fleet-wide reach."""
     tools = _tool_defs(is_staff(user))
     messages = [{"role": "user", "content": message}]
     actions: list[dict] = []          # write tools actually executed
@@ -375,7 +412,7 @@ def run(db: Session, user: User, message: str, *, allow_actions: bool = False) -
             name = tu.get("name")
             args = tu.get("input") or {}
             tools_used.append(name)
-            out = _run_tool(db, user, name, args, allow_actions)
+            out = _run_tool(db, user, name, args, allow_actions, client_scope)
             if name in _WRITE_TOOLS:
                 (actions if not out.get("dry_run") else proposed).append(
                     {"tool": name, "args": args, "result": out})

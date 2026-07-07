@@ -24,7 +24,7 @@ MARKETS = {
     "austin": {"name": "Austin", "lat": 30.2672, "lng": -97.7431, "radius": 40000},
     "san_antonio": {"name": "San Antonio", "lat": 29.4241, "lng": -98.4936, "radius": 40000},
     "houston": {"name": "Houston", "lat": 29.7604, "lng": -95.3698, "radius": 50000},
-    "el_campo": {"name": "El Campo", "lat": 29.1972, "lng": -96.2697, "radius": 30000},
+    "sugar_land": {"name": "Sugar Land", "lat": 29.6197, "lng": -95.6349, "radius": 35000},
 }
 
 # Industry → MSP-readiness boost (compliance/data-heavy verticals convert best).
