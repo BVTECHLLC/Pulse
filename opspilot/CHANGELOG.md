@@ -1,5 +1,29 @@
 # BVTech OpsPilot — Changelog
 
+## v1.11.0 — Pulse Copilot: an AI agent that runs your MSP (July 2026)
+- **Ask in plain English; it acts.** The Ask Pulse button is now a true agentic
+  copilot — Claude runs a server-side tool-use loop over your live platform.
+  "Which clients are behind on patches?" → it queries the fleet and tells you.
+  "How's Sugar Land Dental doing?" → it pulls their site health. "Approve
+  critical patches for Acme" → it proposes the action, you click **Confirm**,
+  and it executes through the governed patch pipeline.
+- **Governed by construction.** Read tools run freely and are always tenant/role
+  scoped to whoever's asking (a client user only ever sees their own company;
+  fleet + action tools aren't even offered to them). Write tools (approve
+  patches, open a ticket) are **dry-run by default** — the copilot says "I can
+  do X, confirm?" and only executes when you approve. Every action is
+  audit-logged.
+- Tools in this release: site health, fleet patch status, find client, open
+  tickets, device summary, approve-patches-for-client, create-ticket. The loop
+  is bounded and records every tool it used.
+- No other RMM ships an agent that both *reads your whole fleet* and *takes
+  governed action* from one chat box — this is the AI-native differentiator.
+- Verified: full smoke suite drives the real tool-use loop with a scripted model
+  — read-tool answer, write dry-run (proposed, not executed), confirmed write
+  (a real patch job created), and a client user's toolset correctly excludes
+  fleet + action tools.
+
+
 ## v1.10.0 — Fleet Patch Dashboard (July 2026)
 - **One screen for patching the whole fleet.** The Devices tab now leads with a
   Fleet Patch Status card: every device with pending Windows Updates across all

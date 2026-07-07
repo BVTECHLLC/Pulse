@@ -1453,6 +1453,72 @@ def main():
         assert ca_c.post("/api/patching/approve-fleet", json={"min_severity":"all"}).status_code==403
         print("fleet patch dashboard: aggregate (worst-first, totals) + bulk approve + RBAC OK")
 
+        # ===================== v1.11: Pulse Copilot (agentic tool-use) =====================
+        from app.services import ai as _cai, copilot as _cop
+        from app.models import ScriptDeployment as _SD11, DeploymentStatus as _DS11
+        # Script a two-turn tool-use conversation: call a tool, then answer.
+        _script = {"turns": []}
+        def _fake_tools(system, messages, tools, *, model, max_tokens):
+            return _script["turns"].pop(0)
+        _o_tc, _o_en = _cai._TOOL_CALLER, _cai.enabled
+        _cai._TOOL_CALLER = _fake_tools
+        _cai.enabled = lambda: True
+        try:
+            # (1) READ tool loop: Claude calls fleet_patch_status, then answers.
+            _script["turns"] = [
+                {"stop_reason":"tool_use","content":[
+                    {"type":"tool_use","id":"t1","name":"fleet_patch_status","input":{}}]},
+                {"stop_reason":"end_turn","content":[
+                    {"type":"text","text":"You have devices behind on patches."}]},
+            ]
+            r=c.post("/api/copilot/ask", json={"message":"which clients are behind on patches?"})
+            assert r.status_code==200, r.text
+            j=r.json()
+            assert "fleet_patch_status" in j["tools_used"] and "behind on patches" in j["answer"], j
+            assert not j["actions"] and not j["proposed_actions"]
+
+            # (2) WRITE tool DRY-RUN: propose approving criticals for `cid` but
+            #     allow_actions defaults false -> proposed, NOT executed.
+            before=c.get("/api/patching/fleet").json()
+            def _approve_turns():
+                return [
+                    {"stop_reason":"tool_use","content":[
+                        {"type":"tool_use","id":"t2","name":"approve_patches_for_client",
+                         "input":{"client_id":cid,"min_severity":"critical"}}]},
+                    {"stop_reason":"end_turn","content":[
+                        {"type":"text","text":"Done."}]},
+                ]
+            _script["turns"]=_approve_turns()
+            r=c.post("/api/copilot/ask", json={"message":"approve critical patches for that client"})
+            j=r.json()
+            assert j["proposed_actions"] and not j["actions"], j
+            assert j["proposed_actions"][0]["result"]["dry_run"] is True
+
+            # (3) WRITE tool CONFIRMED: allow_actions=true -> executes, jobs created.
+            # First give one cid device a fresh critical pending patch + no open job.
+            en11=c.post("/api/agent/enroll", json={"enroll_token":c.post(f"/api/agent/enroll-token/{cid}").json()["enroll_token"],
+                        "hostname":"COPILOT-PC","os":"Windows 11"}).json()
+            aa.post("/api/agent/patches", headers={"X-Enroll-Id":en11["enroll_id"],"X-Agent-Key":en11["agent_key"]},
+                    json={"patches":[{"name":"Crit","kb":"5060000","severity":"critical"}]})
+            _script["turns"]=_approve_turns()
+            r=c.post("/api/copilot/ask", json={"message":"do it","allow_actions":True})
+            j=r.json()
+            assert j["actions"], j
+            assert j["actions"][0]["result"]["approved_devices"]>=1, j["actions"][0]
+            # A winupdate job now exists for COPILOT-PC.
+            assert any(x["status"]=="approved" for x in
+                       c.get(f"/api/patching/jobs?device_id={en11['device_id']}").json()["jobs"])
+
+            # (4) RBAC: a client user's toolset excludes write tools + fleet.
+            defs=_cop._tool_defs(staff=False)
+            names={d["name"] for d in defs}
+            assert "approve_patches_for_client" not in names and "fleet_patch_status" not in names
+            assert "site_health" in names   # reads they're allowed
+        finally:
+            _cai._TOOL_CALLER, _cai.enabled = _o_tc, _o_en
+        print("pulse copilot: agentic tool-use loop (read) + write dry-run/confirm gating "
+              "+ real action (approve patches) + tenant-scoped toolset OK")
+
         # ===================== v0.68: fleet inventory + patch compliance =====================
         # Re-seed SMOKE-PC with software + pending patches for the fleet rollups.
         a.post("/api/agent/inventory", headers=hdr, json={"software":[
@@ -3158,7 +3224,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.10.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.11.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
