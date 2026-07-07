@@ -1,5 +1,19 @@
 # BVTech OpsPilot — Changelog
 
+## v1.10.0 — Fleet Patch Dashboard (July 2026)
+- **One screen for patching the whole fleet.** The Devices tab now leads with a
+  Fleet Patch Status card: every device with pending Windows Updates across all
+  clients, worst-first, showing client, host, pending count, critical count,
+  worst severity, and its latest patch-job status.
+- **Bulk approve** - "Approve across fleet" (critical / important+ / all) opens
+  install jobs for every matching device at once (deduped, KB-pinned, governed
+  pipeline); or approve a single row inline. Agents install on next check-in.
+- The card auto-hides when every managed device is up to date, and each host
+  links to its Device 360.
+- Verified: full smoke suite (fleet aggregate worst-first + totals, bulk approve
+  creates governed jobs, RBAC) + a browser check.
+
+
 ## v1.9.0 — Hands-off patching: set a policy, walk away (July 2026)
 - **Auto-approve patch policy.** Turn on one toggle (Automation → Autopilot) and
   Pulse auto-approves pending Windows Updates at/above your chosen severity

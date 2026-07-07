@@ -73,6 +73,68 @@ def approve_patches(db: Session, device, user: User, *, kbs: list[str] | None,
     return dep
 
 
+def _worst_severity(patches) -> str:
+    best = ("unspecified", 0)
+    for p in patches:
+        r = _sev_rank(p.severity)
+        if r > best[1]:
+            best = ((p.severity or "unspecified").lower(), r)
+    return best[0]
+
+
+def fleet(db: Session) -> dict:
+    """Fleet-wide patch status: every device with pending updates, worst-first,
+    plus its latest patch-job status. Staff-only view."""
+    from ..models import Client
+    rows = (db.query(Device).filter((Device.patches_pending or 0) > 0)
+            .filter(Device.patches_pending.isnot(None), Device.patches_pending > 0).all())
+    names = {c.id: c.name for c in db.query(Client).all()}
+    out = []
+    total_pending = 0
+    total_critical = 0
+    for dev in rows:
+        patches = db.query(DevicePatch).filter(DevicePatch.device_id == dev.id).all()
+        crit = sum(1 for p in patches if _sev_rank(p.severity) >= _SEV_RANK["critical"])
+        last = (db.query(ScriptDeployment)
+                .filter(ScriptDeployment.device_id == dev.id,
+                        ScriptDeployment.language == LANGUAGE)
+                .order_by(ScriptDeployment.created_at.desc()).first())
+        total_pending += dev.patches_pending or 0
+        total_critical += crit
+        out.append({
+            "device_id": dev.id, "hostname": dev.hostname,
+            "client_id": dev.client_id, "client": names.get(dev.client_id),
+            "pending": dev.patches_pending or 0, "critical": crit,
+            "worst_severity": _worst_severity(patches),
+            "last_job": (last.status.value if last else None),
+            "has_open_job": _has_open_job(db, dev.id),
+        })
+    out.sort(key=lambda r: (-(r["critical"]), -(r["pending"])))
+    return {"devices": out, "totals": {
+        "devices": len(out), "pending": total_pending, "critical": total_critical}}
+
+
+def approve_fleet(db: Session, user: User, *, min_severity: str = "critical") -> list[dict]:
+    """Approve install jobs across every device that has pending patches at/above
+    `min_severity`. Manual bulk action (ignores the maintenance gate); deduped."""
+    threshold = _MIN_CHOICES.get(min_severity, _MIN_CHOICES["critical"])
+    made = []
+    rows = (db.query(Device)
+            .filter(Device.patches_pending.isnot(None), Device.patches_pending > 0).all())
+    for dev in rows:
+        if _has_open_job(db, dev.id):
+            continue
+        patches = db.query(DevicePatch).filter(DevicePatch.device_id == dev.id).all()
+        matching = [p for p in patches if _sev_rank(p.severity) >= threshold]
+        if not matching:
+            continue
+        kbs = sorted({p.kb for p in matching if p.kb}) or None
+        dep = approve_patches(db, dev, user, kbs=kbs,
+                              reason=f"Fleet approve ({min_severity}+)")
+        made.append({"device_id": dev.id, "job_id": dep.id})
+    return made
+
+
 def list_jobs(db: Session, device_id: int, limit: int = 25) -> list[dict]:
     rows = (db.query(ScriptDeployment)
             .filter(ScriptDeployment.device_id == device_id,
