@@ -52,6 +52,28 @@ def jobs(device_id: int, db: Session = Depends(get_db),
     return {"jobs": patching.list_jobs(db, device_id)}
 
 
+@router.get("/fleet")
+def fleet(db: Session = Depends(get_db),
+          user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Fleet-wide patch status across all clients (worst-first)."""
+    return patching.fleet(db)
+
+
+class FleetApproveIn(BaseModel):
+    min_severity: str = "critical"   # critical | important | all
+
+
+@router.post("/approve-fleet")
+def approve_fleet(body: FleetApproveIn, request: Request, db: Session = Depends(get_db),
+                  user: User = Depends(require_roles(Role.OWNER))):
+    made = patching.approve_fleet(db, user, min_severity=body.min_severity)
+    audit.record(db, action="patching.approve_fleet", actor_user_id=user.id,
+                 actor_email=user.email, actor_role=user.role.value,
+                 target_type="fleet", ip=_ip(request),
+                 detail=f"sev={body.min_severity} approved={len(made)}")
+    return {"ok": True, "approved": len(made), "jobs": made}
+
+
 class PolicyIn(BaseModel):
     auto_approve: bool | None = None
     min_severity: str | None = None          # critical | important | all

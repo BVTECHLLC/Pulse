@@ -1429,6 +1429,30 @@ def main():
         print("patch policy: opt-in auto-approve (severity-gated, KB-pinned, dedup, "
               "maintenance-window gate) + RBAC OK")
 
+        # ===================== v1.10: Fleet patch dashboard =====================
+        # Fleet view aggregates devices with pending patches, worst-first.
+        fl=c.get("/api/patching/fleet").json()
+        assert "totals" in fl and fl["totals"]["devices"]>=1, fl
+        # MAINT-PC (mdev) had a critical pending patch reported earlier.
+        mrow=[r for r in fl["devices"] if r["device_id"]==mdev]
+        assert mrow and mrow[0]["critical"]>=1 and mrow[0]["worst_severity"]=="critical", mrow
+        # worst-first: the first row has >= the critical count of the last.
+        if len(fl["devices"])>1:
+            assert fl["devices"][0]["critical"]>=fl["devices"][-1]["critical"]
+        assert ca_c.get("/api/patching/fleet").status_code==403   # staff only
+        # Report a fresh critical on a device with no open job, then fleet-approve.
+        fresh_tok=c.post(f"/api/agent/enroll-token/{cid}").json()["enroll_token"]
+        fe=c.post("/api/agent/enroll", json={"enroll_token":fresh_tok,"hostname":"FLEET-PC","os":"Windows 11"}).json()
+        aa.post("/api/agent/patches", headers={"X-Enroll-Id":fe["enroll_id"],"X-Agent-Key":fe["agent_key"]},
+                json={"patches":[{"name":"Crit","kb":"5042000","severity":"critical"}]})
+        appf=c.post("/api/patching/approve-fleet", json={"min_severity":"critical"})
+        assert appf.status_code==200 and appf.json()["approved"]>=1, appf.text
+        # The FLEET-PC now has an approved winupdate job.
+        assert any(j["status"]=="approved" for j in c.get(f"/api/patching/jobs?device_id={fe['device_id']}").json()["jobs"])
+        # RBAC: client can't fleet-approve.
+        assert ca_c.post("/api/patching/approve-fleet", json={"min_severity":"all"}).status_code==403
+        print("fleet patch dashboard: aggregate (worst-first, totals) + bulk approve + RBAC OK")
+
         # ===================== v0.68: fleet inventory + patch compliance =====================
         # Re-seed SMOKE-PC with software + pending patches for the fleet rollups.
         a.post("/api/agent/inventory", headers=hdr, json={"software":[
@@ -3134,7 +3158,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.9.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.10.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

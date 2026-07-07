@@ -356,6 +356,19 @@
         </div>
       </div>
     </div>
+    <div class="card" id="fleetpatch-card" style="margin-bottom:16px">
+      <div class="flex" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0">🩹 Fleet Patch Status <span class="pill" id="fp-summary">—</span></h3>
+        <div class="flex" style="gap:8px">
+          <select id="fp-sev" style="background:#0c1430;border:1px solid var(--line);border-radius:8px;padding:8px;color:var(--ink)">
+            <option value="critical">critical only</option><option value="important">important+</option><option value="all">all pending</option></select>
+          <button class="btn sm" onclick="approveFleet()">✔ Approve across fleet</button>
+        </div>
+      </div>
+      <p class="muted" style="margin:4px 0 8px">Every device with pending Windows Updates, worst-first. Approve one client's worst box or the whole fleet — the agents install on their next check-in.</p>
+      <table><thead><tr><th>Client</th><th>Device</th><th>Pending</th><th>Critical</th><th>Worst</th><th>Last job</th><th></th></tr></thead>
+      <tbody id="t-fleetpatch"><tr><td colspan=7 class="muted">Loading…</td></tr></tbody></table>
+    </div>
     <div class="card"><table>
     <thead><tr><th>Host</th><th>Status</th><th>OS</th><th>CPU</th><th>Disk</th><th>AV</th><th>Patches</th><th>Health</th><th>Last seen</th><th>Details</th></tr></thead>
     <tbody id="t-devices"></tbody></table></div>
@@ -2484,6 +2497,31 @@ function _spark(series,key){
   return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none">
     <path d="${d}" fill="none" stroke="var(--brand2,#a29bfe)" stroke-width="2"/></svg>`;
 }
+async function loadFleetPatch(){
+  const el=document.getElementById('t-fleetpatch'); if(!el)return;
+  const d=await api('/api/patching/fleet'); if(!d)return;
+  const t=d.totals||{};
+  document.getElementById('fp-summary').textContent=`${t.devices||0} devices · ${t.pending||0} pending · ${t.critical||0} critical`;
+  const card=document.getElementById('fleetpatch-card');
+  if(card)card.style.display=(t.devices? '' : 'none');   // hide when the fleet is clean
+  el.innerHTML=(d.devices||[]).map(r=>{
+    const sc=r.critical?'bad':(r.pending?'warn':'');
+    const job=r.last_job?`<span class="badge ${r.last_job==='succeeded'?'ok':(r.last_job==='failed'?'bad':'')}">${esc(r.last_job)}</span>`:'—';
+    const act=r.has_open_job?'<span class="muted">queued</span>':`<button class="btn sm ghost" onclick="approvePatches(${r.device_id})">approve</button>`;
+    return `<tr><td>${esc(r.client)}</td>
+      <td><a onclick="openDevice360(${r.device_id})" style="cursor:pointer;color:var(--brand,#a29bfe)">${esc(r.hostname)}</a></td>
+      <td>${r.pending}</td><td>${r.critical?`<span class="badge bad">${r.critical}</span>`:'0'}</td>
+      <td><span class="badge ${sc}">${esc(r.worst_severity)}</span></td><td>${job}</td><td>${act}</td></tr>`;
+  }).join('')||'<tr><td colspan=7 class="muted">✅ Every managed device is up to date.</td></tr>';
+}
+async function approveFleet(){
+  const sev=document.getElementById('fp-sev').value;
+  if(!confirm(`Approve & install ${sev==='all'?'ALL pending':sev+'+'} Windows updates across every device with matching updates? Agents install on their next check-in.`))return;
+  const r=await post('/api/patching/approve-fleet',{min_severity:sev});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){alert(`Approved ${j.approved} device(s).`);loadFleetPatch();}
+  else{alert(j.detail||'Fleet approve failed');}
+}
 async function openDevice360(id){
   const box=document.getElementById('dev360');
   box.classList.remove('hidden');
@@ -4412,6 +4450,7 @@ async function load(){
   if(agSel)agSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   const ctSel=document.getElementById('ct-client');
   if(ctSel)ctSel.innerHTML=clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  loadFleetPatch();
   document.getElementById('t-devices').innerHTML=devices.map(d=>{
     const pp=d.patches_pending; const pcell=pp==null?'—':(pp===0?'<span style="color:var(--ok)">up to date</span>':`<span style="color:var(--warn)">${pp} pending</span>`);
     const dot=d.online?'<span style="color:var(--ok)">●</span> online':'<span style="color:var(--bad)">●</span> offline';
