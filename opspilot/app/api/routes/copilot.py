@@ -27,6 +27,11 @@ class AskIn(BaseModel):
     allow_actions: bool = False
 
 
+class SweepIn(BaseModel):
+    objective: str
+    allow_actions: bool = False
+
+
 @router.post("/ask")
 def ask(body: AskIn, request: Request, db: Session = Depends(get_db),
         user: User = Depends(current_user)):
@@ -45,6 +50,31 @@ def ask(body: AskIn, request: Request, db: Session = Depends(get_db),
                      actor_email=user.email, actor_role=user.role.value,
                      target_type="copilot", ip=_ip(request),
                      detail=f"tools={out.get('tools_used')} actions={len(out['actions'])}")
+    return out
+
+
+@router.post("/sweep")
+def sweep(body: SweepIn, request: Request, db: Session = Depends(get_db),
+          user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Multi-agent fleet sweep: one governed sub-agent per client, in parallel,
+    then a portfolio synthesis. Staff-only (it spans tenants)."""
+    if not ai.enabled():
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
+                            "Claude isn't connected yet — add your Anthropic API key on the server.")
+    obj = (body.objective or "").strip()
+    if not obj:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Give the sweep an objective.")
+    from ...services import copilot_fleet
+    try:
+        out = copilot_fleet.sweep(db, user, obj, allow_actions=body.allow_actions)
+    except ai.AIError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
+    if out.get("totals", {}).get("actions"):
+        audit.record(db, action="copilot.sweep", actor_user_id=user.id,
+                     actor_email=user.email, actor_role=user.role.value,
+                     target_type="copilot", ip=_ip(request),
+                     detail=f"objective={obj[:120]} clients={out['totals']['clients']} "
+                            f"actions={out['totals']['actions']}")
     return out
 
 

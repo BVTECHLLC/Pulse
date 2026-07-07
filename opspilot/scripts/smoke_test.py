@@ -1622,6 +1622,60 @@ def main():
         print("foresight watch: trend+anomaly forecast -> proactive predicted notification "
               "(deduped) + copilot predicted_issues tool OK")
 
+        # ===================== v1.14: multi-agent fleet workflows =====================
+        from app.services import ai as _cai14, copilot as _cop14, copilot_fleet as _cf14
+        from app.core.db import SessionLocal as _SL14
+        from app.models import User as _U14, Role as _R14, Client as _C14, SupportTicket as _T14
+        # A second client so the sweep genuinely fans out across >1 tenant.
+        cid14b = c.post("/api/clients", json={"name":"Zeta Fleet Co"}).json()["id"]
+        # Stateless (thread-safe) fake tool-caller: each sub-agent calls create_ticket
+        # with a DELIBERATELY WRONG client_id, then answers. client_scope must rewrite
+        # that id to the client actually being swept — proving cross-tenant isolation.
+        BOGUS14 = 999999
+        def _fake14(system, messages, tools, *, model, max_tokens):
+            last = messages[-1]["content"]
+            if isinstance(last, list) and any(x.get("type")=="tool_result" for x in last):
+                return {"stop_reason":"end_turn","content":[{"type":"text","text":"Client reviewed."}]}
+            return {"stop_reason":"tool_use","content":[{"type":"tool_use","id":"tk",
+                    "name":"create_ticket","input":{"client_id":BOGUS14,
+                    "subject":"Fleet sweep follow-up","priority":"normal"}}]}
+        _o_tc14,_o_en14,_o_cp14 = _cai14._TOOL_CALLER,_cai14.enabled,_cai14.complete
+        _cai14._TOOL_CALLER=_fake14; _cai14.enabled=lambda:True
+        _cai14.complete=lambda system,user,**k:"Portfolio: all clients reviewed."
+        _fs14=_SL14()
+        try:
+            owner14=_fs14.query(_U14).filter(_U14.role==_R14.OWNER).first()
+            n_clients=_fs14.query(_C14).count()
+            # (1) DRY-RUN sweep: fans out per client, proposes (not executes) the write.
+            dry=_cf14.sweep(_fs14, owner14, "open a follow-up ticket for each client",
+                            allow_actions=False)
+            assert dry["totals"]["clients"]==n_clients, dry["totals"]
+            assert dry["totals"]["proposed"]==n_clients and dry["totals"]["actions"]==0, dry["totals"]
+            # Every sub-agent ran its own tool loop (real parallel fan-out).
+            assert all("create_ticket" in (r.get("tools_used") or []) for r in dry["results"])
+            # Isolation: each proposed action names the client being swept, NOT the bogus id.
+            for r in dry["results"]:
+                would=r["proposed_actions"][0]["result"]["would"]
+                assert r["client"] in would, (r["client"], would)
+            # (2) REAL scoped write via a single pinned sub-agent (isolation for mutations):
+            #     scope=Zeta, but the model asks for the bogus client_id -> must land on Zeta.
+            before=_fs14.query(_T14).filter(_T14.client_id==cid14b).count()
+            out14=_cop14.run(_fs14, owner14, "make a ticket", allow_actions=True,
+                             client_scope=cid14b)
+            assert out14["actions"], out14
+            assert out14["actions"][0]["result"]["client"]=="Zeta Fleet Co", out14["actions"][0]
+            after=_fs14.query(_T14).filter(_T14.client_id==cid14b).count()
+            assert after==before+1, (before, after)
+            # The bogus client never received a ticket.
+            assert _fs14.query(_T14).filter(_T14.client_id==BOGUS14).count()==0
+        finally:
+            _cai14._TOOL_CALLER,_cai14.enabled,_cai14.complete=_o_tc14,_o_en14,_o_cp14
+            _fs14.close()
+        # (3) RBAC: the sweep endpoint is staff-only (a client user is refused).
+        assert ca_c.post("/api/copilot/sweep", json={"objective":"x"}).status_code==403
+        print("multi-agent fleet sweep: parallel per-client sub-agents + portfolio synthesis "
+              "+ client_scope tenant isolation (read + real write) + staff-only RBAC OK")
+
         # ===================== v0.68: fleet inventory + patch compliance =====================
         # Re-seed SMOKE-PC with software + pending patches for the fleet rollups.
         a.post("/api/agent/inventory", headers=hdr, json={"software":[
@@ -3327,7 +3381,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.13.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.14.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

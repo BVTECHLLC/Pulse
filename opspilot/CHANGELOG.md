@@ -1,5 +1,36 @@
 # BVTech OpsPilot — Changelog
 
+## v1.14.0 — Multi-agent fleet workflows: one AI agent per client, in parallel (July 2026)
+- **The Copilot now spawns a fleet of sub-agents.** A single Copilot answers
+  "how's Acme doing?"; a **Fleet Sweep** answers the real MSP question — "go
+  through *every* client and <do X>". Give it an objective ("audit each
+  client's security posture", "which clients need attention this week?",
+  "open a follow-up ticket per client") and Pulse fans out **one governed
+  agent per client, running in parallel** (each on its own DB session), then
+  synthesises a portfolio-level verdict.
+- **Real per-client isolation (`client_scope`).** Every sub-agent is pinned to
+  a single tenant: all read tools filter to that client and all write tools are
+  forced to it — even if the model names a different client_id, the action
+  lands on the swept client or nowhere. A sub-agent for client A literally
+  cannot see or touch client B.
+- **Governed exactly like the Copilot.** Read tools run freely; write actions
+  (approve patches, open ticket, schedule maintenance) are **dry-run across the
+  whole fleet first**, then execute only after you hit "Confirm & run across
+  the fleet". Actions are audited.
+- **New surface:** `POST /api/copilot/sweep` (staff-only) + a "🛰 Sweep all"
+  button in the Copilot that shows the synthesis, per-client findings, and a
+  fleet-wide confirm.
+- **Brand fix:** removed the last "El Campo, TX" HQ strings from client-facing
+  footers (invoices, portal, reports, developer page, dashboard, generated
+  content) and swapped the El Campo prospecting market for **Sugar Land** —
+  brand attribution now matches the Sugar Land / Houston / Austin / San Antonio
+  footprint everywhere.
+- Verified: full smoke suite runs a real 2+-tenant parallel sweep (each
+  sub-agent runs its own tool loop), confirms the dry-run proposes one action
+  per client scoped to the right tenant, drives a real scoped write and proves
+  it lands on the pinned client (never the bogus id the model asked for), and
+  enforces staff-only RBAC.
+
 ## v1.13.0 — Foresight goes proactive: warned before it breaks (July 2026)
 - **Predicts problems, then tells you — unprompted.** Pulse already forecast
   device trouble (days-until-disk-full via linear trend, health decline, and

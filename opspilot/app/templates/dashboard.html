@@ -1389,7 +1389,7 @@
       <div class="muted" style="margin:14px 0 6px;font-weight:600">✉️ Check by mail</div>
       <div class="grid2">
         <label>Payable to<input id="pm-check_payee" placeholder="BVTech LLC"></label>
-        <label>Mail to (address)<input id="pm-check_address" placeholder="PO Box 123, El Campo, TX 77437"></label>
+        <label>Mail to (address)<input id="pm-check_address" placeholder="PO Box 123, Sugar Land, TX 77479"></label>
       </div>
       <div class="muted" style="margin:14px 0 6px;font-weight:600">💵 QuickBooks &amp; custom</div>
       <div class="grid2">
@@ -1570,15 +1570,17 @@
   </div>
   <div id="copilot-body" style="max-height:46vh;overflow:auto;padding:12px 14px;font-size:14px">
     <p class="muted" style="margin:0">I can query your whole fleet <b>and take action</b>. Try: "which clients are behind on patches?", "how's security looking?", "approve critical patches for Acme", or "open a ticket for Sugar Land Dental about the offline server."</p>
+    <p class="muted" style="margin:8px 0 0">🛰 <b>Fleet Sweep</b> runs one AI agent per client <i>in parallel</i> — e.g. "audit every client's security posture" or "which clients need attention this week?" Hit <b>Sweep all</b>.</p>
   </div>
   <div style="display:flex;gap:6px;padding:10px 12px;border-top:1px solid var(--line)">
     <input id="copilot-q" placeholder="Ask Pulse…" style="flex:1" onkeydown="if(event.key==='Enter')askCopilot()">
     <button class="btn sm" onclick="askCopilot()" id="copilot-send">Ask</button>
+    <button class="btn sm ghost" onclick="sweepCopilot()" id="copilot-sweep" title="Run one AI agent per client, in parallel">🛰 Sweep all</button>
   </div>
 </div>
 
 <div class="brand-footer">
-  <span>© BVTech LLC · El Campo, TX · OpsPilot v{{ version }}</span>
+  <span>© BVTech LLC · Sugar Land, TX · OpsPilot v{{ version }}</span>
   <span class="scripture">"Whatever you do, work heartily." — Col 3:23</span>
 </div>
 
@@ -1760,6 +1762,48 @@ async function askCopilot(){
   const inp=document.getElementById('copilot-q'); const q=inp.value.trim(); if(!q)return;
   copilotAdd('you',q); inp.value='';
   runCopilot(q, false);
+}
+// ---- 🛰 Fleet Sweep — one agent per client, in parallel ----
+function sweepResultsBadge(res, obj){
+  const b=document.getElementById('copilot-body');
+  const t=res.totals||{};
+  const rows=(res.results||[]).map(r=>{
+    const acted=(r.actions||[]).length, prop=(r.proposed_actions||[]).length;
+    const tag=acted?` <span style="color:var(--good,#2ecc71)">✅ ${acted} done</span>`
+             :prop?` <span style="color:var(--warn,#ffb020)">⚡ ${prop} proposed</span>`:'';
+    return `<div style="border-top:1px solid var(--line);padding:6px 0"><b>${esc(r.client)}</b>${tag}
+      <div class="muted" style="font-size:12px;white-space:pre-wrap">${esc((r.answer||'').trim())}</div></div>`;
+  }).join('');
+  b.insertAdjacentHTML('beforeend',
+    `<div class="muted" style="font-size:11px;margin:2px 0">🛰 Swept ${t.clients||0} client(s)${t.proposed?` · ${t.proposed} action(s) proposed`:''}${t.actions?` · ${t.actions} taken`:''}</div>
+     <details style="margin:2px 0 8px"><summary style="cursor:pointer;font-size:12px" class="muted">per-client findings</summary>${rows}</details>`);
+  if(t.proposed){
+    const id='sweepc-'+Math.random().toString(36).slice(2,8);
+    b.insertAdjacentHTML('beforeend',
+      `<div style="background:rgba(255,176,32,.1);border:1px solid var(--warn);border-radius:10px;padding:10px;margin:4px 0">
+        <div style="font-size:13px">⚡ ${t.proposed} action(s) are staged across ${t.clients} client(s).</div>
+        <button class="btn sm" id="${id}" style="margin-top:8px">Confirm &amp; run across the fleet</button></div>`);
+    document.getElementById(id).onclick=()=>{const el=document.getElementById(id);el.disabled=true;el.textContent='Running…';runSweep(obj,true);};
+  }
+  b.scrollTop=b.scrollHeight;
+}
+async function runSweep(obj, allow){
+  const btn=document.getElementById('copilot-sweep'); btn.disabled=true; const old=btn.textContent; btn.textContent='Sweeping…';
+  try{
+    const r=await post('/api/copilot/sweep',{objective:obj,allow_actions:!!allow});
+    const j=await r.json().catch(()=>({}));
+    if(r.ok){ copilotAdd('ai', j.summary||'(no summary)'); sweepResultsBadge(j,obj); }
+    else { copilotAdd('ai', j.detail||'Claude isn\'t connected yet — add your Anthropic API key on the server.'); }
+  }catch(e){ copilotAdd('ai','Something went wrong running the sweep.'); }
+  btn.disabled=false; btn.textContent=old;
+}
+async function sweepCopilot(){
+  const inp=document.getElementById('copilot-q');
+  let q=inp.value.trim();
+  if(!q) q=prompt('Fleet sweep objective — runs one AI agent per client:','Which clients need attention this week? Summarize each.');
+  if(!q) return;
+  copilotAdd('you','🛰 Sweep all clients: '+q); inp.value='';
+  runSweep(q, false);
 }
 
 let CLIENTS={},DEVICES={};
