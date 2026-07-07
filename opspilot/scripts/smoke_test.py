@@ -1325,6 +1325,44 @@ def main():
         print("proactive ops: opt-in auto-ticket (critical->urgent, deduped, off=silent) + "
               "site-health rollup (worst-first, tenant-scoped) OK")
 
+        # ===================== v1.8: Patch management (approve -> agent applies) =====================
+        import json as _j18
+        # Seed pending patches for SMOKE-PC (dev_id) so there's something to approve.
+        a.post("/api/agent/patches", headers=hdr, json={"patches":[
+            {"name":"2024-06 Cumulative Update","kb":"5035000","severity":"critical"},
+            {"name":"Defender platform update","kb":"5035100","severity":"security"}]})
+        assert c.get(f"/api/devices/{dev_id}/patches").json()["pending"]==2
+        # Staff approves ALL pending updates -> a governed winupdate job (approved).
+        ap=c.post("/api/patching/approve", json={"device_id":dev_id})
+        assert ap.status_code==201, ap.text
+        job_id=ap.json()["job_id"]
+        jobs=c.get(f"/api/patching/jobs?device_id={dev_id}").json()["jobs"]
+        assert any(j["id"]==job_id and j["status"]=="approved" and j["kbs"]=="all" for j in jobs), jobs
+        # RBAC: a client user can't approve patches.
+        assert ca_c.post("/api/patching/approve", json={"device_id":dev_id}).status_code==403
+        # The AGENT pulls its approved jobs -> gets the winupdate job, which flips to running.
+        pulled=a.get("/api/agent/jobs", headers=hdr).json()["jobs"]
+        wj=[j for j in pulled if j["id"]==job_id][0]
+        assert wj["language"]=="winupdate" and _j18.loads(wj["content"])["kbs"]=="all", wj
+        assert c.get(f"/api/patching/jobs?device_id={dev_id}").json()["jobs"][0]["status"]=="running"
+        # Agent reports success -> job succeeded, output stored; re-pull is empty (claimed once).
+        rr=a.post(f"/api/agent/jobs/{job_id}/result", headers=hdr,
+                  json={"exit_code":0,"output":"Installed 2 update(s): ... (resultCode=2)"})
+        assert rr.status_code==200
+        done=c.get(f"/api/patching/jobs?device_id={dev_id}").json()["jobs"][0]
+        assert done["status"]=="succeeded" and "Installed 2" in done["output"], done
+        assert a.get("/api/agent/jobs", headers=hdr).json()["jobs"]==[]   # nothing left to run
+        # Approve a SPECIFIC KB subset -> content pins exactly that KB.
+        ap2=c.post("/api/patching/approve", json={"device_id":dev_id,"kbs":["KB5035100"]})
+        j2=[j for j in c.get(f"/api/patching/jobs?device_id={dev_id}").json()["jobs"] if j["id"]==ap2.json()["job_id"]][0]
+        assert j2["kbs"]==["KB5035100"], j2
+        # The shipped PowerShell agent actually installs approved updates and reports back.
+        ps=c.get("/download/agent.ps1").text
+        assert "Install-ApprovedPatches" in ps and "Microsoft.Update.Session" in ps and "Poll-Jobs" in ps
+        assert "winupdate" in ps and "jobs/$($j.id)/result" in ps, "agent must run + report winupdate jobs"
+        print("patch management: approve (all + KB subset) -> agent pull(RUNNING) -> report(succeeded) "
+              "+ content-pinned + RBAC + agent installer logic OK")
+
         # ===================== v0.68: fleet inventory + patch compliance =====================
         # Re-seed SMOKE-PC with software + pending patches for the fleet rollups.
         a.post("/api/agent/inventory", headers=hdr, json={"software":[
@@ -3030,7 +3068,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.7.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.8.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

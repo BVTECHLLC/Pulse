@@ -2480,6 +2480,7 @@ async function openDevice360(id){
         <span><span class="badge ${sev(a.severity)}">${esc(a.severity)}</span> ${esc(a.message)}</span>
         <span class="muted" style="font-size:11px">${ago(a.first_seen)}</span></div>`).join('')
     : '<div class="muted">No open alerts — this device is healthy. ✅</div>';
+  loadPatchJobs(id);
   box.innerHTML=`
     <div class="flex" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
       <div><h3 style="margin:0">🖥️ ${esc(d.hostname)} <span class="muted" style="font-size:13px">#${d.id} · ${dot}</span></h3>
@@ -2497,7 +2498,8 @@ async function openDevice360(id){
           <div class="muted" style="font-size:11px;margin-top:4px">last ${(m.series||[]).length} check-ins</div></div>
         <div style="margin-top:8px;font-size:13px">
           <div>🛡️ Antivirus: <b>${esc(d.av_status)||'unknown'}</b></div>
-          <div>🔄 Patches: <b>${d.patches_pending?d.patches_pending+' pending':'up to date'}</b> ${d.patches_pending?`· <a onclick="showPatches(${d.id},'${esc(d.hostname)}')" style="cursor:pointer">view</a>`:''}</div>
+          <div>🔄 Patches: <b>${d.patches_pending?d.patches_pending+' pending':'up to date'}</b> ${d.patches_pending?`· <a onclick="showPatches(${d.id},'${esc(d.hostname)}')" style="cursor:pointer">view</a> · <a onclick="approvePatches(${d.id})" style="cursor:pointer;color:var(--ok,#00d68f)">✔ approve &amp; install all</a>`:''}</div>
+          <div id="patchjobs-${d.id}" class="muted" style="font-size:12px;margin-top:4px"></div>
           <div>💿 Software: <b>${d.software_count}</b> apps ${d.software_count?`· <a onclick="showSoftware(${d.id},'${esc(d.hostname)}')" style="cursor:pointer">view</a>`:''}</div>
           <div>👤 User: <b>${esc(d.logged_in_user)||'—'}</b></div>
           <div class="muted">Last seen ${ago(d.last_checkin)}</div>
@@ -2514,6 +2516,25 @@ async function openDevice360(id){
       </div>
     </div>`;
 }
+async function approvePatches(id){
+  if(!confirm('Approve and install ALL pending Windows updates on this device? The agent installs them on its next check-in (~5 min).'))return;
+  const r=await post('/api/patching/approve',{device_id:id});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){toastMsg&&toastMsg('Patch job approved');loadPatchJobs(id);}
+  else{alert(j.detail||'Approve failed');}
+}
+async function loadPatchJobs(id){
+  const el=document.getElementById('patchjobs-'+id); if(!el)return;
+  const d=await api(`/api/patching/jobs?device_id=${id}`); if(!d){el.textContent='';return;}
+  const jobs=(d.jobs||[]).slice(0,3);
+  if(!jobs.length){el.textContent='';return;}
+  el.innerHTML='Patch jobs: '+jobs.map(j=>{
+    const c=j.status==='succeeded'?'ok':(j.status==='failed'?'bad':'');
+    const kbs=j.kbs==='all'?'all pending':(Array.isArray(j.kbs)?j.kbs.length+' KB':'—');
+    return `<span class="badge ${c}" title="${esc(j.output||'')}">#${j.id} ${esc(j.status)} (${kbs})</span>`;
+  }).join(' ');
+}
+function toastMsg(m){ /* lightweight inline confirm */ }
 async function showSoftware(devId, host){
   const box=document.getElementById('dev-sw'), body=document.getElementById('t-dev-sw');
   document.getElementById('dev-sw-title').textContent=`Installed software — ${host}`;
