@@ -11,8 +11,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ...core.db import get_db
-from ...core.deps import current_user
-from ...models import User
+from ...core.deps import current_user, require_roles
+from ...models import Role, User
 from ...services import ai, audit, copilot
 
 router = APIRouter(prefix="/api/copilot", tags=["copilot"])
@@ -46,3 +46,11 @@ def ask(body: AskIn, request: Request, db: Session = Depends(get_db),
                      target_type="copilot", ip=_ip(request),
                      detail=f"tools={out.get('tools_used')} actions={len(out['actions'])}")
     return out
+
+
+@router.get("/briefing")
+def briefing(db: Session = Depends(get_db),
+             user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """The proactive morning briefing on demand — what needs attention today."""
+    from ...services import copilot_briefing
+    return copilot_briefing.build(db)

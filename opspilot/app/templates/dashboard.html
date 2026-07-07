@@ -4201,8 +4201,12 @@ async function testRmmCfg(){
 
 // ===================== Morning Briefing =====================
 async function showBriefing(){
-  const b=await api('/api/briefing'); if(!b||b.detail){alert((b&&b.detail)||'Could not load briefing');return;}
-  const body=(b.sections||[]).map(s=>{
+  const [b,ai]=await Promise.all([api('/api/briefing'), api('/api/copilot/briefing').catch(()=>null)]);
+  if(!b||b.detail){alert((b&&b.detail)||'Could not load briefing');return;}
+  const aiCard = ai&&ai.narrative
+    ? `<div style="background:rgba(108,92,231,.1);border:1px solid var(--brand,#6c5ce7);border-radius:12px;padding:12px;margin-bottom:12px;white-space:pre-wrap;font-size:14px">✨ <b>Copilot says:</b>\n${esc(ai.narrative)}</div>`
+    : '';
+  const body=aiCard+(b.sections||[]).map(s=>{
     const items=(s.lines||[]).map(l=>`<div class="muted" style="font-size:12px;padding-left:14px">• ${esc(l)}</div>`).join('');
     return `<div style="margin:8px 0"><b>${esc(s.title)}: <span style="color:${s.count?'var(--warn)':'var(--ok)'}">${s.count}</span></b>${items}</div>`;
   }).join('');

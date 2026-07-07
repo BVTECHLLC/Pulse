@@ -146,6 +146,15 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         pass
 
+    # 13.3) Proactive Copilot briefing (v1.12) — once per morning, drop an
+    #       action-oriented "here's what needs doing" note into notifications.
+    from . import copilot_briefing
+    briefing = {"posted": False}
+    try:
+        briefing = copilot_briefing.maybe_post(db, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
     # 13.4) Patch auto-approval (v1.9) — hands-off: approve pending patches per
     #       policy (severity + optional maintenance-window gate); the agent then
     #       installs them on its next check-in. Off by default.
@@ -182,4 +191,5 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
             "posts_published": len([p for p in posts if p.get("ok")]),
             "weekly_digest": digest, "ai_triaged": len(triaged),
             "streak_reminders": len(streaks_saved), "academy_ai": academy_ai,
-            "blog": blog, "patches_auto_approved": len(patches_auto)}
+            "blog": blog, "patches_auto_approved": len(patches_auto),
+            "briefing_posted": briefing.get("posted", False)}
