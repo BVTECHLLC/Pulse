@@ -62,11 +62,11 @@ def onboarding_status(client_id: int, after: int = 0, db: Session = Depends(get_
     captured when the installer was generated), so the UI can light up the
     moment the endpoint enrolls and checks in — SuperOps-style live onboarding."""
     from datetime import timedelta
-    dev = (db.query(Device)
-           .filter(Device.client_id == client_id, Device.id > after)
-           .order_by(Device.id.desc()).first())
+    q = db.query(Device).filter(Device.client_id == client_id, Device.id > after)
+    onboarded = q.count()   # bulk: a token onboards many devices in its 72h window
+    dev = q.order_by(Device.id.desc()).first()
     if not dev:
-        return {"enrolled": False}
+        return {"enrolled": False, "onboarded": 0}
     lc = dev.last_checkin
     if lc is not None and lc.tzinfo is None:
         lc = lc.replace(tzinfo=timezone.utc)
@@ -74,7 +74,7 @@ def onboarding_status(client_id: int, after: int = 0, db: Session = Depends(get_
     # "checked_in" means real telemetry arrived (health_score is only set by a
     # check-in) — enroll alone stamps last_checkin, so don't use that as proof.
     reported = dev.health_score is not None
-    return {"enrolled": True, "device": {
+    return {"enrolled": True, "onboarded": onboarded, "device": {
         "id": dev.id, "hostname": dev.hostname, "os": dev.os,
         "checked_in": reported, "online": bool(reported and online),
         "cpu_pct": dev.cpu_pct, "ram_pct": dev.ram_pct, "disk_pct": dev.disk_pct,
@@ -182,6 +182,14 @@ def checkin(body: CheckinIn, request: Request,
     # Fire automation for each newly-opened alert (after commit so ids exist).
     for alert in new_alerts:
         automation.dispatch(db, "alert.opened", automation.build_alert_context(alert, dev))
+    # Proactive Ops (v1.7): auto-open a ticket for critical alerts (opt-in, deduped).
+    if new_alerts:
+        from ...services import proactive
+        try:
+            if proactive.on_new_alerts(db, new_alerts):
+                db.commit()
+        except Exception:  # noqa: BLE001
+            db.rollback()
     # Auto-remediation (v0.65): queue approved fix-scripts for matching alerts.
     if new_alerts:
         from ...services import auto_remediation

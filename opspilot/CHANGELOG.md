@@ -1,5 +1,23 @@
 # BVTech OpsPilot — Changelog
 
+## v1.7.0 — Proactive Ops: alerts become action + site-health at a glance (July 2026)
+- **🔔 Auto-ticket from critical alerts.** Flip one toggle (Automation →
+  Autopilot) and Pulse opens a support ticket automatically whenever a device
+  raises an alert at/above your chosen severity (default: critical → urgent
+  ticket). Deduped by the triggering alert, so one incident = one ticket — no
+  overnight surprise slips through, no ticket spam. Opt-in; off = silent.
+- **🏢 Site Health rollup** on the Overview: every client, worst-first, with
+  device count, online/offline, average health, open alerts (critical count
+  highlighted), pending patches, and a click-through to the worst device's
+  Device 360. The "how is each account doing?" glance an owner actually wants.
+  Tenant-scoped (a client user sees only their own site).
+- **Bulk onboarding:** the enrollment installer is reusable for its 72-hour
+  window, so one file onboards a whole office; the onboarding poll now reports
+  how many devices came in on that token.
+- Verified: full smoke suite (opt-in auto-ticket critical→urgent + dedup +
+  off=silent, site-health worst-first + RBAC) and migration cycle.
+
+
 ## v1.6.0 — Device 360: the single-pane endpoint view (July 2026)
 - **Click any device hostname for a full drill-down** — the endpoint data Pulse
   already collected but never surfaced, now in one polished pane: live CPU/RAM/

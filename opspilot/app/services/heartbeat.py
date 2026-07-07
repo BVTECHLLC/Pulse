@@ -39,6 +39,14 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
             auto_remediation.on_alert(db, alert, dev)   # detect → fix
         except Exception:  # noqa: BLE001
             pass
+    # Proactive Ops (v1.7): auto-open tickets for newly-offline critical alerts.
+    if new_offline:
+        from . import proactive
+        try:
+            if proactive.on_new_alerts(db, new_offline):
+                db.commit()
+        except Exception:  # noqa: BLE001
+            db.rollback()
 
     # 2) SLA breach detection + built-in escalation (deduped per ticket).
     from . import sla_escalation

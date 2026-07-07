@@ -39,6 +39,14 @@ def briefing_view(db: Session = Depends(get_db),
     return {**brief, "text": _b.render_text(brief)}
 
 
+@router.get("/site-health")
+def site_health(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Per-client health rollup (worst-first). Staff see all clients; a client
+    user sees only their own company."""
+    from ...services import proactive
+    return {"sites": proactive.site_health(db, user)}
+
+
 @router.get("/overview")
 def overview(db: Session = Depends(get_db), user: User = Depends(current_user)):
     now = datetime.now(timezone.utc)

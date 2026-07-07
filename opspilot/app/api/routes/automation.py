@@ -197,6 +197,31 @@ class AITriageIn(BaseModel):
     auto_apply: bool | None = None
 
 
+class ProactiveIn(BaseModel):
+    auto_ticket_enabled: bool | None = None
+    min_severity: str | None = None
+
+
+@router.get("/proactive")
+def get_proactive(db: Session = Depends(get_db),
+                  user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    from ...services import proactive
+    return proactive.get_config(db)
+
+
+@router.put("/proactive")
+def save_proactive(body: ProactiveIn, request: Request, db: Session = Depends(get_db),
+                   user: User = Depends(require_roles(Role.OWNER))):
+    from ...services import proactive
+    out = proactive.save_config(db, auto_ticket_enabled=body.auto_ticket_enabled,
+                                min_severity=body.min_severity)
+    audit.record(db, action="automation.proactive_config", actor_user_id=user.id,
+                 actor_email=user.email, actor_role=user.role.value,
+                 target_type="automation", ip=_ip(request),
+                 detail=f"auto_ticket={out['auto_ticket_enabled']} sev={out['min_severity']}")
+    return out
+
+
 @router.get("/ai-triage")
 def get_ai_triage(db: Session = Depends(get_db),
                   user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
