@@ -23,6 +23,7 @@ from .api.routes import (
     campaigns, remote, quickbooks, gbp, hubspot, docs, payments, dialer, posture,
     remediation, inventory, autopost, setup, ai, branding, practice, status, users,
     library, academy, website, patching, copilot, psa, vcio, autonomy, incidents,
+    content_autopilot,
 )
 
 _s = get_settings()
@@ -118,6 +119,7 @@ app.include_router(psa.router)
 app.include_router(vcio.router)
 app.include_router(autonomy.router)
 app.include_router(incidents.router)
+app.include_router(content_autopilot.router)
 app.include_router(reports.router)
 app.include_router(channels.router)
 app.include_router(report_schedules.router)

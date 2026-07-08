@@ -2009,6 +2009,102 @@ def main():
               "ticket (members suppressed) + absorb on repeat + auto-resolve when alerts "
               "clear + copilot tool + tenant-scoped API OK")
 
+        # ===================== v1.20: Content Autopilot =====================
+        from app.services import (ai as _ai20, content_autopilot as _cap20,
+                                  jp_site as _jp20, wordpress as _wp20,
+                                  blog_autopilot as _ba20, secure_config as _sc20)
+        from app.core.db import SessionLocal as _SL20
+        from app.models import SocialPost as _SP20, Notification as _N20
+        import datetime as _dt20, json as _json20
+        _c20 = _SL20()
+        _o20 = (_ai20.enabled, _ai20.complete, _jp20._HTTP, _wp20.configured,
+                _ba20.generate_article, _ba20.publish_article)
+        try:
+            now20 = _dt20.datetime.now(_dt20.timezone.utc).replace(hour=15)
+            # One-click JP repo setup via the API (token encrypted in the vault).
+            assert c.put("/api/content-autopilot/jp-site",
+                         json={"project": "BVTECHLLC-group/jordanpolasek-website",
+                               "token": "glpat-test"}).json()["configured"] is True
+            assert ca_c.put("/api/content-autopilot/jp-site",
+                            json={"project": "x"}).status_code == 403
+            _sc20.upsert_platform(_c20, "pub_linkedin", "LinkedIn", "Publishing",
+                                  {"access_token": "tok", "person_urn": "urn:li:person:x"})
+            _sc20.upsert_platform(_c20, "gbp", "GBP", "Publishing",
+                                  {"account_name": "accounts/1", "location_name": "locations/2"})
+            # Offline fakes: AI + GitLab + WordPress.
+            _ai20.enabled = lambda: True
+            _ai20.complete = (lambda system, user, **k:
+                              _json20.dumps({"title": "Win in Houston", "excerpt": "x",
+                                             "html": "<p>body</p>"})
+                              if "STRICT JSON" in system else "Short channel post #IT")
+            def _gl20(method, url, token, payload=None):
+                if "repository/tree" in url:
+                    return [{"type": "tree", "path": "older-post"}]
+                if "repository/files" in url:
+                    import base64
+                    return {"content": base64.b64encode(
+                        b"<html><body><div class='content'>OLD</div></body></html>").decode()}
+                if url.endswith("/repository/commits"):
+                    return {"id": "abc123def"}
+                if "pipelines?sha=" in url:
+                    return [{"status": "failed"}]     # the Cloudflare build FAILS
+                if "/revert" in url:
+                    return {"id": "rev456"}
+                return {}
+            _jp20._HTTP = _gl20
+            _wp20.configured = lambda db: True
+            _ba20.generate_article = lambda db, now=None: {"title": "BV", "html": "<p>a</p>",
+                                                           "excerpt": "e"}
+            class _Row20:
+                status = "posted"; url = "https://bvtech.org/blog/x.html"
+                title = "BV"; error = None
+            _ba20.publish_article = lambda db, a, source=None: _Row20()
+            # Enable + run: all four channels post, each customized per channel.
+            _cap20.save_config(_c20, enabled=True)
+            out20 = _cap20.run_daily(_c20, now20)
+            assert set(out20["results"]) == {"bvtech", "jp", "linkedin", "gbp"}, out20
+            assert all(v["ok"] for v in out20["results"].values()), out20
+            assert "jordanpolasek.com/win-in-houston" in out20["results"]["jp"]["detail"]
+            # Dedupe: a second run the same day does nothing.
+            assert _cap20.run_daily(_c20, now20)["results"] == {}
+            # LinkedIn + GBP rode the retry-hardened autopost queue (channels is a
+            # JSON list — exactly what autopost.publish_due expects).
+            q20 = {(tuple(p.channels or []), p.status) for p in _c20.query(_SP20).all()}
+            assert (("linkedin",), "queued") in q20 and (("google_business",), "queued") in q20, q20
+            # JP build verification: failed Cloudflare pipeline -> auto-REVERT + notify.
+            ver20 = _jp20.verify_pending(_c20, now20)
+            assert ver20 and ver20[0]["status"] == "failed" and ver20[0]["reverted"] is True, ver20
+            assert _c20.query(_N20).filter(_N20.kind == "content").count() >= 1
+            # Failure path: break one channel -> notification + NOT marked done (retries).
+            _sc20.upsert_platform(_c20, "content_autopilot", "Content Autopilot",
+                                  "Publishing", {"enabled": True, "last": {}, "last_error": {}})
+            _wp20.configured = lambda db: False   # bvtech now unconfigured
+            out20b = _cap20.run_daily(_c20, now20)
+            assert out20b["results"]["bvtech"]["ok"] is False
+            assert _cap20.get_config(_c20)["last"].get("bvtech") is None   # will retry
+            assert _cap20.get_config(_c20)["last"].get("jp")               # others done
+            # Status endpoint powers the one-click card; staff-only.
+            st20 = c.get("/api/content-autopilot/status").json()
+            assert {x["key"] for x in st20["channels"]} == {"bvtech", "jp", "linkedin", "gbp"}
+            assert all(x["setup_hint"] for x in st20["channels"])
+            assert ca_c.get("/api/content-autopilot/status").status_code == 403
+        finally:
+            (_ai20.enabled, _ai20.complete, _jp20._HTTP, _wp20.configured,
+             _ba20.generate_article, _ba20.publish_article) = _o20
+            _cap20.save_config(_c20, enabled=False)
+            _c20.query(_SP20).delete(synchronize_session=False)
+            # Un-configure the channels we seeded so later blocks (gbp/publisher
+            # settings tests) still see a pristine state.
+            from app.models import IntegrationConnection as _IC20
+            (_c20.query(_IC20)
+                 .filter(_IC20.provider.in_(["gbp", "pub_linkedin", "jp_site"]))
+                 .delete(synchronize_session=False))
+            _c20.commit()
+            _c20.close()
+        print("Content Autopilot: one-click JP repo setup + 4-channel daily run "
+              "(customized per channel) + per-day dedupe + queue reuse + JP build "
+              "verification with auto-revert + failure retry/notify + RBAC OK")
+
         # ===================== v0.68: fleet inventory + patch compliance =====================
         # Re-seed SMOKE-PC with software + pending patches for the fleet rollups.
         a.post("/api/agent/inventory", headers=hdr, json={"software":[
@@ -3724,7 +3820,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.19.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.20.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
