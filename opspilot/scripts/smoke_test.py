@@ -1816,6 +1816,121 @@ def main():
         print("AI vCIO: maturity index + ranked/budgeted roadmap (security/patch/reliability/"
               "service/financial/lifecycle) + copilot tool + client-scoped access OK")
 
+        # ===================== v1.17: The Autonomy Engine =====================
+        from app.services import autonomy as _au17, patching as _pt17, copilot as _cop17
+        from app.core.db import SessionLocal as _SL17
+        from app.models import (ActionOutcome as _AO17, Alert as _Al17, AlertSeverity as _AS17,
+                                AlertStatus as _ASt17, Device as _Dv17, DevicePatch as _DP17,
+                                DeploymentStatus as _DS17, Notification as _N17,
+                                User as _U17, Role as _R17)
+        import datetime as _dt17
+        # Two fresh tenants: one earns trust, one gets benched.
+        cidT = c.post("/api/clients", json={"name": "Trust Earned Co"}).json()["id"]
+        cidX = c.post("/api/clients", json={"name": "Benched Co"}).json()["id"]
+        enT = c.post("/api/agent/enroll", json={"enroll_token": c.post(f"/api/agent/enroll-token/{cidT}").json()["enroll_token"],
+                     "hostname": "TRUST-PC", "os": "Windows 11"}).json()
+        enX = c.post("/api/agent/enroll", json={"enroll_token": c.post(f"/api/agent/enroll-token/{cidX}").json()["enroll_token"],
+                     "hostname": "BENCH-PC", "os": "Windows 11"}).json()
+        _a17 = _SL17()
+        try:
+            now17 = _dt17.datetime.now(_dt17.timezone.utc)
+            owner17 = _a17.query(_U17).filter(_U17.role == _R17.OWNER).first()
+            pol_before = _pt17.get_policy(_a17)   # restore after — other blocks rely on it
+            # (1) Recording at the chokepoint: approving a patch logs an outcome.
+            _a17.add(_DP17(device_id=enT["device_id"], client_id=cidT, name="Crit",
+                           kb="5099001", severity="critical")); _a17.commit()
+            devT = _a17.get(_Dv17, enT["device_id"])
+            depT = _pt17.approve_patches(_a17, devT, owner17, kbs=["KB5099001"])
+            assert _a17.query(_AO17).filter(_AO17.ref_kind == "deployment",
+                                            _AO17.ref_id == depT.id).count() == 1
+            # Idempotent: re-record same ref -> no duplicate.
+            _au17.record(_a17, action_type="patch_install", playbook="winupdate:pinned",
+                         client_id=cidT, ref_kind="deployment", ref_id=depT.id)
+            assert _a17.query(_AO17).filter(_AO17.ref_id == depT.id,
+                                            _AO17.ref_kind == "deployment").count() == 1
+            # (2) Grading by observable state: SUCCEEDED job -> success verdict.
+            depT.status = _DS17.SUCCEEDED; depT.exit_code = 0; _a17.commit()
+            g1 = _au17.grade_due(_a17, now17 + _dt17.timedelta(minutes=31))
+            assert any(g["verdict"] == "success" and g["action_type"] == "patch_install" for g in g1), g1
+            # FAILED job -> failure verdict.
+            _a17.add(_DP17(device_id=enX["device_id"], client_id=cidX, name="Crit2",
+                           kb="5099002", severity="critical")); _a17.commit()
+            devX = _a17.get(_Dv17, enX["device_id"])
+            depX = _pt17.approve_patches(_a17, devX, owner17, kbs=["KB5099002"])
+            depX.status = _DS17.FAILED; depX.exit_code = 1; _a17.commit()
+            g2 = _au17.grade_due(_a17, now17 + _dt17.timedelta(minutes=31))
+            assert any(g["verdict"] == "failure" for g in g2), g2
+            # Remediation grading: alert cleared -> success.
+            al17 = _Al17(client_id=cidT, device_id=devT.id, kind="service_down",
+                         severity=_AS17.CRITICAL, status=_ASt17.RESOLVED, message="x",
+                         first_seen=now17, last_seen=now17, resolved_at=now17)
+            _a17.add(al17); _a17.commit()
+            _au17.record(_a17, action_type="remediation", playbook="service_down→Restart svc",
+                         client_id=cidT, device_id=devT.id, ref_kind="alert", ref_id=al17.id,
+                         grade_after_minutes=0, now=now17); _a17.commit()
+            g3 = _au17.grade_due(_a17, now17 + _dt17.timedelta(minutes=1))
+            assert any(g["action_type"] == "remediation" and g["verdict"] == "success" for g in g3), g3
+            # (3) The earned-autonomy gate: 5 graded failures -> SUSPENDED; fresh combo allowed.
+            for i in range(4):
+                _a17.add(_AO17(action_type="patch_install", playbook="winupdate:pinned",
+                               client_id=cidX, ref_kind="deployment", ref_id=917000 + i,
+                               autonomous=True, taken_at=now17, grade_after=now17,
+                               graded_at=now17, verdict="failure"))
+            _a17.commit()
+            okT, _why = _au17.allowed(_a17, "patch_install", cidT)
+            okX, whyX = _au17.allowed(_a17, "patch_install", cidX)
+            assert okT is True and okX is False and "suspended" in whyX, (okT, okX, whyX)
+            # (4) The gate has real teeth: auto-approve sweep SKIPS the benched client
+            #     (and notifies), still serves the trusted one.
+            _pt17.save_policy(_a17, auto_approve=True, min_severity="critical",
+                              only_in_maintenance=False)
+            _a17.add(_DP17(device_id=devX.id, client_id=cidX, name="Crit3",
+                           kb="5099003", severity="critical")); _a17.commit()
+            made17 = _pt17.auto_approve_sweep(_a17, now17)
+            _a17.commit()
+            assert not any(m["device_id"] == devX.id for m in made17), made17
+            assert _a17.query(_N17).filter(_N17.kind == "autonomy",
+                                           _N17.client_id == cidX).count() >= 1
+            # Operator ceiling: pin the trusted client to supervised -> gate refuses too.
+            _au17.save_settings(_a17, ceilings={str(cidT): "supervised"})
+            okC, whyC = _au17.allowed(_a17, "patch_install", cidT)
+            assert okC is False and "ceiling" in whyC, (okC, whyC)
+            _au17.save_settings(_a17, ceilings={})
+            # (5) Ledger levels + Self-Driving Report + playbook memory.
+            led17 = _au17.ledger(_a17)
+            lv = {(r["action_type"], r["client_id"]): r["level"] for r in led17["combos"]}
+            assert lv.get(("patch_install", cidX)) == "suspended", lv
+            assert lv.get(("patch_install", cidT)) == "watching", lv
+            rep17 = _au17.report(_a17, days=7, now=now17 + _dt17.timedelta(minutes=32))
+            assert rep17["graded"] >= 3 and rep17["est_minutes_saved"] >= 20, rep17
+            assert any(r["client_id"] == cidX for r in rep17["suspended_combos"]), rep17
+            mem17 = _au17.playbook_memory(_a17, client_id=cidT)
+            assert mem17["count"] >= 2 and mem17["success_rate"] == 1.0, mem17
+            # (6) Copilot tools (staff) + RBAC.
+            t1 = _cop17._run_tool(_a17, owner17, "self_driving_report", {"days": 7}, False)
+            assert t1["autonomous_actions"] >= 1 and "success_rate" in t1, t1
+            t2 = _cop17._run_tool(_a17, owner17, "playbook_memory", {"client_id": cidT}, False)
+            assert t2["count"] >= 2, t2
+            # Restore policy + clean my outcome/patch seeds so later blocks are pristine.
+            _pt17.save_policy(_a17, **{k: v for k, v in pol_before.items()
+                                       if k in ("auto_approve", "min_severity", "only_in_maintenance")})
+            _a17.query(_AO17).filter(_AO17.client_id.in_([cidT, cidX])).delete(synchronize_session=False)
+            _a17.query(_DP17).filter(_DP17.client_id.in_([cidT, cidX])).delete(synchronize_session=False)
+            _a17.commit()
+        finally:
+            _a17.close()
+        _cn17 = {d["name"] for d in _cop17._tool_defs(staff=False)}
+        assert not ({"self_driving_report", "playbook_memory"} & _cn17)
+        assert {"self_driving_report", "playbook_memory"} <= {d["name"] for d in _cop17._tool_defs(staff=True)}
+        assert c.get("/api/autonomy/report").status_code == 200
+        assert c.get("/api/autonomy/ledger").status_code == 200
+        assert ca_c.get("/api/autonomy/report").status_code == 403
+        assert ca_c.put("/api/autonomy/settings", json={"min_success": 0.5}).status_code == 403
+        print("Autonomy Engine: outcome recording (idempotent) + state-based grading "
+              "(success/failure) + earned-autonomy gate (suspension blocks real sweep + "
+              "notifies, ceiling honored) + trust ledger + self-driving report + playbook "
+              "memory + copilot tools + RBAC OK")
+
         # ===================== v0.68: fleet inventory + patch compliance =====================
         # Re-seed SMOKE-PC with software + pending patches for the fleet rollups.
         a.post("/api/agent/inventory", headers=hdr, json={"software":[
@@ -3521,7 +3636,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.16.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.17.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

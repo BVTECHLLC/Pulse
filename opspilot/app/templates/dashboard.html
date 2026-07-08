@@ -155,6 +155,26 @@
       <table style="margin-top:12px"><thead><tr><th>Contract</th><th>Client</th><th>MRR</th><th>Margin</th><th>Realized $/h</th><th>Renews</th><th>Flags</th></tr></thead>
       <tbody id="t-psa"><tr><td colspan=7 class="muted">Loading…</td></tr></tbody></table>
     </div>
+    <div class="card" style="margin-top:16px" id="autonomy-card">
+      <h3>🤖 Autonomy Engine <span class="muted" style="font-size:12px">— Pulse earns the right to act alone, and shows the receipts</span></h3>
+      <p class="muted" style="margin:4px 0 12px">Every autonomous action is graded after the fact (did it actually work?). Automations that fail get benched automatically; the rest earn trust.</p>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">
+        <div class="card" style="background:#0c1430"><h3 style="font-size:13px">⚙️ Handled alone (7d)</h3>
+          <div class="stat" id="au-actions" style="font-size:26px">—</div>
+          <div class="stat sub" id="au-actions-sub">&nbsp;</div></div>
+        <div class="card" style="background:#0c1430"><h3 style="font-size:13px">🎯 Measured success</h3>
+          <div class="stat" id="au-rate" style="font-size:26px">—</div>
+          <div class="stat sub" id="au-rate-sub">graded outcomes</div></div>
+        <div class="card" style="background:#0c1430"><h3 style="font-size:13px">⏱ Tech-hours saved</h3>
+          <div class="stat" id="au-saved" style="font-size:26px;color:var(--good,#2ecc71)">—</div>
+          <div class="stat sub">estimated</div></div>
+        <div class="card" style="background:#0c1430"><h3 style="font-size:13px">🛑 Suspended</h3>
+          <div class="stat" id="au-susp" style="font-size:26px">—</div>
+          <div class="stat sub">benched automations</div></div>
+      </div>
+      <table style="margin-top:12px"><thead><tr><th>Automation</th><th>Client</th><th>Runs</th><th>Success</th><th>Trust level</th><th>Last verdict</th></tr></thead>
+      <tbody id="t-autonomy"><tr><td colspan=6 class="muted">No graded actions yet — Pulse starts building its track record as automations run.</td></tr></tbody></table>
+    </div>
     <div class="card hidden" id="signups-card" style="margin-top:16px">
       <h3>Access Requests</h3>
       <table><thead><tr><th>When</th><th>Name</th><th>Email</th><th>Company</th><th>Status</th><th></th></tr></thead>
@@ -2965,9 +2985,37 @@ async function loadPSA(){
     const ut=lk.unbilled_time||{}, dc=lk.due_contracts||{};
     document.getElementById('psa-leak-sub').textContent=`${ut.hours||0}h unbilled · ${dc.count||0} due to bill`; }
 }
+async function loadAutonomy(){
+  const card=document.getElementById('autonomy-card'); if(!card)return;
+  const [rep,led]=await Promise.all([api('/api/autonomy/report'), api('/api/autonomy/ledger')]);
+  if(!rep&&!led){ card.classList.add('hidden'); return; }   // non-staff
+  card.classList.remove('hidden');
+  if(rep){
+    document.getElementById('au-actions').textContent=rep.autonomous_actions||0;
+    document.getElementById('au-actions-sub').textContent=`${rep.confirmed_actions||0} human-confirmed`;
+    const rate=rep.success_rate!=null?Math.round(rep.success_rate*100)+'%':'—';
+    const rEl=document.getElementById('au-rate'); rEl.textContent=rate;
+    if(rep.success_rate!=null) rEl.style.color=rep.success_rate>=0.9?'var(--good,#2ecc71)':(rep.success_rate>=0.7?'var(--warn)':'var(--bad,#e74c3c)');
+    document.getElementById('au-rate-sub').textContent=`${rep.graded||0} graded outcome(s)`;
+    document.getElementById('au-saved').textContent=(rep.est_hours_saved||0)+'h';
+    const s=document.getElementById('au-susp');
+    s.textContent=(rep.suspended_combos||[]).length;
+    s.style.color=(rep.suspended_combos||[]).length?'var(--bad,#e74c3c)':'var(--good,#2ecc71)';
+  }
+  if(led&&(led.combos||[]).length){
+    const lv={suspended:'bad',watching:'',earned:'ok',supervised:'warn'};
+    document.getElementById('t-autonomy').innerHTML=led.combos.slice(0,12).map(r=>
+      `<tr><td><b>${esc(r.action_type.replace(/_/g,' '))}</b><div class="muted" style="font-size:11px">${esc((r.playbooks||[]).slice(0,2).join(', '))}</div></td>
+       <td>${esc(r.client||'—')}</td><td>${r.samples}</td>
+       <td>${Math.round((r.success_rate||0)*100)}%</td>
+       <td><span class="badge ${lv[r.level]||''}">${esc(r.level)}</span></td>
+       <td class="muted" style="font-size:12px">${esc(r.last_verdict||'—')}</td></tr>`).join('');
+  }
+}
 async function loadOverview(){
   loadSiteHealth();
   loadPSA();
+  loadAutonomy();
   loadSetup();
   loadPractice();
   const o=await api('/api/overview');if(!o)return;

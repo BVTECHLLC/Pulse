@@ -156,6 +156,16 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         db.rollback()
 
+    # 13.27) Autonomy Engine (v1.17) — grade every due autonomous action by its
+    #        observed outcome; the trust ledger + earned-autonomy gate feed off
+    #        these verdicts.
+    from . import autonomy
+    outcomes = []
+    try:
+        outcomes = autonomy.grade_due(db, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
     # 13.28) PSA SLA foresight (v1.15) — warn on tickets about to breach SLA
     #        (critical window) BEFORE the breach, deduped per ticket per day.
     from . import psa_intel
@@ -212,4 +222,5 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
             "streak_reminders": len(streaks_saved), "academy_ai": academy_ai,
             "blog": blog, "patches_auto_approved": len(patches_auto),
             "briefing_posted": briefing.get("posted", False),
-            "predicted_risks": len(predicted), "sla_watch": len(sla_watch)}
+            "predicted_risks": len(predicted), "sla_watch": len(sla_watch),
+            "outcomes_graded": len(outcomes)}
