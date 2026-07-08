@@ -1,5 +1,41 @@
 # BVTech OpsPilot — Changelog
 
+## v1.19.0 — Incident Intelligence: one outage, one incident, one ticket (July 2026)
+When a switch, uplink, or host dies, every RMM floods you with one alert per
+device — and an auto-ticketer happily opens twenty tickets for one event. Pulse
+now fixes the signal-to-noise problem at the root:
+- **Alert-storm correlation.** ≥3 same-kind active alerts for one client inside
+  a 15-minute window become a single **Incident** ("Possible site outage at
+  Acme — 6 devices offline together") with ONE urgent ticket (honoring your
+  auto-ticket setting), one notification, and the member alerts **suppressed**
+  from per-alert auto-ticketing. Later same-kind alerts are absorbed into the
+  open incident — repeat heartbeats never duplicate it. Deterministic count +
+  window rules; no AI in the grouping.
+- **Auto-resolution.** When every member alert clears, the incident resolves
+  itself and tells you — the record reads like an incident log, not stale noise.
+- **Everywhere:** `GET /api/incidents` (tenant-scoped — clients see only their
+  own), Copilot tool `open_incidents` ("any outages right now?"), a red ACTIVE
+  INCIDENT banner at the top of the overview, a morning-briefing line that puts
+  active incidents first, and the incident ticket feeds the Autonomy Engine's
+  outcome grading like every other autonomous action.
+- **Storm members are suppressed everywhere** — not just the auto-ticketer:
+  per-alert automation RULES and auto-remediation also skip incident members
+  (a site outage isn't fixable per-device, and one dead switch must not fire
+  twenty rule actions). Caught by the smoke suite running a storm against a
+  live "critical alert → ticket" automation rule.
+- **Fixed three silent JS shadowing bugs** (a later duplicate `function NAME()`
+  overrides the earlier one): the 🛰 fleet-sweep button was running the
+  monitoring offline sweep, the auto-blogger Save was calling the publishers
+  save, and the integrations connections table loader was shadowed by the
+  one-click grid. All renamed apart (`runOfflineSweep`, `saveBlogAutopilot`,
+  `loadOneClick`) — and a **permanent smoke guard** now fails the build on ANY
+  duplicate top-level function declaration in the dashboard.
+- Verified: full offline smoke drives a real 4-device offline storm through the
+  heartbeat and proves ONE incident + ONE urgent ticket (not four — even with a
+  live per-alert automation rule enabled), absorption on the next tick,
+  auto-resolve once alerts clear, copilot visibility, and tenant-scoped API
+  access — plus a Playwright check of the live incident banner (0 JS errors).
+
 ## v1.18.0 — One-click Connect that actually connects (July 2026)
 The #1 OAuth connect failure ("the redirect_uri does not match the registered
 value" — LinkedIn's "Bummer" page) happens because the provider app was never

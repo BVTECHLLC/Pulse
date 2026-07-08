@@ -1208,7 +1208,16 @@ def main():
         assert 'id="cmdk"' in _dash and "cmdkCommands" in _dash, "command palette missing"
         assert "Ask Pulse" in _dash and "/static/js/brand.js" in _dash, "copilot/branding missing"
         assert 'id="wizard"' in _dash and "openWizard" in _dash, "first-run wizard missing"
-        print("dashboard shell: AI copilot + palette + branding + setup wizard wired OK")
+        # v1.19 regression guard: a duplicate top-level `function NAME(` silently
+        # SHADOWS the earlier one (later definition wins) — this broke the fleet
+        # sweep button, the auto-blogger save, and the integrations table before
+        # it was caught. Zero duplicates, forever.
+        import collections as _coll, re as _re
+        _fn_names = _re.findall(r"^(?:async )?function (\w+)\(", _dash, _re.M)
+        _fn_dups = [n for n, k in _coll.Counter(_fn_names).items() if k > 1]
+        assert not _fn_dups, f"duplicate JS function declarations shadow each other: {_fn_dups}"
+        print("dashboard shell: AI copilot + palette + branding + setup wizard wired "
+              f"+ {len(_fn_names)} JS fns with zero duplicate declarations OK")
 
         # ===================== v0.19: software inventory =====================
         # SMOKE-PC was enrolled earlier (hdr). Agent reports installed software;
@@ -1930,6 +1939,75 @@ def main():
               "(success/failure) + earned-autonomy gate (suspension blocks real sweep + "
               "notifies, ceiling honored) + trust ledger + self-driving report + playbook "
               "memory + copilot tools + RBAC OK")
+
+        # ===================== v1.19: Incident Intelligence =====================
+        from app.services import (incidents as _in19, proactive as _pr19,
+                                  heartbeat as _hb19, copilot as _cop19)
+        from app.core.db import SessionLocal as _SL19
+        from app.models import (Alert as _Al19, AlertStatus as _AS19, Device as _Dv19,
+                                Incident as _In19, Notification as _N19,
+                                SupportTicket as _ST19, User as _U19, Role as _R19)
+        import datetime as _dt19
+        cid19 = c.post("/api/clients", json={"name": "Storm Site Co"}).json()["id"]
+        for i in range(4):
+            tok19 = c.post(f"/api/agent/enroll-token/{cid19}").json()["enroll_token"]
+            _a19 = TestClient(app); _a19.cookies.clear()
+            _a19.post("/api/agent/enroll", json={"enroll_token": tok19,
+                      "hostname": f"STORM-{i}", "os": "Windows 11"})
+        _i19 = _SL19()
+        try:
+            now19 = _dt19.datetime.now(_dt19.timezone.utc)
+            pr_before19 = _pr19.get_config(_i19)     # restore after
+            _pr19.save_config(_i19, auto_ticket_enabled=True, min_severity="critical")
+            # The whole site goes dark: every device last seen 2 hours ago.
+            for d in _i19.query(_Dv19).filter(_Dv19.client_id == cid19).all():
+                d.last_checkin = now19 - _dt19.timedelta(hours=2)
+            _i19.commit()
+            hb19 = _hb19.run_all(_i19, now19)
+            assert hb19["incidents"] == 1, hb19
+            inc19 = _i19.query(_In19).filter(_In19.client_id == cid19).one()
+            assert inc19.kind == "device_offline" and inc19.alert_count >= 3, \
+                (inc19.kind, inc19.alert_count)
+            assert "site outage" in inc19.title.lower(), inc19.title
+            # THE point: one storm -> ONE urgent ticket, not one per device.
+            tix19 = _i19.query(_ST19).filter(_ST19.client_id == cid19).all()
+            assert len(tix19) == 1 and tix19[0].priority == "urgent", \
+                [(t.id, t.subject) for t in tix19]
+            assert tix19[0].id == inc19.ticket_id and "[Incident]" in tix19[0].subject
+            assert _i19.query(_N19).filter(_N19.kind == "incident",
+                                           _N19.client_id == cid19).count() >= 1
+            # Second tick: the storm is ABSORBED (no duplicate incident/ticket).
+            hb19b = _hb19.run_all(_i19, now19 + _dt19.timedelta(minutes=2))
+            assert _i19.query(_In19).filter(_In19.client_id == cid19).count() == 1
+            assert _i19.query(_ST19).filter(_ST19.client_id == cid19).count() == 1
+            # Copilot sees it (base read tool — also tenant-scoped for clients).
+            owner19 = _i19.query(_U19).filter(_U19.role == _R19.OWNER).first()
+            t19 = _cop19._run_tool(_i19, owner19, "open_incidents", {}, False)
+            assert any(x["id"] == inc19.id for x in t19["incidents"]), t19
+            # All member alerts clear -> the incident auto-resolves + notifies.
+            for al in _i19.query(_Al19).filter(_Al19.client_id == cid19).all():
+                al.status = _AS19.RESOLVED; al.resolved_at = now19
+            _i19.commit()
+            closed19 = _in19.sweep_resolutions(_i19, now19 + _dt19.timedelta(minutes=5))
+            assert any(x["incident_id"] == inc19.id for x in closed19), closed19
+            _i19.refresh(inc19)
+            assert inc19.status == "resolved" and inc19.resolved_at is not None
+            # Restore config + bring devices back online so later sweeps stay quiet.
+            _pr19.save_config(_i19, auto_ticket_enabled=pr_before19["auto_ticket_enabled"],
+                              min_severity=pr_before19["min_severity"])
+            for d in _i19.query(_Dv19).filter(_Dv19.client_id == cid19).all():
+                d.last_checkin = _dt19.datetime.now(_dt19.timezone.utc)
+            _i19.commit()
+        finally:
+            _i19.close()
+        # API surface + tenant scoping: staff sees it; another client's user must not.
+        got19 = c.get(f"/api/incidents?status=resolved").json()["incidents"]
+        assert any(x["client_id"] == cid19 for x in got19)
+        ca19 = ca_c.get("/api/incidents").json()["incidents"]
+        assert not any(x["client_id"] == cid19 for x in ca19), ca19
+        print("Incident Intelligence: 4-device offline storm -> ONE incident + ONE urgent "
+              "ticket (members suppressed) + absorb on repeat + auto-resolve when alerts "
+              "clear + copilot tool + tenant-scoped API OK")
 
         # ===================== v0.68: fleet inventory + patch compliance =====================
         # Re-seed SMOKE-PC with software + pending patches for the fleet rollups.
@@ -3646,7 +3724,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.18.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.19.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

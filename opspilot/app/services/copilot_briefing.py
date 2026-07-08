@@ -71,6 +71,12 @@ def gather(db: Session, now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         pass
     try:
+        from ..models import Incident
+        stats["incidents_open"] = (db.query(Incident)
+                                   .filter(Incident.status == "open").count())
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         from . import autonomy
         rep = autonomy.report(db, days=1, now=now)
         stats["auto_actions_24h"] = rep["autonomous_actions"]
@@ -94,6 +100,9 @@ def gather(db: Session, now: datetime | None = None) -> dict:
 
 def _template(stats: dict) -> str:
     bits = []
+    if stats.get("incidents_open"):
+        bits.append(f"🌩 {stats['incidents_open']} ACTIVE incident(s) — correlated outages/storms. "
+                    f"Handle these first (ask me 'any outages right now?').")
     if stats.get("patch_critical"):
         bits.append(f"🔴 {stats['patch_critical']} critical patch(es) pending across "
                     f"{stats.get('patch_devices', 0)} device(s) — approve them (Devices → Fleet Patch, "
