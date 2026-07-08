@@ -226,6 +226,7 @@
           <input id="cap-jp-project" placeholder="BVTECHLLC-group/jordanpolasek-website">
         </div>
         <div class="flex" style="margin-top:6px"><button class="btn sm" onclick="saveCapSites()">Connect both sites</button>
+          <button class="btn sm ghost" onclick="testCapSites(this)">Test connection</button>
           <span class="muted" id="cap-msg" style="font-size:12px"></span></div>
       </div>
     </div>
@@ -3210,6 +3211,16 @@ async function saveCapSites(){
   if(r.ok){msg.textContent=`bvtech.org ${j.bvtech?'✓ connected':'— token needed'} · jordanpolasek.com ${j.jp?'✓ connected':'— token needed'}`;
     document.getElementById('cap-gl-token').value='';loadCap();}
   else msg.textContent=j.detail||'Save failed';
+}
+async function testCapSites(btn){
+  btn.disabled=true;const old=btn.textContent;btn.textContent='Testing…';
+  const msg=document.getElementById('cap-msg');
+  const r=await post('/api/content-autopilot/test-sites');const j=await r.json().catch(()=>({}));
+  if(r.ok){
+    msg.textContent=['bvtech','jp'].map(k=>{const s=j[k]||{};
+      return `${k==='bvtech'?'bvtech.org':'jordanpolasek.com'} ${s.ok?`✓ (${s.project})`:`✗ ${s.error||'failed'}`}`;}).join(' · ');
+  } else msg.textContent=j.detail||'Test failed';
+  btn.disabled=false;btn.textContent=old;
 }
 async function capRunNow(btn){
   btn.disabled=true;const old=btn.textContent;btn.textContent='Posting…';

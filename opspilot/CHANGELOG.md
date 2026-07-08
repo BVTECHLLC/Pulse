@@ -1,5 +1,13 @@
 # BVTech OpsPilot — Changelog
 
+## v1.21.1 — "Test connection" for the site publishers (July 2026)
+- New **Test connection** button next to "Connect both sites": read-only check
+  of the GitLab token against BOTH repos with a plain-English verdict per site
+  ("✓ bvtechllc-group/bvtech-website-new" vs "token rejected (401) — expired",
+  "needs `api` scope", "repo not found"). Know the token works NOW instead of
+  finding out at tomorrow's post. `POST /api/content-autopilot/test-sites`.
+- Verified in the smoke suite (ok verdicts, clear no-token error, RBAC).
+
 ## v1.21.0 — Both sites publish GitLab-native, one token, zero-touch (July 2026)
 Correction from the field: **neither site is WordPress** — bvtech.org AND
 jordanpolasek.com are static sites in private GitLab repos, deployed by

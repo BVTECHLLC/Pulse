@@ -78,6 +78,37 @@ def put_sites(body: SitesIn, db: Session = Depends(get_db),
             "bvtech_project": jp_site.get_config(db, "bvtech")["project"]}
 
 
+@router.post("/test-sites")
+def test_sites(db: Session = Depends(get_db),
+               user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Prove the GitLab token works against BOTH site repos — read-only, and the
+    per-site error explains exactly what's wrong (bad token, wrong scope, no
+    access to a repo) instead of failing at tomorrow's post."""
+    out = {}
+    for site in ("bvtech", "jp"):
+        cfg = jp_site.get_config(db, site)
+        if not cfg["configured"]:
+            out[site] = {"ok": False, "error": "no token found (paste one above, or "
+                                               "add it to the server env)"}
+            continue
+        try:
+            import urllib.parse as _up
+            proj = jp_site._HTTP("GET", f"{cfg['base']}/api/v4/projects/"
+                                 f"{_up.quote_plus(cfg['project'])}", cfg["token"])
+            out[site] = {"ok": True, "project": proj.get("path_with_namespace") or cfg["project"],
+                         "default_branch": proj.get("default_branch")}
+        except Exception as e:  # noqa: BLE001
+            msg = str(e)
+            if "401" in msg:
+                msg = "token rejected (401) — expired or wrong token"
+            elif "403" in msg:
+                msg = "token lacks access (403) — needs `api` scope + repo access"
+            elif "404" in msg:
+                msg = f"repo not found ({cfg['project']}) — token can't see it or path is wrong"
+            out[site] = {"ok": False, "error": msg[:200]}
+    return out
+
+
 @router.post("/run-now")
 def run_now(request: Request, db: Session = Depends(get_db),
             user: User = Depends(require_roles(Role.OWNER))):

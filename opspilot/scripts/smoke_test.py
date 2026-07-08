@@ -2112,6 +2112,15 @@ def main():
             assert _jp20.configured(_c20, "bvtech") is True
             del _os21.environ["GITLAB_TOKEN"]
             assert _jp20.configured(_c20, "bvtech") is False
+            # v1.21.1 Test connection: per-site verdicts — jp still has its own
+            # token (ok), bvtech has none (clear 'no token' error, not a mystery).
+            t21 = c.post("/api/content-autopilot/test-sites").json()
+            assert t21["jp"]["ok"] is True, t21
+            assert t21["bvtech"]["ok"] is False and "no token" in t21["bvtech"]["error"], t21
+            c.put("/api/content-autopilot/sites", json={"token": "glpat-shared"})
+            t21b = c.post("/api/content-autopilot/test-sites").json()
+            assert t21b["bvtech"]["ok"] is True and t21b["jp"]["ok"] is True, t21b
+            assert ca_c.post("/api/content-autopilot/test-sites").status_code == 403
         finally:
             (_ai20.enabled, _ai20.complete, _jp20._HTTP, _wp20.configured,
              _ba20.generate_article, _ba20.publish_article) = _o20
@@ -3846,7 +3855,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.21.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.21.1 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
