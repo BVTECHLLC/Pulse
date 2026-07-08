@@ -47,8 +47,35 @@ def put_jp(body: JpIn, db: Session = Depends(get_db),
            user: User = Depends(require_roles(Role.OWNER))):
     if body.project is None and body.token is None and body.branch is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Nothing to save.")
-    return jp_site.save_config(db, project=body.project, token=body.token,
+    return jp_site.save_config(db, site="jp", project=body.project, token=body.token,
                                branch=body.branch)
+
+
+class SitesIn(BaseModel):
+    token: str | None = None            # ONE token connects both sites
+    jp_project: str | None = None
+    bvtech_project: str | None = None
+    branch: str | None = None
+
+
+@router.put("/sites")
+def put_sites(body: SitesIn, db: Session = Depends(get_db),
+              user: User = Depends(require_roles(Role.OWNER))):
+    """One-paste connect: a single GitLab token (api scope) lights up BOTH site
+    publishers. Projects default to the known repos; override if they move."""
+    if not any([body.token, body.jp_project, body.bvtech_project, body.branch]):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Nothing to save.")
+    if body.token:
+        jp_site.save_shared_token(db, body.token)
+    if body.jp_project or body.branch:
+        jp_site.save_config(db, site="jp", project=body.jp_project, branch=body.branch)
+    if body.bvtech_project or body.branch:
+        jp_site.save_config(db, site="bvtech", project=body.bvtech_project,
+                            branch=body.branch)
+    return {"jp": jp_site.get_config(db, "jp")["configured"],
+            "bvtech": jp_site.get_config(db, "bvtech")["configured"],
+            "jp_project": jp_site.get_config(db, "jp")["project"],
+            "bvtech_project": jp_site.get_config(db, "bvtech")["project"]}
 
 
 @router.post("/run-now")

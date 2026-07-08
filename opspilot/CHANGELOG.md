@@ -1,5 +1,31 @@
 # BVTech OpsPilot — Changelog
 
+## v1.21.0 — Both sites publish GitLab-native, one token, zero-touch (July 2026)
+Correction from the field: **neither site is WordPress** — bvtech.org AND
+jordanpolasek.com are static sites in private GitLab repos, deployed by
+Cloudflare on push. v1.21 makes Pulse publish natively to both:
+- **Two-site GitLab publisher.** The v1.20 engine now knows both layouts:
+  bvtech.org → `blog/<slug>.html` (repo `bvtechllc-group/bvtech-website-new`),
+  jordanpolasek.com → `<slug>/index.html`. Skeleton-cloned from each site's
+  newest post so the real design carries over; every deploy pipeline (the
+  Cloudflare build) is verified with auto-revert + notification on failure —
+  for BOTH sites. The Content Autopilot bvtech channel publishes GitLab-first
+  (WordPress kept only as a legacy fallback if someone connected it).
+- **One paste connects both.** A single GitLab token (api scope) on the
+  Content Autopilot card lights up both site publishers — projects default to
+  the known repos. `PUT /api/content-autopilot/sites`.
+- **Zero-touch on the BVTech server.** The token resolution chain also reads
+  the credential the old cron already used: site vault config → shared
+  "gitlab" vault provider → `GITLAB_TOKEN`/`BV_GL_TOKEN` env →
+  `/etc/bvtech/publisher.env` → `/etc/bvtech/agent.env` (JSON, same aliases as
+  lib_env.sh). On the production box, both sites may show **connected with no
+  setup at all**. Values are never logged.
+- Verified: full offline smoke — one-paste connect for both sites (defaults
+  confirmed), bvtech publishing to `blog/<slug>.html` on the bvtech repo via
+  scripted GitLab API, the bvtech channel running GitLab-first end-to-end, and
+  the env-var fallback lighting the publisher with an empty vault (and going
+  dark when removed) — plus RBAC and a Playwright check of the one-paste card.
+
 ## v1.20.0 — Content Autopilot: one switch, four channels, daily (July 2026)
 The failed-pipeline emails from jordanpolasek.com exposed the weakness of the
 old content chain: a box-side cron pushed blog commits and NOTHING watched the
