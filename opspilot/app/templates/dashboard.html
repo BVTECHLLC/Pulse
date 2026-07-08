@@ -1458,8 +1458,8 @@
 
     <div class="card" style="margin-bottom:16px">
       <h3>🔗 One-click Connect <span class="pill">tokens self-refresh</span></h3>
-      <p class="muted" style="margin:4px 0 10px">Authorize once and the token stays fresh automatically — no more pasting/expiring tokens. (Add the redirect URI shown to each provider's OAuth app.)</p>
-      <div id="oc-grid" class="grid cols-4"></div>
+      <p class="muted" style="margin:4px 0 10px">Authorize once and the token stays fresh automatically. <b>If a provider says "redirect_uri does not match"</b>, copy the exact URL under that provider below and register it in the provider's app console (each tile tells you exactly where) — then hit Connect again.</p>
+      <div id="oc-grid" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px"></div>
       <div style="margin-top:10px">
         <label>LinkedIn app (enables LinkedIn Connect) — client id / secret</label>
         <div class="grid2"><input id="set-li-cid" placeholder="LinkedIn client ID"><input id="set-li-csecret" type="password" placeholder="LinkedIn client secret"></div>
@@ -3845,11 +3845,26 @@ async function loadConnections(){
     const btn=cn.connected?`<span class="badge ok">● connected</span>`
       :(cn.app_configured?`<button class="btn sm" onclick="location.href='${cn.connect_url}'">Connect →</button>`
         :`<span class="muted" style="font-size:11px">add app creds first</span>`);
+    const rid='ocr-'+cn.key;
     return `<div class="card"><div style="font-weight:600;font-size:13px">${esc(cn.name)}</div>
       ${cn.account?`<div class="muted" style="font-size:11px">${esc(cn.account)}</div>`:''}
-      <div style="margin-top:6px">${btn}</div></div>`;}).join('');
+      <div style="margin-top:6px">${btn}</div>
+      <div class="muted" style="font-size:10px;margin-top:8px">Authorized redirect URL — register this exact value:</div>
+      <div class="flex" style="gap:4px;margin-top:3px">
+        <input id="${rid}" readonly value="${esc(cn.redirect_uri||'')}" onclick="this.select()"
+          style="flex:1;font-family:monospace;font-size:10px;padding:5px">
+        <button class="btn sm ghost" style="padding:4px 8px" title="Copy"
+          onclick="copyRedirect('${rid}',this)">📋</button></div>
+      ${cn.console_hint?`<div class="muted" style="font-size:10px;margin-top:4px">📍 ${esc(cn.console_hint)}</div>`:''}
+    </div>`;}).join('');
   const li=(r.connections||[]).find(x=>x.key==='linkedin');
-  if(li)document.getElementById('oc-li-redirect').value=li.connect_url.replace('/connect','/callback');
+  if(li)document.getElementById('oc-li-redirect').value=li.redirect_uri||li.connect_url.replace('/connect','/callback');
+}
+async function copyRedirect(id,btn){
+  const el=document.getElementById(id); el.select();
+  try{ await navigator.clipboard.writeText(el.value); }
+  catch(e){ document.execCommand('copy'); }
+  const old=btn.textContent; btn.textContent='✓'; setTimeout(()=>btn.textContent=old,1200);
 }
 async function saveLinkedInApp(){
   const msg=document.getElementById('oc-msg'); msg.textContent='saving…';
@@ -4621,6 +4636,20 @@ function val(id){return (document.getElementById(id).value||'').trim();}
 async function load(){
   const me=await api('/api/auth/me'); if(!me)return;
   document.getElementById('who').textContent=`${me.email} · ${me.role}`;
+  // A failed one-click Connect bounces back here with ?oauth_error=…
+  const _qp=new URLSearchParams(location.search);
+  if(_qp.get('oauth_error')){
+    const prov=_qp.get('oauth_provider')||'the provider';
+    const err=_qp.get('oauth_error');
+    const hint=/redirect|match|invalid_request|exchange_failed/i.test(err)
+      ? ' Most common cause: the redirect URL isn’t registered on the app — open Settings → One-click Connect, copy the exact URL under that provider, register it in the provider’s console, then Connect again.'
+      : '';
+    document.body.insertAdjacentHTML('afterbegin',
+      `<div style="position:sticky;top:0;z-index:400;background:#3b1f24;border-bottom:1px solid var(--bad,#e74c3c);padding:10px 16px;font-size:13px">
+        ⚠️ Connect to <b>${esc(prov)}</b> failed (<code>${esc(err)}</code>).${hint}
+        <button class="btn sm ghost" style="margin-left:10px" onclick="this.parentElement.remove()">Dismiss</button></div>`);
+    history.replaceState(null,'',location.pathname);
+  }
   const _arr=x=>Array.isArray(x)?x:[];
   let [clients,devices,licenses,audit]=await Promise.all([
     api('/api/clients'),api('/api/devices'),api('/api/licenses'),api('/api/audit?limit=100')

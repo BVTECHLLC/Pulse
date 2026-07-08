@@ -233,18 +233,37 @@ def connections(request: Request, db: Session = Depends(get_db),
                 user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
     """One-click OAuth connect status per integration: is the app configured (so
     Connect can run) and is it currently connected (token stored)."""
+    oauth.sync_vault_providers(db)
     oauth.sync_connect_providers(db)
     base = _base_url(request)
     avail = {p["key"] for p in oauth.enabled_providers()}
+    # Where to register the callback URL, per provider console. The #1 connect
+    # failure ("redirect_uri does not match the registered value") is fixed by
+    # pasting the EXACT redirect_uri below into this screen:
+    hints = {
+        "linkedin": "LinkedIn Developers → your app → Auth tab → OAuth 2.0 settings → "
+                    "'Authorized redirect URLs for your app' → Add, paste EXACTLY this URL, Update.",
+        "google_gbp": "Google Cloud Console → APIs & Services → Credentials → your OAuth 2.0 "
+                      "Client → 'Authorized redirect URIs' → Add URI, paste EXACTLY this URL, Save.",
+        "quickbooks": "Intuit Developer → your app → Keys & OAuth → 'Redirect URIs' → "
+                      "Add URI, paste EXACTLY this URL, Save.",
+        "microsoft": "Microsoft Entra → App registrations → your app → Authentication → "
+                     "'Web' platform → Redirect URIs → add EXACTLY this URL.",
+        "google": "Google Cloud Console → APIs & Services → Credentials → your OAuth 2.0 "
+                  "Client → 'Authorized redirect URIs' → add EXACTLY this URL.",
+    }
     out = []
     for key, label in (("linkedin", "LinkedIn"), ("google_gbp", "Google Business Profile"),
-                       ("quickbooks", "QuickBooks")):
+                       ("quickbooks", "QuickBooks"), ("microsoft", "Microsoft (SSO + M365)"),
+                       ("google", "Google (SSO)")):
         tok = (db.query(OAuthToken).filter(OAuthToken.provider == key)
                .order_by(OAuthToken.id.desc()).first())
         out.append({"key": key, "name": label, "app_configured": key in avail,
                     "connected": bool(tok),
                     "account": tok.account_email if tok else None,
-                    "connect_url": f"{base}/api/oauth/{key}/connect"})
+                    "connect_url": f"{base}/api/oauth/{key}/connect",
+                    "redirect_uri": f"{base}/api/oauth/{key}/callback",
+                    "console_hint": hints.get(key, "")})
     return {"connections": out}
 
 
@@ -305,7 +324,8 @@ def callback(provider: str, request: Request, response: Response,
              state: str = "", code: str = "", error: str = "",
              db: Session = Depends(get_db)):
     if error:
-        return RedirectResponse(f"/?oauth_error={error}", status_code=302)
+        safe = "".join(ch for ch in error if ch.isalnum() or ch in "_-")[:60]
+        return RedirectResponse(f"/?oauth_error={safe}&oauth_provider={provider}", status_code=302)
     oauth.sync_vault_providers(db)   # ensure the provider config is present
     oauth.sync_connect_providers(db)
     st = _consume_state(db, provider, state)

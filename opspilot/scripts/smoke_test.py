@@ -3038,7 +3038,17 @@ def main():
         assert _oa.get_valid_token(_odb, "google_gbp") == "AT"
         _odb.close()
         assert ca_c.get("/api/oauth/connections").status_code == 403
-        print("One-click OAuth connect: providers + app-config gating + self-refresh engine + RBAC OK")
+        # v1.18: every connection row hands the operator the EXACT redirect URL to
+        # register + where to paste it — the fix for "redirect_uri does not match".
+        cn3 = {x["key"]: x for x in c.get("/api/oauth/connections").json()["connections"]}
+        assert {"linkedin", "google_gbp", "quickbooks", "microsoft", "google"} <= set(cn3)
+        for k, row in cn3.items():
+            assert row["redirect_uri"].endswith(f"/api/oauth/{k}/callback"), row
+            assert row["console_hint"], f"{k} missing console hint"
+        assert "linkedin.com" not in cn3["linkedin"]["redirect_uri"]   # OUR url, not theirs
+        assert "Authorized redirect URLs" in cn3["linkedin"]["console_hint"]
+        print("One-click OAuth connect: providers + app-config gating + self-refresh engine "
+              "+ exact redirect-URI + console walkthrough per provider + RBAC OK")
 
         # --- v0.57 Stripe payments: settings + signature-verified webhook reconcile ---
         import hmac as _hm, hashlib as _hh, json as _js, time as _tm
@@ -3636,7 +3646,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.17.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.18.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
