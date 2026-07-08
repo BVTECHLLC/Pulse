@@ -208,6 +208,27 @@
   </section>
 
   <section id="content" class="hidden">
+    <div class="card" style="margin-bottom:16px;border:1px solid var(--brand,#6c5ce7)" id="cap-card">
+      <div class="flex" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0">📣 Content Autopilot <span class="pill" id="cap-state">off</span></h3>
+        <div class="flex" style="gap:10px;align-items:center">
+          <label class="flex" style="margin:0;gap:6px;color:var(--muted)"><input type="checkbox" id="cap-enabled" style="width:auto" onchange="saveCap()"> Daily posts to all channels</label>
+          <button class="btn sm" onclick="capRunNow(this)">🚀 Post to all now</button>
+        </div>
+      </div>
+      <p class="muted" style="margin:4px 0 12px">One switch: every day Claude writes and ships <b>channel-customized</b> content — a full SEO article to bvtech.org, a founder post to jordanpolasek.com (with the Cloudflare build verified &amp; auto-reverted if it fails), a punchy LinkedIn post, and a local Google Business update. Failures notify you and retry — never silent.</p>
+      <div id="cap-grid" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px"><div class="muted">Loading…</div></div>
+      <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
+        <label style="font-size:12px">jordanpolasek.com site repo (GitLab) — project path / token (api scope) / branch</label>
+        <div class="grid" style="grid-template-columns:2fr 2fr 1fr;gap:8px">
+          <input id="cap-jp-project" placeholder="BVTECHLLC-group/jordanpolasek-website">
+          <input id="cap-jp-token" type="password" placeholder="glpat-… (unchanged)">
+          <input id="cap-jp-branch" placeholder="main">
+        </div>
+        <div class="flex" style="margin-top:6px"><button class="btn sm" onclick="saveCapJp()">Save JP repo</button>
+          <span class="muted" id="cap-msg" style="font-size:12px"></span></div>
+      </div>
+    </div>
     <div class="card" style="margin-bottom:16px">
       <div class="flex" style="justify-content:space-between;flex-wrap:wrap">
         <h3 style="margin:0">🌐 bvtech.org Auto-Blogger <span class="pill" id="wb-state">off</span></h3>
@@ -1643,7 +1664,7 @@ function tab(name){
   if(name==='crm'){loadCrm();}
   if(name==='dialer'){loadDialer();}
   if(name==='inventory'){loadInventory();}
-  if(name==='content'){loadAutopost();}
+  if(name==='content'){loadAutopost();loadCap();}
   if(name==='rmm'){loadRmm();}
   if(name==='users'){loadUsers();}
   if(name==='library'){loadLibrary();}
@@ -3148,6 +3169,52 @@ async function loadWebsite(){
      <td>${r.url?`<a href="${esc(r.url)}" target="_blank">view →</a>`:'—'}</td>
      <td class="muted">${r.created_at?new Date(r.created_at).toLocaleDateString():''}</td></tr>`).join('')
     :'<tr><td colspan=4 class="muted">No articles yet — hit “Write & publish one now”.</td></tr>';
+}
+// ---- 📣 Content Autopilot (v1.20): one switch, four channels, daily ----
+async function loadCap(){
+  const d=await api('/api/content-autopilot/status'); if(!d)return;
+  document.getElementById('cap-enabled').checked=!!d.enabled;
+  const st=document.getElementById('cap-state');
+  st.textContent=d.enabled?(d.ai_connected?'ON — daily':'ON (connect Claude!)'):'off';
+  st.style.background=d.enabled?'rgba(46,204,113,.15)':'';
+  document.getElementById('cap-grid').innerHTML=(d.channels||[]).map(ch=>{
+    const dot=ch.connected?(ch.enabled?'🟢':'⚪'):'🔴';
+    const state=ch.connected?(ch.enabled?'ready':'channel off'):'not connected';
+    const last=ch.last_success?`last post ${esc(ch.last_success)}`:'no posts yet';
+    const err=ch.last_error?`<div style="color:var(--warn);font-size:11px">⚠ ${esc((ch.last_error.error||'').slice(0,90))}</div>`:'';
+    const hint=ch.connected?'':`<div class="muted" style="font-size:10px;margin-top:4px">🔧 ${esc(ch.setup_hint)}</div>`;
+    return `<div class="card" style="background:#0c1430">
+      <div class="flex" style="justify-content:space-between">
+        <b style="font-size:13px">${dot} ${esc(ch.name)}</b>
+        <label style="margin:0"><input type="checkbox" ${ch.enabled?'checked':''} style="width:auto"
+          onchange="capToggle('${esc(ch.key)}',this.checked)"></label></div>
+      <div class="muted" style="font-size:11px;margin-top:4px">${esc(state)} · ${esc(last)}</div>
+      ${err}${hint}</div>`;}).join('');
+}
+async function saveCap(){
+  await put('/api/content-autopilot/settings',{enabled:document.getElementById('cap-enabled').checked});
+  loadCap();
+}
+async function capToggle(key,on){
+  await put('/api/content-autopilot/settings',{channels:{[key]:on}});
+  loadCap();
+}
+async function saveCapJp(){
+  const msg=document.getElementById('cap-msg'); msg.textContent='saving…';
+  const body={project:val('cap-jp-project')||null,branch:val('cap-jp-branch')||null};
+  const tok=val('cap-jp-token'); if(tok)body.token=tok;
+  const r=await put('/api/content-autopilot/jp-site',body); const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent=j.configured?'Saved ✓ — jordanpolasek.com connected':'Saved (token still needed)';
+    document.getElementById('cap-jp-token').value='';loadCap();}
+  else msg.textContent=j.detail||'Save failed';
+}
+async function capRunNow(btn){
+  btn.disabled=true;const old=btn.textContent;btn.textContent='Posting…';
+  const r=await post('/api/content-autopilot/run-now');const j=await r.json().catch(()=>({}));
+  if(r.ok){const res=j.results||{};
+    alert('Posted:\n'+Object.entries(res).map(([k,v])=>`${v.ok?'✅':'❌'} ${k}: ${v.detail}`).join('\n')||'nothing enabled');
+  } else alert(j.detail||'Run failed');
+  btn.disabled=false;btn.textContent=old;loadCap();
 }
 async function saveBlogAutopilot(){
   const body={base_url:document.getElementById('wb-url').value.trim()||null,

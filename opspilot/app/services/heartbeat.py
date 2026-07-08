@@ -229,6 +229,26 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         pass
 
+    # 13.55) Content Autopilot (v1.20) — one customized post per channel per day
+    #        (bvtech.org, jordanpolasek.com, LinkedIn, Google Business). Failures
+    #        notify + retry next tick; success is the only thing that marks a
+    #        channel done. Off by default.
+    from . import content_autopilot
+    content = {"ran": False}
+    try:
+        content = content_autopilot.run_daily(db, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
+    # 13.56) jordanpolasek.com build verification (v1.20) — watch the deploy
+    #        pipeline for commits Pulse pushed; auto-revert + notify on failure.
+    from . import jp_site
+    jp_verified = []
+    try:
+        jp_verified = jp_site.verify_pending(db, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
     # 13) Academy AI question refresh (v1.3) — monthly, only when Claude is
     #     connected; cheap month-key check otherwise.
     academy_ai = {"refreshed": False}
@@ -249,4 +269,7 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
             "predicted_risks": len(predicted), "sla_watch": len(sla_watch),
             "outcomes_graded": len(outcomes),
             "incidents": len(incident_summary.get("incidents", [])),
-            "incidents_resolved": len(incidents_resolved)}
+            "incidents_resolved": len(incidents_resolved),
+            "content_autopilot": {k: v.get("ok") for k, v in
+                                  (content.get("results") or {}).items()},
+            "jp_builds_checked": len(jp_verified)}

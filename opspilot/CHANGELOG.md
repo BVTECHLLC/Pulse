@@ -1,5 +1,43 @@
 # BVTech OpsPilot — Changelog
 
+## v1.20.0 — Content Autopilot: one switch, four channels, daily (July 2026)
+The failed-pipeline emails from jordanpolasek.com exposed the weakness of the
+old content chain: a box-side cron pushed blog commits and NOTHING watched the
+Cloudflare Workers build that actually deploys the site — failures were
+invisible and unrecovered. v1.20 replaces the whole chain with an in-app,
+self-verifying engine:
+- **📣 Content Autopilot (one-click).** A single switch: every day Claude
+  writes and ships **channel-customized** content to all four surfaces —
+  a full SEO article to **bvtech.org** (WordPress), a founder thought-leadership
+  post to **jordanpolasek.com**, a punchy insight post to **LinkedIn**, and a
+  local-flavored update to **Google Business** (metros rotating Sugar Land /
+  Houston / Austin / San Antonio; never El Campo). One post per channel per
+  day; a failed channel never blocks the others; every failure raises a
+  notification and retries next tick — success is the only thing that marks a
+  channel done.
+- **jordanpolasek.com publishing moves in-app — and verifies its own deploy.**
+  Pulse commits `<slug>/index.html` straight to the site's GitLab repo via API
+  (skeleton-cloned from the newest post so the real header/footer/CSS carry
+  over — no box, no cron, no git checkout), then **watches the deploy pipeline**
+  (that's the Cloudflare Workers build from the failure emails): a failed build
+  is **auto-REVERTED** so the site stays on the last good deploy, and the
+  operator is notified with the reason. GitLab token encrypted in the vault.
+- **LinkedIn + Google Business ride the hardened queue.** Daily posts are
+  enqueued into the existing autopost engine (retries, race-guards, requeue) —
+  no new delivery path to break.
+- **One-click setup card** (Marketing → Content Autopilot): four channel tiles
+  with connected/enabled state, last post, last error, and the exact setup hint
+  for anything missing; JP repo setup right on the card (project + token +
+  branch); master daily toggle; **"🚀 Post to all now"** button.
+- Surfaces: GET /api/content-autopilot/status, PUT /settings (OWNER),
+  PUT /jp-site (OWNER), POST /run-now (OWNER, audited). Heartbeat runs the
+  daily tick + the JP build verifier.
+- Verified: full offline smoke drives all four channels (customized content per
+  channel), proves per-day dedupe, queue reuse for LinkedIn/GBP, JP publish via
+  scripted GitLab API, a failed Cloudflare pipeline triggering auto-revert +
+  notification, a broken channel retrying without blocking the others, and
+  staff/OWNER RBAC — plus a Playwright check of the one-click card (0 JS errors).
+
 ## v1.19.0 — Incident Intelligence: one outage, one incident, one ticket (July 2026)
 When a switch, uplink, or host dies, every RMM floods you with one alert per
 device — and an auto-ticketer happily opens twenty tickets for one event. Pulse
