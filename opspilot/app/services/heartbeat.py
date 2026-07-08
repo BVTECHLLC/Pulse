@@ -27,11 +27,33 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
     from . import automation as automation_svc  # local import: avoid cycles
     now = now or datetime.now(timezone.utc)
 
-    # 1) Offline sweep -> alert.opened automations + auto-remediation.
+    # 1) Offline sweep.
     sweep, new_offline = monitoring.sweep_offline(db)
+
+    # 1.1) Incident Intelligence (v1.19) FIRST: correlate alert STORMS into one
+    #      incident + ONE ticket. Member alerts are consumed BEFORE any per-alert
+    #      handling (automation rules, auto-remediation, auto-tickets) — twenty
+    #      offline alerts from one dead switch must not fire twenty rule actions.
+    #      Also auto-resolve incidents whose member alerts have all cleared.
+    from . import incidents as incidents_svc
+    incident_summary = {"incidents": [], "consumed": set()}
+    incidents_resolved = []
+    try:
+        incident_summary = incidents_svc.correlate(db, new_offline, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+    try:
+        incidents_resolved = incidents_svc.sweep_resolutions(db, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+    consumed = incident_summary.get("consumed", set())
+    remaining = [a for a in new_offline if a.id not in consumed]
+
+    # 1.2) Per-alert handling — alert.opened automations + auto-remediation —
+    #      for NON-storm alerts only (a site outage isn't fixable per-device).
     from . import auto_remediation
     from ..models import Device
-    for alert in new_offline:
+    for alert in remaining:
         dev = db.get(Device, alert.device_id)
         automation_svc.dispatch(db, "alert.opened",
                                 automation_svc.build_alert_context(alert, dev))
@@ -39,11 +61,13 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
             auto_remediation.on_alert(db, alert, dev)   # detect → fix
         except Exception:  # noqa: BLE001
             pass
-    # Proactive Ops (v1.7): auto-open tickets for newly-offline critical alerts.
-    if new_offline:
+
+    # 1.3) Proactive Ops (v1.7): auto-open tickets for newly-offline critical
+    #      alerts (storm members already have their single incident ticket).
+    if remaining:
         from . import proactive
         try:
-            if proactive.on_new_alerts(db, new_offline):
+            if proactive.on_new_alerts(db, remaining):
                 db.commit()
         except Exception:  # noqa: BLE001
             db.rollback()
@@ -223,4 +247,6 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
             "blog": blog, "patches_auto_approved": len(patches_auto),
             "briefing_posted": briefing.get("posted", False),
             "predicted_risks": len(predicted), "sla_watch": len(sla_watch),
-            "outcomes_graded": len(outcomes)}
+            "outcomes_graded": len(outcomes),
+            "incidents": len(incident_summary.get("incidents", [])),
+            "incidents_resolved": len(incidents_resolved)}

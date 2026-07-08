@@ -73,6 +73,10 @@ def _tool_defs(staff: bool) -> list[dict]:
         {"name": "predicted_issues",
          "description": "PREDICTED problems from trend + anomaly analysis of device telemetry (disk full soon, health declining, resource spikes) — before they become hard alerts.",
          "input_schema": {"type": "object", "properties": {}}},
+        {"name": "open_incidents",
+         "description": "Correlated alert STORMS (e.g. many devices offline at once = likely site outage). One incident per storm with its single ticket. Use for 'is anything big happening?' / 'any outages right now?'.",
+         "input_schema": {"type": "object", "properties": {
+             "status": {"type": "string", "enum": ["open", "resolved"]}}}},
     ]
     if staff:
         tools += [
@@ -215,6 +219,13 @@ def _run_tool(db: Session, user: User, name: str, args: dict, allow_actions: boo
                        else d.last_checkin) < cutoff)
         patch = sum(1 for d in devs if (d.patches_pending or 0) > 0)
         return {"devices": len(devs), "offline": offline, "devices_with_pending_patches": patch}
+
+    if name == "open_incidents":
+        from . import incidents
+        rows = incidents.list_incidents(db, user, status=args.get("status") or "open")
+        if client_scope is not None:
+            rows = [r for r in rows if r["client_id"] == client_scope]
+        return {"count": len(rows), "incidents": rows[:20]}
 
     if name == "predicted_issues":
         from . import foresight

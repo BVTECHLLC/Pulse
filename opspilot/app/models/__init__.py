@@ -1427,3 +1427,25 @@ class ActionOutcome(Base):
     verdict: Mapped[str | None] = mapped_column(String(16), index=True)  # success|failure|indeterminate
     evidence: Mapped[str | None] = mapped_column(String(300))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class Incident(Base):
+    """v1.19 Incident Intelligence — one row per correlated alert STORM. When a
+    switch/site/link dies, twenty device_offline alerts are one event, not
+    twenty: the correlator groups same-kind active alerts per client into a
+    single incident with ONE ticket, and auto-resolves it when the member
+    alerts clear."""
+    __tablename__ = "incidents"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    kind: Mapped[str] = mapped_column(String(40), index=True, nullable=False)    # alert kind that stormed
+    title: Mapped[str] = mapped_column(String(220), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="open", index=True)  # open|resolved
+    severity: Mapped[str] = mapped_column(String(16), default="critical")
+    alert_ids: Mapped[list] = mapped_column(JSON, default=list)                  # member alert ids
+    alert_count: Mapped[int] = mapped_column(Integer, default=0)
+    ticket_id: Mapped[int | None] = mapped_column(Integer)                       # the ONE ticket
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

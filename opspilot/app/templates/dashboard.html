@@ -132,6 +132,7 @@
       <div class="card"><h3>Active Licenses</h3><div class="stat" id="s-lic">—</div></div>
       <div class="card"><h3>Renewals (60d)</h3><div class="stat" id="s-renew" style="color:var(--warn)">—</div></div>
     </div>
+    <div id="incident-strip" class="hidden" style="margin-top:16px"></div>
     <div class="card" style="margin-top:16px" id="sitehealth-card">
       <h3>🏢 Site Health <span class="muted" style="font-size:12px">— per client, worst first</span></h3>
       <p class="muted" style="margin:4px 0 10px">One glance at how every account is doing. Click a client to jump to its worst device.</p>
@@ -210,7 +211,7 @@
     <div class="card" style="margin-bottom:16px">
       <div class="flex" style="justify-content:space-between;flex-wrap:wrap">
         <h3 style="margin:0">🌐 bvtech.org Auto-Blogger <span class="pill" id="wb-state">off</span></h3>
-        <label class="flex" style="margin:0;gap:6px;color:var(--muted)"><input type="checkbox" id="wb-enabled" style="width:auto" onchange="saveWebsite()"> Write &amp; publish articles automatically</label>
+        <label class="flex" style="margin:0;gap:6px;color:var(--muted)"><input type="checkbox" id="wb-enabled" style="width:auto" onchange="saveBlogAutopilot()"> Write &amp; publish articles automatically</label>
       </div>
       <p class="muted" style="margin:4px 0 10px" id="wb-hint">Claude writes a full SEO article in your voice (rotating your target metros) and publishes it straight to bvtech.org via WordPress. Failed publishes retry and alert you — nothing disappears.</p>
       <div class="grid2">
@@ -231,7 +232,7 @@
         </div>
       </div>
       <div class="flex" style="margin-top:10px;flex-wrap:wrap;gap:10px">
-        <button class="btn sm" onclick="saveWebsite()">Save</button>
+        <button class="btn sm" onclick="saveBlogAutopilot()">Save</button>
         <button class="btn sm ghost" onclick="testWebsite()">Test WordPress connection</button>
         <button class="btn sm ghost" onclick="publishBlogNow()">✍️ Write &amp; publish one now</button>
         <span class="err" id="wb-msg"></span>
@@ -474,7 +475,7 @@
             <input type="checkbox" id="a-show-resolved" style="width:auto" onchange="loadAlerts()"> show resolved</label>
           <button class="btn sm ghost" id="a-bulk-ack" onclick="bulkAlerts('ack')" disabled>Ack selected</button>
           <button class="btn sm ghost" id="a-bulk-res" onclick="bulkAlerts('resolve')" disabled>Resolve selected</button>
-          <button class="btn sm" onclick="runSweep()">Run offline sweep</button>
+          <button class="btn sm" onclick="runOfflineSweep()">Run offline sweep</button>
         </div>
       </div>
       <table>
@@ -1916,7 +1917,7 @@ async function mwCreate(){
   else msg.textContent=j.detail||'Could not schedule window';
 }
 async function mwDelete(id){const r=await fetch('/api/maintenance-windows/'+id,{method:'DELETE'});if(r.ok)loadMaint();}
-async function runSweep(){const r=await post('/api/monitoring/sweep');const j=await r.json();
+async function runOfflineSweep(){const r=await post('/api/monitoring/sweep');const j=await r.json();
   alert(`Swept ${j.devices_checked} device(s); opened ${j.offline_opened} offline alert(s).`);loadAlerts();refreshBadges();}
 
 async function refreshBadges(){
@@ -3012,10 +3013,26 @@ async function loadAutonomy(){
        <td class="muted" style="font-size:12px">${esc(r.last_verdict||'—')}</td></tr>`).join('');
   }
 }
+async function loadOpsIncidents(){
+  const strip=document.getElementById('incident-strip'); if(!strip)return;
+  const d=await api('/api/incidents?status=open'); if(!d){strip.classList.add('hidden');return;}
+  const rows=d.incidents||[];
+  if(!rows.length){ strip.classList.add('hidden'); strip.innerHTML=''; return; }
+  strip.classList.remove('hidden');
+  strip.innerHTML=rows.map(i=>
+    `<div class="card" style="border:1px solid var(--bad,#e74c3c);background:rgba(231,76,60,.08);margin-bottom:8px">
+      <div class="flex" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div><b>🌩 ${esc(i.title)}</b>
+          <div class="muted" style="font-size:12px">${esc(i.client||'')} · ${i.alert_count} correlated alert(s) · since ${i.first_seen?new Date(i.first_seen).toLocaleTimeString():''}
+          ${i.ticket_id?` · <a onclick="tab('tickets')" style="cursor:pointer">ticket #${i.ticket_id}</a>`:''}</div></div>
+        <span class="badge bad" style="align-self:center">ACTIVE INCIDENT</span>
+      </div></div>`).join('');
+}
 async function loadOverview(){
   loadSiteHealth();
   loadPSA();
   loadAutonomy();
+  loadOpsIncidents();
   loadSetup();
   loadPractice();
   const o=await api('/api/overview');if(!o)return;
@@ -3132,7 +3149,7 @@ async function loadWebsite(){
      <td class="muted">${r.created_at?new Date(r.created_at).toLocaleDateString():''}</td></tr>`).join('')
     :'<tr><td colspan=4 class="muted">No articles yet — hit “Write & publish one now”.</td></tr>';
 }
-async function saveWebsite(){
+async function saveBlogAutopilot(){
   const body={base_url:document.getElementById('wb-url').value.trim()||null,
     username:document.getElementById('wb-user').value.trim()||null,
     app_password:document.getElementById('wb-pass').value||null,
@@ -3839,7 +3856,7 @@ async function saveSSO(){
     setPill('set-sso-pill',a.length>0);['set-sso-mssecret','set-sso-gsecret'].forEach(i=>document.getElementById(i).value='');}
   else msg.textContent=j.detail||'Save failed';
 }
-async function loadConnections(){
+async function loadOneClick(){
   const r=await api('/api/oauth/connections'); if(!r)return;
   document.getElementById('oc-grid').innerHTML=(r.connections||[]).map(cn=>{
     const btn=cn.connected?`<span class="badge ok">● connected</span>`
@@ -3869,7 +3886,7 @@ async function copyRedirect(id,btn){
 async function saveLinkedInApp(){
   const msg=document.getElementById('oc-msg'); msg.textContent='saving…';
   const r=await put('/api/publishers/linkedin',{li_client_id:val('set-li-cid'),li_client_secret:val('set-li-csecret')});
-  if(r.ok){msg.textContent='Saved ✓ — click Connect above';document.getElementById('set-li-csecret').value='';loadConnections();}
+  if(r.ok){msg.textContent='Saved ✓ — click Connect above';document.getElementById('set-li-csecret').value='';loadOneClick();}
   else msg.textContent='Save failed';
 }
 async function saveHubspot(){
@@ -4580,7 +4597,7 @@ async function loadSettings(){
     document.getElementById('set-gbp-acct').value=fv(gb.fields,'account_name');
     document.getElementById('set-gbp-loc').value=fv(gb.fields,'location_name');}
   await loadSSO();
-  await loadConnections();
+  await loadOneClick();
 }
 async function saveMailboxCfg(){
   const msg=document.getElementById('set-mb-msg'); msg.textContent='saving…';
