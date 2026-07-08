@@ -1,5 +1,24 @@
 # BVTech OpsPilot — Changelog
 
+## v1.18.0 — One-click Connect that actually connects (July 2026)
+The #1 OAuth connect failure ("the redirect_uri does not match the registered
+value" — LinkedIn's "Bummer" page) happens because the provider app was never
+told Pulse's callback URL. Pulse now closes that loop itself:
+- **Exact redirect URL per provider, with a copy button.** The One-click
+  Connect card now shows, for every provider — LinkedIn, Google Business
+  Profile, QuickBooks, Microsoft (SSO + M365), Google (SSO) — the exact
+  Authorized-redirect URL to register, one-click copy, plus a **step-by-step
+  console walkthrough** for that provider ("LinkedIn Developers → your app →
+  Auth tab → Authorized redirect URLs → paste EXACTLY this URL").
+  `/api/oauth/connections` now returns `redirect_uri` + `console_hint` per row.
+- **Connect failures explain themselves.** When a provider bounces a connect,
+  the dashboard shows a banner naming the provider and the error — and when the
+  error smells like a redirect mismatch, it points straight at the copy-the-URL
+  fix. The callback carries `oauth_provider` so nothing is opaque.
+- Verified: smoke asserts every provider row carries its exact callback URL
+  (ours, not the provider's) + a non-empty console walkthrough, and RBAC holds;
+  Playwright confirms the upgraded card renders with copyable URLs (0 JS errors).
+
 ## v1.17.0 — The Autonomy Engine: Pulse earns the right to act alone (July 2026)
 Every RMM has automation rules. None of them check their own work. Pulse now
 does — and adjusts its own permissions from its measured track record. Nothing
