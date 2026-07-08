@@ -92,6 +92,10 @@ def _tool_defs(staff: bool) -> list[dict]:
             {"name": "revenue_leakage",
              "description": "Money earned but not billed: unbilled billable time, contracts overdue to be invoiced, and resolved tickets with no time captured. Use for 'what am I not billing?' / 'find revenue leakage'.",
              "input_schema": {"type": "object", "properties": {}}},
+            {"name": "vcio_review",
+             "description": "Generate an AI vCIO technology business review for one client: a maturity index and a prioritized, budgeted roadmap (immediate/quarter/year) across security, patching, reliability, service, financials, and hardware lifecycle. Use for 'what should we do for <client>?' / QBR / roadmap / renewal prep.",
+             "input_schema": {"type": "object", "properties": {
+                 "client_id": {"type": "integer"}}, "required": ["client_id"]}},
             {"name": "draft_client_email",
              "description": "Write a professional client email draft (returns text; does NOT send). Good for 'draft an email to X about Y'.",
              "input_schema": {"type": "object", "properties": {
@@ -252,6 +256,23 @@ def _run_tool(db: Session, user: User, name: str, args: dict, allow_actions: boo
         return {"total_recoverable": r["total_recoverable"],
                 "unbilled_time": r["unbilled_time"], "due_contracts": r["due_contracts"],
                 "untracked_tickets": {"count": r["untracked_tickets"]["count"]}}
+
+    if name == "vcio_review":
+        if not staff:
+            return {"error": "Staff only."}
+        cid = _cid(args.get("client_id"))
+        client = db.get(Client, cid) if cid else None
+        if not client:
+            return {"error": "Unknown client_id — use find_client first."}
+        from datetime import datetime, timezone
+        from . import vcio
+        rv = vcio.build_review(db, client, datetime.now(timezone.utc))
+        return {"client": rv["client"], "maturity_index": rv["maturity_index"],
+                "counts": rv["counts"], "budget_total": rv["budget_total"],
+                "highlights": rv["highlights"],
+                "recommendations": [{"priority": r["priority"], "horizon": r["horizon"],
+                                     "area": r["area"], "title": r["title"],
+                                     "budget": r["budget"]} for r in rv["recommendations"][:15]]}
 
     if name == "security_posture":
         from . import posture

@@ -22,7 +22,7 @@ from .api.routes import (
     maintenance, analytics, mailbox, publishers, comms, rmm, crm, prospecting,
     campaigns, remote, quickbooks, gbp, hubspot, docs, payments, dialer, posture,
     remediation, inventory, autopost, setup, ai, branding, practice, status, users,
-    library, academy, website, patching, copilot, psa,
+    library, academy, website, patching, copilot, psa, vcio,
 )
 
 _s = get_settings()
@@ -115,6 +115,7 @@ app.include_router(netdiag.router)
 app.include_router(download.router)
 app.include_router(contracts.router)
 app.include_router(psa.router)
+app.include_router(vcio.router)
 app.include_router(reports.router)
 app.include_router(channels.router)
 app.include_router(report_schedules.router)

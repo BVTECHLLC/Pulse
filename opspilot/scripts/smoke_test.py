@@ -1751,6 +1751,71 @@ def main():
         print("PSA Intelligence: contract margin/realization/renewal + revenue leakage "
               "+ predictive SLA radar + pre-breach sla_watch (deduped) + 3 staff copilot tools + RBAC OK")
 
+        # ===================== v1.16: AI vCIO =====================
+        from app.services import vcio as _vc16, copilot as _cop16
+        from app.core.db import SessionLocal as _SL16
+        from app.models import (Asset as _As16, Contract as _Ct16, TimeEntry as _TE16,
+                                SupportTicket as _ST16, TicketStatus as _TS16, User as _U16,
+                                Role as _R16, Client as _C16)
+        import datetime as _dt16
+        _v16 = _SL16()
+        try:
+            now16 = _dt16.datetime.now(_dt16.timezone.utc)
+            owner16 = _v16.query(_U16).filter(_U16.role == _R16.OWNER).first()
+            vc16 = c.post("/api/clients", json={"name": "vCIO Review Co"}).json()["id"]
+            # Aging + out-of-warranty hardware -> refresh budget recommendation.
+            _v16.add(_As16(client_id=vc16, name="Old Server", asset_type="server",
+                           purchase_date=now16 - _dt16.timedelta(days=7 * 365),
+                           warranty_expires=now16 - _dt16.timedelta(days=20)))
+            _v16.add(_As16(client_id=vc16, name="Old PC", asset_type="workstation",
+                           purchase_date=now16 - _dt16.timedelta(days=6 * 365),
+                           warranty_expires=now16 - _dt16.timedelta(days=5)))
+            # Underwater contract renewing soon.
+            ct16 = _Ct16(client_id=vc16, name="MSP Agreement", amount=500, billing_period="monthly",
+                         status="active", start_date=now16 - _dt16.timedelta(days=120),
+                         end_date=now16 + _dt16.timedelta(days=30))
+            _v16.add(ct16); _v16.commit()
+            for i in range(6):
+                _v16.add(_TE16(client_id=vc16, user_id=owner16.id, user_email=owner16.email,
+                               minutes=400, billable=True, invoiced=False,
+                               created_at=now16 - _dt16.timedelta(days=i * 6)))
+            # A breached-SLA ticket.
+            _v16.add(_ST16(client_id=vc16, subject="Server down", priority="high", status=_TS16.OPEN,
+                           created_at=now16 - _dt16.timedelta(hours=30),
+                           resolution_due_at=now16 - _dt16.timedelta(hours=5),
+                           first_response_due_at=now16 - _dt16.timedelta(hours=25)))
+            _v16.commit()
+            client16 = _v16.get(_C16, vc16)
+            # Lifecycle: 2 devices to refresh at $1,200 each.
+            life16 = _vc16.asset_lifecycle(_v16, vc16, now16)
+            assert life16["to_refresh"] == 2 and abs(life16["refresh_budget"] - 2400.0) < 1, life16
+            rv16 = _vc16.build_review(_v16, client16, now16)
+            areas = {r["area"] for r in rv16["recommendations"]}
+            titles = " | ".join(r["title"] for r in rv16["recommendations"])
+            assert {"Service", "Financial", "Lifecycle"} <= areas, areas
+            assert "underwater" in titles.lower() and "SLA breach" in titles, titles
+            assert isinstance(rv16["maturity_index"], int) and 0 <= rv16["maturity_index"] <= 100
+            assert rv16["budget_total"] >= 2400.0
+            # Roadmap buckets are horizon-partitioned and cover every rec.
+            assert sum(len(v) for v in rv16["roadmap"].values()) == rv16["counts"]["total"]
+            # Copilot tool (staff) surfaces the review.
+            tool16 = _cop16._run_tool(_v16, owner16, "vcio_review", {"client_id": vc16}, False)
+            assert tool16["maturity_index"] == rv16["maturity_index"] and tool16["recommendations"], tool16
+            # Clean up seed so downstream global rollups stay pristine.
+            for M in (_TE16, _ST16, _Ct16, _As16):
+                _v16.query(M).filter(M.client_id == vc16).delete(synchronize_session=False)
+            _v16.commit()
+        finally:
+            _v16.close()
+        # Route + access: staff reads any client; the vcio_review copilot tool is staff-only.
+        assert c.get(f"/api/vcio/{vc16}/review").status_code == 200
+        assert ca_c.get(f"/api/vcio/{vc16}/review").status_code == 403   # other client's user refused
+        assert ca_c.get(f"/api/vcio/{cid}/review").status_code == 200    # own client's review allowed
+        assert "vcio_review" not in {d["name"] for d in _cop16._tool_defs(staff=False)}
+        assert "vcio_review" in {d["name"] for d in _cop16._tool_defs(staff=True)}
+        print("AI vCIO: maturity index + ranked/budgeted roadmap (security/patch/reliability/"
+              "service/financial/lifecycle) + copilot tool + client-scoped access OK")
+
         # ===================== v0.68: fleet inventory + patch compliance =====================
         # Re-seed SMOKE-PC with software + pending patches for the fleet rollups.
         a.post("/api/agent/inventory", headers=hdr, json={"software":[
@@ -3456,7 +3521,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.15.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.16.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
