@@ -219,13 +219,13 @@
       <p class="muted" style="margin:4px 0 12px">One switch: every day Claude writes and ships <b>channel-customized</b> content — a full SEO article to bvtech.org, a founder post to jordanpolasek.com (with the Cloudflare build verified &amp; auto-reverted if it fails), a punchy LinkedIn post, and a local Google Business update. Failures notify you and retry — never silent.</p>
       <div id="cap-grid" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px"><div class="muted">Loading…</div></div>
       <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
-        <label style="font-size:12px">jordanpolasek.com site repo (GitLab) — project path / token (api scope) / branch</label>
-        <div class="grid" style="grid-template-columns:2fr 2fr 1fr;gap:8px">
+        <label style="font-size:12px">🔑 Site repos (GitLab) — <b>one token connects BOTH sites</b>. Both are static sites deployed by Cloudflare on push; Pulse verifies every deploy and auto-reverts failures. On the BVTech server, Pulse also auto-discovers the token your old cron already used — so this may already show connected.</label>
+        <div class="grid" style="grid-template-columns:2fr 2fr 2fr;gap:8px;margin-top:4px">
+          <input id="cap-gl-token" type="password" placeholder="GitLab token, api scope (unchanged)">
+          <input id="cap-bv-project" placeholder="bvtechllc-group/bvtech-website-new">
           <input id="cap-jp-project" placeholder="BVTECHLLC-group/jordanpolasek-website">
-          <input id="cap-jp-token" type="password" placeholder="glpat-… (unchanged)">
-          <input id="cap-jp-branch" placeholder="main">
         </div>
-        <div class="flex" style="margin-top:6px"><button class="btn sm" onclick="saveCapJp()">Save JP repo</button>
+        <div class="flex" style="margin-top:6px"><button class="btn sm" onclick="saveCapSites()">Connect both sites</button>
           <span class="muted" id="cap-msg" style="font-size:12px"></span></div>
       </div>
     </div>
@@ -3199,13 +3199,16 @@ async function capToggle(key,on){
   await put('/api/content-autopilot/settings',{channels:{[key]:on}});
   loadCap();
 }
-async function saveCapJp(){
+async function saveCapSites(){
   const msg=document.getElementById('cap-msg'); msg.textContent='saving…';
-  const body={project:val('cap-jp-project')||null,branch:val('cap-jp-branch')||null};
-  const tok=val('cap-jp-token'); if(tok)body.token=tok;
-  const r=await put('/api/content-autopilot/jp-site',body); const j=await r.json().catch(()=>({}));
-  if(r.ok){msg.textContent=j.configured?'Saved ✓ — jordanpolasek.com connected':'Saved (token still needed)';
-    document.getElementById('cap-jp-token').value='';loadCap();}
+  const body={};
+  const tok=val('cap-gl-token'); if(tok)body.token=tok;
+  const bv=val('cap-bv-project'); if(bv)body.bvtech_project=bv;
+  const jp=val('cap-jp-project'); if(jp)body.jp_project=jp;
+  if(!Object.keys(body).length){msg.textContent='Paste the GitLab token (or a project override) first.';return;}
+  const r=await put('/api/content-autopilot/sites',body); const j=await r.json().catch(()=>({}));
+  if(r.ok){msg.textContent=`bvtech.org ${j.bvtech?'✓ connected':'— token needed'} · jordanpolasek.com ${j.jp?'✓ connected':'— token needed'}`;
+    document.getElementById('cap-gl-token').value='';loadCap();}
   else msg.textContent=j.detail||'Save failed';
 }
 async function capRunNow(btn){

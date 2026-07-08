@@ -118,16 +118,23 @@ def _notify_fail(db: Session, channel: str, error: str) -> None:
 # Per-channel runners — each returns (ok, detail)
 # --------------------------------------------------------------------------- #
 def _run_bvtech(db: Session, now: datetime) -> tuple[bool, str]:
-    from . import blog_autopilot, wordpress
-    if not wordpress.configured(db):
-        return False, "WordPress not connected (Settings → Website)"
+    """bvtech.org is a static site in GitLab (deployed by Cloudflare) — publish
+    there natively; WordPress only as a legacy fallback if someone connected it."""
+    from . import blog_autopilot, jp_site, wordpress
     article = blog_autopilot.generate_article(db, now)
     if not article:
         return False, "article generation returned nothing"
-    row = blog_autopilot.publish_article(db, article, source="autopilot")
-    if row.status != "posted":
-        return False, row.error or "WordPress publish failed"
-    return True, row.url or row.title
+    if jp_site.configured(db, "bvtech"):
+        out = jp_site.publish(db, article, site="bvtech")
+        if not out.get("ok"):
+            return False, out.get("error") or "GitLab publish failed"
+        return True, out.get("url") or article.get("title", "")
+    if wordpress.configured(db):
+        row = blog_autopilot.publish_article(db, article, source="autopilot")
+        if row.status != "posted":
+            return False, row.error or "WordPress publish failed"
+        return True, row.url or row.title
+    return False, "bvtech.org not connected (GitLab token — one paste connects both sites)"
 
 
 def _run_jp(db: Session, now: datetime) -> tuple[bool, str]:
@@ -235,15 +242,15 @@ def status(db: Session) -> dict:
     gbp_conn = secure_config.get_platform(db, "gbp")
     gbp_cfg = (gbp_conn.config if gbp_conn else None) or {}
     connected = {
-        "bvtech": wordpress.configured(db),
-        "jp": jp_site.configured(db),
+        "bvtech": jp_site.configured(db, "bvtech") or wordpress.configured(db),
+        "jp": jp_site.configured(db, "jp"),
         "linkedin": bool(secure_config.get_secret(li_cfg, "access_token")
                          or db.query(OAuthToken).filter(OAuthToken.provider == "linkedin").count()),
         "gbp": bool(gbp_cfg.get("account_name") and gbp_cfg.get("location_name")),
     }
     hints = {
-        "bvtech": "Settings → Website: WordPress URL + username + Application Password",
-        "jp": "Settings → Content Autopilot: GitLab project + token (api scope)",
+        "bvtech": "Marketing → Content Autopilot: one GitLab token connects both sites",
+        "jp": "Marketing → Content Autopilot: one GitLab token connects both sites",
         "linkedin": "Settings → One-click Connect → LinkedIn (Connect →)",
         "gbp": "Settings → Google Business Profile: connect + pick your location",
     }

@@ -2088,6 +2088,30 @@ def main():
             assert {x["key"] for x in st20["channels"]} == {"bvtech", "jp", "linkedin", "gbp"}
             assert all(x["setup_hint"] for x in st20["channels"])
             assert ca_c.get("/api/content-autopilot/status").status_code == 403
+            # v1.21: both sites are GitLab static sites (NOT WordPress) — ONE
+            # shared token connects both, with the known repos as defaults.
+            r21 = c.put("/api/content-autopilot/sites", json={"token": "glpat-shared"})
+            assert r21.status_code == 200 and r21.json()["jp"] and r21.json()["bvtech"], r21.text
+            assert r21.json()["bvtech_project"] == "bvtechllc-group/bvtech-website-new"
+            assert ca_c.put("/api/content-autopilot/sites", json={"token": "x"}).status_code == 403
+            # bvtech publishes GitLab-first now: blog/<slug>.html on the bvtech repo.
+            out21 = _jp20.publish(_c20, {"title": "Houston IT Guide", "html": "<p>x</p>",
+                                         "excerpt": "e"}, site="bvtech")
+            assert out21["ok"] and out21["url"] == "https://bvtech.org/blog/houston-it-guide.html", out21
+            ok21, detail21 = _cap20._run_bvtech(_c20, now20)
+            assert ok21 and "bvtech.org/blog/" in detail21, (ok21, detail21)
+            # Token fallback chain: env var lights it up even with an empty vault
+            # (delete the vault rows — upsert deliberately preserves saved secrets).
+            import os as _os21
+            from app.models import IntegrationConnection as _IC21
+            (_c21_del := _c20.query(_IC21)
+                .filter(_IC21.provider.in_(["gitlab", "bvtech_site"]))
+                .delete(synchronize_session=False))
+            _c20.commit()
+            _os21.environ["GITLAB_TOKEN"] = "glpat-env"
+            assert _jp20.configured(_c20, "bvtech") is True
+            del _os21.environ["GITLAB_TOKEN"]
+            assert _jp20.configured(_c20, "bvtech") is False
         finally:
             (_ai20.enabled, _ai20.complete, _jp20._HTTP, _wp20.configured,
              _ba20.generate_article, _ba20.publish_article) = _o20
@@ -2097,13 +2121,15 @@ def main():
             # settings tests) still see a pristine state.
             from app.models import IntegrationConnection as _IC20
             (_c20.query(_IC20)
-                 .filter(_IC20.provider.in_(["gbp", "pub_linkedin", "jp_site"]))
+                 .filter(_IC20.provider.in_(["gbp", "pub_linkedin", "jp_site",
+                                             "gitlab", "bvtech_site"]))
                  .delete(synchronize_session=False))
             _c20.commit()
             _c20.close()
-        print("Content Autopilot: one-click JP repo setup + 4-channel daily run "
-              "(customized per channel) + per-day dedupe + queue reuse + JP build "
-              "verification with auto-revert + failure retry/notify + RBAC OK")
+        print("Content Autopilot: 4-channel daily run (customized per channel) + per-day "
+              "dedupe + queue reuse + GitLab publishing for BOTH sites (one shared token, "
+              "blog-file + slug-folder layouts, env-fallback chain) + build verification "
+              "with auto-revert + failure retry/notify + RBAC OK")
 
         # ===================== v0.68: fleet inventory + patch compliance =====================
         # Re-seed SMOKE-PC with software + pending patches for the fleet rollups.
@@ -3820,7 +3846,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.20.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.21.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
