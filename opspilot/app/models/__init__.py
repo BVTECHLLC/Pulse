@@ -1403,3 +1403,27 @@ class BlogPost(Base):
     error: Mapped[str | None] = mapped_column(String(400))
     source: Mapped[str] = mapped_column(String(20), default="auto")   # auto|manual
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+class ActionOutcome(Base):
+    """v1.17 Autonomy Engine — one row per autonomous (or confirmed) action Pulse
+    took, graded after the fact by observable state transitions (did the patch
+    job succeed? did the alert clear and stay clear? did the auto-ticket get
+    resolved without breaching SLA?). The trust ledger and the earned-autonomy
+    gate are computed from these rows — Pulse audits itself and adjusts its own
+    permissions from its measured track record."""
+    __tablename__ = "action_outcomes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    action_type: Mapped[str] = mapped_column(String(40), index=True, nullable=False)   # patch_install|remediation|auto_ticket
+    playbook: Mapped[str] = mapped_column(String(160), index=True, nullable=False)     # e.g. "disk_full→Clear temp files"
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)
+    device_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    ref_kind: Mapped[str] = mapped_column(String(20), nullable=False)    # deployment|alert|ticket
+    ref_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    autonomous: Mapped[bool] = mapped_column(Boolean, default=True, index=True)  # False = human-confirmed
+    taken_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+    grade_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    graded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verdict: Mapped[str | None] = mapped_column(String(16), index=True)  # success|failure|indeterminate
+    evidence: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

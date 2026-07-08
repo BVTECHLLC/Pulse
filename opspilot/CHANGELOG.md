@@ -1,5 +1,42 @@
 # BVTech OpsPilot — Changelog
 
+## v1.17.0 — The Autonomy Engine: Pulse earns the right to act alone (July 2026)
+Every RMM has automation rules. None of them check their own work. Pulse now
+does — and adjusts its own permissions from its measured track record. Nothing
+in the market ships this.
+- **Outcome grading (self-audit).** Every autonomous action — patch install,
+  auto-remediation, auto-ticket — is logged and later graded by **observable
+  state, not vibes**: did the patch job succeed? did the alert actually clear?
+  did the auto-ticket resolve within SLA? Deterministic; no AI in the verdict.
+  New `action_outcomes` table; grading runs on the Autopilot heartbeat.
+- **Trust ledger + the earned-autonomy gate.** Per (automation, client), a
+  rolling measured success rate with levels: *watching → earned / suspended*,
+  plus an operator-pinned *supervised* ceiling per client (autonomy as a
+  contract term you can sell). Machine-touching automations (auto-remediation,
+  patch auto-approval) consult `allowed()` before firing: a combo whose success
+  collapses below threshold (default <80% over 5+ graded runs) is **benched
+  automatically** — Pulse tells you and stops acting alone there until its
+  record recovers. Default-permissive: policies you explicitly enabled keep
+  working; the gate develops teeth from evidence.
+- **Playbook memory.** The graded history is institutional memory the Copilot
+  consults before acting: "last 4 times this fired here, the fix worked."
+  New staff tools: `playbook_memory` and `self_driving_report`.
+- **The Self-Driving Report.** Receipts, not claims: how many actions Pulse
+  handled autonomously, measured success rate, estimated tech-hours saved, and
+  exactly which automations are benched. `GET /api/autonomy/report` + a new
+  dashboard card (actions handled alone, measured success, hours saved,
+  suspended count, and the per-client trust table). The morning briefing now
+  reports what Pulse did overnight — and confesses when something got benched.
+- **Controls:** `GET/PUT /api/autonomy/settings` (thresholds + per-client
+  ceilings; changes OWNER-only). All autonomy surfaces staff-only.
+- Verified: full offline smoke proves recording at the chokepoint (idempotent),
+  success/failure verdicts from real job state transitions, remediation graded
+  by alert clearance, a 5-failure combo suspended while a fresh one stays
+  allowed, the suspension **actually blocking** the real auto-approve sweep
+  (with notification) while the trusted client is served, the supervised
+  ceiling honored, ledger levels, report math, memory, Copilot tools, and
+  RBAC — plus a Playwright check of the Autonomy card (0 JS errors).
+
 ## v1.16.0 — AI vCIO: automated technology business reviews + roadmap (July 2026)
 An MSP's highest-value, least-scalable service is the *virtual CIO* — translating
 a client's IT reality into business risk and handing them a ranked, budgeted

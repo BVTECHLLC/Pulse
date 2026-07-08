@@ -75,6 +75,14 @@ def on_alert(db: Session, alert, device: Device, now: datetime | None = None) ->
     if alert is None or device is None:
         return []
     now = now or _utcnow()
+    # v1.17 earned-autonomy gate: a (remediation, client) combo whose measured
+    # success rate has collapsed is benched — Pulse tells the operator and stops
+    # acting alone until its record recovers.
+    from . import autonomy
+    ok, reason = autonomy.allowed(db, "remediation", device.client_id)
+    if not ok:
+        autonomy.notify_suspended(db, "remediation", device.client_id, reason, now)
+        return []
     created = []
     for rule in eligible_rules(db, alert.kind, device.client_id):
         script = db.get(Script, rule.script_id)
@@ -104,6 +112,12 @@ def on_alert(db: Session, alert, device: Device, now: datetime | None = None) ->
         created.append({"deployment_id": dep.id, "rule_id": rule.id, "rule": rule.name,
                         "script": script.name, "device_id": device.id,
                         "alert_kind": alert.kind})
+        # v1.17: log the action for outcome grading (did the alert actually clear?).
+        autonomy.record(db, action_type="remediation",
+                        playbook=f"{alert.kind}→{script.name}",
+                        client_id=device.client_id, device_id=device.id,
+                        ref_kind="alert", ref_id=alert.id,
+                        autonomous=True, grade_after_minutes=30, now=now)
     if created:
         db.commit()
     return created

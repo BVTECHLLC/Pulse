@@ -96,6 +96,16 @@ def _tool_defs(staff: bool) -> list[dict]:
              "description": "Generate an AI vCIO technology business review for one client: a maturity index and a prioritized, budgeted roadmap (immediate/quarter/year) across security, patching, reliability, service, financials, and hardware lifecycle. Use for 'what should we do for <client>?' / QBR / roadmap / renewal prep.",
              "input_schema": {"type": "object", "properties": {
                  "client_id": {"type": "integer"}}, "required": ["client_id"]}},
+            {"name": "self_driving_report",
+             "description": "The Autonomy Engine's receipts: how many actions Pulse took autonomously in the window, measured success rate, estimated tech-hours saved, and any suspended (benched) automations. Use for 'what did Pulse handle by itself?' / 'how is the autopilot doing?'.",
+             "input_schema": {"type": "object", "properties": {
+                 "days": {"type": "integer", "description": "window in days (default 7)"}}}},
+            {"name": "playbook_memory",
+             "description": "Institutional memory: what happened the last N times Pulse acted (per client / action type / playbook), with graded outcomes. Use before acting — 'has this fix worked here before?'.",
+             "input_schema": {"type": "object", "properties": {
+                 "client_id": {"type": "integer"},
+                 "action_type": {"type": "string", "enum": ["patch_install", "remediation", "auto_ticket"]},
+                 "playbook": {"type": "string", "description": "substring match, e.g. an alert kind"}}}},
             {"name": "draft_client_email",
              "description": "Write a professional client email draft (returns text; does NOT send). Good for 'draft an email to X about Y'.",
              "input_schema": {"type": "object", "properties": {
@@ -256,6 +266,18 @@ def _run_tool(db: Session, user: User, name: str, args: dict, allow_actions: boo
         return {"total_recoverable": r["total_recoverable"],
                 "unbilled_time": r["unbilled_time"], "due_contracts": r["due_contracts"],
                 "untracked_tickets": {"count": r["untracked_tickets"]["count"]}}
+
+    if name in ("self_driving_report", "playbook_memory"):
+        if not staff:
+            return {"error": "Staff only."}
+        from . import autonomy
+        if name == "self_driving_report":
+            days = int(args.get("days") or 7)
+            return autonomy.report(db, days=max(1, min(90, days)))
+        cid = client_scope if client_scope is not None else args.get("client_id")
+        return autonomy.playbook_memory(db, client_id=cid,
+                                        action_type=args.get("action_type"),
+                                        playbook=args.get("playbook"))
 
     if name == "vcio_review":
         if not staff:

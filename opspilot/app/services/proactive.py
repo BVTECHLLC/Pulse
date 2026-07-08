@@ -89,6 +89,14 @@ def on_new_alerts(db: Session, new_alerts: list[Alert]) -> list[dict]:
                              internal=True))
         opened.append({"ticket_id": t.id, "alert_id": alert.id, "client_id": alert.client_id,
                        "priority": priority})
+        # v1.17: log for outcome grading (resolved within SLA = success; breach =
+        # failure). Auto-ticketing is never gated — visibility is safe — but its
+        # track record still shows on the trust ledger.
+        from . import autonomy
+        autonomy.record(db, action_type="auto_ticket", playbook=f"alert:{alert.kind}",
+                        client_id=alert.client_id, device_id=alert.device_id,
+                        ref_kind="ticket", ref_id=t.id, autonomous=True,
+                        grade_after_minutes=60)
     return opened
 
 

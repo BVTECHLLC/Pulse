@@ -38,7 +38,7 @@ def _sev_rank(s: str | None) -> int:
 
 
 def approve_patches(db: Session, device, user: User, *, kbs: list[str] | None,
-                    reason: str | None = None) -> ScriptDeployment:
+                    reason: str | None = None, autonomous: bool = False) -> ScriptDeployment:
     """Create an APPROVED winupdate job for a device. `kbs=None` means 'all
     currently-pending updates'. The content is the pinned KB list so what the
     agent installs is exactly what was approved."""
@@ -69,6 +69,15 @@ def approve_patches(db: Session, device, user: User, *, kbs: list[str] | None,
         approved_at=datetime.now(timezone.utc),
     )
     db.add(dep)
+    db.commit()
+    # v1.17: every patch job is logged for outcome grading (job succeeded/failed),
+    # so the trust ledger reflects real install results per client.
+    from . import autonomy
+    autonomy.record(db, action_type="patch_install",
+                    playbook=f"winupdate:{'pinned' if kbs else 'all'}",
+                    client_id=device.client_id, device_id=device.id,
+                    ref_kind="deployment", ref_id=dep.id,
+                    autonomous=autonomous, grade_after_minutes=30)
     db.commit()
     return dep
 
@@ -224,10 +233,17 @@ def auto_approve_sweep(db: Session, now=None, *, actor_email: str = "pulse-autop
             continue
         if pol["only_in_maintenance"] and not monitoring.in_maintenance(db, dev, now):
             continue
+        # v1.17 earned-autonomy gate: a client whose auto-patching track record
+        # collapsed is benched (operator notified) until the record recovers.
+        from . import autonomy
+        ok_auto, why = autonomy.allowed(db, "patch_install", dev.client_id)
+        if not ok_auto:
+            autonomy.notify_suspended(db, "patch_install", dev.client_id, why, now)
+            continue
         kbs = sorted({p.kb for p in matching if p.kb}) or None
         # Build a synthetic user-ish actor for approval provenance.
         actor = type("A", (), {"id": None, "email": actor_email})()
-        dep = approve_patches(db, dev, actor, kbs=kbs,
+        dep = approve_patches(db, dev, actor, kbs=kbs, autonomous=True,
                               reason=f"Auto-approved by patch policy ({pol['min_severity']}+)")
         created.append({"device_id": did, "job_id": dep.id, "kbs": kbs or "all"})
     return created

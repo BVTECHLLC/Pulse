@@ -71,6 +71,15 @@ def gather(db: Session, now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         pass
     try:
+        from . import autonomy
+        rep = autonomy.report(db, days=1, now=now)
+        stats["auto_actions_24h"] = rep["autonomous_actions"]
+        if rep["success_rate"] is not None:
+            stats["auto_success_pct"] = int(rep["success_rate"] * 100)
+        stats["autonomy_suspended"] = len(rep["suspended_combos"])
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         from . import posture
         port = posture.portfolio(db, now)
         graded = [p for p in port if p.get("score") is not None]
@@ -105,6 +114,13 @@ def _template(stats: dict) -> str:
                     f"— review margins before renewal.")
     if stats.get("renewals_soon"):
         bits.append(f"🔁 {stats['renewals_soon']} contract(s) renew soon — prep pricing.")
+    if stats.get("auto_actions_24h"):
+        rate = f" ({stats['auto_success_pct']}% success)" if stats.get("auto_success_pct") is not None else ""
+        bits.append(f"🤖 Pulse handled {stats['auto_actions_24h']} action(s) autonomously "
+                    f"in the last day{rate}.")
+    if stats.get("autonomy_suspended"):
+        bits.append(f"🛑 {stats['autonomy_suspended']} automation(s) are suspended after "
+                    f"failed runs — review the Autonomy ledger.")
     if stats.get("worst_grade") and stats["worst_grade"] not in ("A", "A+", "A-"):
         bits.append(f"🛡️ {stats.get('worst_client')} has the weakest security grade "
                     f"({stats['worst_grade']}) — review their scorecard.")
