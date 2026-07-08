@@ -2931,7 +2931,7 @@ async function loadSiteHealth(){
     const al=r.alerts||{};
     const abadge=al.critical?`<span class="badge bad">${al.critical} crit</span>`:(al.total?`<span class="badge warn">${al.total}</span>`:'<span class="muted">0</span>');
     const worst=r.worst?`<a onclick="tab('devices');setTimeout(()=>openDevice360(${r.worst.id}),300)" style="cursor:pointer">${esc(r.worst.hostname)} (${r.worst.health})</a>`:'—';
-    return `<tr><td><b>${esc(r.client)}</b></td><td>${r.devices}</td>
+    return `<tr><td><b><a onclick="openVcio(${r.client_id},'${esc((r.client||'').replace(/'/g,''))}')" style="cursor:pointer" title="AI vCIO review">${esc(r.client)}</a></b></td><td>${r.devices}</td>
      <td>${r.online}/${r.devices}</td>
      <td><span class="badge ${hc}">${r.avg_health??'—'}</span></td>
      <td>${abadge}</td><td>${r.patches_pending?`<span style="color:var(--warn)">${r.patches_pending}</span>`:'0'}</td>
@@ -4289,6 +4289,50 @@ async function testRmmCfg(){
   msg.textContent=r.ok?`Connected ✓ (${(j.dashboard||{}).total_agents??'?'} agents)`:(j.detail||'Test failed');
 }
 
+// ===================== AI vCIO Review =====================
+async function openVcio(cid, cname){
+  const rv=await api(`/api/vcio/${cid}/review`);
+  if(!rv||rv.detail){alert((rv&&rv.detail)||'Could not load vCIO review');return;}
+  const pr={critical:'bad',high:'warn',medium:'',low:'muted'};
+  const hz={immediate:'⏱ Immediate',quarter:'📆 This quarter',year:'🗓 This year'};
+  const h=rv.highlights||{};
+  const mi=rv.maturity_index;
+  const mcol=mi>=85?'var(--good,#2ecc71)':(mi>=65?'var(--warn)':'var(--bad,#e74c3c)');
+  const road=Object.keys(hz).map(k=>{
+    const items=(rv.roadmap[k]||[]);
+    if(!items.length) return '';
+    return `<div style="margin:10px 0 4px;font-weight:700">${hz[k]}</div>`+items.map(r=>
+      `<div style="border-left:3px solid var(--line);padding:4px 0 4px 10px;margin:4px 0">
+        <span class="badge ${pr[r.priority]||''}">${esc(r.priority)}</span> <b>${esc(r.title)}</b>
+        <span class="muted" style="font-size:11px">· ${esc(r.area)}${r.budget?` · ~$${r.budget.toLocaleString()}`:''}</span>
+        <div class="muted" style="font-size:12px">${esc(r.detail||'')}</div></div>`).join('');
+  }).join('');
+  const html=`<div onclick="if(event.target===this)this.remove()" style="position:fixed;inset:0;z-index:300;background:rgba(4,8,20,.6);display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px;overflow:auto">
+    <div class="card" style="max-width:680px;width:100%">
+      <div class="flex" style="justify-content:space-between"><h3 style="margin:0">🧭 vCIO Review — ${esc(cname)}</h3>
+        <button class="btn sm ghost" onclick="this.closest('div[style*=fixed]').remove()">Close</button></div>
+      <div class="flex" style="gap:18px;flex-wrap:wrap;margin:10px 0">
+        <div><div class="muted" style="font-size:11px">IT MATURITY</div><div style="font-size:30px;font-weight:800;color:${mcol}">${mi}<span style="font-size:14px" class="muted">/100</span></div></div>
+        <div><div class="muted" style="font-size:11px">SECURITY</div><div style="font-size:22px;font-weight:700">${esc(h.posture_grade||'—')}</div></div>
+        <div><div class="muted" style="font-size:11px">PATCHING</div><div style="font-size:22px;font-weight:700">${h.patch_compliance!=null?h.patch_compliance+'%':'—'}</div></div>
+        <div><div class="muted" style="font-size:11px">OPEN TICKETS</div><div style="font-size:22px;font-weight:700">${h.open_tickets??'—'}</div></div>
+        <div><div class="muted" style="font-size:11px">PLANNED BUDGET</div><div style="font-size:22px;font-weight:700">$${(rv.budget_total||0).toLocaleString()}</div></div>
+      </div>
+      <div class="muted" style="font-size:12px;margin-bottom:6px">${rv.counts.total} recommendation(s) · ${rv.counts.critical} critical · ${rv.counts.high} high</div>
+      ${road||'<div class="muted">✅ No priority actions — this client is in great shape.</div>'}
+      <div style="margin-top:12px"><button class="btn sm" onclick="vcioNarrate(${cid},'${esc((cname||'').replace(/'/g,''))}',this)">✨ Write executive summary</button>
+        <span id="vcio-narr" style="display:block;white-space:pre-wrap;margin-top:8px;font-size:13px"></span></div>
+    </div></div>`;
+  const d=document.createElement('div'); d.innerHTML=html; document.body.appendChild(d.firstElementChild);
+}
+async function vcioNarrate(cid, cname, btn){
+  btn.disabled=true; const old=btn.textContent; btn.textContent='Writing…';
+  const rv=await api(`/api/vcio/${cid}/review?narrative=true`);
+  const el=document.getElementById('vcio-narr');
+  if(rv&&rv.narrative) el.textContent=rv.narrative;
+  else el.textContent='Claude isn\'t connected yet — add your Anthropic API key on the server to get the written summary.';
+  btn.disabled=false; btn.textContent=old;
+}
 // ===================== Morning Briefing =====================
 async function showBriefing(){
   const [b,ai]=await Promise.all([api('/api/briefing'), api('/api/copilot/briefing').catch(()=>null)]);

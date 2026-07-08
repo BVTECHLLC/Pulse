@@ -1,5 +1,36 @@
 # BVTech OpsPilot — Changelog
 
+## v1.16.0 — AI vCIO: automated technology business reviews + roadmap (July 2026)
+An MSP's highest-value, least-scalable service is the *virtual CIO* — translating
+a client's IT reality into business risk and handing them a ranked, budgeted
+roadmap. Pulse now does it automatically.
+- **One-click vCIO review per client.** `build_review()` pulls the client's whole
+  picture — health, security posture, predicted risks (foresight), SLA/tickets,
+  contract margin (PSA Intelligence), and hardware lifecycle — and runs a
+  deterministic recommendation engine that emits **ranked, budgeted, horizon-
+  bucketed** recommendations (immediate / this quarter / this year) across
+  Security, Patching, Reliability, Service, Financial, Lifecycle, and People.
+- **Maturity index.** A 0-100 composite of where the client stands (posture +
+  patching, penalized by open critical/high items) — the number to open a QBR.
+- **Hardware lifecycle planning.** Flags out-of-warranty and >5-year-old assets
+  and puts a refresh budget on them (~$1,200/endpoint) so capital planning writes
+  itself.
+- **In the Copilot + dashboard.** New staff Copilot tool `vcio_review` ("what
+  should we do for Acme?", QBR/renewal prep) — also runnable per-client via a
+  fleet sweep. Click any client in Site Health to open a **vCIO Review modal**:
+  maturity, security/patch/ticket highlights, planned budget, the full roadmap,
+  and an on-demand ✨ executive summary.
+- **New surface:** `GET /api/vcio/{client_id}/review` (staff, or the client's own
+  users for their own review; `?narrative=true` for the AI executive summary).
+- Every recommendation and number is computed, not guessed; the AI narrative is
+  optional and layered on top.
+- Verified: full offline smoke seeds an underwater contract, aging/out-of-warranty
+  hardware ($2,400 refresh), and a breached-SLA ticket, then proves the roadmap
+  surfaces the reprice / SLA / refresh recommendations across the right areas and
+  horizons, computes a bounded maturity index and budget, exposes the Copilot
+  tool, and enforces client-scoped access — plus a Playwright check of the vCIO
+  modal (0 JS errors).
+
 ## v1.15.0 — PSA Intelligence: the AI brain on your book of business (July 2026)
 Pulse is a full PSA (contracts, ticketing, SLA, time, billing, A/R). v1.15 makes
 it *think* — three deep, unique skills the incumbents don't ship:
