@@ -176,3 +176,44 @@ def ticket_reply_draft(ticket_id: int, db: Session = Depends(get_db),
     except ai.AIError as e:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
     return {"draft": text}
+
+
+# --------------------------------------------------------------------------- #
+# v1.22 Connection Center: Claude key settable from the portal (encrypted in
+# the vault; env stays as fallback). The key value is NEVER returned or logged.
+# --------------------------------------------------------------------------- #
+class AISettingsIn(BaseModel):
+    api_key: str
+
+
+@router.get("/settings")
+def ai_settings(db: Session = Depends(get_db),
+                user=Depends(require_roles(Role.OWNER, Role.TECH))):
+    return {"connected": ai.enabled(), "source": ai.key_source()}
+
+
+@router.put("/settings")
+def save_ai_settings(body: AISettingsIn, db: Session = Depends(get_db),
+                     user=Depends(require_roles(Role.OWNER))):
+    key = (body.api_key or "").strip()
+    if len(key) < 20:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "That doesn't look like an API key.")
+    from ...services import secure_config
+    secure_config.upsert_platform(db, "anthropic", "Claude (Anthropic)", "AI",
+                                  {"api_key": key})
+    ai.refresh_key_cache()
+    return {"connected": ai.enabled(), "source": ai.key_source()}
+
+
+@router.post("/test")
+def test_ai(db: Session = Depends(get_db),
+            user=Depends(require_roles(Role.OWNER, Role.TECH))):
+    """One tiny live completion proves the key works end-to-end."""
+    if not ai.enabled():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "No key yet — paste your Anthropic API key first.")
+    try:
+        out = ai.complete("Reply with exactly: ok", "ping", max_tokens=8)
+    except ai.AIError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
+    return {"ok": True, "reply": (out or "")[:40], "source": ai.key_source()}

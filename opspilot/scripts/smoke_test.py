@@ -2135,6 +2135,50 @@ def main():
                  .delete(synchronize_session=False))
             _c20.commit()
             _c20.close()
+        # ===================== v1.22: Connection Center =====================
+        from app.services import ai as _ai22, secure_config as _sc22
+        from app.core.db import SessionLocal as _SL22
+        _cc = _SL22()
+        try:
+            # Claude key from the VAULT lights ai.enabled() (env fallback preserved).
+            _ai22.refresh_key_cache()
+            base_enabled = _ai22.enabled()   # whatever the env says
+            _sc22.upsert_platform(_cc, "anthropic", "Claude (Anthropic)", "AI",
+                                  {"api_key": "sk-ant-test-key-000000000000"})
+            _ai22.refresh_key_cache()
+            assert _ai22.enabled() is True and _ai22.key_source() == "vault"
+            # Settings API: OWNER saves, key value never echoed back.
+            r22 = c.get("/api/ai/settings").json()
+            assert r22["connected"] is True and "api_key" not in str(r22)
+            assert ca_c.get("/api/ai/settings").status_code == 403
+            assert ca_c.put("/api/ai/settings", json={"api_key": "sk-ant-xxxxxxxxxxxxxxxxxxxx"}).status_code == 403
+            assert c.put("/api/ai/settings", json={"api_key": "short"}).status_code == 400
+            # The Connection Center registry: every item has status + guidance.
+            cc22 = c.get("/api/setup/connections").json()
+            keys22 = {i["key"] for i in cc22["items"]}
+            assert {"anthropic", "gitlab_sites", "m365_mailbox", "pub_linkedin", "gbp",
+                    "stripe", "smtp", "quickbooks", "hubspot", "dialpad",
+                    "google_places", "tacticalrmm"} <= keys22, keys22
+            for i in cc22["items"]:
+                assert i["unlocks"] and i["where"] and i["priority"] in (1, 2, 3), i["key"]
+                assert i["console_url"] or i["console_hint"], i["key"]
+            byk22 = {i["key"]: i for i in cc22["items"]}
+            assert byk22["anthropic"]["connected"] is True
+            assert "console.anthropic.com" in byk22["anthropic"]["console_url"]
+            assert 0 <= cc22["score_pct"] <= 100 and cc22["connected"] >= 1
+            assert ca_c.get("/api/setup/connections").status_code == 403
+            # Clean up the vault key so later AI-off assumptions hold.
+            from app.models import IntegrationConnection as _IC22
+            _cc.query(_IC22).filter(_IC22.provider == "anthropic").delete(synchronize_session=False)
+            _cc.commit()
+            _ai22.refresh_key_cache()
+            assert _ai22.enabled() is base_enabled
+        finally:
+            _cc.close()
+        print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
+              "+ full connector registry (status/unlocks/console link/where/priority) "
+              "+ readiness score OK")
+
         print("Content Autopilot: 4-channel daily run (customized per channel) + per-day "
               "dedupe + queue reuse + GitLab publishing for BOTH sites (one shared token, "
               "blog-file + slug-folder layouts, env-fallback chain) + build verification "
@@ -3855,7 +3899,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.21.1 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.22.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

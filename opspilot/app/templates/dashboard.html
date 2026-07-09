@@ -1272,6 +1272,17 @@
       <span class="muted">Connect your MSP's services to Pulse. All secrets are encrypted at rest and never shown again — leave a field blank to keep the saved value.</span>
     </div>
 
+    <div class="card" style="margin-bottom:16px;border:1px solid var(--brand,#6c5ce7)" id="cc-card">
+      <div class="flex" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0">🔌 Connection Center <span class="pill" id="cc-score">—</span></h3>
+        <span class="muted" style="font-size:12px" id="cc-golive"></span>
+      </div>
+      <p class="muted" style="margin:4px 0 10px">Everything Pulse can connect to, in priority order. Each tile shows what it unlocks, a direct link to the provider page where the credential lives, and exactly where to paste it. Knock out Priority 1 and you're live.</p>
+      <div style="background:#0c1430;border-radius:8px;height:10px;overflow:hidden;margin-bottom:12px">
+        <div id="cc-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#6c5ce7,#2ecc71);transition:width .4s"></div></div>
+      <div id="cc-grid" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px"><div class="muted">Loading…</div></div>
+    </div>
+
     <div class="card" style="margin-bottom:16px">
       <h3 style="margin-top:0">🎨 Branding / White-label</h3>
       <p class="muted" style="margin:4px 0 10px">Make the portal yours — this name, logo &amp; color apply everywhere (login, dashboard, client portal). Perfect for reselling under your own brand.</p>
@@ -4631,7 +4642,49 @@ async function mbSend(){
 function setPill(id,ok){const p=document.getElementById(id);if(!p)return;
   p.textContent=ok?'connected':'not configured';p.style.background=ok?'rgba(46,204,113,.18)':'';}
 function fv(fields,key){return (fields&&fields[key]&&fields[key].value)||'';}
+// ---- 🔌 Connection Center (v1.22) ----
+async function loadConnCenter(){
+  const d=await api('/api/setup/connections'); if(!d)return;
+  document.getElementById('cc-score').textContent=`${d.connected}/${d.total} connected`;
+  document.getElementById('cc-bar').style.width=(d.score_pct||0)+'%';
+  const gl=document.getElementById('cc-golive');
+  gl.textContent=d.go_live_ready?'✅ Go-live ready — Priority 1 complete':'🎯 Finish Priority 1 to go live';
+  gl.style.color=d.go_live_ready?'var(--good,#2ecc71)':'var(--warn)';
+  const pr={1:'P1 · go-live',2:'P2 · growth & billing',3:'P3 · optional'};
+  document.getElementById('cc-grid').innerHTML=(d.items||[]).map(it=>{
+    const dot=it.connected?'🟢':'🔴';
+    const link=it.console_url?`<a class="btn sm ghost" style="text-decoration:none" target="_blank" rel="noopener" href="${esc(it.console_url)}">Get credential ↗</a>`:'';
+    const inline=it.inline==='anthropic'&&!it.connected?
+      `<div class="flex" style="gap:4px;margin-top:8px">
+        <input id="cc-ai-key" type="password" placeholder="sk-ant-…" style="flex:1;font-size:11px;padding:6px">
+        <button class="btn sm" onclick="saveAiKey(this)">Connect</button></div>`
+      :(it.inline==='anthropic'&&it.connected?`<div style="margin-top:8px"><button class="btn sm ghost" onclick="testAiKey(this)">Test Claude</button> <span id="cc-ai-msg" class="muted" style="font-size:11px"></span></div>`:'');
+    return `<div class="card" style="background:#0c1430${it.priority===1?';border:1px solid var(--brand,#6c5ce7)':''}">
+      <div class="flex" style="justify-content:space-between;gap:6px">
+        <b style="font-size:13px">${dot} ${esc(it.name)}</b>
+        <span class="muted" style="font-size:10px;white-space:nowrap">${pr[it.priority]||''}</span></div>
+      <div class="muted" style="font-size:11px;margin:6px 0">${esc(it.unlocks)}</div>
+      <div class="muted" style="font-size:10px">📍 ${esc(it.where)}</div>
+      ${it.console_hint?`<div class="muted" style="font-size:10px;margin-top:3px">🧭 ${esc(it.console_hint)}</div>`:''}
+      <div style="margin-top:8px">${link}</div>${inline}
+    </div>`;}).join('');
+}
+async function saveAiKey(btn){
+  const k=val('cc-ai-key'); if(!k){alert('Paste your Anthropic API key first (console.anthropic.com → API keys).');return;}
+  btn.disabled=true;btn.textContent='Connecting…';
+  const r=await put('/api/ai/settings',{api_key:k}); const j=await r.json().catch(()=>({}));
+  if(r.ok&&j.connected){loadConnCenter();}
+  else{alert(j.detail||'Save failed');btn.disabled=false;btn.textContent='Connect';}
+}
+async function testAiKey(btn){
+  btn.disabled=true;const old=btn.textContent;btn.textContent='Testing…';
+  const r=await post('/api/ai/test'); const j=await r.json().catch(()=>({}));
+  const m=document.getElementById('cc-ai-msg');
+  if(m)m.textContent=r.ok?`✓ Claude replied (key from ${j.source})`:(j.detail||'Test failed');
+  btn.disabled=false;btn.textContent=old;
+}
 async function loadSettings(){
+  loadConnCenter();
   const mb=await api('/api/mailbox/settings');
   if(mb){setPill('set-mb-pill',mb.configured);
     document.getElementById('set-mb-tenant').value=fv(mb.fields,'tenant_id');
