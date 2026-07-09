@@ -23,19 +23,73 @@ class AIError(Exception):
     pass
 
 
+# v1.22: the key can come from the VAULT (set in the portal, encrypted at rest)
+# or the server env. Cached briefly so enabled() stays cheap on hot paths.
+_KEY_CACHE: dict = {"key": None, "ts": 0.0}
+_KEY_TTL = 60.0
+
+
+def _api_key() -> str | None:
+    import time as _t
+    if _KEY_CACHE["key"] is not None and (_t.monotonic() - _KEY_CACHE["ts"]) < _KEY_TTL:
+        return _KEY_CACHE["key"] or None
+    key = None
+    try:
+        from ..core.db import SessionLocal
+        from . import secure_config
+        db = SessionLocal()
+        try:
+            conn = secure_config.get_platform(db, "anthropic")
+            cfg = (conn.config if conn else None) or {}
+            key = secure_config.get_secret(cfg, "api_key")
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001
+        key = None
+    key = key or get_settings().ANTHROPIC_API_KEY
+    _KEY_CACHE["key"] = key or ""
+    _KEY_CACHE["ts"] = _t.monotonic()
+    return key
+
+
+def refresh_key_cache() -> None:
+    """Call after saving a new key so it takes effect immediately."""
+    _KEY_CACHE["key"] = None
+    _KEY_CACHE["ts"] = 0.0
+
+
+def key_source() -> str | None:
+    """'vault' | 'env' | None — for the Connection Center (never the value)."""
+    try:
+        from ..core.db import SessionLocal
+        from . import secure_config
+        db = SessionLocal()
+        try:
+            conn = secure_config.get_platform(db, "anthropic")
+            cfg = (conn.config if conn else None) or {}
+            if secure_config.get_secret(cfg, "api_key"):
+                return "vault"
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001
+        pass
+    return "env" if get_settings().ANTHROPIC_API_KEY else None
+
+
 def enabled() -> bool:
-    return get_settings().ai_enabled
+    return bool(_api_key())
 
 
 def _http_complete(system: str, user: str, *, model: str, max_tokens: int) -> str:
-    s = get_settings()
-    if not s.ANTHROPIC_API_KEY:
-        raise AIError("Claude is not connected — add ANTHROPIC_API_KEY in the server env.")
+    key = _api_key()
+    if not key:
+        raise AIError("Claude is not connected — paste your Anthropic API key in "
+                      "Settings → Connection Center (or set ANTHROPIC_API_KEY).")
     payload = {"model": model, "max_tokens": max_tokens, "system": system,
                "messages": [{"role": "user", "content": user}]}
     req = urlrequest.Request(
         ANTHROPIC_URL, data=json.dumps(payload).encode(), method="POST",
-        headers={"x-api-key": s.ANTHROPIC_API_KEY, "anthropic-version": ANTHROPIC_VERSION,
+        headers={"x-api-key": key, "anthropic-version": ANTHROPIC_VERSION,
                  "content-type": "application/json"})
     try:
         with urlrequest.urlopen(req, timeout=60) as r:
@@ -72,14 +126,15 @@ def _http_messages(system: str, messages: list, tools: list, *, model: str,
                    max_tokens: int) -> dict:
     """One turn of the Messages API WITH tools. Returns the raw response dict
     (content blocks + stop_reason) so the caller can run a tool-use loop."""
-    s = get_settings()
-    if not s.ANTHROPIC_API_KEY:
-        raise AIError("Claude is not connected — add ANTHROPIC_API_KEY in the server env.")
+    key = _api_key()
+    if not key:
+        raise AIError("Claude is not connected — paste your Anthropic API key in "
+                      "Settings → Connection Center (or set ANTHROPIC_API_KEY).")
     payload = {"model": model, "max_tokens": max_tokens, "system": system,
                "messages": messages, "tools": tools}
     req = urlrequest.Request(
         ANTHROPIC_URL, data=json.dumps(payload).encode(), method="POST",
-        headers={"x-api-key": s.ANTHROPIC_API_KEY, "anthropic-version": ANTHROPIC_VERSION,
+        headers={"x-api-key": key, "anthropic-version": ANTHROPIC_VERSION,
                  "content-type": "application/json"})
     try:
         with urlrequest.urlopen(req, timeout=90) as r:

@@ -1,5 +1,26 @@
 # BVTech OpsPilot — Changelog
 
+## v1.22.0 — Connection Center: every connector, one page, one click (July 2026)
+The go-live release. Settings now opens with a **🔌 Connection Center**:
+- **Every connector Pulse has** — Claude, both websites (GitLab), Microsoft 365
+  mail + SSO, LinkedIn, Google Business, Stripe, SMTP, QuickBooks, HubSpot,
+  Dialpad, Google Places lead gen, TacticalRMM — as one tile each with: live
+  status, **what it unlocks**, a **direct link to the exact provider console
+  page** where the credential lives, a step-by-step hint, and where in Pulse to
+  paste it. Priority-ordered (P1 go-live → P3 optional) with a readiness score
+  bar and a "Go-live ready" verdict once Priority 1 is complete.
+- **Claude connects from the portal now.** Paste your Anthropic API key right
+  on the Center tile (encrypted in the vault; the server env stays as a
+  fallback) and hit **Test Claude** for a live round-trip. No more SSH to turn
+  the brain on. The key is never echoed back or logged.
+  `GET/PUT /api/ai/settings` (PUT OWNER-only) + `POST /api/ai/test`.
+- `GET /api/setup/connections` powers the page (staff-only).
+- Verified: smoke proves the vault key lights `ai.enabled()` with `vault`
+  source (and cleanly falls back on delete), the settings API never echoes the
+  key, validation + OWNER-only RBAC hold, and the registry carries status +
+  unlocks + console link/hint + location for every connector — plus a
+  Playwright pass of the Center (score bar, tiles, Claude paste field).
+
 ## v1.21.1 — "Test connection" for the site publishers (July 2026)
 - New **Test connection** button next to "Connect both sites": read-only check
   of the GitLab token against BOTH repos with a plain-English verdict per site
