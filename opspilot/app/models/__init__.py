@@ -1449,3 +1449,38 @@ class Incident(Base):
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class BrowserItem(Base):
+    """v1.23 Browser & SaaS Guardian — one row per (device, kind, identifier):
+    a browser EXTENSION (identifier = extension id) or a WEB APP the device
+    actually uses (identifier = domain, harvested from browser data by the
+    agent). This is the 'app blindspot' killer: SaaS/shadow-IT visibility that
+    classic software inventory can't see."""
+    __tablename__ = "browser_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True, nullable=False)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), index=True, nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), index=True, nullable=False)   # extension|webapp
+    browser: Mapped[str | None] = mapped_column(String(20))                     # chrome|edge|firefox
+    identifier: Mapped[str] = mapped_column(String(200), index=True, nullable=False)
+    name: Mapped[str | None] = mapped_column(String(200))
+    version: Mapped[str | None] = mapped_column(String(40))
+    permissions: Mapped[str | None] = mapped_column(String(500))
+    hits: Mapped[int] = mapped_column(Integer, default=0)                       # webapp visit weight
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class BrowserPolicy(Base):
+    """Per-client browser governance: operator decisions (approve/block per
+    identifier) + the 'protect browsers' hardening switch. The agent pulls the
+    derived block lists and ENFORCES them on the endpoint (hosts-file domain
+    blocks, Chrome/Edge extension blocklists, SafeBrowsing/SmartScreen on)."""
+    __tablename__ = "browser_policies"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), unique=True,
+                                           index=True, nullable=False)
+    decisions: Mapped[dict] = mapped_column(JSON, default=dict)   # {identifier: approved|blocked}
+    protect: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

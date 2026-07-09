@@ -763,6 +763,24 @@
   </section>
 
   <section id="security" class="hidden">
+    <div class="card" style="margin-bottom:16px" id="bg-card">
+      <div class="flex" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0">🌐 Browser &amp; SaaS Guardian <span class="pill" id="bg-counts">—</span></h3>
+        <div class="flex" style="gap:10px;align-items:center">
+          <select id="bg-client" onchange="loadBrowserGuard()" style="background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:8px;color:var(--ink)"></select>
+          <label class="flex" style="margin:0;gap:6px;color:var(--muted)"><input type="checkbox" id="bg-protect" style="width:auto" onchange="bgProtect()"> Protect browsers</label>
+        </div>
+      </div>
+      <p class="muted" style="margin:4px 0 10px">The app blindspot, killed: web apps this client's devices <b>actually use</b> (harvested by the agent — no extension needed) + every browser extension installed. Approve what's sanctioned, <b>Block</b> what isn't — blocks are enforced on the devices (hosts-file sinkhole + Chrome/Edge extension blocklist). "Protect browsers" forces SafeBrowsing/SmartScreen on.</p>
+      <div class="grid2" style="gap:14px">
+        <div><b style="font-size:13px">Web apps in use</b>
+          <table style="margin-top:6px"><thead><tr><th>App</th><th>Category</th><th>Devices</th><th>Status</th><th></th></tr></thead>
+          <tbody id="t-bg-web"><tr><td colspan=5 class="muted">Pick a client — data appears after agents report (hourly).</td></tr></tbody></table></div>
+        <div><b style="font-size:13px">Browser extensions</b>
+          <table style="margin-top:6px"><thead><tr><th>Extension</th><th>Browser</th><th>Devices</th><th>Status</th><th></th></tr></thead>
+          <tbody id="t-bg-ext"><tr><td colspan=5 class="muted">—</td></tr></tbody></table></div>
+      </div>
+    </div>
     <div class="card" style="margin-bottom:16px">
       <h3 style="margin-top:0">🛡️ Security Scorecards <span class="muted" style="font-size:12px">— graded posture, riskiest first</span></h3>
       <p class="muted" style="margin:4px 0 10px">One A–F grade per client across endpoints, patching, Microsoft 365 identity, and open threats. Click a row to see the breakdown + recommendations.</p>
@@ -1681,7 +1699,7 @@ function tab(name){
   if(name==='users'){loadUsers();}
   if(name==='library'){loadLibrary();}
   if(name==='automation'){loadAutopilot();}
-  if(name==='security'){loadTraining();}
+  if(name==='security'){loadTraining();initBrowserGuard();}
   if(name==='settings'&&!_tabLoaded.settings){_tabLoaded.settings=true;loadSettings();}
 }
 function badge(v,good,warn){if(v==null)return '<span class="badge">—</span>';
@@ -4642,6 +4660,41 @@ async function mbSend(){
 function setPill(id,ok){const p=document.getElementById(id);if(!p)return;
   p.textContent=ok?'connected':'not configured';p.style.background=ok?'rgba(46,204,113,.18)':'';}
 function fv(fields,key){return (fields&&fields[key]&&fields[key].value)||'';}
+// ---- 🌐 Browser & SaaS Guardian (v1.23) ----
+function initBrowserGuard(){
+  const sel=document.getElementById('bg-client'); if(!sel||sel.options.length>0)return;
+  sel.innerHTML='<option value="">— pick client —</option>'+Object.entries(CLIENTS).map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('');
+}
+async function loadBrowserGuard(){
+  const cid=val('bg-client'); if(!cid)return;
+  const d=await api(`/api/browser/inventory/${cid}`); if(!d)return;
+  document.getElementById('bg-protect').checked=!!d.protect;
+  const c=d.counts||{};
+  document.getElementById('bg-counts').textContent=`${c.webapps||0} apps · ${c.extensions||0} ext · ${c.blocked||0} blocked · ${c.unreviewed||0} to review`;
+  const stBadge=s=>s==='blocked'?'<span class="badge bad">blocked</span>':(s==='approved'?'<span class="badge ok">approved</span>':'<span class="badge warn">unreviewed</span>');
+  const btns=(id,s)=>`${s!=='approved'?`<button class="btn sm ghost" style="padding:2px 7px" onclick="bgDecide('${esc(id)}','approve')">✓</button>`:''}
+    ${s!=='blocked'?`<button class="btn sm ghost" style="padding:2px 7px" onclick="bgDecide('${esc(id)}','block')">🚫</button>`:`<button class="btn sm ghost" style="padding:2px 7px" onclick="bgDecide('${esc(id)}','clear')">undo</button>`}`;
+  document.getElementById('t-bg-web').innerHTML=(d.webapps||[]).slice(0,25).map(w=>
+    `<tr><td><b>${esc(w.name)}</b><div class="muted" style="font-size:10px">${esc(w.identifier)}</div></td>
+     <td class="muted" style="font-size:12px">${esc(w.category)}</td><td>${w.devices}</td>
+     <td>${stBadge(w.status)}</td><td style="white-space:nowrap">${btns(w.identifier,w.status)}</td></tr>`).join('')
+    ||'<tr><td colspan=5 class="muted">Nothing reported yet — agents send browser data hourly.</td></tr>';
+  document.getElementById('t-bg-ext').innerHTML=(d.extensions||[]).slice(0,25).map(e=>
+    `<tr><td><b>${esc(e.name)}</b>${e.permissions?`<div class="muted" style="font-size:10px" title="${esc(e.permissions)}">${esc(e.permissions.slice(0,50))}</div>`:''}</td>
+     <td class="muted">${esc(e.browser||'—')}</td><td>${e.devices}</td>
+     <td>${stBadge(e.status)}</td><td style="white-space:nowrap">${btns(e.identifier,e.status)}</td></tr>`).join('')
+    ||'<tr><td colspan=5 class="muted">—</td></tr>';
+}
+async function bgDecide(identifier,action){
+  const cid=val('bg-client'); if(!cid)return;
+  const r=await post('/api/browser/decide',{client_id:parseInt(cid),identifier,action});
+  if(r.ok)loadBrowserGuard(); else alert((await r.json().catch(()=>({}))).detail||'Failed');
+}
+async function bgProtect(){
+  const cid=val('bg-client'); if(!cid){document.getElementById('bg-protect').checked=false;alert('Pick a client first.');return;}
+  await put('/api/browser/protect',{client_id:parseInt(cid),protect:document.getElementById('bg-protect').checked});
+  loadBrowserGuard();
+}
 // ---- 🔌 Connection Center (v1.22) ----
 async function loadConnCenter(){
   const d=await api('/api/setup/connections'); if(!d)return;

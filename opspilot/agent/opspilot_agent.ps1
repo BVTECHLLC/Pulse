@@ -24,7 +24,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$AgentVersion = "2.0.0-ps"
+$AgentVersion = "2.1.0-ps"
 $DataDir = Join-Path $env:ProgramData "BVTechOpsPilot"
 $ConfigPath = Join-Path $DataDir "agent.json"
 $AgentPath = Join-Path $DataDir "agent.ps1"
@@ -245,6 +245,8 @@ function Do-Checkin {
     if (-not $lastFull -or ((Get-Date) - $lastFull).TotalMinutes -ge 55) {
       Report-Inventory $cfg $headers
       Report-Patches $cfg $headers
+      try { Report-Browser $cfg $headers } catch { Write-Log "Browser report skipped: $_" }
+      try { Apply-BrowserPolicy $cfg $headers } catch { Write-Log "Browser policy skipped: $_" }
       $cfg | Add-Member -NotePropertyName last_full -NotePropertyValue (Get-Date -Format o) -Force
       Save-Config $cfg
     }
@@ -265,6 +267,198 @@ function Report-Patches($cfg, $headers) {
   $patches = Get-PendingPatchList
   Invoke-Api "POST" "$($cfg.url)/api/agent/patches" $headers @{ patches = @($patches) } | Out-Null
   Write-Log "Reported $($patches.Count) pending patches."
+}
+
+
+function Get-BrowserApps {
+  # v1.23 Browser & SaaS Guardian: what browsers/extensions exist and which
+  # web apps this machine actually uses. No dependencies, read-only, best-effort.
+  $extensions = @()
+  $hostCounts = @{}
+
+  # ---- Chrome + Edge extensions (per user profile) ----
+  $chromiumRoots = @(
+    @{ Browser = "chrome"; Path = "AppData\Local\Google\Chrome\User Data" },
+    @{ Browser = "edge";   Path = "AppData\Local\Microsoft\Edge\User Data" }
+  )
+  $userDirs = @(Get-ChildItem "C:\Users" -Directory -ErrorAction SilentlyContinue)
+  foreach ($u in $userDirs) {
+    foreach ($root in $chromiumRoots) {
+      $base = Join-Path $u.FullName $root.Path
+      if (-not (Test-Path $base)) { continue }
+      $profiles = @(Get-ChildItem $base -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -eq "Default" -or $_.Name -like "Profile *" })
+      foreach ($prof in $profiles) {
+        $extRoot = Join-Path $prof.FullName "Extensions"
+        if (-not (Test-Path $extRoot)) { continue }
+        $extDirs = @(Get-ChildItem $extRoot -Directory -ErrorAction SilentlyContinue)
+        foreach ($ed in $extDirs) {
+          $verDir = @(Get-ChildItem $ed.FullName -Directory -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending | Select-Object -First 1)
+          if (-not $verDir) { continue }
+          $manifest = Join-Path $verDir[0].FullName "manifest.json"
+          if (-not (Test-Path $manifest)) { continue }
+          try {
+            $m = Get-Content $manifest -Raw -ErrorAction Stop | ConvertFrom-Json
+            $name = "$($m.name)"
+            if ($name -like "__MSG_*") { $name = $ed.Name }
+            $perms = ""
+            if ($m.permissions) { $perms = (@($m.permissions) -join ",") }
+            $extensions += @{ browser = $root.Browser; id = $ed.Name; name = $name;
+                              version = "$($m.version)"; permissions = $perms }
+          } catch { }
+        }
+        # ---- web apps: harvest domains from this profile's History (binary scan) ----
+        $hist = Join-Path $prof.FullName "History"
+        Add-HostCounts $hist $hostCounts
+        $bk = Join-Path $prof.FullName "Bookmarks"
+        Add-HostCounts $bk $hostCounts
+      }
+    }
+    # ---- Firefox: extensions + places history ----
+    $ffRoot = Join-Path $u.FullName "AppData\Roaming\Mozilla\Firefox\Profiles"
+    if (Test-Path $ffRoot) {
+      $ffProfiles = @(Get-ChildItem $ffRoot -Directory -ErrorAction SilentlyContinue)
+      foreach ($fp in $ffProfiles) {
+        $extJson = Join-Path $fp.FullName "extensions.json"
+        if (Test-Path $extJson) {
+          try {
+            $fx = Get-Content $extJson -Raw -ErrorAction Stop | ConvertFrom-Json
+            foreach ($a in @($fx.addons)) {
+              if ("$($a.type)" -ne "extension") { continue }
+              if ("$($a.location)" -eq "app-builtin") { continue }
+              $nm = "$($a.defaultLocale.name)"
+              if (-not $nm) { $nm = "$($a.id)" }
+              $extensions += @{ browser = "firefox"; id = "$($a.id)"; name = $nm;
+                                version = "$($a.version)"; permissions = "" }
+            }
+          } catch { }
+        }
+        Add-HostCounts (Join-Path $fp.FullName "places.sqlite") $hostCounts
+      }
+    }
+  }
+
+  $domains = @()
+  $sorted = $hostCounts.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 40
+  foreach ($kv in @($sorted)) {
+    $domains += @{ host = $kv.Key; hits = [int]$kv.Value }
+  }
+  return @{ extensions = @($extensions | Select-Object -First 100); domains = @($domains) }
+}
+
+function Add-HostCounts($filePath, $counts) {
+  # Extract https://host occurrences from a (possibly binary/locked) file by
+  # copying it first, then ASCII-scanning. Best-effort; caps big files.
+  if (-not (Test-Path $filePath)) { return }
+  try {
+    $fi = Get-Item $filePath -ErrorAction Stop
+    if ($fi.Length -gt 100MB) { return }
+    $tmp = Join-Path $env:TEMP ("pulse_bh_" + [System.IO.Path]::GetRandomFileName())
+    Copy-Item $filePath $tmp -Force -ErrorAction Stop
+    try {
+      $bytes = [System.IO.File]::ReadAllBytes($tmp)
+      $text = [System.Text.Encoding]::ASCII.GetString($bytes)
+      $rx = [regex]"https?://([a-z0-9][a-z0-9\.\-]{2,120})"
+      $found = $rx.Matches($text)
+      foreach ($m in $found) {
+        $h = $m.Groups[1].Value.ToLower().TrimEnd(".")
+        if ($h.StartsWith("www.")) { $h = $h.Substring(4) }
+        if ($h -notmatch "\.") { continue }
+        if ($counts.ContainsKey($h)) { $counts[$h] = $counts[$h] + 1 }
+        else { $counts[$h] = 1 }
+      }
+    } finally {
+      Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+    }
+  } catch { }
+}
+
+function Report-Browser($cfg, $headers) {
+  $b = Get-BrowserApps
+  Invoke-Api "POST" "$($cfg.url)/api/agent/browser" $headers $b | Out-Null
+  Write-Log "Reported $($b.extensions.Count) extensions + $($b.domains.Count) web-app domains."
+}
+
+function Apply-BrowserPolicy($cfg, $headers) {
+  # Pull this device's browser policy and ENFORCE it (idempotent):
+  #   blocked domains    -> hosts-file sinkhole between PULSE markers
+  #   blocked extensions -> Chrome/Edge ExtensionInstallBlocklist policy
+  #   protect            -> SafeBrowsing (Chrome) + SmartScreen (Edge) forced on
+  $pol = Invoke-Api "GET" "$($cfg.url)/api/agent/browser-policy" $headers $null
+  if (-not $pol) { return }
+
+  # ---- hosts-file domain blocks ----
+  $hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
+  $beginMark = "# BEGIN PULSE BROWSER GUARD"
+  $endMark = "# END PULSE BROWSER GUARD"
+  try {
+    $lines = @()
+    if (Test-Path $hostsPath) { $lines = @(Get-Content $hostsPath -ErrorAction Stop) }
+    $keep = @()
+    $inBlock = $false
+    foreach ($ln in $lines) {
+      if ($ln -eq $beginMark) { $inBlock = $true; continue }
+      if ($ln -eq $endMark) { $inBlock = $false; continue }
+      if (-not $inBlock) { $keep += $ln }
+    }
+    $blockLines = @()
+    foreach ($d in @($pol.blocked_domains)) {
+      if (-not $d) { continue }
+      $blockLines += "0.0.0.0 $d"
+      $blockLines += "0.0.0.0 www.$d"
+    }
+    $newLines = $keep
+    if ($blockLines.Count -gt 0) {
+      $newLines = $keep + @($beginMark) + $blockLines + @($endMark)
+    }
+    $oldText = ($lines -join "`n")
+    $newText = ($newLines -join "`n")
+    if ($oldText -ne $newText) {
+      [System.IO.File]::WriteAllLines($hostsPath, $newLines)
+      Write-Log "Hosts guard updated ($($blockLines.Count) block lines)."
+    }
+  } catch { Write-Log "Hosts guard skipped: $_" }
+
+  # ---- Chrome/Edge extension blocklist (policy registry) ----
+  $policyRoots = @(
+    "HKLM:\SOFTWARE\Policies\Google\Chrome\ExtensionInstallBlocklist",
+    "HKLM:\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallBlocklist"
+  )
+  foreach ($root in $policyRoots) {
+    try {
+      if (-not (Test-Path $root)) { New-Item -Path $root -Force | Out-Null }
+      # Clear only OUR slots (901-940), then write the current list.
+      for ($i = 901; $i -le 940; $i++) {
+        Remove-ItemProperty -Path $root -Name "$i" -ErrorAction SilentlyContinue
+      }
+      $slot = 901
+      foreach ($ext in @($pol.blocked_extensions)) {
+        if (-not $ext) { continue }
+        if ($slot -gt 940) { break }
+        New-ItemProperty -Path $root -Name "$slot" -Value "$ext" -PropertyType String -Force | Out-Null
+        $slot = $slot + 1
+      }
+    } catch { Write-Log "Extension blocklist skipped for ${root}: $_" }
+  }
+
+  # ---- browser protection hardening ----
+  try {
+    $chromePol = "HKLM:\SOFTWARE\Policies\Google\Chrome"
+    $edgePol = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+    if ($pol.protect) {
+      foreach ($p in @($chromePol, $edgePol)) {
+        if (-not (Test-Path $p)) { New-Item -Path $p -Force | Out-Null }
+      }
+      New-ItemProperty -Path $chromePol -Name "SafeBrowsingProtectionLevel" -Value 1 -PropertyType DWord -Force | Out-Null
+      New-ItemProperty -Path $edgePol -Name "SmartScreenEnabled" -Value 1 -PropertyType DWord -Force | Out-Null
+      New-ItemProperty -Path $edgePol -Name "SmartScreenPuaEnabled" -Value 1 -PropertyType DWord -Force | Out-Null
+    } else {
+      Remove-ItemProperty -Path $chromePol -Name "SafeBrowsingProtectionLevel" -ErrorAction SilentlyContinue
+      Remove-ItemProperty -Path $edgePol -Name "SmartScreenEnabled" -ErrorAction SilentlyContinue
+      Remove-ItemProperty -Path $edgePol -Name "SmartScreenPuaEnabled" -ErrorAction SilentlyContinue
+    }
+  } catch { Write-Log "Browser protect skipped: $_" }
 }
 
 function Install-ApprovedPatches($kbsSpec) {

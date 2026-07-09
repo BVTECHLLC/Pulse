@@ -494,3 +494,24 @@ def report_diagnostic(diag_id: int, body: DiagResultIn, request: Request,
     d.completed_at = datetime.now(timezone.utc)
     db.commit()
     return {"ok": True, "status": d.status}
+
+
+# --------------------------------------------------------------------------- #
+# v1.23 Browser & SaaS Guardian — the agent reports the browser reality
+# (extensions + web apps actually used) and pulls the enforcement policy.
+# --------------------------------------------------------------------------- #
+@router.post("/browser")
+def agent_browser(body: dict, x_enroll_id: str = Header(...),
+                  x_agent_key: str = Header(...), db: Session = Depends(get_db)):
+    dev = _auth_device(db, x_enroll_id, x_agent_key)
+    from ...services import browser_guard
+    return browser_guard.ingest(db, dev, body or {})
+
+
+@router.get("/browser-policy")
+def agent_browser_policy(x_enroll_id: str = Header(...),
+                         x_agent_key: str = Header(...),
+                         db: Session = Depends(get_db)):
+    dev = _auth_device(db, x_enroll_id, x_agent_key)
+    from ...services import browser_guard
+    return browser_guard.agent_policy(db, dev)
