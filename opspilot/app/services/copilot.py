@@ -73,6 +73,10 @@ def _tool_defs(staff: bool) -> list[dict]:
         {"name": "predicted_issues",
          "description": "PREDICTED problems from trend + anomaly analysis of device telemetry (disk full soon, health declining, resource spikes) — before they become hard alerts.",
          "input_schema": {"type": "object", "properties": {}}},
+        {"name": "saas_inventory",
+         "description": "The app blindspot killer: browser-based apps (SaaS) a client's devices ACTUALLY use + installed browser extensions, with review status (unreviewed/approved/blocked). Use for 'what SaaS is <client> using?' / shadow-IT questions.",
+         "input_schema": {"type": "object", "properties": {
+             "client_id": {"type": "integer"}}, "required": ["client_id"]}},
         {"name": "open_incidents",
          "description": "Correlated alert STORMS (e.g. many devices offline at once = likely site outage). One incident per storm with its single ticket. Use for 'is anything big happening?' / 'any outages right now?'.",
          "input_schema": {"type": "object", "properties": {
@@ -219,6 +223,17 @@ def _run_tool(db: Session, user: User, name: str, args: dict, allow_actions: boo
                        else d.last_checkin) < cutoff)
         patch = sum(1 for d in devs if (d.patches_pending or 0) > 0)
         return {"devices": len(devs), "offline": offline, "devices_with_pending_patches": patch}
+
+    if name == "saas_inventory":
+        cid = _cid(args.get("client_id"))
+        if not staff and cid != user.client_id:
+            return {"error": "Not permitted."}
+        if not cid:
+            return {"error": "client_id required — use find_client first."}
+        from . import browser_guard
+        inv = browser_guard.inventory(db, cid)
+        return {"counts": inv["counts"], "protect": inv["protect"],
+                "webapps": inv["webapps"][:20], "extensions": inv["extensions"][:15]}
 
     if name == "open_incidents":
         from . import incidents

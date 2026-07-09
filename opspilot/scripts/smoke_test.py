@@ -2175,6 +2175,78 @@ def main():
             assert _ai22.enabled() is base_enabled
         finally:
             _cc.close()
+        # ===================== v1.23: Browser & SaaS Guardian =====================
+        from app.services import browser_guard as _bg23, copilot as _cop23
+        cid23 = c.post("/api/clients", json={"name": "SaaS Blindspot Co"}).json()["id"]
+        tok23 = c.post(f"/api/agent/enroll-token/{cid23}").json()["enroll_token"]
+        _a23 = TestClient(app); _a23.cookies.clear()
+        en23 = _a23.post("/api/agent/enroll", json={"enroll_token": tok23,
+                         "hostname": "WEB-PC", "os": "Windows 11"}).json()
+        hdr23 = {"X-Enroll-Id": en23["enroll_id"], "X-Agent-Key": en23["agent_key"]}
+        # (1) Agent reports browser reality: SaaS domains + an extension. Noise
+        #     (google/doubleclick) must be filtered; catalog names must map.
+        r23 = _a23.post("/api/agent/browser", headers=hdr23, json={
+            "extensions": [{"browser": "chrome", "id": "abcdefghij", "name": "Honey",
+                            "version": "1.2", "permissions": "tabs,webRequest,<all_urls>"}],
+            "domains": [{"host": "slack.com", "hits": 120}, {"host": "www.notion.so", "hits": 80},
+                        {"host": "weirdcrm.io", "hits": 33}, {"host": "google.com", "hits": 999},
+                        {"host": "doubleclick.net", "hits": 500}]})
+        assert r23.status_code == 200 and r23.json() == {"extensions": 1, "webapps": 3}, r23.text
+        inv23 = c.get(f"/api/browser/inventory/{cid23}").json()
+        w23 = {w["identifier"]: w for w in inv23["webapps"]}
+        assert w23["slack.com"]["name"] == "Slack" and w23["notion.so"]["category"] == "Docs & wiki"
+        assert "google.com" not in w23 and "doubleclick.net" not in w23   # plumbing filtered
+        assert w23["weirdcrm.io"]["category"] == "Uncategorized"           # shadow IT still visible
+        assert inv23["extensions"][0]["name"] == "Honey"
+        # (2) Govern: block a SaaS + the extension, approve one, protect browsers.
+        assert c.post("/api/browser/decide", json={"client_id": cid23, "identifier": "notion.so",
+                      "action": "block"}).json()["status"] == "blocked"
+        c.post("/api/browser/decide", json={"client_id": cid23, "identifier": "abcdefghij",
+               "action": "block"})
+        c.post("/api/browser/decide", json={"client_id": cid23, "identifier": "slack.com",
+               "action": "approve"})
+        c.put("/api/browser/protect", json={"client_id": cid23, "protect": True})
+        # (3) The device pulls EXACTLY what it must enforce.
+        pol23 = _a23.get("/api/agent/browser-policy", headers=hdr23).json()
+        assert pol23 == {"blocked_domains": ["notion.so"],
+                         "blocked_extensions": ["abcdefghij"], "protect": True}, pol23
+        # (4) Re-report dedupes (same row, refreshed) — no inventory bloat.
+        _a23.post("/api/agent/browser", headers=hdr23,
+                  json={"domains": [{"host": "slack.com", "hits": 150}]})
+        inv23b = c.get(f"/api/browser/inventory/{cid23}").json()
+        srow = [w for w in inv23b["webapps"] if w["identifier"] == "slack.com"]
+        assert len(srow) == 1 and srow[0]["hits"] == 150 and srow[0]["devices"] == 1
+        assert srow[0]["status"] == "approved"
+        # (5) Copilot tool (tenant-scoped) + RBAC: deciding is staff-only; the
+        #     client's own users can READ their own landscape, not others'.
+        from app.core.db import SessionLocal as _SL23
+        from app.models import User as _U23, Role as _R23
+        _s23 = _SL23()
+        try:
+            owner23 = _s23.query(_U23).filter(_U23.role == _R23.OWNER).first()
+            t23 = _cop23._run_tool(_s23, owner23, "saas_inventory", {"client_id": cid23}, False)
+            assert t23["counts"]["webapps"] == 3 and t23["protect"] is True, t23
+        finally:
+            _s23.close()
+        assert ca_c.post("/api/browser/decide", json={"client_id": cid23,
+                         "identifier": "x.com", "action": "block"}).status_code == 403
+        assert ca_c.get(f"/api/browser/inventory/{cid23}").status_code == 403  # other client
+        assert ca_c.get(f"/api/browser/inventory/{cid}").status_code == 200    # own client OK
+        # (6) Agent file guards: the PowerShell payload must stay pure ASCII and
+        #     PS-5.1-safe (no `? :` ternary), and carry the new guard functions.
+        _ps23 = open("agent/opspilot_agent.ps1", "rb").read()
+        assert all(b < 128 for b in _ps23), "agent must stay pure ASCII"
+        _pst23 = _ps23.decode()
+        for fn in ("Get-BrowserApps", "Report-Browser", "Apply-BrowserPolicy",
+                   "Add-HostCounts", "PULSE BROWSER GUARD", "ExtensionInstallBlocklist",
+                   "SafeBrowsingProtectionLevel", "SmartScreenEnabled"):
+            assert fn in _pst23, f"agent missing {fn}"
+        import re as _re23
+        assert not _re23.search(r"\(\$\w+ \? ", _pst23), "PS7 ternary would break PS 5.1"
+        print("Browser & SaaS Guardian: agent report -> SaaS catalog rollup (noise filtered, "
+              "shadow IT visible) + approve/block/protect governance -> device enforcement "
+              "policy + dedupe + copilot tool + RBAC + pure-ASCII/PS5.1 agent guards OK")
+
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
               "+ readiness score OK")
@@ -3899,7 +3971,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.22.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.23.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

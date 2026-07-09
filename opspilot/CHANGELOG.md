@@ -1,5 +1,40 @@
 # BVTech OpsPilot — Changelog
 
+## v1.23.0 — Browser & SaaS Guardian: the app blindspot, killed (July 2026)
+Classic software inventory can't see browser-based apps — so shadow IT and
+SaaS sprawl are invisible to every RMM (it's literally the pitch competitors
+send cold emails about). Pulse's native agent now sees it AND governs it:
+- **Discovery, no browser extension needed.** On its hourly tick the agent
+  harvests each device's browser reality: every **Chrome/Edge/Firefox
+  extension** installed (name, version, permissions) and the **web apps the
+  device actually uses** (domains from browser data, plumbing/CDN/ad domains
+  filtered). Server maps domains against a ~75-app SaaS catalog (Slack, Notion,
+  Dropbox, ChatGPT, QuickBooks, …) — unknown domains still surface, labelled
+  Uncategorized: that IS the shadow IT.
+- **Approve / Block, actually enforced.** Each app and extension gets a review
+  status. **Block** is not a report row: the agent enforces it on the endpoint —
+  blocked domains are sink-holed in the hosts file (idempotent, between PULSE
+  markers), blocked extensions land in the Chrome/Edge
+  `ExtensionInstallBlocklist` policy (browser disables them).
+- **Protect the browser itself.** A per-client switch forces Chrome Safe
+  Browsing + Edge SmartScreen (incl. PUA blocking) on via policy — users can't
+  turn them off.
+- **Built into the client installer**: it's all in the native PowerShell agent
+  (pure ASCII, PS 5.1-safe, zero dependencies) — new installs get it
+  automatically; agent v2.1.0-ps.
+- **Everywhere:** Security tab → "🌐 Browser & SaaS Guardian" card (per-client
+  web apps + extensions with one-click Approve/Block, protect toggle), Copilot
+  tool `saas_inventory` ("what SaaS is Acme using?"), tenant-scoped API
+  (`GET /api/browser/inventory/{client}`, `POST /api/browser/decide`,
+  `PUT /api/browser/protect`); clients can read their own landscape, only staff
+  govern. New tables + migration cc23dd23ee23.
+- Verified: full offline smoke drives a real agent-auth report through the API
+  (noise filtered, catalog mapped, shadow IT visible), governs it (block SaaS +
+  extension, approve, protect), proves the device pulls exactly the enforcement
+  set, dedupes re-reports, checks the copilot tool + RBAC, and guards the agent
+  payload (pure ASCII, PS-5.1-safe, all new functions present) — plus a
+  Playwright pass of the Guardian card (0 JS errors).
+
 ## v1.22.0 — Connection Center: every connector, one page, one click (July 2026)
 The go-live release. Settings now opens with a **🔌 Connection Center**:
 - **Every connector Pulse has** — Claude, both websites (GitLab), Microsoft 365
