@@ -14,6 +14,8 @@ jobs:
   test:
     name: Smoke test + migrations
     runs-on: ubuntu-latest
+    # Fail fast with logs instead of a mystery 15-minute cancellation.
+    timeout-minutes: 12
     defaults:
       run:
         working-directory: opspilot
@@ -48,4 +50,8 @@ jobs:
       - name: Run end-to-end smoke test
         env:
           DATABASE_URL: sqlite:///./ci_smoke.db
-        run: python scripts/smoke_test.py
+        # -u: unbuffered so section banners appear live in the log.
+        # timeout+SIGABRT: if the suite ever hangs, faulthandler dumps EVERY
+        # thread's stack before the step fails — a diagnosable failure instead
+        # of a silent overrun.
+        run: timeout -s ABRT 540 python -u -X faulthandler scripts/smoke_test.py
