@@ -141,6 +141,40 @@ def diagnose(db: Session = Depends(get_db),
     out["ai"] = {"ok": _ai.enabled(),
                  "detail": "Claude connected" if _ai.enabled() else
                            "Claude NOT connected - the writers can't generate (Connection Center -> Claude)"}
+    # Social channels — live checks so errors like Google's "invalid_client"
+    # show up HERE with the fix, not buried in a failed post's result string.
+    from ...services import integration_health, secure_config
+    from ...models import OAuthToken
+    channels = []
+    li_conn = secure_config.get_platform(db, "pub_linkedin")
+    li_cfg = (li_conn.config if li_conn else None) or {}
+    li_ok = bool(secure_config.get_secret(li_cfg, "access_token")
+                 or db.query(OAuthToken).filter(OAuthToken.provider == "linkedin").count())
+    channels.append({"name": "LinkedIn", "ok": li_ok,
+                     "detail": "connected" if li_ok else "not connected",
+                     **({} if li_ok else {"fix": "Settings -> One-click Connect -> LinkedIn"})})
+    gbp_conn = secure_config.get_platform(db, "gbp")
+    gbp_cfg = (gbp_conn.config if gbp_conn else None) or {}
+    try:
+        st, det = integration_health.CHECKERS["gbp"](gbp_cfg)
+        gbp_ok, gbp_det = (st == "ok"), det
+    except Exception as e:  # noqa: BLE001
+        gbp_ok, gbp_det = False, str(e)[:220]
+    fix = None
+    if not gbp_ok:
+        low = gbp_det.lower()
+        if "invalid_client" in low or "oauth client was not found" in low:
+            fix = ("Google rejected the OAuth client (invalid_client) - the client id/secret "
+                   "stored here no longer exist in Google Cloud. Re-create an OAuth client "
+                   "(console.cloud.google.com -> APIs & Services -> Credentials), update the "
+                   "Google Business connector, then reconnect via Settings -> One-click Connect.")
+        elif "invalid_grant" in low:
+            fix = "The Google refresh token was revoked/expired - reconnect via Settings -> One-click Connect."
+        elif "not configured" in low:
+            fix = "Settings -> Google Business Profile: connect + pick your location."
+    channels.append({"name": "Google Business", "ok": gbp_ok, "detail": gbp_det,
+                     **({"fix": fix} if fix else {})})
+    out["channels"] = channels
     return out
 
 

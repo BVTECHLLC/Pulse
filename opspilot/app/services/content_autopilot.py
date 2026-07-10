@@ -151,18 +151,20 @@ def _run_jp(db: Session, now: datetime) -> tuple[bool, str]:
     if not jp_site.configured(db):
         return False, "jordanpolasek.com not connected (GitLab project + token)"
     metro = _METROS[now.toordinal() % len(_METROS)]
-    raw = ai.complete(_JP_SYSTEM,
-                      f"Write today's post. Angle it for business owners around {metro}. "
-                      f"Pick ONE specific, practical topic (IT strategy, security, hiring, "
-                      f"vendor costs, growth systems). Date: {now:%B %d, %Y}.",
-                      smart=True, max_tokens=2500)
-    import json as _json
-    try:
-        start, end = raw.find("{"), raw.rfind("}")
-        post = _json.loads(raw[start:end + 1])
-        assert post.get("title") and post.get("html")
-    except Exception:  # noqa: BLE001
-        return False, "Claude returned an unparseable JP article"
+    prompt = (f"Write today's post. Angle it for business owners around {metro}. "
+              f"Pick ONE specific, practical topic (IT strategy, security, hiring, "
+              f"vendor costs, growth systems). Date: {now:%B %d, %Y}.")
+    # Tolerant parse (fences/prose/literal-newlines/truncation) + ONE corrective
+    # retry — the old naive json.loads made any formatting hiccup a dead run.
+    raw = ai.complete(_JP_SYSTEM, prompt, smart=True, max_tokens=4000)
+    post = ai.parse_json_object(raw)
+    if not (post and post.get("title") and post.get("html")):
+        raw = ai.complete(_JP_SYSTEM, prompt + "\nIMPORTANT: return ONLY the JSON "
+                          "object - no prose, no code fences, valid JSON.",
+                          smart=True, max_tokens=4000)
+        post = ai.parse_json_object(raw)
+    if not (post and post.get("title") and post.get("html")):
+        return False, "Claude returned an unparseable JP article (retried once)"
     out = jp_site.publish(db, post)
     if not out.get("ok"):
         return False, out.get("error") or "publish failed"

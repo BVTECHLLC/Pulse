@@ -3298,6 +3298,8 @@ async function capDiagnose(btn){
     }
     const a=j.autopilot||{};h+=`<div>${a.enabled?'✅':'⚠️'} <b>Daily autopilot</b>: ${_esc(a.detail||'')}</div>`;
     const ai=j.ai||{};h+=`<div>${ai.ok?'✅':'❌'} <b>Claude</b>: ${_esc(ai.detail||'')}</div>`;
+    for(const ch of (j.channels||[]))
+      h+=`<div>${ch.ok?'✅':'❌'} <b>${_esc(ch.name)}</b>: ${_esc(ch.detail||'')}${ch.fix?` — <i>${_esc(ch.fix)}</i>`:''}</div>`;
     box.innerHTML=h;
   }
   btn.disabled=false;btn.textContent=old;

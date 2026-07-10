@@ -1,5 +1,20 @@
 # BVTech OpsPilot — Changelog
 
+## v1.31.0 — No more "unparseable article" + Doctor covers the social channels (July 2026)
+Two fixes from the latest field report ("❌ jp: Claude returned an unparseable JP
+article" + a Google `invalid_client` error buried in a failed post's result):
+- **Tolerant AI-JSON parsing** (`ai.parse_json_object`): the naive `json.loads`
+  died on code fences, leading prose, literal newlines inside strings, and
+  token-limit truncation — all normal model behavior. The new parser handles
+  each, both JP and bvtech writers use it, budgets raised 2.5k → 4k tokens, and
+  a failed parse gets ONE corrective "return ONLY the JSON" retry before giving
+  up with a clear message.
+- **Doctor now checks LinkedIn + Google Business** live: Google's
+  `invalid_client — The OAuth client was not found` now appears in the Doctor
+  with the exact fix (re-create the OAuth client in Google Cloud Console →
+  update the connector → reconnect), instead of only surfacing after a post
+  already failed.
+
 ## v1.30.0 — The bvtech "HTTP Error 400" fixed at the root (July 2026)
 The red ✗ on bvtech ("HTTP Error 400: Bad Request") had three layers, all fixed:
 - **Root cause:** the topic/metro rotation counter only advanced on WordPress

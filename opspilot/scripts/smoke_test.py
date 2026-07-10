@@ -2709,6 +2709,72 @@ def main():
               "re-publish overwrites instead of failing + topic/metro rotation advances "
               "on GitLab publishes (BlogPost recorded) OK")
 
+        # ==== v1.31: unparseable-article fix + Doctor covers social channels ====
+        from app.services import ai as _ai31, content_autopilot as _ca31
+        from app.services import integration_health as _ih31, jp_site as _jp31
+        # (a) The tolerant parser survives every real-world failure mode.
+        _pj31 = _ai31.parse_json_object
+        assert _pj31('```json\n{"title":"T","html":"<p>x</p>"}\n```')["title"] == "T"      # fences
+        assert _pj31('Sure! Here is the article:\n{"title":"T2","html":"<p>x</p>"}')["title"] == "T2"  # prose
+        assert _pj31('{"title":"T3","html":"<p>line1\nline2</p>"}')["title"] == "T3"       # literal newline
+        assert _pj31('{"title":"T4","excerpt":"e","html":"<p>truncated mid-sen')["title"] == "T4"      # truncation
+        assert _pj31("no json here at all") is None and _pj31("") is None
+        # (b) _run_jp: garbage first -> ONE corrective retry -> success (and the
+        #     retry prompt demands JSON-only).
+        _calls31 = []
+        def _ai31fake(system, prompt, smart=False, max_tokens=1000):
+            _calls31.append(prompt)
+            if len(_calls31) == 1:
+                return "I'd be happy to write that article for you!"      # unparseable
+            import json as _j31
+            return _j31.dumps({"title": "JP Retry Post", "excerpt": "x",
+                               "html": "<p>" + ("Body sentence here. " * 25) + "</p>"})
+        _oc31 = _ca31.ai.complete
+        _ojp31 = _jp31._HTTP
+        def _jphttp31(method, url, token, payload=None):
+            if method == "GET" and "/repository/tree" in url: return []
+            if method == "GET" and "/repository/files/" in url: raise Exception("404")
+            if method == "POST" and "/repository/commits" in url: return {"id": "sha31"}
+            if "/pipelines" in url: return [{"status": "success", "sha": "x"}]
+            return {}
+        _ca31.ai.complete = _ai31fake
+        _jp31._HTTP = _jphttp31
+        try:
+            _jp31.save_shared_token(db, "glpat-V131")
+            from datetime import datetime as _dt31, timezone as _tz31
+            ok31, det31 = _ca31._run_jp(db, _dt31.now(_tz31.utc))
+            assert ok31, det31
+            assert len(_calls31) == 2 and "ONLY the JSON" in _calls31[1], _calls31
+            # both attempts unparseable -> clean failure message, no crash
+            _calls31.clear()
+            _ca31.ai.complete = lambda s, p, smart=False, max_tokens=1000: "still not json"
+            ok31b, det31b = _ca31._run_jp(db, _dt31.now(_tz31.utc))
+            assert ok31b is False and "unparseable" in det31b, (ok31b, det31b)
+        finally:
+            _ca31.ai.complete = _oc31
+            _jp31._HTTP = _ojp31
+            _cl31 = _SL27()
+            _cl31.query(_IC27).filter(_IC27.provider.in_(["gitlab", "bvtech_site", "jp_site"])).delete(synchronize_session=False)
+            _cl31.commit(); _cl31.close()
+        # (c) Doctor surfaces the Google invalid_client error WITH the fix.
+        _og31 = _ih31.CHECKERS["gbp"]
+        _ih31.CHECKERS["gbp"] = lambda cfg: (_ for _ in ()).throw(RuntimeError(
+            'Google token refresh failed (HTTP 401): {"error":"invalid_client",'
+            '"error_description":"The OAuth client was not found."}'))
+        try:
+            d31 = c.post("/api/content-autopilot/diagnose").json()
+            gbp31 = next(ch for ch in d31["channels"] if ch["name"] == "Google Business")
+            assert gbp31["ok"] is False and "invalid_client" in gbp31["detail"], gbp31
+            assert "Re-create an OAuth client" in gbp31.get("fix", ""), gbp31
+            li31 = next(ch for ch in d31["channels"] if ch["name"] == "LinkedIn")
+            assert "ok" in li31 and "detail" in li31
+        finally:
+            _ih31.CHECKERS["gbp"] = _og31
+        print("unparseable-article fix: tolerant JSON parse (fences/prose/newlines/"
+              "truncation) + one corrective retry for JP + bvtech articles + Doctor "
+              "surfaces LinkedIn/Google Business health incl. invalid_client with the "
+              "exact fix OK")
+
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
@@ -4434,7 +4500,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.30.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.31.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
