@@ -1,5 +1,26 @@
 # BVTech OpsPilot — Changelog
 
+## v1.24.0 — Connection Center: paste every credential right on its tile (July 2026)
+v1.22 showed *where to get* each credential; only Claude had a paste field. Now
+**every** connector tile has both — **Get credential ↗** (deep link to the
+provider page) AND **🔐 Enter credential** (fields right there that save
+**encrypted** into the vault). No more hunting across tabs.
+- Generic, secure save: `POST /api/setup/connections/{key}` writes each
+  connector's fields through the encrypted-at-rest vault (secret-named keys are
+  Fernet-encrypted; ids/URLs stored plainly). Blank fields are ignored so a save
+  never wipes an existing secret. OWNER-only.
+- Inline fields per connector: **GitLab token** (connects both sites),
+  **Claude key**, **Stripe**, **HubSpot**, **Dialpad**, **Google Places**,
+  **TacticalRMM**, and the id+secret pairs for **M365**, **LinkedIn**,
+  **Google Business**, **QuickBooks** (OAuth ones prompt you to click Connect
+  after saving). SMTP stays env-only with a clear note.
+- The Center is now spec-driven — one connector list feeds both the status
+  page and the save endpoint, so they can't drift.
+- Verified: smoke proves every non-env connector exposes fields, the generic
+  save encrypts secrets at rest (plaintext never present, decrypt round-trips)
+  while identifiers stay plain, blank/env-only/unknown are rejected, and saving
+  is OWNER-only — plus a Playwright pass pasting + saving a token on a tile.
+
 ## v1.23.0 — Browser & SaaS Guardian: the app blindspot, killed (July 2026)
 Classic software inventory can't see browser-based apps — so shadow IT and
 SaaS sprawl are invisible to every RMM (it's literally the pitch competitors
