@@ -40,12 +40,17 @@ SITES = {
            "default_project": "BVTECHLLC-group/jordanpolasek-website",
            "style": "slug-folder", "site": "https://jordanpolasek.com",
            "org": "Jordan Polasek", "author_url": "https://jordanpolasek.com",
-           "content_classes": ("content",)},
+           "content_classes": ("content",),
+           # Listing pages that must show the new post (homepage "Writing" +
+           # the /blog/ index). Without updating these, a published post is live
+           # at its URL but invisible in the site's navigation.
+           "index_paths": ("index.html", "blog/index.html")},
     "bvtech": {"provider": "bvtech_site", "name": "BVTech.org Site",
                "default_project": "bvtechllc-group/bvtech-website-new",
                "style": "blog-file", "site": "https://bvtech.org",
                "org": "BVTech LLC", "author_url": "https://bvtech.org",
-               "content_classes": None},
+               "content_classes": None,
+               "index_paths": ("blog/index.html", "index.html")},
 }
 
 # Alias list matching the old cron's lib_env.sh — the token that already exists
@@ -203,6 +208,61 @@ def _slugify(title: str) -> str:
     return s[:70] or "post"
 
 
+def _fetch_file(cfg: dict, path: str) -> str | None:
+    """Return a repo file's text (decoded) or None if it doesn't exist."""
+    import base64
+    try:
+        f = _HTTP("GET", f"{_proj_url(cfg)}/repository/files/"
+                  f"{urllib.parse.quote_plus(path)}?ref={cfg['branch']}", cfg["token"])
+        return base64.b64decode(f["content"]).decode("utf-8", "replace")
+    except Exception:  # noqa: BLE001 — 404 (no such file) or transient
+        return None
+
+
+def inject_post_into_listing(listing_html: str, *, title: str, url: str,
+                             excerpt: str, date_str: str, style: str) -> tuple[str, bool]:
+    """Clone the newest post card in a listing page and insert a fresh card for
+    `url` at the top of the posts grid. Returns (new_html, changed). Never raises;
+    returns (listing_html, False) when the listing already has the post or its
+    card structure isn't recognized (so a weird page is left untouched, not
+    corrupted — the build-verify + auto-revert is the final safety net)."""
+    import html as _html
+    h = listing_html
+    if f'href="{url}"' in h:                       # already listed (re-publish)
+        return h, False
+    link_pat = (r'href="[^"]*blog/[a-z0-9\-]+\.html"' if style == "blog-file"
+                else r'href="/[a-z0-9\-]{6,}/"')
+    # Prefer the standard posts grid (leaves any 'featured' card alone).
+    grid = re.search(r'<div[^>]*class="[^"]*\bposts\b[^"]*"[^>]*>', h)
+    art_re = re.compile(r'<article\b[^>]*>.*?</article>', re.S | re.I)
+    template = None
+    if grid:
+        for m in art_re.finditer(h, grid.end()):
+            if re.search(link_pat, m.group(0)):
+                template = m
+                break
+    if not template:
+        for m in art_re.finditer(h):
+            if re.search(link_pat, m.group(0)):
+                template = m
+                break
+    if not template:
+        return h, False
+    card = template.group(0)
+    card = re.sub(link_pat, f'href="{url}"', card)                   # post links -> new url
+    card = re.sub(r'(<h[1-3][^>]*>\s*<a[^>]*>)(.*?)(</a>)',          # heading -> new title
+                  lambda m: m.group(1) + _html.escape(title) + m.group(3),
+                  card, count=1, flags=re.S)
+    if re.search(r'class="excerpt"', card):                          # excerpt -> new excerpt
+        card = re.sub(r'(<p[^>]*class="excerpt"[^>]*>)(.*?)(</p>)',
+                      lambda m: m.group(1) + _html.escape(excerpt) + m.group(3),
+                      card, count=1, flags=re.S)
+    card = re.sub(r'(<span[^>]*>)([A-Z][a-z]+ \d{1,2}, \d{4})(</span>)',  # date -> today
+                  lambda m: m.group(1) + date_str + m.group(3), card, count=1)
+    pos = grid.end() if (grid and grid.end() <= template.start()) else template.start()
+    return h[:pos] + "\n" + card + "\n" + h[pos:], True
+
+
 def _newest_skeleton(cfg: dict, style: str) -> str | None:
     """Fetch the most recent post's HTML to clone header/footer/CSS from."""
     import base64
@@ -252,11 +312,31 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
             {**post, "slug": slug, "site": meta["site"], "org": meta["org"],
              "author_url": meta["author_url"]},
             skeleton_html=skeleton, content_classes=meta["content_classes"])
+        actions = [{"action": "create", "file_path": file_path, "content": rendered}]
+
+        # Add the post to the site's listing pages IN THE SAME COMMIT so it shows
+        # up in navigation, not just at its own URL. Best-effort per file: an
+        # unrecognized/absent listing is skipped (and reported), never corrupted.
+        excerpt = (post.get("description") or content_studio._excerpt_from_html(rendered))[:220]
+        date_str = datetime.now(timezone.utc).strftime("%B %-d, %Y")
+        listings_updated, listings_skipped = [], []
+        for lp in meta.get("index_paths", ()):
+            current = _fetch_file(cfg, lp)
+            if current is None:
+                continue                              # no such listing on this site
+            new_html, changed = inject_post_into_listing(
+                current, title=post.get("title", slug), url=public_url,
+                excerpt=excerpt, date_str=date_str, style=cfg["style"])
+            if changed:
+                actions.append({"action": "update", "file_path": lp, "content": new_html})
+                listings_updated.append(lp)
+            else:
+                listings_skipped.append(lp)
+
         commit = _HTTP("POST", f"{_proj_url(cfg)}/repository/commits", cfg["token"], {
             "branch": cfg["branch"],
             "commit_message": f"blog: {post.get('title', slug)[:80]} (via Pulse)",
-            "actions": [{"action": "create", "file_path": file_path,
-                         "content": rendered}],
+            "actions": actions,
         })
         sha = commit.get("id")
         conn = secure_config.get_platform(db, meta["provider"])
@@ -266,7 +346,8 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
                         "at": datetime.now(timezone.utc).isoformat(), "checks": 0})
         raw["pending"] = pending[-10:]
         secure_config.upsert_platform(db, meta["provider"], meta["name"], "Publishing", raw)
-        return {"ok": True, "sha": sha, "slug": slug, "url": public_url}
+        return {"ok": True, "sha": sha, "slug": slug, "url": public_url,
+                "listings_updated": listings_updated, "listings_skipped": listings_skipped}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)[:300]}
 

@@ -2444,6 +2444,75 @@ def main():
               "committed HTML, empty-body bug fixed) + LinkedIn/GBP queue->deliver + unknown/"
               "empty rejected + OWNER-only RBAC OK")
 
+        # ========= v1.28: a published post is ADDED TO THE BLOG LISTING =========
+        # The orphaned-post bug: publish committed blog/<slug>.html (live at its
+        # URL) but never touched the /blog/ index, so the post was invisible in
+        # navigation. Now the listing pages update IN THE SAME COMMIT.
+        from app.services import jp_site as _jp28
+        import base64 as _b64_28
+        # (a) The injector clones a real card for both layouts + is idempotent.
+        _grid28 = ('<section><div class="posts">'
+                   '<article class="post-card"><div class="body">'
+                   '<div class="meta"><span class="tag new">New</span>'
+                   '<span>Jordan Polasek</span><span>June 1, 2026</span></div>'
+                   '<h2><a href="/an-existing-post/">An Existing Post</a></h2>'
+                   '<p class="excerpt">Old excerpt.</p>'
+                   '<a href="/an-existing-post/" class="more">Read more</a>'
+                   '</div></article></div></section>')
+        _o28, _ch28 = _jp28.inject_post_into_listing(
+            _grid28, title="Brand New <Post>", url="/brand-new-post/",
+            excerpt="Fresh excerpt.", date_str="July 10, 2026", style="slug-folder")
+        assert _ch28 and _o28.index("/brand-new-post/") < _o28.index("/an-existing-post/"), "new card not on top"
+        assert "Brand New &lt;Post&gt;" in _o28 and "Fresh excerpt." in _o28, "title/excerpt not rewritten/escaped"
+        assert "July 10, 2026" in _o28
+        _o28b, _ch28b = _jp28.inject_post_into_listing(_o28, title="x", url="/brand-new-post/",
+                                                       excerpt="y", date_str="July 10, 2026", style="slug-folder")
+        assert _ch28b is False, "re-inject must be idempotent (no duplicate card)"
+        # Unrecognized structure (no cards) -> left untouched, reported, never corrupted.
+        assert _jp28.inject_post_into_listing("<html><body><p>no cards</p></body></html>",
+                                              title="t", url="/u/", excerpt="e",
+                                              date_str="d", style="slug-folder") == \
+               ("<html><body><p>no cards</p></body></html>", False)
+        # (b) publish() rides the listing update into the SAME commit as the post.
+        _o28h = _jp28._HTTP
+        _cap28 = {}
+        _bvblog28 = ('<div class="posts"><article class="post-card">'
+                     '<h2><a href="/blog/old-advisory.html">Old Advisory</a></h2>'
+                     '<p class="excerpt">old</p></article></div>')
+        def _http28(method, url, token, payload=None):
+            if method == "GET" and "/repository/tree" in url:
+                return []
+            if method == "GET" and "blog%2Findex.html" in url:
+                return {"content": _b64_28.b64encode(_bvblog28.encode()).decode()}
+            if method == "GET" and "/repository/files/" in url:
+                raise Exception("404")          # homepage index.html absent on this stub
+            if method == "POST" and "/repository/commits" in url:
+                _cap28["actions"] = payload["actions"]; return {"id": "sha28"}
+            if "/pipelines" in url:
+                return [{"status": "success", "sha": "x"}]
+            return {}
+        _jp28._HTTP = _http28
+        try:
+            _jp28.save_shared_token(db, "glpat-LISTING28")
+            _r28 = _jp28.publish(db, {"title": "New Threat Advisory 28",
+                                      "html": "<p>Attackers hit gaps.</p>",
+                                      "slug": "new-threat-advisory-28"}, site="bvtech")
+            assert _r28["ok"], _r28
+            assert _r28["listings_updated"] == ["blog/index.html"], _r28
+            _acts28 = {a["file_path"]: a for a in _cap28["actions"]}
+            assert _acts28["blog/index.html"]["action"] == "update"
+            assert "/blog/new-threat-advisory-28.html" in _acts28["blog/index.html"]["content"], \
+                "new post not added to the blog listing!"
+            assert "blog/new-threat-advisory-28.html" in _acts28              # post file created too
+        finally:
+            _jp28._HTTP = _o28h
+            _cl28 = _SL27()
+            _cl28.query(_IC27).filter(_IC27.provider.in_(["gitlab", "bvtech_site", "jp_site"])).delete(synchronize_session=False)
+            _cl28.commit(); _cl28.close()
+        print("Content listing update: published post is inserted into the blog index "
+              "(cloned card, top of grid, idempotent, unknown-structure skipped) + rides "
+              "the SAME commit as the post so it's visible in navigation OK")
+
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
@@ -4169,7 +4238,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.27.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.28.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
