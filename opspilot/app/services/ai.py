@@ -80,6 +80,47 @@ def enabled() -> bool:
     return bool(_api_key())
 
 
+def parse_sections(raw: str) -> dict | None:
+    """Parse the delimited article format:
+
+        TITLE: <headline>
+        EXCERPT: <one line>
+        HTML:
+        <article body html...>
+
+    This exists because asking models for the article as JSON kept failing in
+    the wild: HTML is full of double quotes (class="meta", href="...") and any
+    unescaped one makes the JSON unparseable — no repair can fix it reliably.
+    A line-delimited format has NO escaping rules, so it cannot break that way."""
+    import re as _re
+    if not raw:
+        return None
+    s = _re.sub(r"```[a-z]*", "", str(raw)).strip()
+    m_t = _re.search(r"^[ \t>*#]*TITLE:\s*(.+)$", s, _re.M | _re.I)
+    m_h = _re.search(r"^[ \t>*#]*HTML:\s*\n?(.*)\Z", s, _re.M | _re.S | _re.I)
+    if not (m_t and m_h):
+        return None
+    m_e = _re.search(r"^[ \t>*#]*EXCERPT:\s*(.+)$", s, _re.M | _re.I)
+    html_body = m_h.group(1).strip()
+    if len(html_body) < 100:
+        return None
+    return {"title": m_t.group(1).strip()[:200],
+            "excerpt": (m_e.group(1).strip() if m_e else "")[:300],
+            "html": html_body}
+
+
+def parse_article(raw: str) -> dict | None:
+    """Sections format first (quote-proof), JSON fallback (models sometimes
+    return JSON regardless of instructions)."""
+    out = parse_sections(raw)
+    if out:
+        return out
+    out = parse_json_object(raw)
+    if out and out.get("title") and out.get("html"):
+        return out
+    return None
+
+
 def parse_json_object(raw: str) -> dict | None:
     """Best-effort extraction of ONE JSON object from model output.
 

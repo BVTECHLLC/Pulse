@@ -120,7 +120,7 @@ def main():
     # --- 6. Prove the DAILY auto-generate path also renders non-empty bodies now
     #        (the empty-body bug fix) using a stubbed Claude. ---
     def _fake_ai(system, prompt, smart=False, max_tokens=1000):
-        if "JSON" in system:
+        if "TITLE:" in system or "JSON" in system:
             return json.dumps({"title": "Auto Daily Security Note",
                                "excerpt": "x",
                                "html": "<p>Generated body paragraph with real text.</p>"})
