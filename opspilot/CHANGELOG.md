@@ -1,5 +1,19 @@
 # BVTech OpsPilot — Changelog
 
+## v1.30.0 — The bvtech "HTTP Error 400" fixed at the root (July 2026)
+The red ✗ on bvtech ("HTTP Error 400: Bad Request") had three layers, all fixed:
+- **Root cause:** the topic/metro rotation counter only advanced on WordPress
+  publishes — GitLab publishes never recorded a `BlogPost` row, so every
+  "Post to all now" regenerated the SAME topic → often the same title → the
+  same slug → GitLab rejected the duplicate `create` with 400. GitLab publishes
+  now record the post (rotation advances + it shows in blog history).
+- **Idempotent publishing:** re-publishing an existing slug (same-day re-run,
+  retry, deliberate refresh) now OVERWRITES the file instead of failing — and
+  the listing card is never duplicated.
+- **Real errors:** GitLab's actual message ("A file with this name already
+  exists", "branch not found", …) is now surfaced instead of a bare
+  "HTTP Error 400" that told you nothing.
+
 ## v1.29.0 — Publishing that proves itself: Doctor + Sync Listings + Cloudflare purge (July 2026)
 "It says it posted but I don't see it on my site" — permanently fixed, three ways:
 - **🩺 Publishing Doctor** (Marketing → Content Autopilot → Doctor): walks the

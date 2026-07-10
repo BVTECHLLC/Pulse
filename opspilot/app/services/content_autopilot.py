@@ -128,6 +128,15 @@ def _run_bvtech(db: Session, now: datetime) -> tuple[bool, str]:
         out = jp_site.publish(db, article, site="bvtech")
         if not out.get("ok"):
             return False, out.get("error") or "GitLab publish failed"
+        # Record the post so (a) it shows in blog history and (b) the topic/metro
+        # rotation in generate_article ADVANCES — without this row the counter
+        # never moved for GitLab publishes, so every run regenerated the same
+        # topic (and often the same slug -> duplicate-file 400s).
+        from ..models import BlogPost
+        db.add(BlogPost(title=article.get("title") or "(untitled)",
+                        excerpt=article.get("excerpt"), html=article.get("html"),
+                        status="posted", url=out.get("url"), source="autopilot"))
+        db.commit()
         return True, out.get("url") or article.get("title", "")
     if wordpress.configured(db):
         row = blog_autopilot.publish_article(db, article, source="autopilot")
