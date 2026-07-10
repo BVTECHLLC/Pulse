@@ -1,5 +1,29 @@
 # BVTech OpsPilot — Changelog
 
+## v1.25.0 — Connection Center: the tile tells the truth (July 2026)
+Fixes "I saved the GitLab key, it said saved, but after a refresh it's still a
+red circle" — by making the status HONEST and self-diagnosing instead of
+guessing from "a string is stored".
+- **Live verification.** Saving the GitLab token now actually calls GitLab
+  (`/user` + both repos) and returns the real result — "Verified as <you> —
+  can publish to bvtech + jordanpolasek" or the exact failure (401 expired,
+  403 wrong scope, repo not reachable). A **Test** button on the Claude,
+  GitLab, Stripe and HubSpot tiles re-checks live any time.
+- **Detects the silent failure that looked exactly like this.** If a secret is
+  stored but can't be decrypted (the server's `SECRET_KEY` changed at some
+  point), the vault used to return nothing — indistinguishable from "never
+  saved". The tile now shows an amber **"stored but unreadable — re-enter to
+  fix"** state, and re-entering the credential resolves it.
+- **Stale-status bug fixed.** The Connection Center only refreshed the *first*
+  time Settings was opened in a session; revisiting the tab (or a background
+  save) could leave a stale red dot. It now refreshes every time you view
+  Settings.
+- New: `POST /api/setup/connections/{key}/test` (staff); the Center GET carries
+  `credential_state` + `testable`; save responses carry `verified` + `detail`.
+- Verified: smoke proves save returns the live GitLab auth result, the Test
+  endpoint live-checks, a deliberately-corrupted ciphertext is reported as
+  `unreadable`/red (and re-entering fixes it), and the test is staff-only.
+
 ## v1.24.0 — Connection Center: paste every credential right on its tile (July 2026)
 v1.22 showed *where to get* each credential; only Claude had a paste field. Now
 **every** connector tile has both — **Get credential ↗** (deep link to the

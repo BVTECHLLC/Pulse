@@ -2294,6 +2294,54 @@ def main():
               "ENCRYPTED at rest (identifiers plain) + blank-ignore + env-only/unknown "
               "rejected + OWNER-only RBAC OK")
 
+        # ===================== v1.25: live verify + unreadable detection =====================
+        from app.services import jp_site as _jp25, secure_config as _sc25
+        from app.core.db import SessionLocal as _SL25
+        from app.models import IntegrationConnection as _IC25
+        _o25 = _jp25._HTTP
+        _jp25._HTTP = (lambda method, url, token, payload=None:
+                       {"username": "jordanp"} if url.endswith("/user")
+                       else ({"path_with_namespace": "ok"} if "/projects/" in url else {}))
+        try:
+            # Save returns the LIVE-VERIFY result, not just "saved".
+            sv25 = c.post("/api/setup/connections/gitlab_sites",
+                          json={"values": {"token": "glpat-REAL25"}}).json()
+            assert sv25["connected"] is True and sv25["verified"] is True, sv25
+            assert "Verified as jordanp" in sv25["detail"], sv25
+            # The Test endpoint live-checks on demand.
+            t25 = c.post("/api/setup/connections/gitlab_sites/test").json()
+            assert t25["ok"] is True and "publish to" in t25["detail"], t25
+            # Center exposes credential_state + testable.
+            gl25 = {i["key"]: i for i in c.get("/api/setup/connections").json()["items"]}["gitlab_sites"]
+            assert gl25["credential_state"] == "ok" and gl25["testable"] is True
+            # THE silent bug that looked like "saved but red": a stored secret that
+            # won't decrypt (server key changed) is now DETECTED as 'unreadable'
+            # (red) instead of masquerading as connected, and re-entering fixes it.
+            _s25 = _SL25()
+            row25 = _s25.query(_IC25).filter(_IC25.provider == "gitlab").first()
+            cfg25 = dict(row25.config); cfg25["token"] = "enc::GARBAGE-CANT-DECRYPT"
+            row25.config = cfg25; _s25.commit(); _s25.close()
+            gl25b = {i["key"]: i for i in c.get("/api/setup/connections").json()["items"]}["gitlab_sites"]
+            assert gl25b["connected"] is False and gl25b["credential_state"] == "unreadable", gl25b
+            assert _sc25.secret_state({"token": "enc::x"}, "token") == "unreadable"
+            assert _sc25.secret_state({"token": "plain"}, "token") == "ok"
+            assert _sc25.secret_state({}, "token") == "missing"
+            # Re-entering the credential clears the unreadable state.
+            c.post("/api/setup/connections/gitlab_sites", json={"values": {"token": "glpat-FRESH25"}})
+            gl25c = {i["key"]: i for i in c.get("/api/setup/connections").json()["items"]}["gitlab_sites"]
+            assert gl25c["connected"] is True and gl25c["credential_state"] == "ok", gl25c
+            # RBAC: live test is staff-only.
+            assert ca_c.post("/api/setup/connections/gitlab_sites/test").status_code == 403
+        finally:
+            _jp25._HTTP = _o25
+            _cl25 = _SL25()
+            _cl25.query(_IC25).filter(_IC25.provider.in_(["gitlab", "bvtech_site", "jp_site"])).delete(synchronize_session=False)
+            _cl25.commit(); _cl25.close()
+        print("Connection Center live verify: save returns real GitLab auth result + on-demand "
+              "Test + 'stored-but-unreadable' (SECRET_KEY changed) detected as red with re-enter "
+              "fix + RBAC OK")
+
+
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
               "+ readiness score OK")
@@ -4018,7 +4066,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.24.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.25.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

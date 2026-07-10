@@ -113,6 +113,39 @@ def _resolve_token(db: Session, cfg_token: str | None) -> str | None:
     return _token_from_box_files()
 
 
+def verify_token(db: Session) -> dict:
+    """Live check: does the resolved GitLab token actually authenticate AND can
+    it see both site repos? Returns {ok, detail}. This is what makes the tile's
+    green/red mean 'the key works', not just 'a string is stored'."""
+    cfg = get_config(db, "jp")
+    token = cfg["token"]
+    if not token:
+        return {"ok": False, "detail": "No GitLab token stored yet."}
+    try:
+        me = _HTTP("GET", f"{cfg['base']}/api/v4/user", token)
+        who = me.get("username") or me.get("name") or "user"
+    except Exception as e:  # noqa: BLE001
+        msg = str(e)
+        if "401" in msg:
+            return {"ok": False, "detail": "Token rejected (401) - expired or revoked. Generate a new one (scope: api)."}
+        if "403" in msg:
+            return {"ok": False, "detail": "Token lacks scope (403) - it needs the 'api' scope."}
+        return {"ok": False, "detail": f"Could not reach GitLab: {msg[:120]}"}
+    seen = []
+    for site in ("bvtech", "jp"):
+        sc = get_config(db, site)
+        import urllib.parse as _u
+        try:
+            _HTTP("GET", f"{sc['base']}/api/v4/projects/{_u.quote_plus(sc['project'])}", token)
+            seen.append(sc["project"])
+        except Exception as e:  # noqa: BLE001
+            m = str(e)
+            hint = "not found or no access" if ("404" in m or "403" in m) else m[:80]
+            return {"ok": False,
+                    "detail": f"Authenticated as {who}, but can't reach {sc['project']} ({hint})."}
+    return {"ok": True, "detail": f"Verified as {who} - can publish to {' + '.join(seen)}."}
+
+
 def get_config(db: Session, site: str = "jp") -> dict:
     meta = SITES[site]
     conn = secure_config.get_platform(db, meta["provider"])
