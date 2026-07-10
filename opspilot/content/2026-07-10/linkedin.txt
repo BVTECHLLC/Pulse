@@ -1,0 +1,17 @@
+The attacks hitting small businesses this year aren't sophisticated. They're just aimed at the gaps most owners don't know they have.
+
+Three we're seeing every week across Houston, Sugar Land, Austin and San Antonio:
+
+→ AI-written invoices from "your vendor" with the bank details quietly swapped.
+→ Login prompts spammed to your phone at 2am until someone taps "approve."
+→ A VPN or firewall nobody has patched in a year, sitting wide open to the internet.
+
+None of these need a bigger budget to stop. They need the basics done deliberately: verify payment changes by phone, switch off tap-to-approve MFA, and give every internet-facing device an owner and a patch schedule.
+
+That's most of the job. The rest is monitoring it so a small gap never becomes a bad week.
+
+At BVTech, that's what we do for Texas businesses every day — close the gaps, then watch them so you don't have to.
+
+Not sure where your gaps are? That's exactly what a 20-minute security review is for. → bvtech.org
+
+#CyberSecurity #SmallBusiness #ManagedIT #TexasBusiness

@@ -94,6 +94,14 @@ def _excerpt(body: str, limit: int = 155) -> str:
     return (text[:limit].rsplit(" ", 1)[0] + "…") if len(text) > limit else text
 
 
+def _excerpt_from_html(html_body: str, limit: int = 155) -> str:
+    """Derive a plain-text excerpt from an already-rendered HTML body."""
+    text = re.sub(r"<[^>]+>", " ", html_body or "")
+    text = html.unescape(text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return (text[:limit].rsplit(" ", 1)[0] + "…") if len(text) > limit else text
+
+
 # --------------------------------------------------------------------------- #
 # Post model (plain dict in, validated here)
 # --------------------------------------------------------------------------- #
@@ -102,9 +110,14 @@ def normalize_post(post: dict) -> dict:
     if not title:
         raise ValueError("title is required")
     body = post.get("body") or ""
+    # A post may arrive as lightweight markdown (`body`) OR as already-rendered
+    # HTML (`html`) — the AI writers and the "publish this exact post" path both
+    # return HTML. Honor it directly; only fall back to markdown conversion.
+    html_body = (post.get("html") or "").strip()
     slug = post.get("slug") or slugify(title)
     pub = post.get("date") or _date.today().isoformat()
-    desc = (post.get("description") or _excerpt(body)).strip()
+    desc = (post.get("description")
+            or (_excerpt(body) if body else _excerpt_from_html(html_body))).strip()
     # Site/brand are overridable per post so the SAME renderer publishes correctly
     # to bvtech.org OR jordanpolasek.com (defaults keep BVTech behavior intact).
     site = (post.get("site") or SITE).rstrip("/")
@@ -124,7 +137,7 @@ def normalize_post(post: dict) -> dict:
         "keywords": (post.get("keywords") or "").strip(),
         "author": post.get("author") or AUTHOR,
         "kind": post.get("kind") or "blog",   # blog | advisory
-        "body_html": markdown_lite(body),
+        "body_html": html_body or markdown_lite(body),
         "site": site,
         "org": org,
         "author_url": author_url,
