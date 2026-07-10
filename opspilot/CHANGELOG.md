@@ -1,5 +1,24 @@
 # BVTech OpsPilot — Changelog
 
+## v1.28.0 — Published posts now show up in the blog listing (July 2026)
+The "it says it posted but I see no change on the site" fix. Diagnosis was
+confirmed against the live sites: a published post WAS committed and live at its
+own URL (e.g. jordanpolasek.com/your-vendor-contracts-are-quietly-bleeding-you-dry/
+returned 200 with the full article) — but the publisher never touched the blog
+**listing** pages, so the post was orphaned: reachable by direct link, invisible
+in the site's navigation and homepage "Writing" list.
+- `jp_site.publish` now updates each site's listing pages **in the same commit**
+  as the post (homepage + `/blog/` for jordanpolasek.com; `/blog/` for bvtech.org).
+  It clones the newest existing post card (so the new card matches the site's
+  exact markup/classes), rewrites the link, title, excerpt and date, and inserts
+  it at the top of the posts grid — leaving any hand-curated "featured" card alone.
+- Best-effort + safe: a listing whose card structure isn't recognized (or that
+  doesn't exist) is skipped and reported, never corrupted — and because the whole
+  thing is one commit, the existing Cloudflare build-verify + auto-revert covers
+  it if a build ever fails. Idempotent: re-publishing never duplicates a card.
+- `publish()` now returns `listings_updated` / `listings_skipped` so the result
+  says exactly where the post landed.
+
 ## v1.27.0 — Publish the exact post you wrote + the empty-body fix (July 2026)
 Two things: a real bug fix and a new capability, both in the content pipeline.
 - **Fixed: auto-generated site posts published an EMPTY body.** The AI writers
