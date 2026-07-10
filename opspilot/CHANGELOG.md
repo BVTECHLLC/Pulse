@@ -1,5 +1,25 @@
 # BVTech OpsPilot — Changelog
 
+## v1.26.0 — Sessions that don't strand you (the "Not authenticated" fix) (July 2026)
+Root cause of "I paste the API key, it says saved, but it shows Not
+authenticated / a red circle": the 30-minute access token silently expired
+while you sat on the page fetching the key, and **there was no refresh endpoint**
+to renew it — so the next Save hit an expired session and every action failed.
+- **New `POST /api/auth/refresh`** exchanges the 14-day refresh cookie for a
+  fresh access token (with refresh-secret rotation). The app minted a refresh
+  cookie all along but never had a route to use it.
+- **The whole UI now self-heals.** Every `api/post/put/patch` call transparently
+  refreshes the session once on a 401 and retries — so long sessions on Settings,
+  the Connection Center, anywhere, just keep working. Only a truly dead 14-day
+  session sends you to the login page.
+- Net effect: paste an API key, click Save securely, and it saves and verifies —
+  no mid-task logout, no cryptic "Not authenticated".
+- Verified: smoke drops the access cookie to simulate expiry, confirms the
+  protected call 401s, that `/api/auth/refresh` recovers it and the same action
+  then succeeds, that the refresh secret rotates, and that a missing/garbage
+  refresh cookie is cleanly rejected (401, not 500).
+
+
 ## v1.25.0 — Connection Center: the tile tells the truth (July 2026)
 Fixes "I saved the GitLab key, it said saved, but after a refresh it's still a
 red circle" — by making the status HONEST and self-diagnosing instead of

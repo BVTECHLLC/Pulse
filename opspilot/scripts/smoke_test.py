@@ -165,6 +165,31 @@ def main():
         owner_id = c.get("/api/auth/me").json()["id"]
         ca_id = ca_c.get("/api/auth/me").json()["id"]
 
+        # v1.26: silent session refresh — the access token expiring mid-session
+        # must NOT strand the user ("Not authenticated" on the next Save). A
+        # separate client proves: drop the access cookie -> protected call 401s
+        # -> /api/auth/refresh mints a fresh one from the 14-day refresh cookie
+        # -> the same action now succeeds. Refresh rotates its own secret.
+        _rc = TestClient(app)
+        assert _rc.post("/api/auth/login", json={"email": owner_email, "password": pw}).status_code == 200
+        _old_refresh = _rc.cookies.get("refresh_token")
+        assert _rc.get("/api/auth/me").status_code == 200
+        del _rc.cookies["access_token"]                       # simulate expiry
+        assert _rc.get("/api/auth/me").status_code == 401     # stranded without refresh
+        assert _rc.post("/api/auth/refresh").status_code == 200
+        assert "access_token" in _rc.cookies                  # new access minted
+        assert _rc.cookies.get("refresh_token") != _old_refresh, "refresh secret must rotate"
+        assert _rc.get("/api/auth/me").status_code == 200     # recovered
+        assert _rc.get("/api/clients").status_code == 200     # a real action works post-refresh
+        # No refresh cookie at all -> clean 401 (not a 500).
+        _nc = TestClient(app)
+        assert _nc.post("/api/auth/refresh").status_code == 401
+        # A tampered/garbage refresh cookie -> clean 401.
+        _nc.cookies.set("refresh_token", "bogus.sid.value")
+        assert _nc.post("/api/auth/refresh").status_code == 401
+        print("session refresh: expiry -> /api/auth/refresh -> recover + retry + rotation "
+              "+ no-cookie/garbage rejected OK")
+
         # a fresh high-priority ticket gets SLA due dates stamped on create
         stid = c.post("/api/tickets", json={"client_id":cid,"subject":"Server offline","priority":"high"}).json()["id"]
         st = c.get(f"/api/tickets/{stid}").json()
@@ -4066,7 +4091,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.25.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.26.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

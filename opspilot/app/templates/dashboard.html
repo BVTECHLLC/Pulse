@@ -1674,15 +1674,36 @@
 </div>
 
 <script>
+// Silent session refresh: the 30-min access token expires while you sit on a
+// page (getting an API key, etc.). Instead of a cryptic "Not authenticated" on
+// the next Save, every request that 401s transparently refreshes the session
+// once and retries. Only if the 14-day refresh is truly gone do we send to login.
+let _refreshing=null;
+async function _refreshSession(){
+  if(!_refreshing){
+    _refreshing=fetch('/api/auth/refresh',{method:'POST'})
+      .then(r=>r.ok).catch(()=>false)
+      .finally(()=>{ setTimeout(()=>{_refreshing=null;},100); });
+  }
+  return _refreshing;
+}
+async function _req(p,opts){
+  let r; try{ r=await fetch(p,opts); }catch(e){ return null; }
+  if(r.status===401 && !p.startsWith('/api/auth/')){
+    const ok=await _refreshSession();
+    if(ok){ try{ r=await fetch(p,opts); }catch(e){ return null; } }
+    else { location.href='/'; return null; }
+  }
+  return r;
+}
+function _resp(r){ return r || new Response('{"detail":"Network error - check your connection."}',{status:0,headers:{'Content-Type':'application/json'}}); }
 async function api(p){
-  let r; try{ r=await fetch(p); }catch(e){ return null; }        // network error -> null, never throw
-  if(r.status===401){location.href='/';return null;}
-  if(!r.ok) return null;                                          // 500/404/etc -> null (don't hand back error bodies as data)
+  const r=await _req(p); if(!r||!r.ok) return null;
   return r.json().catch(()=>null);
 }
-async function post(p,b){return fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});}
-async function patch(p,b){return fetch(p,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});}
-async function put(p,b){return fetch(p,{method:'PUT',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});}
+async function post(p,b){return _resp(await _req(p,{method:'POST',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}));}
+async function patch(p,b){return _resp(await _req(p,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}));}
+async function put(p,b){return _resp(await _req(p,{method:'PUT',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}));}
 const _tabLoaded={};
 function tab(name){
   document.querySelectorAll('.wrap section').forEach(s=>s.classList.add('hidden'));
