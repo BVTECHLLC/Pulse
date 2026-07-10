@@ -1,5 +1,49 @@
 # BVTech OpsPilot — Changelog
 
+## v1.26.0 — Sessions that don't strand you (the "Not authenticated" fix) (July 2026)
+Root cause of "I paste the API key, it says saved, but it shows Not
+authenticated / a red circle": the 30-minute access token silently expired
+while you sat on the page fetching the key, and **there was no refresh endpoint**
+to renew it — so the next Save hit an expired session and every action failed.
+- **New `POST /api/auth/refresh`** exchanges the 14-day refresh cookie for a
+  fresh access token (with refresh-secret rotation). The app minted a refresh
+  cookie all along but never had a route to use it.
+- **The whole UI now self-heals.** Every `api/post/put/patch` call transparently
+  refreshes the session once on a 401 and retries — so long sessions on Settings,
+  the Connection Center, anywhere, just keep working. Only a truly dead 14-day
+  session sends you to the login page.
+- Net effect: paste an API key, click Save securely, and it saves and verifies —
+  no mid-task logout, no cryptic "Not authenticated".
+- Verified: smoke drops the access cookie to simulate expiry, confirms the
+  protected call 401s, that `/api/auth/refresh` recovers it and the same action
+  then succeeds, that the refresh secret rotates, and that a missing/garbage
+  refresh cookie is cleanly rejected (401, not 500).
+
+
+## v1.25.0 — Connection Center: the tile tells the truth (July 2026)
+Fixes "I saved the GitLab key, it said saved, but after a refresh it's still a
+red circle" — by making the status HONEST and self-diagnosing instead of
+guessing from "a string is stored".
+- **Live verification.** Saving the GitLab token now actually calls GitLab
+  (`/user` + both repos) and returns the real result — "Verified as <you> —
+  can publish to bvtech + jordanpolasek" or the exact failure (401 expired,
+  403 wrong scope, repo not reachable). A **Test** button on the Claude,
+  GitLab, Stripe and HubSpot tiles re-checks live any time.
+- **Detects the silent failure that looked exactly like this.** If a secret is
+  stored but can't be decrypted (the server's `SECRET_KEY` changed at some
+  point), the vault used to return nothing — indistinguishable from "never
+  saved". The tile now shows an amber **"stored but unreadable — re-enter to
+  fix"** state, and re-entering the credential resolves it.
+- **Stale-status bug fixed.** The Connection Center only refreshed the *first*
+  time Settings was opened in a session; revisiting the tab (or a background
+  save) could leave a stale red dot. It now refreshes every time you view
+  Settings.
+- New: `POST /api/setup/connections/{key}/test` (staff); the Center GET carries
+  `credential_state` + `testable`; save responses carry `verified` + `detail`.
+- Verified: smoke proves save returns the live GitLab auth result, the Test
+  endpoint live-checks, a deliberately-corrupted ciphertext is reported as
+  `unreadable`/red (and re-entering fixes it), and the test is staff-only.
+
 ## v1.24.0 — Connection Center: paste every credential right on its tile (July 2026)
 v1.22 showed *where to get* each credential; only Claude had a paste field. Now
 **every** connector tile has both — **Get credential ↗** (deep link to the

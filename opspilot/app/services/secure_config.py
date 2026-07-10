@@ -102,6 +102,19 @@ def get_secret(config: dict | None, key: str) -> str | None:
     return decrypt_value(config[key])
 
 
+def secret_state(config: dict | None, key: str) -> str:
+    """'missing' | 'ok' | 'unreadable' for one stored secret. 'unreadable' means
+    a ciphertext IS stored but will not decrypt with the current SECRET_KEY (the
+    silent failure that looks like 'saved but not connected'): re-entering fixes
+    it. Distinguishing this from 'missing' turns a mystery into an instruction."""
+    if not config or key not in config or config[key] in (None, ""):
+        return "missing"
+    raw = config[key]
+    if isinstance(raw, str) and raw.startswith(_ENC_PREFIX):
+        return "ok" if crypto.decrypt(raw[len(_ENC_PREFIX):]) else "unreadable"
+    return "ok"
+
+
 def public_view(config: dict | None) -> dict:
     """Browser-safe projection: secrets become a masked hint, others pass through.
 

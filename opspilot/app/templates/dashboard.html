@@ -1674,15 +1674,36 @@
 </div>
 
 <script>
+// Silent session refresh: the 30-min access token expires while you sit on a
+// page (getting an API key, etc.). Instead of a cryptic "Not authenticated" on
+// the next Save, every request that 401s transparently refreshes the session
+// once and retries. Only if the 14-day refresh is truly gone do we send to login.
+let _refreshing=null;
+async function _refreshSession(){
+  if(!_refreshing){
+    _refreshing=fetch('/api/auth/refresh',{method:'POST'})
+      .then(r=>r.ok).catch(()=>false)
+      .finally(()=>{ setTimeout(()=>{_refreshing=null;},100); });
+  }
+  return _refreshing;
+}
+async function _req(p,opts){
+  let r; try{ r=await fetch(p,opts); }catch(e){ return null; }
+  if(r.status===401 && !p.startsWith('/api/auth/')){
+    const ok=await _refreshSession();
+    if(ok){ try{ r=await fetch(p,opts); }catch(e){ return null; } }
+    else { location.href='/'; return null; }
+  }
+  return r;
+}
+function _resp(r){ return r || new Response('{"detail":"Network error - check your connection."}',{status:0,headers:{'Content-Type':'application/json'}}); }
 async function api(p){
-  let r; try{ r=await fetch(p); }catch(e){ return null; }        // network error -> null, never throw
-  if(r.status===401){location.href='/';return null;}
-  if(!r.ok) return null;                                          // 500/404/etc -> null (don't hand back error bodies as data)
+  const r=await _req(p); if(!r||!r.ok) return null;
   return r.json().catch(()=>null);
 }
-async function post(p,b){return fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});}
-async function patch(p,b){return fetch(p,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});}
-async function put(p,b){return fetch(p,{method:'PUT',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});}
+async function post(p,b){return _resp(await _req(p,{method:'POST',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}));}
+async function patch(p,b){return _resp(await _req(p,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}));}
+async function put(p,b){return _resp(await _req(p,{method:'PUT',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}));}
 const _tabLoaded={};
 function tab(name){
   document.querySelectorAll('.wrap section').forEach(s=>s.classList.add('hidden'));
@@ -1700,7 +1721,7 @@ function tab(name){
   if(name==='library'){loadLibrary();}
   if(name==='automation'){loadAutopilot();}
   if(name==='security'){loadTraining();initBrowserGuard();}
-  if(name==='settings'&&!_tabLoaded.settings){_tabLoaded.settings=true;loadSettings();}
+  if(name==='settings'){ if(!_tabLoaded.settings){_tabLoaded.settings=true;loadSettings();} else {loadConnCenter();} }
 }
 function badge(v,good,warn){if(v==null)return '<span class="badge">—</span>';
   const c=v>=good?'ok':(v>=warn?'warn':'bad');return `<span class="badge ${c}">${v}</span>`;}
@@ -4705,21 +4726,24 @@ async function loadConnCenter(){
   gl.style.color=d.go_live_ready?'var(--good,#2ecc71)':'var(--warn)';
   const pr={1:'P1 · go-live',2:'P2 · growth & billing',3:'P3 · optional'};
   document.getElementById('cc-grid').innerHTML=(d.items||[]).map(it=>{
-    const dot=it.connected?'🟢':'🔴';
+    const unreadable=it.credential_state==='unreadable';
+    const dot=unreadable?'🟠':(it.connected?'🟢':'🔴');
     const link=it.console_url?`<a class="btn sm ghost" style="text-decoration:none" target="_blank" rel="noopener" href="${esc(it.console_url)}">Get credential ↗</a>`:'';
-    // Enter-credential: one input per field, saved encrypted via the generic endpoint.
+    // The silent failure that looked like "saved but red": a stored secret that
+    // won't decrypt (server SECRET_KEY changed). Now it says exactly what to do.
+    const warn=unreadable?`<div style="color:var(--warn);font-size:11px;margin-top:6px">⚠ A credential is stored but can't be read (the server encryption key changed). Re-enter it below to fix.</div>`:'';
     let enter='';
     if((it.fields||[]).length){
       const inputs=it.fields.map(f=>
         `<input data-k="${esc(f.key)}" type="${f.secret?'password':'text'}"
-          placeholder="${esc(f.label)}${it.connected?' (leave blank to keep)':''}"
+          placeholder="${esc(f.label)}${it.connected&&!unreadable?' (leave blank to keep)':''}"
           style="width:100%;font-size:11px;padding:6px;margin-top:4px">`).join('');
-      const extra=it.connected&&it.key==='anthropic'?`<button class="btn sm ghost" onclick="testAiKey(this)">Test Claude</button>`:'';
+      const testBtn=it.testable?`<button class="btn sm ghost" onclick="ccTest('${esc(it.key)}',this)">Test</button>`:'';
       const note=it.needs_connect?`<div class="muted" style="font-size:10px;margin-top:3px">After saving, click <b>Connect</b> on this provider's One-click tile below.</div>`:'';
       enter=`<div data-cc="${esc(it.key)}" style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px">
         <div class="muted" style="font-size:10px;margin-bottom:2px">🔐 Enter credential (stored encrypted):</div>
         ${inputs}
-        <div class="flex" style="gap:6px;margin-top:6px"><button class="btn sm" onclick="ccSave('${esc(it.key)}',this)">Save securely</button>${extra}
+        <div class="flex" style="gap:6px;margin-top:6px;flex-wrap:wrap"><button class="btn sm" onclick="ccSave('${esc(it.key)}',this)">Save securely</button>${testBtn}
           <span class="cc-msg muted" style="font-size:11px"></span></div>${note}</div>`;
     } else if(it.console_hint&&!it.console_url){
       enter=`<div class="muted" style="font-size:10px;margin-top:8px">🔧 ${esc(it.console_hint)}</div>`;
@@ -4730,8 +4754,16 @@ async function loadConnCenter(){
         <span class="muted" style="font-size:10px;white-space:nowrap">${pr[it.priority]||''}</span></div>
       <div class="muted" style="font-size:11px;margin:6px 0">${esc(it.unlocks)}</div>
       ${it.console_hint&&it.console_url?`<div class="muted" style="font-size:10px">🧭 ${esc(it.console_hint)}</div>`:''}
-      <div style="margin-top:8px">${link}</div>${enter}
+      <div style="margin-top:8px">${link}</div>${warn}${enter}
     </div>`;}).join('');
+}
+async function ccTest(key,btn){
+  const box=btn.closest('[data-cc]'); const msg=box.querySelector('.cc-msg');
+  btn.disabled=true; const old=btn.textContent; btn.textContent='Testing…';
+  const r=await post('/api/setup/connections/'+encodeURIComponent(key)+'/test'); const j=await r.json().catch(()=>({}));
+  msg.textContent=(j.ok===true?'✓ ':(j.ok===false?'✗ ':''))+(j.detail||(r.ok?'':'Test failed'));
+  msg.style.color=j.ok===true?'var(--good,#2ecc71)':(j.ok===false?'var(--warn)':'');
+  btn.disabled=false; btn.textContent=old;
 }
 async function ccSave(key,btn){
   const box=btn.closest('[data-cc]'); const msg=box.querySelector('.cc-msg');
@@ -4739,8 +4771,14 @@ async function ccSave(key,btn){
   if(!Object.keys(values).length){msg.textContent='Fill in a field first.';return;}
   btn.disabled=true; const old=btn.textContent; btn.textContent='Saving…';
   const r=await post('/api/setup/connections/'+encodeURIComponent(key),{values}); const j=await r.json().catch(()=>({}));
-  if(r.ok){ msg.textContent=j.connected?'✓ Saved & connected':(j.needs_connect?'✓ Saved — now click Connect below':'✓ Saved'); box.querySelectorAll('input[data-k]').forEach(i=>i.value=''); setTimeout(loadConnCenter,900); }
-  else { msg.textContent=j.detail||'Save failed'; }
+  if(r.ok){
+    // Prefer the live-verify detail (the honest result) over "saved".
+    if(j.verified===false){ msg.textContent='⚠ Saved, but '+(j.detail||'it did not verify'); msg.style.color='var(--warn)'; }
+    else if(j.verified===true){ msg.textContent='✓ '+(j.detail||'Verified & connected'); msg.style.color='var(--good,#2ecc71)'; }
+    else { msg.textContent=j.connected?'✓ Saved & connected':(j.needs_connect?'✓ Saved — now click Connect below':'✓ Saved'); }
+    box.querySelectorAll('input[data-k]').forEach(i=>i.value=''); setTimeout(loadConnCenter,1200);
+  }
+  else { msg.textContent=j.detail||'Save failed'; msg.style.color='var(--warn)'; }
   btn.disabled=false; btn.textContent=old;
 }
 async function saveAiKey(btn){

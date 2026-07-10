@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
@@ -89,6 +89,40 @@ def issue_session(db: Session, user: User, request: Request, response: Response,
     _set_cookies(response, access, f"{sid}.{refresh}")
     audit.record(db, action="login.success", actor_user_id=user.id, actor_email=user.email,
                  actor_role=user.role.value, ip=ip, detail=f"method={method}")
+
+
+@router.post("/refresh")
+def refresh(request: Request, response: Response, db: Session = Depends(get_db),
+            refresh_token: str | None = Cookie(default=None)):
+    """Exchange the (14-day) refresh cookie for a fresh (30-min) access token.
+
+    Without this, the access token silently expired mid-session and every action
+    began returning 401 'Not authenticated' — the classic 'I saved it but it
+    didn't work' after sitting on a page a while. The frontend calls this on any
+    401 and retries, so long-lived pages (Settings, Connection Center) just work.
+    Rotates the refresh secret on use (refresh-token rotation)."""
+    if not refresh_token or "." not in refresh_token:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No refresh session")
+    sid, raw = refresh_token.split(".", 1)
+    sess = db.get(AuthSession, sid)
+    now = datetime.now(timezone.utc)
+    exp = sess.expires_at if sess else None
+    if exp is not None and exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if (not sess or sess.revoked or not verify_password(raw, sess.refresh_hash)
+            or (exp is not None and exp < now)):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Refresh session invalid or expired")
+    user = db.get(User, sess.user_id)
+    if not user or not user.is_active:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User inactive")
+    # Rotate the refresh secret; keep the same session row.
+    new_refresh = random_token(32)
+    sess.refresh_hash = hash_password(new_refresh)
+    sess.expires_at = now + timedelta(days=_s.REFRESH_TOKEN_TTL_DAYS)
+    db.commit()
+    access = create_access_token(user_id=user.id, role=user.role.value, session_id=sid)
+    _set_cookies(response, access, f"{sid}.{new_refresh}")
+    return {"ok": True}
 
 
 @router.post("/logout")

@@ -122,6 +122,15 @@ def connection_center(db: Session = Depends(get_db),
         it["fields"] = spec.get("fields", [])
         it["can_enter"] = bool(spec.get("fields"))
         it["needs_connect"] = spec.get("needs_connect", False)
+        # Detect the silent "saved but unreadable" state (SECRET_KEY changed):
+        # a ciphertext is stored but won't decrypt -> tell the user to re-enter.
+        sp = spec.get("secret_provider")
+        it["credential_state"] = None
+        if sp:
+            conn = secure_config.get_platform(db, sp)
+            cfg = (conn.config if conn else None) or {}
+            it["credential_state"] = secure_config.secret_state(cfg, spec["secret_field"])
+        it["testable"] = spec["key"] in ("gitlab_sites", "anthropic", "stripe", "hubspot")
         items.append(it)
     p1 = [i for i in items if i["priority"] == 1]
     done = sum(1 for i in items if i["connected"])
@@ -139,13 +148,13 @@ CONNECTORS = [
                 "reviews, morning briefing, foresight, all daily content writing.",
      "console_url": "https://console.anthropic.com/settings/keys",
      "console_hint": "Console -> API keys -> Create Key -> copy (starts sk-ant-...)",
-     "save": "anthropic",
+     "save": "anthropic", "secret_provider": "anthropic", "secret_field": "api_key",
      "fields": [{"key": "api_key", "label": "Anthropic API key", "secret": True}]},
     {"key": "gitlab_sites", "name": "Websites (bvtech.org + jordanpolasek.com)", "priority": 1,
      "unlocks": "Daily blog posts to BOTH sites with Cloudflare deploy verification + auto-revert.",
      "console_url": "https://gitlab.com/-/user_settings/personal_access_tokens",
      "console_hint": "Generate token -> name 'Pulse Publisher' -> scope: api -> copy (glpat-...)",
-     "save": "gitlab_sites",
+     "save": "gitlab_sites", "secret_provider": "gitlab", "secret_field": "token",
      "fields": [{"key": "token", "label": "GitLab token (api scope) - connects BOTH sites", "secret": True}]},
     {"key": "m365_mailbox", "name": "Microsoft 365 (mail + SSO)", "priority": 1,
      "unlocks": "Secure mailbox (read/send as help@bvtech.org) + Microsoft sign-in for you + clients.",
@@ -177,7 +186,7 @@ CONNECTORS = [
      "unlocks": "Clients pay invoices online; payments auto-reconcile.",
      "console_url": "https://dashboard.stripe.com/apikeys",
      "console_hint": "Developers -> API keys -> copy the Secret key (sk_live_...)",
-     "save": "stripe",
+     "save": "stripe", "secret_provider": "stripe", "secret_field": "secret_key",
      "fields": [{"key": "secret_key", "label": "Stripe Secret key", "secret": True}]},
     {"key": "smtp", "name": "Outbound email (SMTP)", "priority": 2,
      "unlocks": "Client reports, invoices, SLA alerts, weekly digest, payment reminders BY EMAIL.",
@@ -197,7 +206,7 @@ CONNECTORS = [
      "unlocks": "CRM contact sync to HubSpot.",
      "console_url": "https://app.hubspot.com/private-apps",
      "console_hint": "Private apps -> Create -> scope crm.objects.contacts read/write -> copy token",
-     "save": "hubspot",
+     "save": "hubspot", "secret_provider": "hubspot", "secret_field": "token",
      "fields": [{"key": "token", "label": "HubSpot private-app token", "secret": True}]},
     {"key": "dialpad", "name": "Dialpad", "priority": 3,
      "unlocks": "Click-to-call + power dialer + call coaching from the CRM.",
@@ -251,12 +260,16 @@ def save_connection(key: str, body: SaveCredIn, db: Session = Depends(get_db),
         secure_config.upsert_platform(db, "anthropic", "Claude (Anthropic)", "AI",
                                       {"api_key": payload["api_key"]})
         ai_svc.refresh_key_cache()
-        return {"key": key, "connected": ai_svc.enabled()}
+        v = _verify_connector(db, "anthropic")
+        return {"key": key, "connected": ai_svc.enabled(),
+                "verified": v.get("ok"), "detail": v.get("detail")}
     if prov == "gitlab_sites":
         from ...services import jp_site
         jp_site.save_shared_token(db, payload["token"])
+        v = jp_site.verify_token(db)
         return {"key": key,
-                "connected": jp_site.configured(db, "bvtech") and jp_site.configured(db, "jp")}
+                "connected": jp_site.configured(db, "bvtech") and jp_site.configured(db, "jp"),
+                "verified": v.get("ok"), "detail": v.get("detail")}
 
     _names = {"m365_mailbox": ("M365 Mailbox", "Mail"),
               "pub_linkedin": ("LinkedIn", "Publishing"),
@@ -270,3 +283,61 @@ def save_connection(key: str, body: SaveCredIn, db: Session = Depends(get_db),
     nm, cat = _names.get(prov, (spec["name"], "Integration"))
     secure_config.upsert_platform(db, prov, nm, cat, payload)
     return {"key": key, "connected": True, "needs_connect": spec.get("needs_connect", False)}
+
+
+# --------------------------------------------------------------------------- #
+# v1.25 Live verification — the tile's green/red means "the credential WORKS",
+# not just "a string is stored". Turns "saved but red" into a real answer.
+# --------------------------------------------------------------------------- #
+def _verify_connector(db: Session, key: str) -> dict:
+    from ...services import ai as ai_svc, jp_site
+    if key == "gitlab_sites":
+        return jp_site.verify_token(db)
+    if key == "anthropic":
+        if not ai_svc.enabled():
+            return {"ok": False, "detail": "No Claude key stored yet."}
+        try:
+            ai_svc.complete("Reply with exactly: ok", "ping", max_tokens=8)
+            return {"ok": True, "detail": f"Verified - Claude responded (key from {ai_svc.key_source()})."}
+        except ai_svc.AIError as e:
+            return {"ok": False, "detail": str(e)[:160]}
+    if key == "stripe":
+        conn = secure_config.get_platform(db, "stripe")
+        sk = secure_config.get_secret((conn.config if conn else None) or {}, "secret_key")
+        if not sk:
+            return {"ok": False, "detail": "No Stripe secret key stored yet."}
+        import urllib.request
+        try:
+            req = urllib.request.Request("https://api.stripe.com/v1/balance",
+                                         headers={"Authorization": f"Bearer {sk}"})
+            with urllib.request.urlopen(req, timeout=20):
+                return {"ok": True, "detail": "Verified - Stripe key authenticates."}
+        except Exception as e:  # noqa: BLE001
+            m = str(e)
+            return {"ok": False, "detail": "Stripe rejected the key (401)." if "401" in m
+                    else f"Stripe check failed: {m[:120]}"}
+    if key == "hubspot":
+        conn = secure_config.get_platform(db, "hubspot")
+        tok = secure_config.get_secret((conn.config if conn else None) or {}, "token")
+        if not tok:
+            return {"ok": False, "detail": "No HubSpot token stored yet."}
+        import urllib.request
+        try:
+            req = urllib.request.Request(
+                "https://api.hubapi.com/crm/v3/objects/contacts?limit=1",
+                headers={"Authorization": f"Bearer {tok}"})
+            with urllib.request.urlopen(req, timeout=20):
+                return {"ok": True, "detail": "Verified - HubSpot token authenticates."}
+        except Exception as e:  # noqa: BLE001
+            m = str(e)
+            return {"ok": False, "detail": "HubSpot rejected the token (401)." if "401" in m
+                    else f"HubSpot check failed: {m[:120]}"}
+    return {"ok": None, "detail": "No live test for this connector."}
+
+
+@router.post("/connections/{key}/test")
+def test_connection(key: str, db: Session = Depends(get_db),
+                    user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    if key not in _CONNECTOR_BY_KEY:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Unknown connector '{key}'.")
+    return _verify_connector(db, key)
