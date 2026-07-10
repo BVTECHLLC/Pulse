@@ -2059,9 +2059,10 @@ def main():
             # Offline fakes: AI + GitLab + WordPress.
             _ai20.enabled = lambda: True
             _ai20.complete = (lambda system, user, **k:
-                              _json20.dumps({"title": "Win in Houston", "excerpt": "x",
-                                             "html": "<p>body</p>"})
-                              if "STRICT JSON" in system else "Short channel post #IT")
+                              ("TITLE: Win in Houston\nEXCERPT: x\nHTML:\n<p>"
+                               + ("Article body sentence. " * 25) + "</p>")
+                              if ("TITLE:" in system or "STRICT JSON" in system)
+                              else "Short channel post #IT")
             def _gl20(method, url, token, payload=None):
                 if "repository/tree" in url:
                     return [{"type": "tree", "path": "older-post"}]
@@ -2744,7 +2745,7 @@ def main():
             from datetime import datetime as _dt31, timezone as _tz31
             ok31, det31 = _ca31._run_jp(db, _dt31.now(_tz31.utc))
             assert ok31, det31
-            assert len(_calls31) == 2 and "ONLY the JSON" in _calls31[1], _calls31
+            assert len(_calls31) == 2 and "TITLE:" in _calls31[1], _calls31
             # both attempts unparseable -> clean failure message, no crash
             _calls31.clear()
             _ca31.ai.complete = lambda s, p, smart=False, max_tokens=1000: "still not json"
@@ -2774,6 +2775,71 @@ def main():
               "truncation) + one corrective retry for JP + bvtech articles + Doctor "
               "surfaces LinkedIn/Google Business health incl. invalid_client with the "
               "exact fix OK")
+
+        # ==== v1.32: quote-proof article format + publish notes (listing/cache) ====
+        from app.services import ai as _ai32, content_autopilot as _ca32, jp_site as _jp32
+        import base64 as _b64_32
+        # (a) The sections format survives what killed JSON: unescaped quotes.
+        _quoted_html32 = ('<p class="lead">He said "just update Chrome" and moved on.</p>'
+                          '<h2>Why that\'s not enough</h2><p>' + ("More body text here. " * 12) + "</p>")
+        _sec32 = _ai32.parse_sections(
+            f'TITLE: Why "Update Chrome" Is Not Enough\nEXCERPT: One line.\nHTML:\n{_quoted_html32}')
+        assert _sec32 and _sec32["title"].startswith('Why "Update Chrome"'), _sec32
+        assert 'class="lead"' in _sec32["html"], "quotes must survive verbatim"
+        # parse_article: sections first, JSON fallback still honored.
+        assert _ai32.parse_article('{"title":"J","html":"' + "<p>x</p>" * 40 + '"}')["title"] == "J"
+        assert _ai32.parse_article("TITLE: S\nHTML:\n" + "<p>y</p>" * 40)["title"] == "S"
+        assert _ai32.parse_article("nothing usable") is None
+        # (b) _run_jp succeeds FIRST TRY with quoted HTML (the exact production
+        #     failure), and the success detail carries listing + cache notes.
+        _ojp32 = _jp32._HTTP
+        _listing32 = ('<div class="posts"><article class="post-card">'
+                      '<h2><a href="/old-post-32/">Old</a></h2>'
+                      '<p class="excerpt">x</p></article></div>')
+        def _http32(method, url, token, payload=None):
+            import urllib.parse as _u32
+            if method == "GET" and "/repository/tree" in url:
+                return []
+            if method == "GET" and "/repository/files/" in url:
+                p = _u32.unquote_plus(url.split("files/")[1].split("?")[0])
+                if p in ("index.html", "blog/index.html"):
+                    return {"content": _b64_32.b64encode(_listing32.encode()).decode()}
+                raise Exception("404")
+            if method == "POST" and "/repository/commits" in url:
+                return {"id": "sha32"}
+            if "/pipelines" in url:
+                return [{"status": "success", "sha": "x"}]
+            return {}
+        _calls32 = []
+        def _ai32fake(system, prompt, smart=False, max_tokens=1000):
+            _calls32.append(prompt)
+            return ('TITLE: Founder Notes With "Quotes" In Them\n'
+                    'EXCERPT: A one-liner.\nHTML:\n' + _quoted_html32)
+        _oc32 = _ca32.ai.complete
+        _jp32._HTTP = _http32
+        _ca32.ai.complete = _ai32fake
+        try:
+            _jp32.save_shared_token(db, "glpat-V132")
+            from datetime import datetime as _dt32, timezone as _tz32
+            ok32, det32 = _ca32._run_jp(db, _dt32.now(_tz32.utc))
+            assert ok32, det32
+            assert len(_calls32) == 1, "quoted HTML must parse FIRST try now"
+            assert "listed in" in det32, det32                     # listing note present
+            assert "cache:" in det32 or "cache purged" in det32, det32   # cache note present
+            # total-failure error now includes what Claude actually said.
+            _ca32.ai.complete = lambda s, p, smart=False, max_tokens=1000: "I cannot do that."
+            ok32b, det32b = _ca32._run_jp(db, _dt32.now(_tz32.utc))
+            assert ok32b is False and "I cannot do that" in det32b, det32b
+        finally:
+            _ca32.ai.complete = _oc32
+            _jp32._HTTP = _ojp32
+            _cl32 = _SL27()
+            _cl32.query(_IC27).filter(_IC27.provider.in_(["gitlab", "bvtech_site", "jp_site"])).delete(synchronize_session=False)
+            _cl32.commit(); _cl32.close()
+        print("quote-proof articles: TITLE/EXCERPT/HTML sections format (unescaped "
+              "quotes survive, JSON fallback kept) + first-try parse of the exact "
+              "production failure + publish detail now says WHERE it was listed and "
+              "whether the cache was purged + raw-snippet errors OK")
 
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
@@ -4500,7 +4566,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.31.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.32.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -36,12 +36,13 @@ _SYSTEM = (
     "You write blog articles for BVTech (bvtech.org), a managed IT services & "
     "cybersecurity company serving {metros}. Audience: small-business owners and "
     "office managers — smart people who are not IT experts. Voice: {voice}\n"
-    "Write ONE complete article and reply with ONLY a JSON object (no prose, no "
-    "markdown fences) with exactly these keys:\n"
-    '  "title": compelling, specific, max 70 chars, naturally includes the focus '
-    "metro or topic (SEO headline, not clickbait).\n"
-    '  "excerpt": meta-description quality summary, 120-155 chars.\n'
-    '  "html": the article body as clean HTML (600-900 words): <p>, <h2>, <h3>, '
+    "Write ONE complete article and reply in EXACTLY this delimited format "
+    "(NOT JSON, no markdown fences):\n"
+    "TITLE: compelling, specific, max 70 chars, naturally includes the focus "
+    "metro or topic (SEO headline, not clickbait)\n"
+    "EXCERPT: meta-description quality summary, 120-155 chars\n"
+    "HTML:\n"
+    "the article body as clean HTML (600-900 words): <p>, <h2>, <h3>, "
     "<ul>/<ol>/<li>, <strong> only — no <html>/<head>/<h1>/inline styles/scripts. "
     "Structure: a hook paragraph, 3-5 sections with h2 headings, a practical "
     "checklist or takeaways list, and a closing paragraph that invites the reader "
@@ -121,12 +122,12 @@ def generate_article(db: Session, now: datetime | None = None) -> dict:
             f"Work these phrases in naturally where they fit: {kw}\n"
             f"Today's date: {now:%B %Y}")
     raw = ai.complete(system, user, smart=True, max_tokens=4000)
-    out = ai.parse_json_object(raw)   # tolerant: fences/prose/newlines/truncation
+    out = ai.parse_article(raw)   # quote-proof sections format, JSON fallback
     if not out:
-        raw = ai.complete(system, user + "\nIMPORTANT: return ONLY the JSON object - "
-                          "no prose, no code fences, valid JSON.",
-                          smart=True, max_tokens=4000)
-        out = ai.parse_json_object(raw)
+        raw = ai.complete(system, user + "\nIMPORTANT: use EXACTLY the TITLE:/"
+                          "EXCERPT:/HTML: format - nothing before TITLE:, no JSON, "
+                          "no code fences.", smart=True, max_tokens=4000)
+        out = ai.parse_article(raw)
     if not out:
         return {}
     title = str(out.get("title") or "").strip()

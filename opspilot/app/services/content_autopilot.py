@@ -35,9 +35,12 @@ _METROS = ("Sugar Land", "Houston", "Austin", "San Antonio")
 _JP_SYSTEM = (
     "You are ghost-writing for Jordan Polasek — founder of BVTech, writing on his "
     "personal site jordanpolasek.com. Voice: direct, practical, first-person founder "
-    "insight for Texas business owners; zero corporate fluff. NEVER mention El Campo. "
-    "Return STRICT JSON: {\"title\": str, \"excerpt\": str (<=160 chars), "
-    "\"html\": str (the article BODY as clean HTML: <p>, <h2>, <ul> — no <html>/<head>)}."
+    "insight for Texas business owners; zero corporate fluff. NEVER mention El Campo.\n"
+    "Reply in EXACTLY this delimited format (NOT JSON, no code fences):\n"
+    "TITLE: <the headline>\n"
+    "EXCERPT: <one-sentence summary, max 160 chars>\n"
+    "HTML:\n"
+    "<the article BODY as clean HTML: <p>, <h2>, <ul> — no <html>/<head>>"
 )
 _LI_SYSTEM = (
     "You write LinkedIn posts for BVTech, a managed IT provider serving Sugar Land, "
@@ -53,6 +56,22 @@ _GBP_SYSTEM = (
 
 def _today(now: datetime) -> str:
     return now.date().isoformat()
+
+
+def _pub_note(out: dict) -> str:
+    """Human note for a site-publish result: did the post make it into the blog
+    LISTING, and was the Cloudflare cache purged? These two are exactly what
+    made successful publishes look like 'nothing happened'."""
+    bits = []
+    if out.get("listings_updated"):
+        bits.append("listed in " + ", ".join(out["listings_updated"]))
+    elif out.get("listings_skipped"):
+        bits.append("WARNING: not added to the blog index - run the Doctor")
+    if out.get("cache_purged"):
+        bits.append("cache purged - visible now")
+    elif out.get("cache_detail"):
+        bits.append(f"cache: {out['cache_detail']}")
+    return " | ".join(bits)
 
 
 def get_config(db: Session) -> dict:
@@ -137,7 +156,8 @@ def _run_bvtech(db: Session, now: datetime) -> tuple[bool, str]:
                         excerpt=article.get("excerpt"), html=article.get("html"),
                         status="posted", url=out.get("url"), source="autopilot"))
         db.commit()
-        return True, out.get("url") or article.get("title", "")
+        note = _pub_note(out)
+        return True, (out.get("url") or article.get("title", "")) + (f" | {note}" if note else "")
     if wordpress.configured(db):
         row = blog_autopilot.publish_article(db, article, source="autopilot")
         if row.status != "posted":
@@ -154,21 +174,25 @@ def _run_jp(db: Session, now: datetime) -> tuple[bool, str]:
     prompt = (f"Write today's post. Angle it for business owners around {metro}. "
               f"Pick ONE specific, practical topic (IT strategy, security, hiring, "
               f"vendor costs, growth systems). Date: {now:%B %d, %Y}.")
-    # Tolerant parse (fences/prose/literal-newlines/truncation) + ONE corrective
-    # retry — the old naive json.loads made any formatting hiccup a dead run.
+    # Quote-proof delimited format (JSON kept breaking on unescaped quotes in
+    # the HTML) + JSON fallback + ONE corrective retry. On total failure the
+    # error carries a snippet of what Claude actually said, so it's diagnosable.
     raw = ai.complete(_JP_SYSTEM, prompt, smart=True, max_tokens=4000)
-    post = ai.parse_json_object(raw)
-    if not (post and post.get("title") and post.get("html")):
-        raw = ai.complete(_JP_SYSTEM, prompt + "\nIMPORTANT: return ONLY the JSON "
-                          "object - no prose, no code fences, valid JSON.",
+    post = ai.parse_article(raw)
+    if not post:
+        raw = ai.complete(_JP_SYSTEM, prompt + "\nIMPORTANT: use EXACTLY the "
+                          "TITLE:/EXCERPT:/HTML: format - nothing before TITLE:, "
+                          "no JSON, no code fences.",
                           smart=True, max_tokens=4000)
-        post = ai.parse_json_object(raw)
-    if not (post and post.get("title") and post.get("html")):
-        return False, "Claude returned an unparseable JP article (retried once)"
+        post = ai.parse_article(raw)
+    if not post:
+        head = " ".join(str(raw or "")[:120].split())
+        return False, f"JP article unparseable after retry; Claude said: '{head}...'"
     out = jp_site.publish(db, post)
     if not out.get("ok"):
         return False, out.get("error") or "publish failed"
-    return True, out.get("url") or post["title"]
+    note = _pub_note(out)
+    return True, (out.get("url") or post["title"]) + (f" | {note}" if note else "")
 
 
 def _enqueue_social(db: Session, body: str, channel: str, link: str = "") -> None:
@@ -244,7 +268,9 @@ def publish_custom(db: Session, channel: str, *, title: str | None = None,
         out = jp_site.publish(db, post, site=channel)
         if not out.get("ok"):
             return {"ok": False, "channel": channel, "detail": out.get("error") or "publish failed"}
-        return {"ok": True, "channel": channel, "detail": "committed + Cloudflare build will verify",
+        note = _pub_note(out)
+        return {"ok": True, "channel": channel,
+                "detail": "committed" + (f" | {note}" if note else ""),
                 "url": out.get("url"), "slug": out.get("slug")}
 
     # LinkedIn / Google Business — queue through the autopost engine (retries,

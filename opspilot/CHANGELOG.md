@@ -1,5 +1,21 @@
 # BVTech OpsPilot — Changelog
 
+## v1.32.0 — Quote-proof articles + publish results that explain themselves (July 2026)
+JP kept failing even after v1.31's tolerant parser ("unparseable ... retried
+once"). Root cause found: the writers were asked to return the article as JSON,
+and HTML is full of double quotes (class="lead", href="...") — one unescaped
+quote makes JSON invalid in a way NO parser can reliably repair.
+- **Both writers now use a delimited TITLE:/EXCERPT:/HTML: format** with zero
+  escaping rules — it cannot break on quotes, newlines, or apostrophes. JSON is
+  kept as a fallback (models sometimes return it anyway), and total failures now
+  include a snippet of what Claude actually said, so nothing is a mystery.
+- **The "Posted:" dialog now explains itself.** A site result reads like:
+  `https://.../post.html | listed in blog/index.html | cache: Cloudflare not
+  connected (cache clears on its own TTL)` — so "posted but I don't see it"
+  is answered in the dialog itself: whether the post made the blog INDEX, and
+  whether the CACHE was purged (i.e., paste the Cloudflare token to see changes
+  instantly).
+
 ## v1.31.0 — No more "unparseable article" + Doctor covers the social channels (July 2026)
 Two fixes from the latest field report ("❌ jp: Claude returned an unparseable JP
 article" + a Google `invalid_client` error buried in a failed post's result):
