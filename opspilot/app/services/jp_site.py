@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -65,8 +66,20 @@ def _http(method: str, url: str, token: str, payload: dict | None = None) -> dic
                                  headers={"PRIVATE-TOKEN": token,
                                           "Content-Type": "application/json"})
     data = json.dumps(payload).encode() if payload is not None else None
-    with urllib.request.urlopen(req, data=data, timeout=30) as r:
-        body = r.read().decode()
+    try:
+        with urllib.request.urlopen(req, data=data, timeout=30) as r:
+            body = r.read().decode()
+    except urllib.error.HTTPError as e:
+        # Surface GitLab's ACTUAL message ("A file with this name already
+        # exists", "branch not found", ...) instead of a bare "HTTP Error 400"
+        # that tells the operator nothing.
+        detail = ""
+        try:
+            raw = e.read().decode()[:300]
+            detail = str(json.loads(raw).get("message", raw))[:200]
+        except Exception:  # noqa: BLE001
+            pass
+        raise RuntimeError(f"GitLab {e.code}: {detail or e.reason}") from e
     return json.loads(body) if body else {}
 
 
@@ -312,7 +325,12 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
             {**post, "slug": slug, "site": meta["site"], "org": meta["org"],
              "author_url": meta["author_url"]},
             skeleton_html=skeleton, content_classes=meta["content_classes"])
-        actions = [{"action": "create", "file_path": file_path, "content": rendered}]
+        # Idempotent: if this slug was already published (same-day re-run, retry
+        # after a partial failure, deliberate re-publish), OVERWRITE it instead
+        # of letting GitLab reject the commit with "file already exists".
+        exists = _fetch_file(cfg, file_path) is not None
+        actions = [{"action": "update" if exists else "create",
+                    "file_path": file_path, "content": rendered}]
 
         # Add the post to the site's listing pages IN THE SAME COMMIT so it shows
         # up in navigation, not just at its own URL. Best-effort per file: an

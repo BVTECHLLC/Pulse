@@ -2629,6 +2629,86 @@ def main():
               "idempotent, cache purged) + Publishing Doctor (full chain, plain-English fixes) "
               "+ RBAC OK")
 
+        # ==== v1.30: bvtech 400 fix — real GitLab errors + overwrite + rotation ====
+        from app.services import jp_site as _jp30, content_autopilot as _ca30
+        from app.models import BlogPost as _BP30
+        import base64 as _b64_30, io as _io30, urllib.error as _uerr30, urllib.request as _ureq30
+        # (a) GitLab's REAL error message is surfaced, not a bare "HTTP Error 400".
+        _ourl30 = _ureq30.urlopen
+        def _boom30(req, data=None, timeout=None):
+            raise _uerr30.HTTPError(req.full_url, 400, "Bad Request", {},
+                                    _io30.BytesIO(b'{"message":"A file with this name already exists"}'))
+        _ureq30.urlopen = _boom30
+        try:
+            _jp30._http("POST", "https://gitlab.example/api/v4/x", "t", {"a": 1})
+            raise AssertionError("expected RuntimeError")
+        except RuntimeError as e30:
+            assert "A file with this name already exists" in str(e30), e30
+        finally:
+            _ureq30.urlopen = _ourl30
+        # (b) Re-publishing an existing slug OVERWRITES (update) instead of 400ing;
+        #     a fresh slug still creates.
+        _ojp30 = _jp30._HTTP
+        _acts30 = []
+        def _http30(method, url, token, payload=None):
+            import urllib.parse as _u30
+            if method == "GET" and "/repository/tree" in url:
+                return []
+            if method == "GET" and "/repository/files/" in url:
+                p = _u30.unquote_plus(url.split("files/")[1].split("?")[0])
+                if p == "blog/existing-post-30.html":
+                    return {"content": _b64_30.b64encode(b"<html>old</html>").decode()}
+                raise Exception("404")
+            if method == "POST" and "/repository/commits" in url:
+                _acts30.append({a["file_path"]: a["action"] for a in payload["actions"]})
+                return {"id": "sha30"}
+            if "/pipelines" in url:
+                return [{"status": "success", "sha": "x"}]
+            return {}
+        _jp30._HTTP = _http30
+        try:
+            _jp30.save_shared_token(db, "glpat-V130")
+            r30a = _jp30.publish(db, {"title": "Existing Post 30", "html": "<p>new body</p>",
+                                      "slug": "existing-post-30"}, site="bvtech")
+            assert r30a["ok"], r30a
+            assert _acts30[-1]["blog/existing-post-30.html"] == "update", _acts30[-1]
+            r30b = _jp30.publish(db, {"title": "Fresh Post 30", "html": "<p>x</p>",
+                                      "slug": "fresh-post-30"}, site="bvtech")
+            assert r30b["ok"] and _acts30[-1]["blog/fresh-post-30.html"] == "create", _acts30[-1]
+            # (c) Rotation advances: each successful bvtech publish records a
+            #     BlogPost row, so generate_article's topic/metro counter moves —
+            #     no more same-topic -> same-slug collisions every run.
+            _prompts30 = []
+            _oai30c, _oai30e = _ca30.ai.complete, _ca30.ai.enabled
+            def _ai30(system, prompt, smart=False, max_tokens=1000):
+                _prompts30.append(prompt)
+                import json as _j30
+                return _j30.dumps({"title": f"Auto Post {len(_prompts30)}",
+                                   "excerpt": "x",
+                                   "html": "<p>" + ("Real article body sentence. " * 20) + "</p>"})
+            _ca30.ai.complete = _ai30
+            try:
+                from datetime import datetime as _dt30, timezone as _tz30
+                _n30 = db.query(_BP30).count()
+                ok1, _ = _ca30._run_bvtech(db, _dt30.now(_tz30.utc))
+                ok2, _ = _ca30._run_bvtech(db, _dt30.now(_tz30.utc))
+                assert ok1 and ok2
+                assert db.query(_BP30).count() == _n30 + 2, "BlogPost rows not recorded"
+                t1 = [ln for ln in _prompts30[0].splitlines() if ln.startswith("Topic:")]
+                t2 = [ln for ln in _prompts30[1].splitlines() if ln.startswith("Topic:")]
+                assert t1 and t2 and t1 != t2, f"topic did not rotate: {t1} vs {t2}"
+            finally:
+                _ca30.ai.complete, _ca30.ai.enabled = _oai30c, _oai30e
+        finally:
+            _jp30._HTTP = _ojp30
+            _cl30 = _SL27()
+            _cl30.query(_IC27).filter(_IC27.provider.in_(["gitlab", "bvtech_site", "jp_site"])).delete(synchronize_session=False)
+            _cl30.query(_BP30).filter(_BP30.source == "autopilot").delete(synchronize_session=False)
+            _cl30.commit(); _cl30.close()
+        print("bvtech 400 fix: GitLab's real error surfaced (not bare 400) + same-slug "
+              "re-publish overwrites instead of failing + topic/metro rotation advances "
+              "on GitLab publishes (BlogPost recorded) OK")
+
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
@@ -4354,7 +4434,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.29.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.30.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
