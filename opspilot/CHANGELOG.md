@@ -1,5 +1,23 @@
 # BVTech OpsPilot — Changelog
 
+## v1.29.0 — Publishing that proves itself: Doctor + Sync Listings + Cloudflare purge (July 2026)
+"It says it posted but I don't see it on my site" — permanently fixed, three ways:
+- **🩺 Publishing Doctor** (Marketing → Content Autopilot → Doctor): walks the
+  WHOLE chain per site — token → repo access → listing structure → orphaned
+  posts → deploy pipeline → Cloudflare cache → daily-autopilot schedule → Claude —
+  and reports each step in plain English with the exact fix. No more guessing
+  which link is broken.
+- **🧩 Sync Listings** (one click): backfills every post that is live at its URL
+  but missing from the blog listings (everything published before v1.28) — one
+  commit per site, titles/excerpts pulled from the published pages, idempotent.
+- **Cloudflare connector** (Connection Center → Cloudflare, priority 1): one API
+  token (Zone:Read + Cache Purge on both domains; zone IDs auto-discovered) and
+  every publish/sync **purges the edge cache for exactly the changed URLs** — so
+  the site updates the moment the deploy lands instead of whenever the cache
+  expires. Best-effort: no token never blocks a publish.
+- Doctor also tells you plainly when the daily autopilot toggle is OFF (posts
+  only go out via "Post to all now" until it's on).
+
 ## v1.28.0 — Published posts now show up in the blog listing (July 2026)
 The "it says it posted but I see no change on the site" fix. Diagnosis was
 confirmed against the live sites: a published post WAS committed and live at its

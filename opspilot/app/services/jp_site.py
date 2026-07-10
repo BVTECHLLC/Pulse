@@ -346,10 +346,191 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
                         "at": datetime.now(timezone.utc).isoformat(), "checks": 0})
         raw["pending"] = pending[-10:]
         secure_config.upsert_platform(db, meta["provider"], meta["name"], "Publishing", raw)
+        # Purge Cloudflare's edge cache for everything this commit changed so the
+        # new post + updated listings are visible IMMEDIATELY (best-effort; a
+        # missing token never blocks the publish).
+        from . import cloudflare
+        purge = cloudflare.purge_urls(db, site, [public_url]
+                                      + [f"{meta['site']}/{lp}".replace("/index.html", "/")
+                                         for lp in listings_updated])
         return {"ok": True, "sha": sha, "slug": slug, "url": public_url,
-                "listings_updated": listings_updated, "listings_skipped": listings_skipped}
+                "listings_updated": listings_updated, "listings_skipped": listings_skipped,
+                "cache_purged": purge.get("ok"), "cache_detail": purge.get("detail")}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)[:300]}
+
+
+def _list_post_paths(cfg: dict, style: str) -> list[str]:
+    """All post files in the repo for this site's layout, newest-ish first."""
+    if style == "blog-file":
+        tree = _HTTP("GET", f"{_proj_url(cfg)}/repository/tree?path=blog&ref={cfg['branch']}&per_page=100",
+                     cfg["token"])
+        return sorted([t["path"] for t in tree if t.get("type") == "blob"
+                       and t["path"].endswith(".html")
+                       and not t["path"].endswith("index.html")], reverse=True)
+    tree = _HTTP("GET", f"{_proj_url(cfg)}/repository/tree?ref={cfg['branch']}&per_page=100",
+                 cfg["token"])
+    dirs = [t["path"] for t in tree if t.get("type") == "tree"
+            and not t["path"].startswith((".", "_", "assets", "static", "css", "js",
+                                          "img", "images", "fonts", "blog", "book",
+                                          "cdn-cgi", "functions"))]
+    return [f"{d}/index.html" for d in sorted(dirs, reverse=True)]
+
+
+def _post_meta_from_html(page_html: str) -> tuple[str, str]:
+    """Pull (title, excerpt) out of a published post page."""
+    import html as _h
+    t = re.search(r"<title>(.*?)</title>", page_html, re.S)
+    title = _h.unescape((t.group(1) if t else "").split("|")[0].strip()) or "Untitled"
+    d = re.search(r'<meta\s+name="description"\s+content="(.*?)"', page_html, re.S)
+    excerpt = _h.unescape(d.group(1).strip()) if d else ""
+    return title[:180], excerpt[:220]
+
+
+def _post_url_for(meta: dict, path: str, style: str) -> str:
+    if style == "blog-file":
+        return f"{meta['site']}/{path}"
+    return f"{meta['site']}/{path.removesuffix('index.html')}"
+
+
+def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
+    """BACKFILL: find published posts that exist in the repo but are missing
+    from the blog listing pages (the pre-v1.28 'orphaned post' situation) and
+    inject them — one commit per site, then purge the Cloudflare cache. Safe to
+    run any time: already-listed posts are untouched, and an unrecognized
+    listing is skipped, never corrupted."""
+    meta = SITES[site]
+    cfg = get_config(db, site)
+    if not cfg["configured"]:
+        return {"ok": False, "error": f"{meta['site']} not connected (GitLab token needed)"}
+    try:
+        post_paths = _list_post_paths(cfg, cfg["style"])[:60]
+        listings = {lp: _fetch_file(cfg, lp) for lp in meta.get("index_paths", ())}
+        listings = {lp: h for lp, h in listings.items() if h is not None}
+        if not listings:
+            return {"ok": False, "error": "no listing pages found in the repo"}
+        date_str = datetime.now(timezone.utc).strftime("%B %-d, %Y")
+        added, actions, purge_urls = [], [], []
+        for path in post_paths:
+            url = _post_url_for(meta, path, cfg["style"])
+            rel = url.replace(meta["site"], "")            # href form used in listings
+            missing = [lp for lp, h in listings.items()
+                       if rel not in h and url not in h]
+            if not missing:
+                continue
+            page = _fetch_file(cfg, path)
+            if not page:
+                continue
+            title, excerpt = _post_meta_from_html(page)
+            for lp in missing:
+                new_html, changed = inject_post_into_listing(
+                    listings[lp], title=title, url=rel, excerpt=excerpt,
+                    date_str=date_str, style=cfg["style"])
+                if changed:
+                    listings[lp] = new_html
+            added.append({"path": path, "title": title, "url": url})
+            purge_urls.append(url)
+            if len(added) >= limit:
+                break
+        changed_files = []
+        for lp, h in listings.items():
+            orig = _fetch_file(cfg, lp)
+            if orig is not None and h != orig:
+                actions.append({"action": "update", "file_path": lp, "content": h})
+                changed_files.append(lp)
+                purge_urls.append(f"{meta['site']}/{lp}".replace("/index.html", "/"))
+        if not actions:
+            return {"ok": True, "added": [], "detail": "listings already complete - nothing to sync"}
+        commit = _HTTP("POST", f"{_proj_url(cfg)}/repository/commits", cfg["token"], {
+            "branch": cfg["branch"],
+            "commit_message": f"blog: sync listings - add {len(added)} missing post(s) (via Pulse)",
+            "actions": actions,
+        })
+        from . import cloudflare
+        purge = cloudflare.purge_urls(db, site, purge_urls)
+        return {"ok": True, "sha": commit.get("id"), "added": added,
+                "listings_updated": changed_files,
+                "cache_purged": purge.get("ok"), "cache_detail": purge.get("detail")}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:300]}
+
+
+def diagnose(db: Session, site: str) -> dict:
+    """Publishing Doctor for one site: walk the WHOLE chain and say exactly
+    what's healthy and what to fix, in plain English. Read-only."""
+    meta = SITES[site]
+    cfg = get_config(db, site)
+    checks: list[dict] = []
+
+    def _check(name: str, ok: bool, detail: str, fix: str | None = None):
+        checks.append({"name": name, "ok": ok, "detail": detail,
+                       **({"fix": fix} if (fix and not ok) else {})})
+
+    _check("GitLab token", bool(cfg["token"]),
+           "token found" if cfg["token"] else "no token anywhere in the chain",
+           "Connection Center -> Websites -> paste a GitLab token (scope: api)")
+    if not cfg["token"]:
+        return {"site": meta["site"], "checks": checks, "healthy": False}
+    try:
+        proj = _HTTP("GET", _proj_url(cfg), cfg["token"])
+        _check("Repo access", True, f"{proj.get('path_with_namespace') or cfg['project']} reachable")
+    except Exception as e:  # noqa: BLE001
+        m = str(e)
+        _check("Repo access", False,
+               "token rejected (401)" if "401" in m else f"can't reach {cfg['project']}: {m[:80]}",
+               "regenerate the token with `api` scope / check the project path")
+        return {"site": meta["site"], "checks": checks, "healthy": False}
+    # Listing pages present + structure our injector understands.
+    recognized, missing_posts = [], []
+    listings = {}
+    for lp in meta.get("index_paths", ()):
+        h = _fetch_file(cfg, lp)
+        if h is None:
+            _check(f"Listing {lp}", False, "file not found in repo",
+                   "expected the blog index here - check the repo layout")
+            continue
+        listings[lp] = h
+        _probe, changed = inject_post_into_listing(
+            h, title="probe", url="/pulse-doctor-probe/", excerpt="probe",
+            date_str="January 1, 2026", style=cfg["style"])
+        _check(f"Listing {lp}", changed,
+               "structure recognized - new posts will be inserted" if changed
+               else "card structure NOT recognized - new posts won't appear here",
+               "the listing markup changed; publishing still works but listings need a template tweak")
+        if changed:
+            recognized.append(lp)
+    # Orphaned posts (in repo, absent from every listing).
+    try:
+        for path in _list_post_paths(cfg, cfg["style"])[:60]:
+            url = _post_url_for(meta, path, cfg["style"])
+            rel = url.replace(meta["site"], "")
+            if listings and all(rel not in h and url not in h for h in listings.values()):
+                missing_posts.append(url)
+        _check("Orphaned posts", not missing_posts,
+               "every published post is in the listings" if not missing_posts
+               else f"{len(missing_posts)} post(s) live but NOT listed: "
+                    + ", ".join(missing_posts[:3]) + ("..." if len(missing_posts) > 3 else ""),
+               "click 'Sync listings' to backfill them in one commit")
+    except Exception as e:  # noqa: BLE001
+        _check("Orphaned posts", False, f"scan failed: {str(e)[:80]}")
+    # Deploy pipeline health for the last commit we pushed.
+    pend = cfg.get("pending") or []
+    if pend:
+        try:
+            pipes = _HTTP("GET", f"{_proj_url(cfg)}/pipelines?sha={pend[-1]['sha']}", cfg["token"])
+            st = (pipes[0].get("status") if pipes else "none") or "none"
+            _check("Cloudflare build", st in ("success", "running", "pending", "created"),
+                   f"last publish pipeline: {st}",
+                   "the deploy failed - Pulse auto-reverted; re-publish after fixing")
+        except Exception:  # noqa: BLE001
+            _check("Cloudflare build", True, "no pipeline info (deploy may not report to GitLab)")
+    from . import cloudflare
+    cf = cloudflare.verify(db) if cloudflare.configured(db) else {
+        "ok": False, "detail": "not connected - cached pages update on their own TTL (can look stale for hours)"}
+    _check("Cloudflare cache purge", cf["ok"], cf["detail"],
+           "Connection Center -> Cloudflare -> paste an API token (Zone:Read + Cache Purge)")
+    healthy = all(c["ok"] for c in checks if not c["name"].startswith("Cloudflare cache"))
+    return {"site": meta["site"], "checks": checks, "healthy": healthy}
 
 
 MAX_CHECKS = 20   # ~40 min of heartbeat ticks before we stop waiting

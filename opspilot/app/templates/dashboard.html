@@ -213,9 +213,12 @@
         <h3 style="margin:0">📣 Content Autopilot <span class="pill" id="cap-state">off</span></h3>
         <div class="flex" style="gap:10px;align-items:center">
           <label class="flex" style="margin:0;gap:6px;color:var(--muted)"><input type="checkbox" id="cap-enabled" style="width:auto" onchange="saveCap()"> Daily posts to all channels</label>
+          <button class="btn sm ghost" onclick="capDiagnose(this)">🩺 Doctor</button>
+          <button class="btn sm ghost" onclick="capSyncListings(this)">🧩 Sync listings</button>
           <button class="btn sm" onclick="capRunNow(this)">🚀 Post to all now</button>
         </div>
       </div>
+      <div id="cap-doctor" class="hidden" style="margin:4px 0 12px;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:13px"></div>
       <p class="muted" style="margin:4px 0 12px">One switch: every day Claude writes and ships <b>channel-customized</b> content — a full SEO article to bvtech.org, a founder post to jordanpolasek.com (with the Cloudflare build verified &amp; auto-reverted if it fails), a punchy LinkedIn post, and a local Google Business update. Failures notify you and retry — never silent.</p>
       <div id="cap-grid" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px"><div class="muted">Loading…</div></div>
       <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
@@ -3279,6 +3282,37 @@ async function capRunNow(btn){
     alert('Posted:\n'+Object.entries(res).map(([k,v])=>`${v.ok?'✅':'❌'} ${k}: ${v.detail}`).join('\n')||'nothing enabled');
   } else alert(j.detail||'Run failed');
   btn.disabled=false;btn.textContent=old;loadCap();
+}
+function _esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML;}
+async function capDiagnose(btn){
+  btn.disabled=true;const old=btn.textContent;btn.textContent='Checking…';
+  const r=await post('/api/content-autopilot/diagnose');const j=await r.json().catch(()=>({}));
+  const box=document.getElementById('cap-doctor');box.classList.remove('hidden');
+  if(!r.ok){box.innerHTML='Doctor failed: '+_esc(j.detail||r.status);}
+  else{
+    let h='';
+    for(const s of (j.sites||[])){
+      h+=`<div style="margin-bottom:8px"><b>${_esc(s.site)}</b> ${s.healthy?'<span class="pill ok">healthy</span>':'<span class="pill bad">needs attention</span>'}<br>`;
+      h+=(s.checks||[]).map(c=>`${c.ok?'✅':'❌'} <b>${_esc(c.name)}</b>: ${_esc(c.detail)}${c.fix?` — <i>${_esc(c.fix)}</i>`:''}`).join('<br>');
+      h+='</div>';
+    }
+    const a=j.autopilot||{};h+=`<div>${a.enabled?'✅':'⚠️'} <b>Daily autopilot</b>: ${_esc(a.detail||'')}</div>`;
+    const ai=j.ai||{};h+=`<div>${ai.ok?'✅':'❌'} <b>Claude</b>: ${_esc(ai.detail||'')}</div>`;
+    box.innerHTML=h;
+  }
+  btn.disabled=false;btn.textContent=old;
+}
+async function capSyncListings(btn){
+  btn.disabled=true;const old=btn.textContent;btn.textContent='Syncing…';
+  const r=await post('/api/content-autopilot/sync-listings');const j=await r.json().catch(()=>({}));
+  if(r.ok){
+    alert(['bvtech','jp'].map(k=>{const s=j[k]||{};
+      if(!s.ok)return `❌ ${k==='bvtech'?'bvtech.org':'jordanpolasek.com'}: ${s.error||'failed'}`;
+      const n=(s.added||[]).length;
+      return `✅ ${k==='bvtech'?'bvtech.org':'jordanpolasek.com'}: ${n?`added ${n} missing post(s) to the listing`:(s.detail||'already complete')}${s.cache_purged?' · cache purged':''}`;
+    }).join('\n'));
+  } else alert(j.detail||'Sync failed');
+  btn.disabled=false;btn.textContent=old;
 }
 async function saveBlogAutopilot(){
   const body={base_url:document.getElementById('wb-url').value.trim()||null,

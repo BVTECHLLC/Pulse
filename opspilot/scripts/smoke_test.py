@@ -2513,6 +2513,122 @@ def main():
               "(cloned card, top of grid, idempotent, unknown-structure skipped) + rides "
               "the SAME commit as the post so it's visible in navigation OK")
 
+        # ==== v1.29: Cloudflare purge + Sync-Listings backfill + Publishing Doctor ====
+        from app.services import cloudflare as _cf29, jp_site as _jp29, secure_config as _sc29
+        import base64 as _b64_29
+        # (a) Cloudflare connector: save via Connection Center -> live verify with a
+        #     stubbed CF API; zone ids discovered by domain and cached WITHOUT
+        #     corrupting the stored token (the double-encrypt trap).
+        _ocf29 = _cf29._HTTP
+        _purged29 = []
+        def _cfhttp29(method, url, token, payload=None):
+            assert token == "cft-SECRET29", f"wrong token sent to CF: {token[:8]}"
+            if "/user/tokens/verify" in url:
+                return {"success": True}
+            if "/zones?name=" in url:
+                dom = url.split("name=")[1]
+                return {"success": True, "result": [{"id": f"zone-{dom}"}]}
+            if "/purge_cache" in url:
+                _purged29.append((url.split("/zones/")[1].split("/")[0], payload["files"]))
+                return {"success": True}
+            return {}
+        _cf29._HTTP = _cfhttp29
+        try:
+            sv29 = c.post("/api/setup/connections/cloudflare",
+                          json={"values": {"api_token": "cft-SECRET29"}}).json()
+            assert sv29["connected"] is True and sv29["verified"] is True, sv29
+            assert "bvtech.org" in sv29["detail"] and "jordanpolasek.com" in sv29["detail"], sv29
+            t29 = c.post("/api/setup/connections/cloudflare/test").json()
+            assert t29["ok"] is True, t29
+            # zone cache write must NOT have re-encrypted the token
+            from app.core.db import SessionLocal as _SL29
+            _s29 = _SL29()
+            _row29 = _s29.query(_IC27).filter(_IC27.provider == "cloudflare").first()
+            assert _sc29.get_secret(_row29.config, "api_token") == "cft-SECRET29", \
+                "token corrupted by zone-cache write (double encryption)!"
+            assert (_row29.config.get("zones") or {}).get("bvtech.org") == "zone-bvtech.org"
+            _s29.close()
+            p29 = _cf29.purge_urls(db, "jp", ["https://jordanpolasek.com/x/"])
+            assert p29["ok"] and _purged29[-1][0] == "zone-jordanpolasek.com", p29
+            # (b) Sync-Listings backfill: repo has 2 posts, listing knows only 1 ->
+            #     the orphan is injected + committed + cache purged; 2nd run no-ops.
+            _ojp29 = _jp29._HTTP
+            _listing29 = ('<div class="posts"><article class="post-card">'
+                          '<h2><a href="/listed-post/">Listed Post</a></h2>'
+                          '<p class="excerpt">x</p></article></div>')
+            _orphan29 = ('<html><head><title>Orphan Post Title | Jordan</title>'
+                         '<meta name="description" content="Orphan excerpt here."></head>'
+                         '<body><p>hi</p></body></html>')
+            _state29 = {"listing": _listing29}
+            _commits29 = []
+            def _jphttp29(method, url, token, payload=None):
+                import urllib.parse as _u29
+                if method == "GET" and "/repository/tree" in url and "path=blog" not in url:
+                    return [{"type": "tree", "path": "listed-post"},
+                            {"type": "tree", "path": "orphan-post"},
+                            {"type": "tree", "path": "assets"}]
+                if method == "GET" and "/repository/files/" in url:
+                    p = _u29.unquote_plus(url.split("files/")[1].split("?")[0])
+                    if p == "blog/index.html":
+                        return {"content": _b64_29.b64encode(_state29["listing"].encode()).decode()}
+                    if p == "index.html":
+                        raise Exception("404")
+                    if p == "orphan-post/index.html":
+                        return {"content": _b64_29.b64encode(_orphan29.encode()).decode()}
+                    if p == "listed-post/index.html":
+                        return {"content": _b64_29.b64encode(b"<html><title>L</title></html>").decode()}
+                    raise Exception("404")
+                if method == "POST" and "/repository/commits" in url:
+                    _commits29.append(payload["actions"])
+                    for a in payload["actions"]:
+                        if a["file_path"] == "blog/index.html":
+                            _state29["listing"] = a["content"]
+                    return {"id": "sha-sync29"}
+                if "/pipelines" in url:
+                    return [{"status": "success", "sha": "x"}]
+                return {}
+            _jp29._HTTP = _jphttp29
+            # point the jp site's listings at just blog/index.html for this test
+            _orig_paths29 = _jp29.SITES["jp"]["index_paths"]
+            _jp29.SITES["jp"]["index_paths"] = ("blog/index.html",)
+            try:
+                _jp29.save_shared_token(db, "glpat-SYNC29")
+                r29 = c.post("/api/content-autopilot/sync-listings").json()
+                jp29 = r29["jp"]
+                assert jp29["ok"], jp29
+                assert [a["path"] for a in jp29["added"]] == ["orphan-post/index.html"], jp29
+                assert jp29["added"][0]["title"] == "Orphan Post Title", jp29
+                assert "/orphan-post/" in _state29["listing"], "orphan not injected into listing"
+                assert "Orphan excerpt here." in _state29["listing"]
+                assert jp29["cache_purged"] is True, jp29
+                r29b = c.post("/api/content-autopilot/sync-listings").json()
+                assert r29b["jp"]["ok"] and not r29b["jp"].get("added"), r29b["jp"]  # idempotent
+                # (c) Publishing Doctor: full chain report + plain-English fixes.
+                d29 = c.post("/api/content-autopilot/diagnose").json()
+                jpd29 = next(s for s in d29["sites"] if "jordanpolasek" in s["site"])
+                names29 = {ck["name"]: ck for ck in jpd29["checks"]}
+                assert names29["GitLab token"]["ok"] and names29["Repo access"]["ok"]
+                assert names29["Listing blog/index.html"]["ok"]
+                assert names29["Orphaned posts"]["ok"], names29["Orphaned posts"]  # after sync: none
+                assert names29["Cloudflare cache purge"]["ok"]
+                assert d29["autopilot"]["enabled"] in (True, False) and "detail" in d29["autopilot"]
+                # Doctor is readable by TECH; sync is OWNER-only.
+                assert ca_c.post("/api/content-autopilot/diagnose").status_code == 403  # client admin: no
+                assert ca_c.post("/api/content-autopilot/sync-listings").status_code == 403
+            finally:
+                _jp29.SITES["jp"]["index_paths"] = _orig_paths29
+                _jp29._HTTP = _ojp29
+        finally:
+            _cf29._HTTP = _ocf29
+            _cl29 = _SL27()
+            _cl29.query(_IC27).filter(_IC27.provider.in_(
+                ["gitlab", "bvtech_site", "jp_site", "cloudflare"])).delete(synchronize_session=False)
+            _cl29.commit(); _cl29.close()
+        print("Publishing reliability: Cloudflare connector (verify + zone discovery + purge, "
+              "token never double-encrypted) + Sync-Listings backfill (orphans injected once, "
+              "idempotent, cache purged) + Publishing Doctor (full chain, plain-English fixes) "
+              "+ RBAC OK")
+
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
@@ -4238,7 +4354,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.28.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.29.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
