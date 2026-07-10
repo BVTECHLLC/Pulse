@@ -119,3 +119,33 @@ def run_now(request: Request, db: Session = Depends(get_db),
                  target_type="content", ip=_ip(request),
                  detail=str({k: v["ok"] for k, v in out.get("results", {}).items()})[:200])
     return out
+
+
+class CustomPostIn(BaseModel):
+    channel: str                       # bvtech | jp | linkedin | gbp
+    title: str | None = None           # required for site posts
+    html: str | None = None            # rendered article body (sites) or post text
+    body: str | None = None            # lightweight markdown (sites) or post text
+    excerpt: str | None = None
+    slug: str | None = None
+    keywords: str | None = None
+    kind: str | None = None            # blog | advisory
+    link: str | None = None
+
+
+@router.post("/publish-custom")
+def publish_custom(body: CustomPostIn, request: Request, db: Session = Depends(get_db),
+                   user: User = Depends(require_roles(Role.OWNER))):
+    """Publish ONE specific, hand-written post to ONE channel through the exact
+    same publishers the daily autopilot uses. This is how you ship content you
+    wrote (a security report, a founder note) rather than AI-generated daily
+    posts — with all the same guards, retries and Cloudflare build verification."""
+    out = content_autopilot.publish_custom(
+        db, body.channel, title=body.title, html=body.html, body=body.body,
+        excerpt=body.excerpt, slug=body.slug, keywords=body.keywords,
+        kind=body.kind, link=body.link or "")
+    audit.record(db, action="content_autopilot.publish_custom", actor_user_id=user.id,
+                 actor_email=user.email, actor_role=user.role.value,
+                 target_type="content", ip=_ip(request),
+                 detail=f"{body.channel}:{out.get('ok')}:{(body.title or '')[:80]}")
+    return out

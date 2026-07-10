@@ -200,6 +200,60 @@ _RUNNERS = {"bvtech": _run_bvtech, "jp": _run_jp,
 
 
 # --------------------------------------------------------------------------- #
+# v1.27 Publish a SPECIFIC, hand-written post — the "I wrote this exact thing,
+# ship it" path. The daily autopilot generates content; this pushes content you
+# supply through the very same publishers (GitLab commit + Cloudflare verify for
+# the sites, the autopost queue for LinkedIn/GBP) so nothing bypasses the guards.
+# --------------------------------------------------------------------------- #
+def publish_custom(db: Session, channel: str, *, title: str | None = None,
+                   html: str | None = None, body: str | None = None,
+                   excerpt: str | None = None, slug: str | None = None,
+                   keywords: str | None = None, kind: str | None = None,
+                   link: str = "") -> dict:
+    """Publish one operator-authored post to one channel. Returns
+    {ok, channel, detail, url?/queued_id?}. Never raises for a 'not connected'
+    channel — it reports it, exactly like the daily runner."""
+    if channel not in ("bvtech", "jp", "linkedin", "gbp"):
+        return {"ok": False, "channel": channel, "detail": f"unknown channel '{channel}'"}
+
+    if channel in ("bvtech", "jp"):
+        from . import jp_site
+        if not (html or body):
+            return {"ok": False, "channel": channel, "detail": "no content (html or body required)"}
+        if not title:
+            return {"ok": False, "channel": channel, "detail": "a title is required for a site post"}
+        if not jp_site.configured(db, channel):
+            site = "bvtech.org" if channel == "bvtech" else "jordanpolasek.com"
+            return {"ok": False, "channel": channel,
+                    "detail": f"{site} not connected (paste a GitLab token — one connects both sites)"}
+        post = {"title": title, "html": html or "", "body": body or "",
+                "description": excerpt or "", "slug": slug or "",
+                "keywords": keywords or "", "kind": kind or "blog"}
+        post = {k: v for k, v in post.items() if v}
+        out = jp_site.publish(db, post, site=channel)
+        if not out.get("ok"):
+            return {"ok": False, "channel": channel, "detail": out.get("error") or "publish failed"}
+        return {"ok": True, "channel": channel, "detail": "committed + Cloudflare build will verify",
+                "url": out.get("url"), "slug": out.get("slug")}
+
+    # LinkedIn / Google Business — queue through the autopost engine (retries,
+    # guards, dedupe, requeue all already built in). The heartbeat/next tick
+    # delivers it; the brand guard rejects off-brand content at publish time.
+    text = (body or html or "").strip()
+    if not text:
+        return {"ok": False, "channel": channel, "detail": "no post text"}
+    social_channel = "linkedin" if channel == "linkedin" else "google_business"
+    from ..models import SocialPost
+    post = SocialPost(body=text[:2800], link=link or "https://bvtech.org",
+                      channels=[social_channel], status="queued",
+                      scheduled_for=datetime.now(timezone.utc))
+    db.add(post)
+    db.commit()
+    return {"ok": True, "channel": channel, "queued_id": post.id,
+            "detail": f"queued to {social_channel} (autopost engine delivers + retries)"}
+
+
+# --------------------------------------------------------------------------- #
 # The daily tick + on-demand runs
 # --------------------------------------------------------------------------- #
 def run_daily(db: Session, now: datetime | None = None, *, force: bool = False) -> dict:

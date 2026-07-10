@@ -2366,6 +2366,84 @@ def main():
               "Test + 'stored-but-unreadable' (SECRET_KEY changed) detected as red with re-enter "
               "fix + RBAC OK")
 
+        # =============== v1.27: publish a SPECIFIC post + empty-body fix ===============
+        from app.services import content_studio as _cs27, content_autopilot as _ca27
+        from app.services import jp_site as _jp27, autopost as _ap27
+        from app.models import SocialPost as _SP27, IntegrationConnection as _IC27
+        from app.core.db import SessionLocal as _SL27
+        # (a) The render bug: a post supplied as rendered HTML (what the AI writers
+        #     and the custom-publish path return) must NOT publish an empty body.
+        _n27 = _cs27.normalize_post({"title": "T", "html": "<p>Real body text here.</p><h2>H</h2>"})
+        assert "Real body text here." in _n27["body_html"], "HTML body dropped (empty-post bug)!"
+        assert _n27["description"], "description not derived from HTML body"
+        _n27b = _cs27.normalize_post({"title": "T", "body": "# Head\n\nMarkdown para."})
+        assert _n27b["body_html"], "markdown body path regressed"
+        # (b) Custom publish to BOTH sites via a stubbed GitLab API that captures commits.
+        _o27 = _jp27._HTTP
+        _committed27 = {}
+        def _http27(method, url, token, payload=None):
+            if method == "GET" and "/repository/tree" in url:
+                return []
+            if method == "POST" and "/repository/commits" in url:
+                a = payload["actions"][0]; _committed27[a["file_path"]] = a["content"]
+                return {"id": "sha27"}
+            if "/pipelines" in url:
+                return [{"status": "success", "sha": "x"}]
+            return {}
+        _jp27._HTTP = _http27
+        try:
+            _jp27.save_shared_token(db, "glpat-CUSTOM27")
+            r_bv = c.post("/api/content-autopilot/publish-custom", json={
+                "channel": "bvtech", "title": "Custom Security Report 27", "kind": "advisory",
+                "html": "<p>Attackers target small business gaps in 2026.</p><h2>Fix</h2><p>Verify by phone.</p>",
+                "keywords": "cybersecurity, texas"}).json()
+            assert r_bv["ok"] and r_bv["url"].endswith(".html"), r_bv
+            r_jp = c.post("/api/content-autopilot/publish-custom", json={
+                "channel": "jp", "title": "Founder Field Notes 27",
+                "html": "<p>Where IT is heading in 2026.</p>"}).json()
+            assert r_jp["ok"] and r_jp["url"].endswith("/"), r_jp
+            # The real supplied text landed in the committed page + SEO title present.
+            _bvfile = next(k for k in _committed27 if "custom-security-report-27" in k)
+            assert "Attackers target small business gaps" in _committed27[_bvfile]
+            assert "Custom Security Report 27" in _committed27[_bvfile] and "<title>" in _committed27[_bvfile]
+            # (c) LinkedIn + GBP custom posts queue, then deliver via the autopost engine.
+            r_li = c.post("/api/content-autopilot/publish-custom", json={
+                "channel": "linkedin", "body": "Three attacks hitting SMBs. #CyberSecurity",
+                "link": "https://bvtech.org"}).json()
+            r_gbp = c.post("/api/content-autopilot/publish-custom", json={
+                "channel": "gbp", "body": "Book a security review at bvtech.org"}).json()
+            assert r_li["ok"] and r_li.get("queued_id"), r_li
+            assert r_gbp["ok"] and r_gbp.get("queued_id"), r_gbp
+            _delivered27 = {}
+            _posters27 = {
+                "linkedin": lambda t, u, i=None: (_delivered27.setdefault("linkedin", t), "urn:x")[1],
+                "google_business": lambda t, u, i=None: (_delivered27.setdefault("gbp", t), "lp/x")[1]}
+            _s27 = _SL27()
+            for _pid in (r_li["queued_id"], r_gbp["queued_id"]):
+                _post = _s27.get(_SP27, _pid)
+                _res = _ap27.publish_one(_s27, _post, posters=_posters27)
+                assert _res["ok"], f"custom social delivery failed: {_res}"
+            _s27.close()
+            assert "#CyberSecurity" in _delivered27.get("linkedin", "")
+            assert "bvtech.org" in _delivered27.get("gbp", "")
+            # (d) Guards: unknown channel + missing content rejected cleanly (not 500).
+            assert c.post("/api/content-autopilot/publish-custom",
+                          json={"channel": "twitter", "body": "x"}).json()["ok"] is False
+            assert c.post("/api/content-autopilot/publish-custom",
+                          json={"channel": "bvtech", "title": "No body"}).json()["ok"] is False
+            # (e) RBAC: OWNER-only.
+            assert ca_c.post("/api/content-autopilot/publish-custom",
+                             json={"channel": "gbp", "body": "x"}).status_code == 403
+        finally:
+            _jp27._HTTP = _o27
+            _cl27 = _SL27()
+            _cl27.query(_IC27).filter(_IC27.provider.in_(["gitlab", "bvtech_site", "jp_site"])).delete(synchronize_session=False)
+            _cl27.query(_SP27).delete(synchronize_session=False)
+            _cl27.commit(); _cl27.close()
+        print("Content publish-custom: hand-written post -> BOTH sites (real body + SEO in "
+              "committed HTML, empty-body bug fixed) + LinkedIn/GBP queue->deliver + unknown/"
+              "empty rejected + OWNER-only RBAC OK")
+
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
@@ -4091,7 +4169,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.26.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.27.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

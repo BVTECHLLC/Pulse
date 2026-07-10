@@ -1,5 +1,27 @@
 # BVTech OpsPilot — Changelog
 
+## v1.27.0 — Publish the exact post you wrote + the empty-body fix (July 2026)
+Two things: a real bug fix and a new capability, both in the content pipeline.
+- **Fixed: auto-generated site posts published an EMPTY body.** The AI writers
+  return the article as rendered `html`, but `content_studio.normalize_post`
+  only ever read `body` (markdown) — so every daily bvtech.org / jordanpolasek.com
+  post committed a page with the title, SEO, and byline but **no article text**.
+  `normalize_post` now honors a pre-rendered `html` body (and derives the meta
+  description from it) while keeping the markdown path intact.
+- **New: publish a specific, hand-written post.** `POST /api/content-autopilot/
+  publish-custom` (OWNER-only) ships ONE post you supply to ONE channel through
+  the exact same publishers the daily autopilot uses — GitLab commit + Cloudflare
+  build verification for the two sites, the autopost queue (retries, brand guard,
+  dedupe) for LinkedIn and Google Business. This is how you push a security report
+  or a founder note instead of only AI-generated daily content.
+- **Content pack** `content/2026-07-10/`: a BVTech.org mid-year threat report and
+  a JordanPolasek.com founder field-notes post (both SEO-tuned, in Jordan's
+  voice), plus the LinkedIn and Google Business posts — with a manifest.
+- **Fully tested end to end:** `scripts/test_autopost.py` publishes all four real
+  posts with every external service stubbed and asserts the real body + SEO land
+  in the committed pages and the social posts deliver. Mirrored as a CI smoke
+  block. Offline smoke exit-0.
+
 ## v1.26.0 — Sessions that don't strand you (the "Not authenticated" fix) (July 2026)
 Root cause of "I paste the API key, it says saved, but it shows Not
 authenticated / a red circle": the 30-minute access token silently expired

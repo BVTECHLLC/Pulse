@@ -1,0 +1,34 @@
+{
+  "date": "2026-07-10",
+  "author": "Jordan Polasek",
+  "posts": [
+    {
+      "channel": "bvtech",
+      "title": "BVTech Mid-Year 2026 Threat Report: The 5 Attacks Actually Hitting Texas Small Businesses",
+      "slug": "2026-mid-year-threat-report-texas-small-business",
+      "kind": "advisory",
+      "keywords": "small business cybersecurity 2026, Texas managed IT security, ransomware protection Houston, phishing, MFA, Sugar Land IT support",
+      "description": "BVTech's mid-year 2026 threat report: the five attacks actually hitting Texas small businesses right now — AI phishing, data-theft ransomware, MFA bypass, unpatched edge devices, and third-party app risk — and the practical fix for each.",
+      "html_file": "bvtech-blog.html"
+    },
+    {
+      "channel": "jp",
+      "title": "Field Notes: What's Actually Changing in IT Right Now (Mid-2026)",
+      "slug": "field-notes-what-is-changing-in-it-mid-2026",
+      "kind": "blog",
+      "keywords": "IT trends 2026, small business technology, AI in business, managed IT, Jordan Polasek",
+      "description": "A founder's mid-2026 field notes on what's really changing in IT for small businesses: AI as plumbing, the end of the lone IT guy, security as a business conversation, and why speed is the new moat.",
+      "html_file": "jordanpolasek-blog.html"
+    },
+    {
+      "channel": "linkedin",
+      "text_file": "linkedin.txt",
+      "link": "https://bvtech.org/book/"
+    },
+    {
+      "channel": "gbp",
+      "text_file": "gbp.txt",
+      "link": "https://bvtech.org"
+    }
+  ]
+}
