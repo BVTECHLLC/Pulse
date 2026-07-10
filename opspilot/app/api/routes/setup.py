@@ -88,7 +88,7 @@ def connection_center(db: Session = Depends(get_db),
     """Every connector with: live status, what it unlocks, a deep link to the
     provider console (Get credential), and the fields to paste it right here
     (Enter credential -> encrypted in the vault)."""
-    from ...services import ai as ai_svc, jp_site
+    from ...services import ai as ai_svc, cloudflare as _cf_svc_mod, jp_site
     from ...models import OAuthToken
 
     def vault_has(provider, *keys):
@@ -103,6 +103,7 @@ def connection_center(db: Session = Depends(get_db),
     status = {
         "anthropic": ai_svc.enabled(),
         "gitlab_sites": jp_site.configured(db, "bvtech") and jp_site.configured(db, "jp"),
+        "cloudflare": _cf_svc_mod.configured(db),
         "m365_mailbox": vault_has("m365_mailbox", "client_id", "client_secret")
                         or bool(_s.M365_CLIENT_ID and _s.M365_CLIENT_SECRET),
         "pub_linkedin": li or vault_has("pub_linkedin", "li_client_id"),
@@ -130,7 +131,7 @@ def connection_center(db: Session = Depends(get_db),
             conn = secure_config.get_platform(db, sp)
             cfg = (conn.config if conn else None) or {}
             it["credential_state"] = secure_config.secret_state(cfg, spec["secret_field"])
-        it["testable"] = spec["key"] in ("gitlab_sites", "anthropic", "stripe", "hubspot")
+        it["testable"] = spec["key"] in ("gitlab_sites", "anthropic", "stripe", "hubspot", "cloudflare")
         items.append(it)
     p1 = [i for i in items if i["priority"] == 1]
     done = sum(1 for i in items if i["connected"])
@@ -156,6 +157,15 @@ CONNECTORS = [
      "console_hint": "Generate token -> name 'Pulse Publisher' -> scope: api -> copy (glpat-...)",
      "save": "gitlab_sites", "secret_provider": "gitlab", "secret_field": "token",
      "fields": [{"key": "token", "label": "GitLab token (api scope) - connects BOTH sites", "secret": True}]},
+    {"key": "cloudflare", "name": "Cloudflare (instant cache purge)", "priority": 1,
+     "unlocks": "Published posts show on the sites IMMEDIATELY - without this, "
+                "Cloudflare's edge cache can serve the old page for hours.",
+     "console_url": "https://dash.cloudflare.com/profile/api-tokens",
+     "console_hint": "Create Token -> Custom -> permissions Zone:Read + Cache Purge:Purge "
+                     "-> include zones bvtech.org AND jordanpolasek.com -> copy",
+     "save": "cloudflare", "secret_provider": "cloudflare", "secret_field": "api_token",
+     "fields": [{"key": "api_token",
+                 "label": "Cloudflare API token (Zone:Read + Cache Purge)", "secret": True}]},
     {"key": "m365_mailbox", "name": "Microsoft 365 (mail + SSO)", "priority": 1,
      "unlocks": "Secure mailbox (read/send as help@bvtech.org) + Microsoft sign-in for you + clients.",
      "console_url": "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade",
@@ -270,6 +280,13 @@ def save_connection(key: str, body: SaveCredIn, db: Session = Depends(get_db),
         return {"key": key,
                 "connected": jp_site.configured(db, "bvtech") and jp_site.configured(db, "jp"),
                 "verified": v.get("ok"), "detail": v.get("detail")}
+    if prov == "cloudflare":
+        from ...services import cloudflare
+        secure_config.upsert_platform(db, "cloudflare", "Cloudflare", "Publishing",
+                                      {"api_token": payload["api_token"]})
+        v = cloudflare.verify(db)
+        return {"key": key, "connected": cloudflare.configured(db),
+                "verified": v.get("ok"), "detail": v.get("detail")}
 
     _names = {"m365_mailbox": ("M365 Mailbox", "Mail"),
               "pub_linkedin": ("LinkedIn", "Publishing"),
@@ -290,9 +307,11 @@ def save_connection(key: str, body: SaveCredIn, db: Session = Depends(get_db),
 # not just "a string is stored". Turns "saved but red" into a real answer.
 # --------------------------------------------------------------------------- #
 def _verify_connector(db: Session, key: str) -> dict:
-    from ...services import ai as ai_svc, jp_site
+    from ...services import ai as ai_svc, cloudflare, jp_site
     if key == "gitlab_sites":
         return jp_site.verify_token(db)
+    if key == "cloudflare":
+        return cloudflare.verify(db)
     if key == "anthropic":
         if not ai_svc.enabled():
             return {"ok": False, "detail": "No Claude key stored yet."}

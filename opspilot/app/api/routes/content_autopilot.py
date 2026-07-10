@@ -121,6 +121,46 @@ def run_now(request: Request, db: Session = Depends(get_db),
     return out
 
 
+@router.post("/diagnose")
+def diagnose(db: Session = Depends(get_db),
+             user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Publishing Doctor: walk the whole publish chain per site (token -> repo ->
+    listing structure -> orphaned posts -> deploy pipeline -> Cloudflare purge)
+    and the autopilot schedule, and say exactly what to fix. Read-only."""
+    cfg = content_autopilot.get_config(db)
+    out = {"sites": [jp_site.diagnose(db, s) for s in ("bvtech", "jp")],
+           "autopilot": {
+               "enabled": cfg["enabled"],
+               "hour_utc": cfg["hour_utc"],
+               "detail": ("daily posting is ON - posts go out at "
+                          f"{cfg['hour_utc']:02d}:00 UTC" if cfg["enabled"] else
+                          "daily posting is OFF - only 'Post to all now' publishes; "
+                          "flip the Autopilot toggle to post every day automatically"),
+               "last": cfg["last"], "last_error": cfg["last_error"]}}
+    from ...services import ai as _ai
+    out["ai"] = {"ok": _ai.enabled(),
+                 "detail": "Claude connected" if _ai.enabled() else
+                           "Claude NOT connected - the writers can't generate (Connection Center -> Claude)"}
+    return out
+
+
+@router.post("/sync-listings")
+def sync_listings(request: Request, db: Session = Depends(get_db),
+                  user: User = Depends(require_roles(Role.OWNER))):
+    """Backfill: add every published-but-unlisted post to the blog listings
+    (one commit per site) and purge the Cloudflare cache. Fixes posts published
+    before v1.28 that are live at their URL but invisible in navigation."""
+    out = {}
+    for site in ("bvtech", "jp"):
+        out[site] = jp_site.sync_listings(db, site)
+    audit.record(db, action="content_autopilot.sync_listings", actor_user_id=user.id,
+                 actor_email=user.email, actor_role=user.role.value,
+                 target_type="content", ip=_ip(request),
+                 detail=str({k: len(v.get("added", [])) if v.get("ok") else v.get("error", "?")[:40]
+                             for k, v in out.items()})[:200])
+    return out
+
+
 class CustomPostIn(BaseModel):
     channel: str                       # bvtech | jp | linkedin | gbp
     title: str | None = None           # required for site posts
