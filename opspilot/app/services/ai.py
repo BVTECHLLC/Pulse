@@ -80,6 +80,46 @@ def enabled() -> bool:
     return bool(_api_key())
 
 
+def parse_json_object(raw: str) -> dict | None:
+    """Best-effort extraction of ONE JSON object from model output.
+
+    Models wrap JSON in prose or ```json fences, emit literal newlines inside
+    string values (invalid strict JSON), and get truncated at the token limit
+    mid-string. All of those made the naive `json.loads(raw[{...}])` blow up
+    ("Claude returned an unparseable article"). This handles each case; returns
+    None only when there's no salvageable object at all."""
+    import json as _json
+    import re as _re
+    if not raw:
+        return None
+    s = _re.sub(r"```(?:json)?", "", str(raw)).strip()
+    start = s.find("{")
+    if start < 0:
+        return None
+    s = s[start:]
+    end = s.rfind("}")
+    candidates = ([s[:end + 1]] if end > 0 else []) + [s]
+    for cand in candidates:
+        try:
+            out = _json.loads(cand, strict=False)   # strict=False: literal \n in strings OK
+            if isinstance(out, dict):
+                return out
+        except Exception:  # noqa: BLE001
+            continue
+    # Truncated output: try closing an open string, then balance brackets/braces.
+    for suffix in ('"', ""):
+        t = s + suffix
+        t += "]" * max(0, t.count("[") - t.count("]"))
+        t += "}" * max(0, t.count("{") - t.count("}"))
+        try:
+            out = _json.loads(t, strict=False)
+            if isinstance(out, dict):
+                return out
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
 def _http_complete(system: str, user: str, *, model: str, max_tokens: int) -> str:
     key = _api_key()
     if not key:

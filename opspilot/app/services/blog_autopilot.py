@@ -120,13 +120,14 @@ def generate_article(db: Session, now: datetime | None = None) -> dict:
     user = (f"Focus metro: {metro}\nTopic: {topic}\n"
             f"Work these phrases in naturally where they fit: {kw}\n"
             f"Today's date: {now:%B %Y}")
-    raw = ai.complete(system, user, smart=True, max_tokens=2400)
-    start, end = raw.find("{"), raw.rfind("}")
-    if start < 0 or end <= start:
-        return {}
-    try:
-        out = json.loads(raw[start:end + 1])
-    except Exception:  # noqa: BLE001
+    raw = ai.complete(system, user, smart=True, max_tokens=4000)
+    out = ai.parse_json_object(raw)   # tolerant: fences/prose/newlines/truncation
+    if not out:
+        raw = ai.complete(system, user + "\nIMPORTANT: return ONLY the JSON object - "
+                          "no prose, no code fences, valid JSON.",
+                          smart=True, max_tokens=4000)
+        out = ai.parse_json_object(raw)
+    if not out:
         return {}
     title = str(out.get("title") or "").strip()
     html = str(out.get("html") or "").strip()
