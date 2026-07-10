@@ -2160,7 +2160,7 @@ def main():
                     "stripe", "smtp", "quickbooks", "hubspot", "dialpad",
                     "google_places", "tacticalrmm"} <= keys22, keys22
             for i in cc22["items"]:
-                assert i["unlocks"] and i["where"] and i["priority"] in (1, 2, 3), i["key"]
+                assert i["unlocks"] and i["priority"] in (1, 2, 3), i["key"]
                 assert i["console_url"] or i["console_hint"], i["key"]
             byk22 = {i["key"]: i for i in cc22["items"]}
             assert byk22["anthropic"]["connected"] is True
@@ -2246,6 +2246,53 @@ def main():
         print("Browser & SaaS Guardian: agent report -> SaaS catalog rollup (noise filtered, "
               "shadow IT visible) + approve/block/protect governance -> device enforcement "
               "policy + dedupe + copilot tool + RBAC + pure-ASCII/PS5.1 agent guards OK")
+
+        # ===================== v1.24: Connection Center Enter-credential =====================
+        from app.core.db import SessionLocal as _SL24
+        from app.models import IntegrationConnection as _IC24
+        from app.services import secure_config as _sc24, jp_site as _jp24
+        # Every non-env connector exposes fields to paste + save.
+        cc24 = c.get("/api/setup/connections").json()
+        b24 = {i["key"]: i for i in cc24["items"]}
+        assert b24["gitlab_sites"]["can_enter"] and b24["stripe"]["can_enter"]
+        assert not b24["smtp"]["can_enter"]   # env-only
+        assert [f["key"] for f in b24["m365_mailbox"]["fields"]] == ["client_id", "tenant_id", "client_secret"]
+        # Generic save -> ENCRYPTED at rest; identifiers stored plainly.
+        assert c.post("/api/setup/connections/gitlab_sites",
+                      json={"values": {"token": "glpat-SMOKESECRET"}}).json()["connected"] is True
+        c.post("/api/setup/connections/stripe", json={"values": {"secret_key": "sk_live_smoke"}})
+        c.post("/api/setup/connections/m365_mailbox",
+               json={"values": {"client_id": "cid24", "tenant_id": "tid24", "client_secret": "m365secret24"}})
+        _s24 = _SL24()
+        try:
+            for prov, sec, fld in [("gitlab", "glpat-SMOKESECRET", "token"),
+                                   ("stripe", "sk_live_smoke", "secret_key"),
+                                   ("m365_mailbox", "m365secret24", "client_secret")]:
+                raw = _s24.query(_IC24).filter(_IC24.provider == prov).first()
+                assert sec not in str(raw.config), f"{prov} secret stored in plaintext!"
+                assert _sc24.get_secret(raw.config, fld) == sec, f"{prov} decrypt failed"
+            m24 = _s24.query(_IC24).filter(_IC24.provider == "m365_mailbox").first()
+            assert m24.config.get("client_id") == "cid24"   # identifier stored plainly
+        finally:
+            _s24.close()
+        # Blank values are ignored (400, keeps the saved secret); env-only + unknown rejected.
+        assert c.post("/api/setup/connections/stripe", json={"values": {"secret_key": "  "}}).status_code == 400
+        assert c.post("/api/setup/connections/smtp", json={"values": {"x": "y"}}).status_code == 400
+        assert c.post("/api/setup/connections/nope", json={"values": {"a": "b"}}).status_code == 404
+        # OWNER-only save; staff can still read the Center.
+        assert ca_c.post("/api/setup/connections/stripe", json={"values": {"secret_key": "x"}}).status_code == 403
+        # Clean up so later blocks see a pristine vault.
+        _s24b = _SL24()
+        try:
+            (_s24b.query(_IC24)
+                  .filter(_IC24.provider.in_(["gitlab", "stripe", "m365_mailbox"]))
+                  .delete(synchronize_session=False))
+            _s24b.commit()
+        finally:
+            _s24b.close()
+        print("Connection Center Enter-credential: per-connector fields + generic save "
+              "ENCRYPTED at rest (identifiers plain) + blank-ignore + env-only/unknown "
+              "rejected + OWNER-only RBAC OK")
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
@@ -3971,7 +4018,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.23.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.24.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

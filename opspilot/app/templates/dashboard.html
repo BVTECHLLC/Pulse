@@ -4707,20 +4707,41 @@ async function loadConnCenter(){
   document.getElementById('cc-grid').innerHTML=(d.items||[]).map(it=>{
     const dot=it.connected?'🟢':'🔴';
     const link=it.console_url?`<a class="btn sm ghost" style="text-decoration:none" target="_blank" rel="noopener" href="${esc(it.console_url)}">Get credential ↗</a>`:'';
-    const inline=it.inline==='anthropic'&&!it.connected?
-      `<div class="flex" style="gap:4px;margin-top:8px">
-        <input id="cc-ai-key" type="password" placeholder="sk-ant-…" style="flex:1;font-size:11px;padding:6px">
-        <button class="btn sm" onclick="saveAiKey(this)">Connect</button></div>`
-      :(it.inline==='anthropic'&&it.connected?`<div style="margin-top:8px"><button class="btn sm ghost" onclick="testAiKey(this)">Test Claude</button> <span id="cc-ai-msg" class="muted" style="font-size:11px"></span></div>`:'');
+    // Enter-credential: one input per field, saved encrypted via the generic endpoint.
+    let enter='';
+    if((it.fields||[]).length){
+      const inputs=it.fields.map(f=>
+        `<input data-k="${esc(f.key)}" type="${f.secret?'password':'text'}"
+          placeholder="${esc(f.label)}${it.connected?' (leave blank to keep)':''}"
+          style="width:100%;font-size:11px;padding:6px;margin-top:4px">`).join('');
+      const extra=it.connected&&it.key==='anthropic'?`<button class="btn sm ghost" onclick="testAiKey(this)">Test Claude</button>`:'';
+      const note=it.needs_connect?`<div class="muted" style="font-size:10px;margin-top:3px">After saving, click <b>Connect</b> on this provider's One-click tile below.</div>`:'';
+      enter=`<div data-cc="${esc(it.key)}" style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px">
+        <div class="muted" style="font-size:10px;margin-bottom:2px">🔐 Enter credential (stored encrypted):</div>
+        ${inputs}
+        <div class="flex" style="gap:6px;margin-top:6px"><button class="btn sm" onclick="ccSave('${esc(it.key)}',this)">Save securely</button>${extra}
+          <span class="cc-msg muted" style="font-size:11px"></span></div>${note}</div>`;
+    } else if(it.console_hint&&!it.console_url){
+      enter=`<div class="muted" style="font-size:10px;margin-top:8px">🔧 ${esc(it.console_hint)}</div>`;
+    }
     return `<div class="card" style="background:#0c1430${it.priority===1?';border:1px solid var(--brand,#6c5ce7)':''}">
       <div class="flex" style="justify-content:space-between;gap:6px">
         <b style="font-size:13px">${dot} ${esc(it.name)}</b>
         <span class="muted" style="font-size:10px;white-space:nowrap">${pr[it.priority]||''}</span></div>
       <div class="muted" style="font-size:11px;margin:6px 0">${esc(it.unlocks)}</div>
-      <div class="muted" style="font-size:10px">📍 ${esc(it.where)}</div>
-      ${it.console_hint?`<div class="muted" style="font-size:10px;margin-top:3px">🧭 ${esc(it.console_hint)}</div>`:''}
-      <div style="margin-top:8px">${link}</div>${inline}
+      ${it.console_hint&&it.console_url?`<div class="muted" style="font-size:10px">🧭 ${esc(it.console_hint)}</div>`:''}
+      <div style="margin-top:8px">${link}</div>${enter}
     </div>`;}).join('');
+}
+async function ccSave(key,btn){
+  const box=btn.closest('[data-cc]'); const msg=box.querySelector('.cc-msg');
+  const values={}; box.querySelectorAll('input[data-k]').forEach(i=>{ if(i.value.trim()) values[i.dataset.k]=i.value.trim(); });
+  if(!Object.keys(values).length){msg.textContent='Fill in a field first.';return;}
+  btn.disabled=true; const old=btn.textContent; btn.textContent='Saving…';
+  const r=await post('/api/setup/connections/'+encodeURIComponent(key),{values}); const j=await r.json().catch(()=>({}));
+  if(r.ok){ msg.textContent=j.connected?'✓ Saved & connected':(j.needs_connect?'✓ Saved — now click Connect below':'✓ Saved'); box.querySelectorAll('input[data-k]').forEach(i=>i.value=''); setTimeout(loadConnCenter,900); }
+  else { msg.textContent=j.detail||'Save failed'; }
+  btn.disabled=false; btn.textContent=old;
 }
 async function saveAiKey(btn){
   const k=val('cc-ai-key'); if(!k){alert('Paste your Anthropic API key first (console.anthropic.com → API keys).');return;}
@@ -4732,7 +4753,7 @@ async function saveAiKey(btn){
 async function testAiKey(btn){
   btn.disabled=true;const old=btn.textContent;btn.textContent='Testing…';
   const r=await post('/api/ai/test'); const j=await r.json().catch(()=>({}));
-  const m=document.getElementById('cc-ai-msg');
+  const box=btn.closest('[data-cc]'); const m=box?box.querySelector('.cc-msg'):null;
   if(m)m.textContent=r.ok?`✓ Claude replied (key from ${j.source})`:(j.detail||'Test failed');
   btn.disabled=false;btn.textContent=old;
 }
