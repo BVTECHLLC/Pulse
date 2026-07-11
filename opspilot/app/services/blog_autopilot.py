@@ -100,8 +100,9 @@ def _guard(title: str, html: str) -> str | None:
     return None
 
 
-def generate_article(db: Session, now: datetime | None = None) -> dict:
-    """Ask Claude for one article, rotating the focus metro/topic. Raises
+def generate_article(db: Session, now: datetime | None = None, *, angle: str = "") -> dict:
+    """Ask Claude for one article, rotating the focus metro/topic (and, when
+    given, the day's editorial `angle` so daily posts vary in style). Raises
     ai.AIError on API failure; returns {} on unparseable output."""
     now = now or datetime.now(timezone.utc)
     b = _brand(db)
@@ -119,7 +120,8 @@ def generate_article(db: Session, now: datetime | None = None) -> dict:
     kw = ", ".join(b["keywords"][:5]) if b["keywords"] else "managed IT services, cybersecurity"
     system = _SYSTEM.format(metros=", ".join(b["metros"]), voice=b["voice"], cta=b["cta"])
     user = (f"Focus metro: {metro}\nTopic: {topic}\n"
-            f"Work these phrases in naturally where they fit: {kw}\n"
+            + (f"Editorial style for today: {angle}\n" if angle else "")
+            + f"Work these phrases in naturally where they fit: {kw}\n"
             f"Today's date: {now:%B %Y}")
     raw = ai.complete(system, user, smart=True, max_tokens=4000)
     out = ai.parse_article(raw)   # quote-proof sections format, JSON fallback

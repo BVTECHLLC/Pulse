@@ -1,5 +1,20 @@
 # BVTech OpsPilot — Changelog
 
+## v1.33.0 — Hands-Free Autopilot: daily blogs 24/7, zero clicks (July 2026)
+The operator's ask, verbatim: "automate daily blog updates 24/7 — without me
+checking or asking or approving."
+- **ON by default.** Daily posting to every connected channel no longer needs
+  the toggle — it's live the moment this deploys (turn it OFF explicitly if you
+  ever want to pause). Unconnected channels report + skip; nothing breaks.
+- **7 weekday editorial angles.** Monday deep-dive, Tuesday checklist, Wednesday
+  trend commentary, Thursday myth-busting, Friday field story, Saturday quick
+  win, Sunday strategy — woven into BOTH site writers on top of the rotating
+  topics and metros, so a daily cadence never reads same-y.
+- **Daily receipt.** The scheduled run drops one notification with the day's
+  shipped URLs ("📣 Today's content shipped: bvtech OK — …; jp OK — …") — the
+  proof comes to you; you never have to go check. Failures still notify
+  individually and retry every heartbeat tick until they succeed.
+
 ## v1.32.0 — Quote-proof articles + publish results that explain themselves (July 2026)
 JP kept failing even after v1.31's tolerant parser ("unparseable ... retried
 once"). Root cause found: the writers were asked to return the article as JSON,
