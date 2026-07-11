@@ -20,6 +20,12 @@ def main():
         pw = os.environ.get("BOOTSTRAP_ADMIN_PASSWORD","")
         assert c.post("/api/auth/login", json={"email":owner_email,"password":pw}).status_code==200
 
+        # v1.33: daily content autopilot is ON by default. Disable it for the
+        # suite so heartbeat ticks inside later blocks never attempt real
+        # publishes with whatever stubs happen to be installed at that moment.
+        # (The v1.33 block re-checks the default on a pristine provider row.)
+        assert c.put("/api/content-autopilot/settings", json={"enabled": False}).status_code == 200
+
         cid = c.post("/api/clients", json={"name":"Smoke Co"}).json()["id"]
 
         # --- agent enroll + two check-ins -> history ---
@@ -2079,8 +2085,8 @@ def main():
                 return {}
             _jp20._HTTP = _gl20
             _wp20.configured = lambda db: True
-            _ba20.generate_article = lambda db, now=None: {"title": "BV", "html": "<p>a</p>",
-                                                           "excerpt": "e"}
+            _ba20.generate_article = lambda db, now=None, **k: {"title": "BV", "html": "<p>a</p>",
+                                                                "excerpt": "e"}
             class _Row20:
                 status = "posted"; url = "https://bvtech.org/blog/x.html"
                 title = "BV"; error = None
@@ -2840,6 +2846,87 @@ def main():
               "quotes survive, JSON fallback kept) + first-try parse of the exact "
               "production failure + publish detail now says WHERE it was listed and "
               "whether the cache was purged + raw-snippet errors OK")
+
+        # ==== v1.33: hands-free autopilot — ON by default + angles + receipt ====
+        from app.services import content_autopilot as _ca33, jp_site as _jp33
+        from app.models import Notification as _N33
+        from datetime import datetime as _dt33, timezone as _tz33, timedelta as _td33
+        from app.core.db import SessionLocal as _SL33
+        # (a) Fresh install => daily posting is ON with no clicks; explicit OFF
+        #     (set at the top of this suite) is respected; re-enable works.
+        _s33 = _SL33()
+        _row33 = _s33.query(_IC27).filter(_IC27.provider == "content_autopilot").first()
+        _saved_cfg33 = dict(_row33.config) if _row33 else None
+        if _row33:
+            _s33.delete(_row33); _s33.commit()
+        assert _ca33.get_config(db)["enabled"] is True, "fresh install must be hands-free ON"
+        _ca33.save_config(db, enabled=False)
+        assert _ca33.get_config(db)["enabled"] is False, "explicit OFF must stick"
+        _ca33.save_config(db, enabled=True)
+        assert _ca33.get_config(db)["enabled"] is True
+        # (b) Weekday editorial angles: 7 distinct, and both writers get them.
+        assert len(set(_ca33.WEEKDAY_ANGLES)) == 7
+        _mon33 = _dt33(2026, 7, 6, 15, tzinfo=_tz33.utc)     # Monday
+        _tue33 = _mon33 + _td33(days=1)
+        assert _ca33.day_angle(_mon33) != _ca33.day_angle(_tue33)
+        _prompts33 = []
+        def _ai33(system, prompt, smart=False, max_tokens=1000):
+            _prompts33.append(prompt)
+            return ("TITLE: Daily Post 33\nEXCERPT: x\nHTML:\n<p>"
+                    + ("Body sentence for the daily post. " * 20) + "</p>")
+        _oc33, _oe33 = _ca33.ai.complete, _ca33.ai.enabled
+        _ojp33 = _jp33._HTTP
+        def _http33(method, url, token, payload=None):
+            if method == "GET" and "/repository/tree" in url: return []
+            if method == "GET" and "/repository/files/" in url: raise Exception("404")
+            if method == "POST" and "/repository/commits" in url: return {"id": "sha33"}
+            if "/pipelines" in url: return [{"status": "success", "sha": "x"}]
+            return {}
+        _ca33.ai.complete = _ai33
+        _ca33.ai.enabled = lambda: True
+        _jp33._HTTP = _http33
+        try:
+            _jp33.save_shared_token(db, "glpat-V133")
+            _s33b = _SL33()
+            _n_before33 = _s33b.query(_N33).filter(_N33.message.like("%content shipped%")).count()
+            _s33b.close()
+            # (c) The SCHEDULED (non-force) run posts hands-free after hour_utc
+            #     and leaves the daily receipt notification with the day's URLs.
+            out33 = _ca33.run_daily(db, _mon33)      # 15:00 UTC >= default 14
+            assert out33["ran"] is True, out33
+            assert out33["results"]["bvtech"]["ok"] and out33["results"]["jp"]["ok"], out33
+            assert any(_ca33.day_angle(_mon33) in p for p in _prompts33), \
+                "Monday's editorial angle missing from the writer prompts"
+            _s33c = _SL33()
+            _n_after33 = _s33c.query(_N33).filter(_N33.message.like("%content shipped%")).count()
+            assert _n_after33 == _n_before33 + 1, "daily success receipt not created"
+            _rcpt33 = (_s33c.query(_N33).filter(_N33.message.like("%content shipped%"))
+                       .order_by(_N33.id.desc()).first())
+            assert "bvtech OK" in _rcpt33.message and "jp OK" in _rcpt33.message, _rcpt33.message
+            _s33c.close()
+            # (d) Same-day second tick: succeeded channels dedupe (no double post);
+            #     failed channels (social, unconnected in this stub) correctly RETRY.
+            out33b = _ca33.run_daily(db, _mon33 + _td33(hours=1))
+            assert "bvtech" not in out33b["results"] and "jp" not in out33b["results"], out33b
+            assert all(not r["ok"] for r in out33b["results"].values()), out33b
+        finally:
+            _ca33.ai.complete, _ca33.ai.enabled = _oc33, _oe33
+            _jp33._HTTP = _ojp33
+            _cl33 = _SL33()
+            _cl33.query(_IC27).filter(_IC27.provider.in_(
+                ["gitlab", "bvtech_site", "jp_site", "content_autopilot"])).delete(synchronize_session=False)
+            _cl33.commit()
+            if _saved_cfg33 is not None:
+                from app.services import secure_config as _sc33
+                _sc33.upsert_platform(_cl33, "content_autopilot", "Content Autopilot",
+                                      "Publishing", _saved_cfg33)
+            _cl33.close()
+            # keep the suite-wide OFF so later heartbeat ticks stay inert
+            c.put("/api/content-autopilot/settings", json={"enabled": False})
+        print("hands-free autopilot: ON by default (fresh install posts daily with zero "
+              "clicks; explicit OFF respected) + 7 weekday editorial angles reach the "
+              "writers + scheduled run leaves a 'content shipped' receipt with URLs + "
+              "per-day dedupe intact OK")
 
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
@@ -4566,7 +4653,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.32.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.33.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

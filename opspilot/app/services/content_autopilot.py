@@ -32,6 +32,23 @@ CHANNELS = ("bvtech", "jp", "linkedin", "gbp")
 
 _METROS = ("Sugar Land", "Houston", "Austin", "San Antonio")
 
+# v1.33 — a different editorial ANGLE each weekday so a 24/7 daily cadence
+# never reads same-y. Both site writers get the day's angle woven into the
+# prompt (topics/metros rotate independently, multiplying the variety).
+WEEKDAY_ANGLES = (
+    "a practical deep-dive guide the reader can act on this week",      # Mon
+    "a short, punchy checklist or numbered action list",                # Tue
+    "commentary on a current trend or recent industry development",     # Wed
+    "myth-busting: a common belief that is wrong, and what to do instead",  # Thu
+    "a story-driven lesson from the field (anonymized, concrete)",      # Fri
+    "a 10-minute quick win: one small change with outsized payoff",     # Sat
+    "big-picture strategy: how owners should think about this next quarter",  # Sun
+)
+
+
+def day_angle(now: datetime) -> str:
+    return WEEKDAY_ANGLES[now.weekday()]
+
 _JP_SYSTEM = (
     "You are ghost-writing for Jordan Polasek — founder of BVTech, writing on his "
     "personal site jordanpolasek.com. Voice: direct, practical, first-person founder "
@@ -79,7 +96,10 @@ def get_config(db: Session) -> dict:
     cfg = (conn.config if conn else None) or {}
     chans = cfg.get("channels") or {}
     return {
-        "enabled": bool(cfg.get("enabled")),
+        # HANDS-FREE BY DEFAULT (v1.33): daily posting is ON unless explicitly
+        # turned off. Channels that aren't connected just report that and skip —
+        # nothing breaks — so the safe default is "publish every day".
+        "enabled": bool(cfg.get("enabled", True)),
         "hour_utc": int(cfg.get("hour_utc") or POST_HOUR_UTC),
         "channels": {c: bool(chans.get(c, True)) for c in CHANNELS},
         "last": cfg.get("last") or {},         # {channel: ISO date of last SUCCESS}
@@ -140,7 +160,7 @@ def _run_bvtech(db: Session, now: datetime) -> tuple[bool, str]:
     """bvtech.org is a static site in GitLab (deployed by Cloudflare) — publish
     there natively; WordPress only as a legacy fallback if someone connected it."""
     from . import blog_autopilot, jp_site, wordpress
-    article = blog_autopilot.generate_article(db, now)
+    article = blog_autopilot.generate_article(db, now, angle=day_angle(now))
     if not article:
         return False, "article generation returned nothing"
     if jp_site.configured(db, "bvtech"):
@@ -173,7 +193,8 @@ def _run_jp(db: Session, now: datetime) -> tuple[bool, str]:
     metro = _METROS[now.toordinal() % len(_METROS)]
     prompt = (f"Write today's post. Angle it for business owners around {metro}. "
               f"Pick ONE specific, practical topic (IT strategy, security, hiring, "
-              f"vendor costs, growth systems). Date: {now:%B %d, %Y}.")
+              f"vendor costs, growth systems). Today's editorial style: {day_angle(now)}. "
+              f"Date: {now:%B %d, %Y}.")
     # Quote-proof delimited format (JSON kept breaking on unescaped quotes in
     # the HTML) + JSON fallback + ONE corrective retry. On total failure the
     # error carries a snippet of what Claude actually said, so it's diagnosable.
@@ -320,6 +341,20 @@ def run_daily(db: Session, now: datetime | None = None, *, force: bool = False) 
         if not ok:
             _notify_fail(db, ch, detail)
         results[ch] = {"ok": ok, "detail": detail}
+    # v1.33 daily receipt: on the scheduled (non-force) run, drop ONE summary
+    # notification with the day's shipped URLs — hands-free means the operator
+    # never has to check; the proof comes to them. Failures already notify
+    # individually; this is the "it worked" side of never-silent.
+    if not force and any(r["ok"] for r in results.values()):
+        try:
+            lines = "; ".join(f"{ch} OK - {r['detail'][:120]}" if r["ok"] else f"{ch} FAILED"
+                              for ch, r in results.items())
+            db.add(Notification(client_id=None, target_user_id=None, kind="content",
+                                severity="info",
+                                message=f"📣 Today's content shipped: {lines}"[:1000]))
+            db.commit()
+        except Exception:  # noqa: BLE001
+            db.rollback()
     return {"ran": True, "results": results}
 
 
