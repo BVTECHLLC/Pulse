@@ -121,6 +121,33 @@ def run_now(request: Request, db: Session = Depends(get_db),
     return out
 
 
+_TICK_STATE = {"last": 0.0}   # in-memory rate limit for the external tick
+
+
+@router.post("/tick")
+def external_tick(request: Request, db: Session = Depends(get_db)):
+    """External daily trigger — the belt-and-braces twin of the in-process
+    scheduler. A GitHub Actions cron (daily-content.yml) calls this every day;
+    even if the portal's background thread ever dies, the day's posts still go
+    out. SAFE WITHOUT AUTH BY DESIGN: it only runs the NON-FORCE daily path, so
+    every gate applies (enabled, hour window, once-per-day dedupe) — hammering
+    it can never post twice or post early. Optional shared secret: set
+    CONTENT_TICK_KEY in the server env and the same value as a GitHub secret,
+    and the header becomes required. Rate-limited to one attempt/minute."""
+    import os as _os
+    import time as _time
+    required = _os.environ.get("CONTENT_TICK_KEY")
+    if required and request.headers.get("x-tick-key") != required:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Bad or missing X-Tick-Key")
+    now_m = _time.monotonic()
+    if now_m - _TICK_STATE["last"] < 60:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Tick already ran <60s ago")
+    _TICK_STATE["last"] = now_m
+    out = content_autopilot.run_daily(db)          # non-force: all gates apply
+    return {"ran": out.get("ran"), "reason": out.get("reason"),
+            "results": {k: v.get("ok") for k, v in (out.get("results") or {}).items()}}
+
+
 @router.post("/diagnose")
 def diagnose(db: Session = Depends(get_db),
              user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
@@ -128,7 +155,25 @@ def diagnose(db: Session = Depends(get_db),
     listing structure -> orphaned posts -> deploy pipeline -> Cloudflare purge)
     and the autopilot schedule, and say exactly what to fix. Read-only."""
     cfg = content_autopilot.get_config(db)
-    out = {"sites": [jp_site.diagnose(db, s) for s in ("bvtech", "jp")],
+    # Scheduler pulse: is the background engine actually ticking on this box?
+    from datetime import datetime, timezone
+    from ...models import SchedulerRun
+    _last = db.query(SchedulerRun).order_by(SchedulerRun.id.desc()).first()
+    _age = None
+    if _last and _last.ran_at:
+        _ran = _last.ran_at if _last.ran_at.tzinfo else _last.ran_at.replace(tzinfo=timezone.utc)
+        _age = int((datetime.now(timezone.utc) - _ran).total_seconds())
+    scheduler_ok = _age is not None and _age < 360
+    out = {"scheduler": {
+               "ok": scheduler_ok,
+               "detail": (f"ticking - last heartbeat {_age}s ago" if scheduler_ok else
+                          "NOT ticking" + (f" - last heartbeat {_age}s ago" if _age is not None
+                                           else " - no heartbeat recorded yet")),
+               **({} if scheduler_ok else
+                  {"fix": "the app's background scheduler isn't running - the daily GitHub "
+                          "cron still posts, but restart the api container to restore full "
+                          "automation (docker compose restart api)"})},
+           "sites": [jp_site.diagnose(db, s) for s in ("bvtech", "jp")],
            "autopilot": {
                "enabled": cfg["enabled"],
                "hour_utc": cfg["hour_utc"],

@@ -3291,6 +3291,8 @@ async function capDiagnose(btn){
   if(!r.ok){box.innerHTML='Doctor failed: '+_esc(j.detail||r.status);}
   else{
     let h='';
+    const sch=j.scheduler||{};
+    h+=`<div style="margin-bottom:8px">${sch.ok?'✅':'❌'} <b>Scheduler</b>: ${_esc(sch.detail||'')}${sch.fix?` — <i>${_esc(sch.fix)}</i>`:''}</div>`;
     for(const s of (j.sites||[])){
       h+=`<div style="margin-bottom:8px"><b>${_esc(s.site)}</b> ${s.healthy?'<span class="pill ok">healthy</span>':'<span class="pill bad">needs attention</span>'}<br>`;
       h+=(s.checks||[]).map(c=>`${c.ok?'✅':'❌'} <b>${_esc(c.name)}</b>: ${_esc(c.detail)}${c.fix?` — <i>${_esc(c.fix)}</i>`:''}`).join('<br>');
