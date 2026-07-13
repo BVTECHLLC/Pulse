@@ -1,5 +1,22 @@
 # BVTech OpsPilot — Changelog
 
+## v1.34.0 — Autopost Assurance: two schedulers, one public pulse (July 2026)
+"The programs are still not autoposting" — now that can't be silently true.
+Daily posting gets a REDUNDANT trigger and a public heartbeat:
+- **GitHub daily cron** (`.github/workflows/daily-content.yml`): every day at
+  14:10 UTC (with a 15:40 retry) GitHub calls the new
+  `POST /api/content-autopilot/tick` — so even if the portal's in-process
+  scheduler dies or the box wedges, the day's posts still go out. The endpoint
+  runs the NON-FORCE path (enabled/hour/once-per-day gates all apply), so double
+  triggering is harmless by design. Optional `CONTENT_TICK_KEY` shared secret +
+  a 60s rate limit.
+- **`/api/health` is now a public proof-of-life**: `autopilot.ticking`,
+  last-tick age, daily-enabled, post hour, and per-channel last-success dates —
+  "is it alive and did today post" answerable from any browser, no login.
+- **Doctor leads with the scheduler pulse**: "ticking — last heartbeat 32s ago"
+  or "NOT ticking" with the exact restart fix. The daily GitHub run also warns
+  in its log when the portal scheduler is down.
+
 ## v1.33.0 — Hands-Free Autopilot: daily blogs 24/7, zero clicks (July 2026)
 The operator's ask, verbatim: "automate daily blog updates 24/7 — without me
 checking or asking or approving."

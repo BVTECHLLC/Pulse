@@ -2928,6 +2928,52 @@ def main():
               "writers + scheduled run leaves a 'content shipped' receipt with URLs + "
               "per-day dedupe intact OK")
 
+        # ==== v1.34: autopost assurance — health pulse + external tick + doctor ====
+        import os as _os34
+        from app.api.routes import content_autopilot as _car34
+        # (a) /api/health carries the public proof-of-life (no login needed).
+        h34 = c.get("/api/health").json()
+        assert "autopilot" in h34, h34
+        for k34 in ("ticking", "last_tick_age_seconds", "daily_enabled",
+                    "post_hour_utc", "last_success"):
+            assert k34 in h34["autopilot"], (k34, h34["autopilot"])
+        assert h34["autopilot"]["daily_enabled"] is False   # suite pinned it OFF
+        # (b) External tick: no auth needed by default; NON-FORCE so gates apply
+        #     (autopilot is OFF here -> ran False, reason 'disabled'); a burst is
+        #     rate-limited; with CONTENT_TICK_KEY set the header becomes required.
+        _car34._TICK_STATE["last"] = 0.0
+        nc34 = TestClient(app); nc34.cookies.clear()          # UNAUTHENTICATED client
+        t34 = nc34.post("/api/content-autopilot/tick")
+        assert t34.status_code == 200, t34.text
+        assert t34.json() == {"ran": False, "reason": "disabled", "results": {}}, t34.json()
+        assert nc34.post("/api/content-autopilot/tick").status_code == 429   # rate limit
+        _os34.environ["CONTENT_TICK_KEY"] = "tick-secret-34"
+        try:
+            _car34._TICK_STATE["last"] = 0.0
+            assert nc34.post("/api/content-autopilot/tick").status_code == 401       # key required
+            assert nc34.post("/api/content-autopilot/tick",
+                             headers={"X-Tick-Key": "wrong"}).status_code == 401
+            ok34 = nc34.post("/api/content-autopilot/tick",
+                             headers={"X-Tick-Key": "tick-secret-34"})
+            assert ok34.status_code == 200, ok34.text
+        finally:
+            _os34.environ.pop("CONTENT_TICK_KEY", None)
+            _car34._TICK_STATE["last"] = 0.0
+        # (c) Doctor leads with the scheduler pulse (no ticks in this suite ->
+        #     NOT ticking, with the restart fix).
+        d34 = c.post("/api/content-autopilot/diagnose").json()
+        assert "scheduler" in d34, d34.keys()
+        assert d34["scheduler"]["ok"] is False and "fix" in d34["scheduler"], d34["scheduler"]
+        # (d) The daily GitHub cron workflow exists and targets the tick endpoint.
+        _wf34 = open(_os34.path.join(_os34.path.dirname(__file__), "..", "..",
+                                     ".github", "workflows", "daily-content.yml")).read()
+        assert "/api/content-autopilot/tick" in _wf34 and "schedule" in _wf34
+        assert "workflow_dispatch" in _wf34 and "X-Tick-Key" in _wf34
+        print("autopost assurance: /api/health proof-of-life (ticking/last-success, "
+              "public) + external /tick (non-force gates, 60s rate limit, optional "
+              "CONTENT_TICK_KEY auth) + Doctor scheduler pulse w/ restart fix + daily "
+              "GitHub cron workflow wired OK")
+
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
@@ -4653,7 +4699,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.33.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.34.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

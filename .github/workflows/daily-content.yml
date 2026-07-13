@@ -1,0 +1,53 @@
+name: Daily Content Tick
+
+# Belt-and-braces for the Content Autopilot: the portal's in-process scheduler
+# posts daily on its own; this cron ALSO triggers the daily run from outside,
+# so a wedged process/box can never silently skip a day. The endpoint runs the
+# NON-FORCE path — enabled/hour/once-per-day gates all apply — so double
+# triggering is harmless by design.
+#
+# Optional hardening: set CONTENT_TICK_KEY in the server env AND as a repo
+# secret of the same name; the header then becomes required.
+
+on:
+  schedule:
+    - cron: "10 14 * * *"   # 14:10 UTC — just after the default 14:00 post window opens
+    - cron: "40 15 * * *"   # 15:40 UTC — safety retry (dedupe makes this a no-op if day is done)
+  workflow_dispatch: {}
+
+jobs:
+  tick:
+    name: Trigger today's posts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Tick the content autopilot
+        env:
+          TICK_KEY: ${{ secrets.CONTENT_TICK_KEY }}
+        run: |
+          set -u
+          URL="https://portal.bvtech.org/api/content-autopilot/tick"
+          for i in 1 2 3 4 5; do
+            code=$(curl -sS -m 90 -o resp.json -w "%{http_code}" -X POST "$URL" \
+                     -H "User-Agent: OpsPilot-DailyTick/1.0" \
+                     ${TICK_KEY:+-H "X-Tick-Key: $TICK_KEY"}) && true
+            echo "attempt $i -> HTTP $code"
+            cat resp.json 2>/dev/null || true; echo
+            # 200 = ran (or gates said not yet/already done) — success either way.
+            # 429 = another tick ran <60s ago — also success.
+            if [ "$code" = "200" ] || [ "$code" = "429" ]; then exit 0; fi
+            sleep $((15 * i))
+          done
+          echo "::error::content tick unreachable after 5 attempts"
+          exit 1
+
+      - name: Verify autopilot proof-of-life
+        if: always()
+        run: |
+          curl -sS -m 60 "https://portal.bvtech.org/api/health" \
+            -H "User-Agent: OpsPilot-DailyTick/1.0" | tee health.json || true
+          echo
+          # Surface (not fail on) a dead scheduler — the tick above still posted.
+          if grep -q '"ticking": *false' health.json 2>/dev/null; then
+            echo "::warning::portal background scheduler is NOT ticking - daily posts are riding on this cron; restart the api container"
+          fi

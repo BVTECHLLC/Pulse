@@ -172,7 +172,36 @@ app.include_router(ui.router)
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "app": _s.APP_NAME, "version": _s.APP_VERSION, "env": _s.ENV}
+    """Liveness + version, PLUS public proof-of-life for the content autopilot —
+    'is the scheduler ticking and did today's posts go out' is answerable from
+    anywhere (a browser, the daily GitHub cron, an uptime monitor) with no login.
+    Nothing sensitive is exposed: a timestamp age, booleans, per-channel dates."""
+    out = {"ok": True, "app": _s.APP_NAME, "version": _s.APP_VERSION, "env": _s.ENV}
+    try:
+        from datetime import datetime, timezone
+        from .core.db import SessionLocal
+        from .models import SchedulerRun
+        from .services import content_autopilot
+        db = SessionLocal()
+        try:
+            last = db.query(SchedulerRun).order_by(SchedulerRun.id.desc()).first()
+            age = None
+            if last and last.ran_at:
+                ran = last.ran_at if last.ran_at.tzinfo else last.ran_at.replace(tzinfo=timezone.utc)
+                age = int((datetime.now(timezone.utc) - ran).total_seconds())
+            cfg = content_autopilot.get_config(db)
+            out["autopilot"] = {
+                "ticking": age is not None and age < 360,
+                "last_tick_age_seconds": age,
+                "daily_enabled": cfg["enabled"],
+                "post_hour_utc": cfg["hour_utc"],
+                "last_success": cfg["last"],          # {channel: ISO date}
+            }
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001 — health must never 500 over telemetry
+        out["autopilot"] = {"ticking": None}
+    return out
 
 
 # --------------------------------------------------------------------------- #
