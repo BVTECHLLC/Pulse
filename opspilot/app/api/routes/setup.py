@@ -309,6 +309,9 @@ def save_connection(key: str, body: SaveCredIn, db: Session = Depends(get_db),
               "tacticalrmm": ("TacticalRMM", "RMM")}
     nm, cat = _names.get(prov, (spec["name"], "Integration"))
     secure_config.upsert_platform(db, prov, nm, cat, payload)
+    if prov in ("gbp", "pub_linkedin"):
+        # New credentials lift the delivery pause; queued posts resume next tick.
+        autopost.clear_reauth(db, prov)
     return {"key": key, "connected": True, "needs_connect": spec.get("needs_connect", False)}
 
 

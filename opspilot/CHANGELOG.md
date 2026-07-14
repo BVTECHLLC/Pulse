@@ -1,5 +1,25 @@
 # BVTech OpsPilot — Changelog
 
+## v1.36.0 — Adaptive publishing + fail-proof delivery (July 2026)
+Two root causes from the field, both killed:
+- **"bvtech posts commit but NEVER appear on the site."** jordanpolasek.com is
+  plain HTML (commit → live); bvtech.org is a GENERATED site — its build only
+  ships what's in its content folder, so raw HTML committed into blog/ never
+  appears. Pulse now **detects each repo's engine** (package.json/astro/hugo/…),
+  finds the content folder, and publishes **markdown with frontmatter cloned
+  from the site's own newest post** (title/description/date swapped, the site's
+  metadata kept, article HTML embedded). The generator then builds the post page
+  AND the blog index itself. Static sites keep the direct-HTML path. The Doctor
+  names the detected engine + target folder per site.
+- **Dead tokens burned retries forever** (Google `invalid_grant`, LinkedIn 401).
+  New **re-auth circuit breaker**: an auth failure PAUSES the channel with one
+  human notification ("one-click re-connect via Settings → One-click Connect;
+  your posts are safe in the queue"), zero attempts burn, and reconnecting via
+  ANY path (OAuth callback, connector save, settings save) auto-resumes the
+  queue. Google's Testing-mode 7-day token expiry gets a specific heads-up.
+- LinkedIn delivery now prefers the self-refreshing one-click OAuth token and
+  only falls back to a manually-pasted one.
+
 ## v1.35.0 — Super Tool pass: every rough edge from the field, fixed (July 2026)
 Driven by live-web verification (jordanpolasek.com confirmed: daily posts ARE
 publishing AND landing in the blog listing) plus the operator's screenshot:

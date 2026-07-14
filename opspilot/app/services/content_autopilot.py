@@ -80,7 +80,10 @@ def _pub_note(out: dict) -> str:
     LISTING, and was the Cloudflare cache purged? These two are exactly what
     made successful publishes look like 'nothing happened'."""
     bits = []
-    if out.get("listings_updated"):
+    if out.get("listing_generated"):
+        bits.append(f"published as {out.get('content_path', 'markdown')} - the site build "
+                    "adds it to the blog index automatically")
+    elif out.get("listings_updated"):
         bits.append("listed in " + ", ".join(out["listings_updated"]))
     elif out.get("listings_skipped"):
         bits.append("WARNING: not added to the blog index - run the Doctor")

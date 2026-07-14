@@ -464,6 +464,14 @@ def _store_token(db: Session, provider: str, tok: dict, *, user_id: int | None,
     )
     db.add(row)
     db.commit()
+    # A fresh connection lifts the delivery circuit-breaker: queued posts for
+    # this channel resume automatically on the next tick.
+    try:
+        from ...services import autopost
+        autopost.clear_reauth(db, {"linkedin": "pub_linkedin",
+                                   "google_gbp": "gbp"}.get(provider, ""))
+    except Exception:  # noqa: BLE001
+        pass
     return row
 
 
