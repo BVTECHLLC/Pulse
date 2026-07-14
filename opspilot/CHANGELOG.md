@@ -1,5 +1,25 @@
 # BVTech OpsPilot — Changelog
 
+## v1.35.0 — Super Tool pass: every rough edge from the field, fixed (July 2026)
+Driven by live-web verification (jordanpolasek.com confirmed: daily posts ARE
+publishing AND landing in the blog listing) plus the operator's screenshot:
+- **Cloudflare "HTTP 401" fixed — Global API Key now works.** Cloudflare speaks
+  two auth dialects; the operator pasted the Global API Key (full-access, 37-hex)
+  but Pulse only spoke Bearer-token. Now both work: paste either credential, add
+  your account email if it's the Global Key (the connector asks for exactly that
+  when it detects one), and verify/purge use the right headers automatically.
+- **bvtech.org "not added to the blog index" fixed — universal card injector.**
+  A real HTML-parser fallback finds the smallest container (div/li/section/
+  article) wrapping a post link + heading — zero class-name assumptions — so
+  bvtech's custom card markup gets new posts injected just like jp's.
+- **Claude errors now speak human.** Raw '{"type":"error","error":...' blobs are
+  translated: credit-balance → "add credits at console.anthropic.com → Billing,
+  posting resumes automatically", bad key → where to re-enter it, overloaded →
+  "retries automatically".
+- **WordPress is gone from the portal.** The sites publish via GitLab +
+  Cloudflare; the Auto-Blogger card and the legacy Website Auto-Publishers
+  settings are removed. A clean "Published articles" history card remains.
+
 ## v1.34.0 — Autopost Assurance: two schedulers, one public pulse (July 2026)
 "The programs are still not autoposting" — now that can't be silently true.
 Daily posting gets a REDUNDANT trigger and a public heartbeat:

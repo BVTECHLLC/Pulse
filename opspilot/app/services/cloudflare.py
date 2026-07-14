@@ -28,10 +28,19 @@ API = "https://api.cloudflare.com/client/v4"
 SITE_DOMAINS = {"bvtech": "bvtech.org", "jp": "jordanpolasek.com"}
 
 
-def _http(method: str, url: str, token: str, payload: dict | None = None) -> dict:
-    req = urllib.request.Request(url, method=method,
-                                 headers={"Authorization": f"Bearer {token}",
-                                          "Content-Type": "application/json"})
+def _http(method: str, url: str, token: str, payload: dict | None = None,
+          email: str | None = None) -> dict:
+    """Cloudflare speaks TWO auth dialects and rejects the wrong one with 401:
+      * API Token  -> Authorization: Bearer <token>
+      * Global API Key (the legacy full-access key) -> X-Auth-Key + X-Auth-Email
+    When `email` is supplied we send the Global-Key headers; otherwise Bearer."""
+    if email:
+        headers = {"X-Auth-Key": token, "X-Auth-Email": email,
+                   "Content-Type": "application/json"}
+    else:
+        headers = {"Authorization": f"Bearer {token}",
+                   "Content-Type": "application/json"}
+    req = urllib.request.Request(url, method=method, headers=headers)
     data = json.dumps(payload).encode() if payload is not None else None
     with urllib.request.urlopen(req, data=data, timeout=20) as r:
         body = r.read().decode()
@@ -50,6 +59,19 @@ def get_token(db: Session) -> str | None:
     return secure_config.get_secret(_cfg(db), "api_token") or None
 
 
+def get_auth_email(db: Session) -> str | None:
+    """Set only when the stored credential is a Global API Key."""
+    cfg = _cfg(db)
+    return (cfg.get("auth_email") or "").strip() or None
+
+
+def looks_like_global_key(token: str) -> bool:
+    """Global API Keys are 37 lowercase-hex chars; API Tokens are longer,
+    mixed-case, and often start with letters/underscores."""
+    import re as _re
+    return bool(_re.fullmatch(r"[0-9a-f]{37}", token or ""))
+
+
 def configured(db: Session) -> bool:
     return bool(get_token(db))
 
@@ -65,7 +87,7 @@ def _zone_id(db: Session, site: str) -> str | None:
     if zones.get(domain):
         return zones[domain]
     try:
-        out = _HTTP("GET", f"{API}/zones?name={domain}", token)
+        out = _HTTP("GET", f"{API}/zones?name={domain}", token, email=get_auth_email(db))
         results = out.get("result") or []
         zid = results[0]["id"] if results else None
     except Exception:  # noqa: BLE001
@@ -91,7 +113,7 @@ def purge_urls(db: Session, site: str, urls: list[str]) -> dict:
                                        "(token needs Zone:Read on that domain)"}
     try:
         out = _HTTP("POST", f"{API}/zones/{zid}/purge_cache", token,
-                    {"files": [u for u in urls if u][:30]})
+                    {"files": [u for u in urls if u][:30]}, email=get_auth_email(db))
         if out.get("success"):
             return {"ok": True, "detail": f"purged {len(urls)} URL(s)"}
         return {"ok": False, "detail": str(out.get("errors"))[:160]}
@@ -100,23 +122,50 @@ def purge_urls(db: Session, site: str, urls: list[str]) -> dict:
 
 
 def verify(db: Session) -> dict:
-    """Live check: token valid + which of our zones it can see."""
+    """Live check: credential valid + which of our zones it can reach. Handles
+    BOTH credential types and tells the operator exactly what's missing."""
     token = get_token(db)
     if not token:
         return {"ok": False, "detail": "No Cloudflare API token stored yet."}
-    try:
-        v = _HTTP("GET", f"{API}/user/tokens/verify", token)
-        if not v.get("success"):
-            return {"ok": False, "detail": "Token rejected by Cloudflare - generate a new one."}
-    except Exception as e:  # noqa: BLE001
-        m = str(e)
-        return {"ok": False, "detail": "Token rejected (401/403) - wrong or expired token."
-                if ("401" in m or "403" in m) else f"Cloudflare check failed: {m[:120]}"}
+    email = get_auth_email(db)
+
+    if email or looks_like_global_key(token):
+        # Global API Key path (X-Auth-Key + X-Auth-Email).
+        if not email:
+            return {"ok": False,
+                    "detail": "This looks like your GLOBAL API Key - it also needs your "
+                              "Cloudflare account email. Add it in the Cloudflare connector "
+                              "(auth email field) and save again."}
+        try:
+            v = _HTTP("GET", f"{API}/user", token, email=email)
+            if not v.get("success"):
+                return {"ok": False, "detail": "Global API Key rejected - check the key and email."}
+        except Exception as e:  # noqa: BLE001
+            m = str(e)
+            return {"ok": False,
+                    "detail": "Global API Key rejected (401) - key or email is wrong."
+                    if "401" in m else f"Cloudflare check failed: {m[:120]}"}
+    else:
+        # Scoped API Token path (Bearer).
+        try:
+            v = _HTTP("GET", f"{API}/user/tokens/verify", token)
+            if not v.get("success"):
+                return {"ok": False, "detail": "Token rejected by Cloudflare - generate a new one."}
+        except Exception as e:  # noqa: BLE001
+            m = str(e)
+            if "401" in m or "403" in m:
+                return {"ok": False,
+                        "detail": "Rejected (401). If you pasted the GLOBAL API Key (37-char hex "
+                                  "from 'API Keys'), also enter your Cloudflare account email in "
+                                  "the connector - or create a scoped API Token instead."}
+            return {"ok": False, "detail": f"Cloudflare check failed: {m[:120]}"}
+
     seen = []
     for site, domain in SITE_DOMAINS.items():
         if _zone_id(db, site):
             seen.append(domain)
     if not seen:
-        return {"ok": False, "detail": "Token is valid but can't see bvtech.org or "
+        return {"ok": False, "detail": "Credential is valid but can't see bvtech.org or "
                                        "jordanpolasek.com - scope it to those zones (Zone:Read + Cache Purge)."}
-    return {"ok": True, "detail": f"Verified - can purge cache for: {', '.join(seen)}."}
+    mode = "Global API Key" if email else "API Token"
+    return {"ok": True, "detail": f"Verified ({mode}) - can purge cache for: {', '.join(seen)}."}
