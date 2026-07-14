@@ -2528,7 +2528,7 @@ def main():
         #     corrupting the stored token (the double-encrypt trap).
         _ocf29 = _cf29._HTTP
         _purged29 = []
-        def _cfhttp29(method, url, token, payload=None):
+        def _cfhttp29(method, url, token, payload=None, email=None):
             assert token == "cft-SECRET29", f"wrong token sent to CF: {token[:8]}"
             if "/user/tokens/verify" in url:
                 return {"success": True}
@@ -2973,6 +2973,80 @@ def main():
               "public) + external /tick (non-force gates, 60s rate limit, optional "
               "CONTENT_TICK_KEY auth) + Doctor scheduler pulse w/ restart fix + daily "
               "GitHub cron workflow wired OK")
+
+        # ==== v1.35: CF Global-Key auth + universal injector + human AI errors ====
+        from app.services import ai as _ai35, cloudflare as _cf35, jp_site as _jp35
+        # (a) Cloudflare Global API Key support. A 37-hex key without an email is
+        #     detected and explained; with the email, verify + purge use the
+        #     X-Auth-Key/X-Auth-Email dialect (NOT Bearer) — the 401 fix.
+        _gk35 = "0123456789abcdef0123456789abcdef01234"          # 37 hex chars
+        assert _cf35.looks_like_global_key(_gk35) is True
+        assert _cf35.looks_like_global_key("v1.0-Abc_scoped-token-longer") is False
+        _ocf35 = _cf35._HTTP
+        _seen35 = []
+        def _cfhttp35(method, url, token, payload=None, email=None):
+            _seen35.append({"url": url.split("client/v4")[1][:22], "email": email})
+            if "/user" in url and "tokens" not in url:
+                return {"success": True}
+            if "/zones?name=" in url:
+                return {"success": True, "result": [{"id": "z-" + url.split("name=")[1]}]}
+            if "/purge_cache" in url:
+                return {"success": True}
+            return {"success": True}
+        _cf35._HTTP = _cfhttp35
+        try:
+            r35 = c.post("/api/setup/connections/cloudflare",
+                         json={"values": {"api_token": _gk35}}).json()
+            assert r35["verified"] is False and "GLOBAL API Key" in r35["detail"], r35
+            r35b = c.post("/api/setup/connections/cloudflare",
+                          json={"values": {"api_token": _gk35,
+                                           "auth_email": "help@bvtech.org"}}).json()
+            assert r35b["verified"] is True and "Global API Key" in r35b["detail"], (r35b, _seen35)
+            assert all(s35["email"] == "help@bvtech.org" for s35 in _seen35
+                       if "/zones" in s35["url"] or ("/user" in s35["url"] and "token" not in s35["url"])), _seen35
+            p35 = _cf35.purge_urls(db, "jp", ["https://jordanpolasek.com/x/"])
+            assert p35["ok"] and _seen35[-1]["email"] == "help@bvtech.org", (p35, _seen35[-1])
+        finally:
+            _cf35._HTTP = _ocf35
+            _cl35 = _SL27()
+            _cl35.query(_IC27).filter(_IC27.provider == "cloudflare").delete(synchronize_session=False)
+            _cl35.commit(); _cl35.close()
+        # (b) Universal injector: a DIV-card listing with zero <article> tags and
+        #     unknown class names (bvtech's real-world shape) still gets the new
+        #     post inserted on top, idempotently.
+        _div35 = ('<html><body><main><div class="weekly-wrap"><div class="entry-box">'
+                  '<h3><a href="/blog/old-entry.html">Old Entry Title</a></h3>'
+                  '<p>Old summary text.</p><span>June 20, 2026</span>'
+                  '</div></main></body></html>')
+        _o35, _ch35 = _jp35.inject_post_into_listing(
+            _div35, title='New "Quoted" Post 35', url="/blog/new-entry-35.html",
+            excerpt="New summary.", date_str="July 14, 2026", style="blog-file")
+        assert _ch35, "universal injector must handle div-based cards"
+        assert _o35.index("/blog/new-entry-35.html") < _o35.index("/blog/old-entry.html")
+        assert 'New "Quoted" Post 35'.replace('"', "&quot;") in _o35 or "New &quot;Quoted&quot; Post 35" in _o35
+        assert "July 14, 2026" in _o35
+        _, _ch35b = _jp35.inject_post_into_listing(
+            _o35, title="x", url="/blog/new-entry-35.html", excerpt="y",
+            date_str="July 14, 2026", style="blog-file")
+        assert _ch35b is False                                     # idempotent
+        # unknown structure still refuses rather than corrupts
+        assert _jp35.inject_post_into_listing("<p>no cards at all</p>", title="t",
+                                              url="/blog/u.html", excerpt="e",
+                                              date_str="d", style="blog-file")[1] is False
+        # (c) Anthropic errors become sentences a human can act on.
+        _e35 = _ai35._human_api_error(400, '{"type":"error","error":{"type":"invalid_request_error",'
+                                            '"message":"Your credit balance is too low to access the API."}}')
+        assert "credit balance" in _e35 and "console.anthropic.com" in _e35, _e35
+        assert "re-enter" in _ai35._human_api_error(401, "{}")
+        assert "overloaded" in _ai35._human_api_error(529, "{}").lower()
+        # (d) WordPress is gone from the portal UI.
+        _dash35 = c.get("/dashboard").text
+        assert "wordpress" not in _dash35.lower(), "WordPress UI must be fully removed"
+        assert "Auto-Blogger" not in _dash35
+        assert 'id="t-blog"' in _dash35            # article history survives
+        print("super-tool pass: Cloudflare Global API Key auth (X-Auth-Key+email, "
+              "explains itself) + universal card injector (div/li/section, no class "
+              "assumptions) + human-readable Claude errors + WordPress UI removed OK")
 
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
@@ -4699,7 +4773,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.34.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.35.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -165,7 +165,10 @@ CONNECTORS = [
                      "-> include zones bvtech.org AND jordanpolasek.com -> copy",
      "save": "cloudflare", "secret_provider": "cloudflare", "secret_field": "api_token",
      "fields": [{"key": "api_token",
-                 "label": "Cloudflare API token (Zone:Read + Cache Purge)", "secret": True}]},
+                 "label": "Cloudflare API Token - or your Global API Key", "secret": True},
+                {"key": "auth_email",
+                 "label": "Cloudflare account email (ONLY needed with the Global API Key)",
+                 "secret": False}]},
     {"key": "m365_mailbox", "name": "Microsoft 365 (mail + SSO)", "priority": 1,
      "unlocks": "Secure mailbox (read/send as help@bvtech.org) + Microsoft sign-in for you + clients.",
      "console_url": "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade",
@@ -282,8 +285,15 @@ def save_connection(key: str, body: SaveCredIn, db: Session = Depends(get_db),
                 "verified": v.get("ok"), "detail": v.get("detail")}
     if prov == "cloudflare":
         from ...services import cloudflare
-        secure_config.upsert_platform(db, "cloudflare", "Cloudflare", "Publishing",
-                                      {"api_token": payload["api_token"]})
+        cf_payload = {k: v for k, v in payload.items() if k in ("api_token", "auth_email")}
+        secure_config.upsert_platform(db, "cloudflare", "Cloudflare", "Publishing", cf_payload)
+        # New credential -> stale zone cache could point at zones the old
+        # credential saw; clear it so discovery re-runs with the new auth.
+        conn = secure_config.get_platform(db, "cloudflare")
+        raw = dict((conn.config if conn else None) or {})
+        if raw.pop("zones", None) is not None:
+            conn.config = raw
+            db.commit()
         v = cloudflare.verify(db)
         return {"key": key, "connected": cloudflare.configured(db),
                 "verified": v.get("ok"), "detail": v.get("detail")}

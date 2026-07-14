@@ -232,6 +232,85 @@ def _fetch_file(cfg: dict, path: str) -> str | None:
         return None
 
 
+def _find_generic_card(html_text: str, link_pat: str) -> tuple[int, int] | None:
+    """Universal fallback: locate the source span of the SMALLEST container
+    element (article/li/section/div) that wraps the first post link together
+    with a heading. Uses the stdlib HTML parser with real source positions, so
+    it works on ANY card markup — no assumptions about class names. This is
+    what lets bvtech.org's custom blog cards get injected, not just <article>s."""
+    import re as _re
+    from html.parser import HTMLParser
+
+    m = _re.search(link_pat, html_text)
+    if not m:
+        return None
+    link_pos = m.start()
+    lines = html_text.split("\n")
+    line_off = [0]
+    for ln in lines:
+        line_off.append(line_off[-1] + len(ln) + 1)
+
+    class _P(HTMLParser):
+        CONTAINERS = ("article", "li", "section", "div")
+
+        def __init__(self):
+            super().__init__(convert_charrefs=False)
+            self.stack: list[tuple[str, int]] = []
+            self.headings: list[int] = []
+            self.best: tuple[int, int] | None = None
+
+        def _off(self) -> int:
+            ln, col = self.getpos()
+            return line_off[ln - 1] + col
+
+        def handle_starttag(self, tag, attrs):
+            if tag in self.CONTAINERS:
+                self.stack.append((tag, self._off()))
+            elif tag in ("h1", "h2", "h3", "h4"):
+                self.headings.append(self._off())
+
+        def handle_endtag(self, tag):
+            if tag not in self.CONTAINERS:
+                return
+            for i in range(len(self.stack) - 1, -1, -1):
+                if self.stack[i][0] == tag:
+                    start = self.stack[i][1]
+                    end = self._off() + len(tag) + 3          # '</tag>'
+                    del self.stack[i:]
+                    span = end - start
+                    if (start <= link_pos < end and span < 6000
+                            and any(start <= h < end for h in self.headings)):
+                        if self.best is None or span < (self.best[1] - self.best[0]):
+                            self.best = (start, end)
+                    break
+
+    p = _P()
+    try:
+        p.feed(html_text)
+        p.close()
+    except Exception:  # noqa: BLE001 — malformed HTML: give up, never corrupt
+        return None
+    return p.best
+
+
+def _rewrite_card(card: str, *, title: str, url: str, excerpt: str,
+                  date_str: str, link_pat: str) -> str:
+    """Turn a cloned card into the new post's card (links, heading, excerpt, date)."""
+    import html as _html
+    import re as _re
+    card = _re.sub(link_pat, f'href="{url}"', card)
+    card = _re.sub(r"(<h[1-4][^>]*>\s*(?:<a[^>]*>)?)(.*?)((?:</a>\s*)?</h[1-4]>)",
+                   lambda m: m.group(1) + _html.escape(title) + m.group(3),
+                   card, count=1, flags=_re.S)
+    if _re.search(r'class="excerpt"', card):
+        card = _re.sub(r'(<p[^>]*class="excerpt"[^>]*>)(.*?)(</p>)',
+                       lambda m: m.group(1) + _html.escape(excerpt) + m.group(3),
+                       card, count=1, flags=_re.S)
+    card = _re.sub(r"(>)([A-Z][a-z]+ \d{1,2}, \d{4})(<)",
+                   lambda m: m.group(1) + date_str + m.group(3), card, count=1)
+    return card
+
+
 def inject_post_into_listing(listing_html: str, *, title: str, url: str,
                              excerpt: str, date_str: str, style: str) -> tuple[str, bool]:
     """Clone the newest post card in a listing page and insert a fresh card for
@@ -259,21 +338,20 @@ def inject_post_into_listing(listing_html: str, *, title: str, url: str,
             if re.search(link_pat, m.group(0)):
                 template = m
                 break
-    if not template:
+    if template:
+        card = _rewrite_card(template.group(0), title=title, url=url, excerpt=excerpt,
+                             date_str=date_str, link_pat=link_pat)
+        pos = grid.end() if (grid and grid.end() <= template.start()) else template.start()
+        return h[:pos] + "\n" + card + "\n" + h[pos:], True
+    # Strategy 2 — universal: any container element (div/li/section) that wraps
+    # a post link + heading, found with a real parser. Handles custom card
+    # markup (bvtech.org's blog index) with zero class-name assumptions.
+    span = _find_generic_card(h, link_pat)
+    if not span:
         return h, False
-    card = template.group(0)
-    card = re.sub(link_pat, f'href="{url}"', card)                   # post links -> new url
-    card = re.sub(r'(<h[1-3][^>]*>\s*<a[^>]*>)(.*?)(</a>)',          # heading -> new title
-                  lambda m: m.group(1) + _html.escape(title) + m.group(3),
-                  card, count=1, flags=re.S)
-    if re.search(r'class="excerpt"', card):                          # excerpt -> new excerpt
-        card = re.sub(r'(<p[^>]*class="excerpt"[^>]*>)(.*?)(</p>)',
-                      lambda m: m.group(1) + _html.escape(excerpt) + m.group(3),
-                      card, count=1, flags=re.S)
-    card = re.sub(r'(<span[^>]*>)([A-Z][a-z]+ \d{1,2}, \d{4})(</span>)',  # date -> today
-                  lambda m: m.group(1) + date_str + m.group(3), card, count=1)
-    pos = grid.end() if (grid and grid.end() <= template.start()) else template.start()
-    return h[:pos] + "\n" + card + "\n" + h[pos:], True
+    card = _rewrite_card(h[span[0]:span[1]], title=title, url=url, excerpt=excerpt,
+                         date_str=date_str, link_pat=link_pat)
+    return h[:span[0]] + card + "\n" + h[span[0]:], True
 
 
 def _newest_skeleton(cfg: dict, style: str) -> str | None:

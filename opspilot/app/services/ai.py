@@ -19,6 +19,33 @@ ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 
 
+def _human_api_error(code: int, body: str) -> str:
+    """Turn Anthropic's JSON error body into a sentence a human can act on.
+    The raw '{"type":"error","error":{"type":"invalid_request_error","mess...'
+    blobs in the UI told the operator nothing."""
+    msg = ""
+    try:
+        import json as _j
+        msg = str((_j.loads(body).get("error") or {}).get("message") or "")[:220]
+    except Exception:  # noqa: BLE001
+        msg = (body or "")[:220]
+    low = msg.lower()
+    if "credit balance" in low or "billing" in low:
+        return ("Claude says your Anthropic credit balance is too low - add credits at "
+                "console.anthropic.com -> Settings -> Billing, then posting resumes "
+                "automatically on the next tick.")
+    if "model" in low and ("not found" in low or "invalid" in low):
+        return f"Claude rejected the model name - {msg}"
+    if code == 401:
+        return "Claude rejected the API key (401) - re-enter it in Connection Center -> Claude."
+    if code == 429:
+        return ("Claude rate/credit limit hit (429) - it retries automatically; if this "
+                "persists, check your plan at console.anthropic.com.")
+    if code == 529 or "overloaded" in low:
+        return "Claude is temporarily overloaded (529) - retries automatically next tick."
+    return f"Claude API error (HTTP {code}): {msg or body[:200]}"
+
+
 class AIError(Exception):
     pass
 
@@ -176,12 +203,7 @@ def _http_complete(system: str, user: str, *, model: str, max_tokens: int) -> st
         with urlrequest.urlopen(req, timeout=60) as r:
             data = json.loads(r.read().decode())
     except error.HTTPError as e:
-        detail = e.read().decode(errors="replace")[:300]
-        if e.code == 401:
-            raise AIError("Claude rejected the API key (401) — check ANTHROPIC_API_KEY.")
-        if e.code == 429:
-            raise AIError("Claude rate/credit limit hit (429) — check your Anthropic plan balance.")
-        raise AIError(f"Claude API error (HTTP {e.code}): {detail}")
+        raise AIError(_human_api_error(e.code, e.read().decode(errors="replace")[:400]))
     except Exception as e:  # noqa: BLE001
         raise AIError(f"Claude request failed: {e}")
     # Messages API returns content as a list of blocks; concatenate the text ones.
@@ -221,12 +243,7 @@ def _http_messages(system: str, messages: list, tools: list, *, model: str,
         with urlrequest.urlopen(req, timeout=90) as r:
             return json.loads(r.read().decode())
     except error.HTTPError as e:
-        detail = e.read().decode(errors="replace")[:300]
-        if e.code == 401:
-            raise AIError("Claude rejected the API key (401) — check ANTHROPIC_API_KEY.")
-        if e.code == 429:
-            raise AIError("Claude rate/credit limit hit (429) — check your Anthropic plan balance.")
-        raise AIError(f"Claude API error (HTTP {e.code}): {detail}")
+        raise AIError(_human_api_error(e.code, e.read().decode(errors="replace")[:400]))
     except AIError:
         raise
     except Exception as e:  # noqa: BLE001
