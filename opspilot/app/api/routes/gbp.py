@@ -70,6 +70,8 @@ def save_settings(body: GBPSettingsIn, request: Request, db: Session = Depends(g
                   user: User = Depends(require_roles(Role.OWNER))):
     payload = {k: v for k, v in body.model_dump().items() if v is not None}
     conn = secure_config.upsert_platform(db, PROVIDER, "Google Business Profile", "Marketing", payload)
+    from ...services import autopost
+    autopost.clear_reauth(db, PROVIDER)   # fresh creds lift the delivery pause
     audit.record(db, action="gbp.configure", actor_user_id=user.id, actor_email=user.email,
                  actor_role=user.role.value, target_type="integration", target_id=str(conn.id),
                  ip=_ip(request), detail="gbp credentials")

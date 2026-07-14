@@ -75,6 +75,8 @@ def save_linkedin(body: LinkedInIn, request: Request, db: Session = Depends(get_
                   user: User = Depends(require_roles(Role.OWNER))):
     payload = {k: v for k, v in body.model_dump().items() if v is not None}
     conn = secure_config.upsert_platform(db, LINKEDIN, "LinkedIn Publisher", "Marketing", payload)
+    from ...services import autopost as _ap
+    _ap.clear_reauth(db, LINKEDIN)   # fresh creds lift the delivery pause
     audit.record(db, action="publisher.configure", actor_user_id=user.id, actor_email=user.email,
                  actor_role=user.role.value, target_type="integration", target_id=str(conn.id),
                  ip=_ip(request), detail="linkedin credentials")

@@ -397,8 +397,45 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
     public_url = (f"{meta['site']}/blog/{slug}.html" if cfg["style"] == "blog-file"
                   else f"{meta['site']}/{slug}/")
     try:
-        skeleton = _newest_skeleton(cfg, cfg["style"])
         from . import content_studio
+        # Adaptive: a generated site (Astro/Next/Hugo/...) only ships what its
+        # build produces — publish MARKDOWN into its content folder, cloned from
+        # its own newest post. The generator then builds the page AND all its
+        # listing/index pages for us.
+        layout = detect_layout(cfg)
+        if layout["format"] == "markdown":
+            excerpt_md = (post.get("description")
+                          or content_studio._excerpt_from_html(post.get("html") or ""))[:220]
+            sample = _fetch_file(cfg, layout["sample_path"]) or "---\ntitle: x\n---\n"
+            ext = layout["sample_path"].rsplit(".", 1)[-1]
+            md_path = f"{layout['content_dir']}/{slug}.{ext}"
+            md_url = f"{meta['site']}/blog/{slug}/"
+            exists_md = _fetch_file(cfg, md_path) is not None
+            commit = _HTTP("POST", f"{_proj_url(cfg)}/repository/commits", cfg["token"], {
+                "branch": cfg["branch"],
+                "commit_message": f"blog: {post.get('title', slug)[:80]} (via Pulse)",
+                "actions": [{"action": "update" if exists_md else "create",
+                             "file_path": md_path,
+                             "content": _markdown_for(post, slug, sample, excerpt_md)}],
+            })
+            sha = commit.get("id")
+            conn = secure_config.get_platform(db, meta["provider"])
+            raw = dict((conn.config if conn else None) or {})
+            pending = list(raw.get("pending") or [])
+            pending.append({"sha": sha, "slug": slug,
+                            "at": datetime.now(timezone.utc).isoformat(), "checks": 0})
+            raw["pending"] = pending[-10:]
+            secure_config.upsert_platform(db, meta["provider"], meta["name"], "Publishing", raw)
+            from . import cloudflare
+            purge = cloudflare.purge_urls(db, site, [md_url, f"{meta['site']}/blog/",
+                                                     f"{meta['site']}/"])
+            return {"ok": True, "sha": sha, "slug": slug, "url": md_url,
+                    "listings_updated": [], "listings_skipped": [],
+                    "listing_generated": True, "engine": layout["engine_file"],
+                    "content_path": md_path,
+                    "cache_purged": purge.get("ok"), "cache_detail": purge.get("detail")}
+
+        skeleton = _newest_skeleton(cfg, cfg["style"])
         rendered = content_studio.render(
             {**post, "slug": slug, "site": meta["site"], "org": meta["org"],
              "author_url": meta["author_url"]},
@@ -456,6 +493,104 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
         return {"ok": False, "error": str(e)[:300]}
 
 
+# --------------------------------------------------------------------------- #
+# v1.36 Adaptive publishing — detect what KIND of site each repo is and publish
+# the format that will actually ship. jordanpolasek.com is plain HTML (commit ->
+# live). A generated site (Astro/Next/Hugo/Eleventy) only ships what its BUILD
+# produces from its content folder — raw HTML committed into blog/ never appears
+# (or breaks the build and gets auto-reverted). That is exactly "Pulse says
+# posted but the site never changes." For generated repos we clone the newest
+# real post's frontmatter and commit MARKDOWN into the content folder instead.
+# --------------------------------------------------------------------------- #
+_ENGINE_FILES = ("package.json", "astro.config.mjs", "astro.config.ts", "next.config.js",
+                 "next.config.mjs", "hugo.toml", "config.toml", ".eleventy.js",
+                 "eleventy.config.js", "gatsby-config.js", "svelte.config.js")
+_CONTENT_DIRS = ("src/content/blog", "src/content/posts", "content/blog", "content/posts",
+                 "src/posts", "_posts", "posts", "src/pages/blog", "blog")
+
+
+def detect_layout(cfg: dict) -> dict:
+    """{"format": "html"|"markdown", "content_dir": str|None, "sample_path": str|None,
+        "engine_file": str|None} — one root-tree call + a few cheap dir probes."""
+    try:
+        root = _HTTP("GET", f"{_proj_url(cfg)}/repository/tree?ref={cfg['branch']}&per_page=100",
+                     cfg["token"])
+    except Exception:  # noqa: BLE001
+        return {"format": "html", "content_dir": None, "sample_path": None, "engine_file": None}
+    names = {t.get("path") for t in root if t.get("type") == "blob"}
+    engine = next((f for f in _ENGINE_FILES if f in names), None)
+    if not engine:
+        return {"format": "html", "content_dir": None, "sample_path": None, "engine_file": None}
+    for d in _CONTENT_DIRS:
+        try:
+            tree = _HTTP("GET", f"{_proj_url(cfg)}/repository/tree?path={urllib.parse.quote_plus(d)}"
+                         f"&ref={cfg['branch']}&per_page=100", cfg["token"])
+        except Exception:  # noqa: BLE001
+            continue
+        md = sorted([t["path"] for t in tree if t.get("type") == "blob"
+                     and t["path"].rsplit(".", 1)[-1] in ("md", "mdx", "markdown")],
+                    reverse=True)
+        if md:
+            return {"format": "markdown", "content_dir": d, "sample_path": md[0],
+                    "engine_file": engine}
+    # Generated site but no recognizable content dir: fall back to HTML (and the
+    # Doctor will say so) rather than guessing blindly.
+    return {"format": "html", "content_dir": None, "sample_path": None, "engine_file": engine}
+
+
+def _markdown_for(post: dict, slug: str, sample_md: str, excerpt: str) -> str:
+    """Clone the sample post's frontmatter line-by-line, swapping the values that
+    identify the post (title/description/date/slug/draft) and copying everything
+    else verbatim — the same 'mimic the site's own newest post' philosophy the
+    HTML skeleton cloning uses. Body: the article HTML (all major generators
+    render embedded HTML inside markdown)."""
+    import json as _json
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    title_q = _json.dumps((post.get("title") or slug)[:180])
+    desc_q = _json.dumps((excerpt or "")[:220])
+    fm_lines, body_start = [], 0
+    lines = sample_md.split("\n")
+    if lines and lines[0].strip() == "---":
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                body_start = i
+                break
+            fm_lines.append(lines[i])
+    out, seen = ["---"], set()
+    def put(key: str, val: str):
+        out.append(f"{key}: {val}")
+        seen.add(key.lower())
+    for ln in fm_lines:
+        m = re.match(r"^([A-Za-z_][\w-]*)\s*:", ln)
+        if not m:
+            out.append(ln)                      # nested/list lines: copy verbatim
+            continue
+        key, lk = m.group(1), m.group(1).lower()
+        if lk == "title":
+            put(key, title_q)
+        elif lk in ("description", "excerpt", "summary", "subtitle"):
+            put(key, desc_q)
+        elif lk in ("date", "pubdate", "publishdate", "published", "publish_date",
+                    "created", "updateddate", "updated"):
+            put(key, today)
+        elif lk == "slug":
+            put(key, slug)
+        elif lk == "draft":
+            put(key, "false")
+        else:
+            out.append(ln)                      # keep the site's own metadata as-is
+            seen.add(lk)
+    if "title" not in seen:
+        put("title", title_q)
+    if "description" not in seen:
+        put("description", desc_q)
+    if "date" not in seen and "pubdate" not in seen:
+        put("date", today)
+    out.append("---")
+    body = post.get("html") or post.get("body") or ""
+    return "\n".join(out) + "\n\n" + body + "\n"
+
+
 def _list_post_paths(cfg: dict, style: str) -> list[str]:
     """All post files in the repo for this site's layout, newest-ish first."""
     if style == "blog-file":
@@ -499,6 +634,9 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
     cfg = get_config(db, site)
     if not cfg["configured"]:
         return {"ok": False, "error": f"{meta['site']} not connected (GitLab token needed)"}
+    if detect_layout(cfg)["format"] == "markdown":
+        return {"ok": True, "added": [],
+                "detail": "generated site - the build produces its own blog index; nothing to sync"}
     try:
         post_paths = _list_post_paths(cfg, cfg["style"])[:60]
         listings = {lp: _fetch_file(cfg, lp) for lp in meta.get("index_paths", ())}
@@ -576,6 +714,31 @@ def diagnose(db: Session, site: str) -> dict:
                "token rejected (401)" if "401" in m else f"can't reach {cfg['project']}: {m[:80]}",
                "regenerate the token with `api` scope / check the project path")
         return {"site": meta["site"], "checks": checks, "healthy": False}
+    # Site engine: what kind of site is this, and are we publishing the format
+    # that will actually SHIP? (Generated sites ignore raw HTML commits — the
+    # silent "posted but never appears" trap.)
+    layout = detect_layout(cfg)
+    if layout["format"] == "markdown":
+        _check("Site engine", True,
+               f"generated site ({layout['engine_file']}) - publishing markdown to "
+               f"{layout['content_dir']}/ (frontmatter cloned from "
+               f"{layout['sample_path'].rsplit('/', 1)[-1]}); the build creates the "
+               "post page AND the blog index automatically")
+        from . import cloudflare
+        cf = cloudflare.verify(db) if cloudflare.configured(db) else {
+            "ok": False,
+            "detail": "not connected - cached pages update on their own TTL (can look stale for hours)"}
+        _check("Cloudflare cache purge", cf["ok"], cf["detail"],
+               "Connection Center -> Cloudflare -> paste an API token (Zone:Read + Cache Purge)")
+        healthy = all(c["ok"] for c in checks if not c["name"].startswith("Cloudflare cache"))
+        return {"site": meta["site"], "checks": checks, "healthy": healthy}
+    if layout["engine_file"]:
+        _check("Site engine", False,
+               f"generated site ({layout['engine_file']}) but no recognizable content "
+               "folder found - committed HTML may never appear on the site",
+               "tell Pulse where the posts live (expected something like src/content/blog/*.md)")
+    else:
+        _check("Site engine", True, "static HTML site - direct publish + listing injection")
     # Listing pages present + structure our injector understands.
     recognized, missing_posts = [], []
     listings = {}

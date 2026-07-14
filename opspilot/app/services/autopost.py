@@ -85,11 +85,19 @@ CHANNELS = ("linkedin", "google_business")
 
 def _linkedin_poster(db: Session):
     """LinkedIn poster: callable(text, url, image) -> ref, or None if unconfigured.
+    Prefers the one-click OAuth token (self-refreshing) and only falls back to a
+    manually-pasted token — previously delivery ONLY used the manual token, so a
+    stale paste kept failing 401 even when a fresh OAuth connection existed.
     (LinkedIn image upload isn't wired yet, so the image arg is accepted+ignored.)"""
-    from . import publishers
+    from . import oauth as _oauth, publishers
     conn = secure_config.get_platform(db, "pub_linkedin")
     cfg = (conn.config if conn else None) or {}
-    token = secure_config.get_secret(cfg, "access_token")
+    token = None
+    try:
+        token = _oauth.get_valid_token(db, "linkedin")
+    except Exception:  # noqa: BLE001 — refresh hiccup: fall back to manual token
+        token = None
+    token = token or secure_config.get_secret(cfg, "access_token")
     urn = secure_config.get_secret(cfg, "person_urn") or cfg.get("person_urn")
     if not (token and urn):
         return None
@@ -123,6 +131,74 @@ def _poster_for(db: Session, channel: str):
     if channel == "google_business":
         return _gbp_poster(db)
     return None
+
+
+# --------------------------------------------------------------------------- #
+# v1.36 Re-auth circuit breaker — dead tokens pause a channel cleanly instead
+# of burning retries forever. When delivery fails with an AUTH error
+# (invalid_grant / invalid_client / 401 / expired), the channel is marked
+# "needs re-connect": posts stay safely queued, no attempts are consumed, the
+# UI/Doctor say exactly which button to click, and the moment a new credential
+# is saved or a one-click Connect completes, the queue drains automatically.
+# --------------------------------------------------------------------------- #
+_REAUTH_PROVIDER = {"linkedin": "pub_linkedin", "google_business": "gbp"}
+_AUTH_HINTS = ("invalid_grant", "invalid_client", "http 401", "(401", "401)",
+               "unauthorized", "expired or revoked", "token is likely expired")
+
+
+def _is_auth_error(msg: str) -> bool:
+    low = str(msg or "").lower()
+    return any(h in low for h in _AUTH_HINTS)
+
+
+def _reauth_message(channel: str, raw: str) -> str:
+    low = str(raw or "").lower()
+    if channel == "google_business":
+        base = ("Google needs a one-click re-connect: Settings -> One-click Connect -> "
+                "Google Business. Your posts are safe in the queue and send automatically "
+                "after you reconnect.")
+        if "invalid_grant" in low:
+            base += (" (If this happens again in ~a week: your Google OAuth consent screen "
+                     "is in 'Testing' mode - Google expires Testing tokens after 7 days. "
+                     "Set it to 'In production' in Google Cloud -> OAuth consent screen.)")
+        return base
+    if channel == "linkedin":
+        return ("LinkedIn needs a one-click re-connect: Settings -> One-click Connect -> "
+                "LinkedIn. Your posts are safe in the queue and send automatically after "
+                "you reconnect.")
+    return f"{channel} needs re-authorization; posts stay queued until reconnected."
+
+
+def get_reauth(db: Session, channel: str) -> dict | None:
+    prov = _REAUTH_PROVIDER.get(channel)
+    if not prov:
+        return None
+    conn = secure_config.get_platform(db, prov)
+    return ((conn.config if conn else None) or {}).get("needs_reauth") or None
+
+
+def set_reauth(db: Session, channel: str, reason: str) -> None:
+    prov = _REAUTH_PROVIDER.get(channel)
+    if not prov:
+        return
+    names = {"pub_linkedin": ("LinkedIn Publisher", "Marketing"), "gbp": ("GBP", "Publishing")}
+    nm, cat = names.get(prov, (prov, "Publishing"))
+    secure_config.upsert_platform(db, prov, nm, cat, {
+        "needs_reauth": {"reason": reason[:400],
+                         "at": datetime.now(timezone.utc).isoformat()}})
+
+
+def clear_reauth(db: Session, provider_key: str) -> bool:
+    """Called when a fresh credential lands (one-click Connect callback, a
+    connector save, or a successful delivery). Returns True if a pause was
+    lifted — the queued posts then send on the next tick."""
+    conn = secure_config.get_platform(db, provider_key)
+    cfg = dict((conn.config if conn else None) or {})
+    if conn and cfg.pop("needs_reauth", None) is not None:
+        conn.config = cfg
+        db.commit()
+        return True
+    return False
 
 
 def channel_readiness(db: Session) -> dict:
@@ -176,6 +252,20 @@ def _claim(db: Session, post: SocialPost) -> bool:
     return bool(n)
 
 
+def _notify_reauth(db: Session, channel: str, reason: str) -> None:
+    """One clear notification the moment a channel's token dies — not a stream
+    of retry errors. Sent once because the breaker prevents repeat detections."""
+    try:
+        from ..models import Notification
+        pretty = {"linkedin": "LinkedIn", "google_business": "Google Business"}.get(channel, channel)
+        db.add(Notification(client_id=None, target_user_id=None, kind="autopost",
+                            severity="warning",
+                            message=f"🔑 {pretty} paused - {reason}"[:1000]))
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
+
 def _notify_failure(db: Session, post: SocialPost) -> None:
     try:
         from . import notifications
@@ -215,6 +305,13 @@ def publish_one(db: Session, post: SocialPost, now: datetime | None = None, *,
     channels = [c for c in (post.channels or ["linkedin"]) if c in CHANNELS] or ["linkedin"]
     results, any_ok, any_err, any_ready = {}, False, False, False
     for ch in channels:
+        # Circuit breaker: a channel with a known-dead token is PAUSED — the
+        # post stays queued, no attempts burn, and the message says which
+        # button to click. Reconnecting lifts the pause and the queue drains.
+        ra = get_reauth(db, ch)
+        if ra:
+            results[ch] = f"paused - {ra.get('reason', 'needs re-connect')}"[:300]
+            continue
         fn = (posters or {}).get(ch) if posters is not None else _poster_for(db, ch)
         if fn is None:
             results[ch] = "skipped (not configured)"
@@ -224,9 +321,20 @@ def publish_one(db: Session, post: SocialPost, now: datetime | None = None, *,
             ref = fn(post.body, post.link or "", post.image_url or None)
             results[ch] = str(ref)[:160]
             any_ok = True
+            clear_reauth(db, _REAUTH_PROVIDER.get(ch, ""))   # success proves auth is good
         except Exception as e:  # noqa: BLE001 — record + surface, never crash the tick
-            results[ch] = f"error: {e}"[:160]
-            any_err = True
+            msg = str(e)
+            if _is_auth_error(msg):
+                # First detection (breaker was clear at loop start): pause the
+                # channel + tell the operator once. No any_err -> the post goes
+                # back to 'queued' untouched instead of burning an attempt.
+                human = _reauth_message(ch, msg)
+                set_reauth(db, ch, human)
+                _notify_reauth(db, ch, human)
+                results[ch] = f"paused - {human}"[:300]
+            else:
+                results[ch] = f"error: {e}"[:160]
+                any_err = True
     post.result = ("; ".join(f"{k}={v}" for k, v in results.items()))[:400]
     if any_ok:
         post.status, post.posted_at = "posted", now

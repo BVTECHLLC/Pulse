@@ -3048,6 +3048,178 @@ def main():
               "explains itself) + universal card injector (div/li/section, no class "
               "assumptions) + human-readable Claude errors + WordPress UI removed OK")
 
+        # ==== v1.36: fail-proof delivery — re-auth circuit breaker + auto-resume ====
+        from app.services import autopost as _ap36
+        from app.models import SocialPost as _SP36, Notification as _N36
+        from app.core.db import SessionLocal as _SL36
+        from datetime import datetime as _dt36, timezone as _tz36
+        _s36 = _SL36()
+        _post36 = _SP36(body="Breaker test post 36", link="https://bvtech.org",
+                        channels=["google_business"], status="queued")
+        _s36.add(_post36); _s36.commit(); _s36.refresh(_post36)
+        _calls36 = {"n": 0}
+        def _dead36(text, url, image=None):
+            _calls36["n"] += 1
+            raise RuntimeError('Google token refresh failed (HTTP 400): '
+                               '{"error": "invalid_grant", "error_description": "Bad Request"}')
+        # (a) First delivery attempt with a dead token: channel PAUSES with a
+        #     human message + one notification; the post STAYS QUEUED with zero
+        #     attempts burned.
+        r36 = _ap36.publish_one(_s36, _post36, posters={"google_business": _dead36})
+        assert r36["ok"] is False, r36
+        assert "paused" in r36["channels"]["google_business"], r36
+        assert "One-click Connect" in r36["channels"]["google_business"], r36
+        assert "Testing" in r36["channels"]["google_business"], r36   # 7-day warning
+        _s36.refresh(_post36)
+        assert _post36.status == "queued" and (_post36.attempts or 0) == 0, \
+            (_post36.status, _post36.attempts)
+        assert _ap36.get_reauth(_s36, "google_business"), "breaker flag not set"
+        _n36 = (_s36.query(_N36).filter(_N36.message.like("%Google Business paused%"))
+                .count())
+        assert _n36 == 1, _n36
+        # (b) Next tick: the breaker SKIPS delivery (poster never called again),
+        #     post still queued — no retry noise, no attempt burn.
+        r36b = _ap36.publish_one(_s36, _post36, posters={"google_business": _dead36})
+        assert _calls36["n"] == 1, f"poster called through the breaker: {_calls36['n']}"
+        assert "paused" in r36b["channels"]["google_business"], r36b
+        _s36.refresh(_post36)
+        assert _post36.status == "queued" and (_post36.attempts or 0) == 0
+        # (c) Saving fresh credentials lifts the pause (any of the three paths);
+        #     the queued post then DELIVERS on the next tick.
+        assert c.put("/api/gbp/settings", json={"client_id": "newcid36"}).status_code == 200
+        assert _ap36.get_reauth(_s36, "google_business") is None, "save must lift the pause"
+        _ok36 = _ap36.publish_one(_s36, _post36,
+                                  posters={"google_business":
+                                           lambda t, u, image=None: "localPosts/OK36"})
+        assert _ok36["ok"] is True, _ok36
+        _s36.refresh(_post36)
+        assert _post36.status == "posted"
+        # (d) LinkedIn 401 classifies + pauses the same way; publishers save lifts it.
+        _post36b = _SP36(body="Breaker test LI 36", link="https://bvtech.org",
+                         channels=["linkedin"], status="queued")
+        _s36.add(_post36b); _s36.commit(); _s36.refresh(_post36b)
+        def _dead36li(text, url, image=None):
+            raise RuntimeError("LinkedIn auth failed (HTTP 401) — the token is likely expired.")
+        r36c = _ap36.publish_one(_s36, _post36b, posters={"linkedin": _dead36li})
+        assert "paused" in r36c["channels"]["linkedin"], r36c
+        assert _ap36.get_reauth(_s36, "linkedin"), "linkedin breaker not set"
+        assert c.put("/api/publishers/linkedin",
+                     json={"access_token": "fresh36", "person_urn": "urn:li:person:x36"}
+                     ).status_code == 200
+        assert _ap36.get_reauth(_s36, "linkedin") is None
+        # (e) A successful delivery also clears a lingering flag (belt+braces),
+        #     and non-auth errors still use the normal retry path.
+        _ap36.set_reauth(_s36, "linkedin", "lingering")
+        _post36c = _SP36(body="Breaker clear-on-success 36", channels=["linkedin"],
+                         status="queued")
+        _s36.add(_post36c); _s36.commit(); _s36.refresh(_post36c)
+        r36d = _ap36.publish_one(_s36, _post36c, posters={"linkedin": _dead36li})
+        assert "paused" in r36d["channels"]["linkedin"]          # flag still respected
+        _ap36.clear_reauth(_s36, "pub_linkedin")
+        r36e = _ap36.publish_one(_s36, _post36c,
+                                 posters={"linkedin": lambda t, u, image=None: "urn:li:share:36"})
+        assert r36e["ok"] is True
+        _post36d = _SP36(body="Transient error 36", channels=["linkedin"], status="queued")
+        _s36.add(_post36d); _s36.commit(); _s36.refresh(_post36d)
+        r36f = _ap36.publish_one(_s36, _post36d,
+                                 posters={"linkedin": (lambda t, u, image=None:
+                                                       (_ for _ in ()).throw(RuntimeError("HTTP 503 flaky")))})
+        _s36.refresh(_post36d)
+        assert _post36d.attempts == 1 and _post36d.status == "queued", \
+            "non-auth errors must keep the normal retry path"
+        # (f) Doctor shows the pause with the exact reason.
+        _ap36.set_reauth(_s36, "google_business", "reconnect via One-click Connect")
+        d36 = c.post("/api/content-autopilot/diagnose").json()
+        g36 = next(ch for ch in d36["channels"] if ch["name"] == "Google Business")
+        assert g36["ok"] is False and "PAUSED" in g36["detail"], g36
+        _ap36.clear_reauth(_s36, "gbp")
+        # cleanup
+        _s36.query(_SP36).filter(_SP36.body.like("%36")).delete(synchronize_session=False)
+        _s36.query(_IC27).filter(_IC27.provider.in_(["gbp", "pub_linkedin"])).delete(synchronize_session=False)
+        _s36.commit(); _s36.close()
+        print("fail-proof delivery: dead tokens PAUSE the channel (human message + one "
+              "notification, posts stay queued, zero attempts burned, breaker skips "
+              "retries) + reconnect via any path auto-resumes the queue + success "
+              "clears lingering flags + transient errors keep normal retries + Doctor "
+              "shows the pause OK")
+
+        # ==== v1.36b: adaptive publishing — generated sites get MARKDOWN ====
+        from app.services import jp_site as _jp36
+        import base64 as _b64_36
+        _sample36 = ("---\n"
+                     'title: "Old Post"\n'
+                     "description: \"Old summary\"\n"
+                     "pubDate: 2026-06-20\n"
+                     "tags:\n  - security\n  - texas\n"
+                     "author: BVTech\n"
+                     "draft: false\n"
+                     "---\n\nOld body\n")
+        _committed36 = {}
+        def _http36(method, url, token, payload=None):
+            import urllib.parse as _u36
+            if method == "GET" and "/repository/tree" in url:
+                if "path=" in url:
+                    d = _u36.unquote_plus(url.split("path=")[1].split("&")[0])
+                    if d == "src/content/blog":
+                        return [{"type": "blob", "path": "src/content/blog/old-post.md"}]
+                    return []
+                return [{"type": "blob", "path": "package.json"},
+                        {"type": "blob", "path": "astro.config.mjs"},
+                        {"type": "tree", "path": "src"}]
+            if method == "GET" and "/repository/files/" in url:
+                p = _u36.unquote_plus(url.split("files/")[1].split("?")[0])
+                if p == "src/content/blog/old-post.md":
+                    return {"content": _b64_36.b64encode(_sample36.encode()).decode()}
+                raise Exception("404")
+            if method == "POST" and "/repository/commits" in url:
+                a = payload["actions"][0]
+                _committed36[a["file_path"]] = (a["action"], a["content"])
+                return {"id": "sha36md"}
+            if "/pipelines" in url:
+                return [{"status": "success", "sha": "x"}]
+            return {}
+        _ojp36 = _jp36._HTTP
+        _jp36._HTTP = _http36
+        try:
+            _jp36.save_shared_token(db, "glpat-V136")
+            # Detection: engine file + content dir + newest sample.
+            lay36 = _jp36.detect_layout(_jp36.get_config(db, "bvtech"))
+            assert lay36["format"] == "markdown" and lay36["content_dir"] == "src/content/blog", lay36
+            # Publish -> markdown with CLONED frontmatter, fresh values, HTML body.
+            out36 = _jp36.publish(db, {"title": 'MD Post With "Quotes"',
+                                       "html": "<p>Body para for the generated site.</p>",
+                                       "description": "Fresh summary.",
+                                       "slug": "md-post-36"}, site="bvtech")
+            assert out36["ok"] and out36["listing_generated"] is True, out36
+            assert out36["content_path"] == "src/content/blog/md-post-36.md", out36
+            assert out36["url"].endswith("/blog/md-post-36/"), out36
+            act36, md36 = _committed36["src/content/blog/md-post-36.md"]
+            assert act36 == "create"
+            assert 'title: "MD Post With \\"Quotes\\""' in md36, md36[:300]
+            assert 'description: "Fresh summary."' in md36
+            import re as _re36
+            assert _re36.search(r"pubDate: \d{4}-\d{2}-\d{2}", md36)      # today, not the sample's
+            assert "2026-06-20" not in md36
+            assert "- security" in md36 and "author: BVTech" in md36      # site metadata kept
+            assert "draft: false" in md36
+            assert "<p>Body para for the generated site.</p>" in md36    # HTML body embedded
+            # Sync-listings knows generated sites build their own index.
+            sync36 = _jp36.sync_listings(db, "bvtech")
+            assert sync36["ok"] and "generated site" in sync36["detail"], sync36
+            # Doctor names the engine + where posts go.
+            d36b = _jp36.diagnose(db, "bvtech")
+            eng36 = next(ck for ck in d36b["checks"] if ck["name"] == "Site engine")
+            assert eng36["ok"] and "src/content/blog" in eng36["detail"], eng36
+        finally:
+            _jp36._HTTP = _ojp36
+            _cl36b = _SL27()
+            _cl36b.query(_IC27).filter(_IC27.provider.in_(["gitlab", "bvtech_site", "jp_site"])).delete(synchronize_session=False)
+            _cl36b.commit(); _cl36b.close()
+        print("adaptive publishing: generated site detected (engine file + content dir) -> "
+              "markdown committed with cloned frontmatter (title/desc/date swapped, site "
+              "metadata kept, HTML body embedded) + build-owned listing acknowledged by "
+              "sync + Doctor names the engine and target folder OK")
+
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
@@ -4595,6 +4767,10 @@ def main():
         _sdb = _SL11()
         try:
             post_obj = _sdb.get(_SP131, rp["id"])
+            # This test exercises the TRANSIENT-error retry path; lift any
+            # re-auth pause an earlier block's live delivery attempt left behind
+            # (v1.36 breaker) so the 502 goes through the normal retry counter.
+            _ap131.clear_reauth(_sdb, "pub_linkedin")
             r1 = _ap131.publish_one(_sdb, post_obj, posters={"linkedin": _fail_poster})
             assert not r1["ok"] and post_obj.status == "queued" and post_obj.attempts == 1
             assert "retry 1/3" in (post_obj.result or ""), post_obj.result
@@ -4773,7 +4949,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.35.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.36.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
