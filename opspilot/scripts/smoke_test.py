@@ -3586,6 +3586,14 @@ def main():
             sw41 = _jp40.sweep_duplicates(db, now=_now40)
             assert sw41, "sweep must run for configured sites"
             assert all("cleanup" in v and "sync" in v for v in sw41.values()), sw41
+            # v1.41.1: same version + fresh stamp -> hourly cooldown holds...
+            assert _jp40.sweep_duplicates(db, now=_now40) == {}
+            # ...but a NEW DEPLOY (version change) busts the cooldown instantly.
+            from app.services.secure_config import upsert_platform as _up41
+            _up41(db, "jp_site", "JordanPolasek.com Site", "Publishing",
+                  {"last_sweep_version": "0.0.0-previous"})
+            sw41b = _jp40.sweep_duplicates(db, now=_now40)
+            assert "jp" in sw41b, "version change must trigger an immediate sweep"
         finally:
             _jp40.SITES["jp"]["index_paths"] = _opaths40
             _jp40._HTTP = _ojp40
@@ -5362,7 +5370,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.41.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.41.1 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
