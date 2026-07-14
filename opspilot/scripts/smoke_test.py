@@ -3649,6 +3649,28 @@ def main():
         print("Site separation + de-spam: slug-matched listed-check (absolute/relative "
               "hrefs) + duplicate cards collapse to one + any-form card removal + bvtech "
               "company-voice STYLE LOCK OK")
+
+        # ==== v1.43: homepage PREVIEW cap + Monday weekly-recap edition ====
+        assert _jp40.SITES["jp"]["preview_caps"] == {"index.html": 6}
+        assert _jp40.SITES["bvtech"]["preview_caps"] == {"index.html": 6}
+        _mk43 = lambda i: (f'<article class="pc"><h2><a href="/blog/post-{i}.html">P{i}</a>'
+                           f'</h2><p class="excerpt">e{i}</p></article>')
+        _home43 = '<div class="posts">' + "".join(_mk43(i) for i in range(9)) + '</div>'
+        _t43, _n43 = _jp40._trim_listing(_home43, "blog-file", 6)
+        assert _n43 == 3, _n43
+        assert "post-0.html" in _t43 and "post-5.html" in _t43   # newest 6 kept
+        assert "post-6.html" not in _t43 and "post-8.html" not in _t43
+        _t43b, _n43b = _jp40._trim_listing(_t43, "blog-file", 6)
+        assert _n43b == 0 and _t43b == _t43                       # idempotent
+        # Monday -> weekly cybersecurity recap; other days -> normal MSP angles.
+        _mon43 = _dt40(2026, 7, 13, tzinfo=_tz40.utc)             # a Monday
+        assert "WEEKLY CYBERSECURITY RECAP" in _ca40.bvtech_angle(_mon43)
+        assert "WEEKLY CYBERSECURITY RECAP" not in _ca40.bvtech_angle(
+            _dt40(2026, 7, 14, tzinfo=_tz40.utc))
+        assert _ca40.bvtech_angle(_dt40(2026, 7, 14, tzinfo=_tz40.utc)) == \
+            _ca40.day_angle(_dt40(2026, 7, 14, tzinfo=_tz40.utc))
+        print("Homepage preview cap (newest 6 cards kept, idempotent, both sites) + "
+              "Monday weekly cybersecurity recap edition for bvtech.org OK")
         # (g) The GH tick cron warns instead of failing when Cloudflare blocks it.
         import os as _os40
         _wf40 = open(_os40.path.join(_os40.path.dirname(__file__), "..", "..",
@@ -5395,7 +5417,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.42.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.43.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
