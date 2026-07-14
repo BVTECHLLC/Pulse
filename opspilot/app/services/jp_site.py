@@ -168,9 +168,25 @@ def get_config(db: Session, site: str = "jp") -> dict:
     meta = SITES[site]
     conn = secure_config.get_platform(db, meta["provider"])
     cfg = (conn.config if conn else None) or {}
+    # v1.37: a stored GitHub token flips this site to the GitHub forge — the
+    # live bvtech.org deploys from GitHub, so when the operator connects a
+    # GitHub PAT it takes precedence over the (stale-copy) GitLab repo.
+    gh_token = secure_config.get_secret(cfg, "gh_token")
+    if site == "bvtech" and gh_token:
+        return {
+            "forge": "github",
+            "base": GITHUB_API,
+            "project": cfg.get("github_repo") or DEFAULT_GITHUB_REPO,
+            "branch": cfg.get("github_branch") or cfg.get("branch") or "main",
+            "token": gh_token,
+            "pending": cfg.get("pending") or [],
+            "configured": True,
+            "style": meta["style"], "site": meta["site"], "org": meta["org"],
+        }
     token = _resolve_token(db, secure_config.get_secret(cfg, "token"))
     project = cfg.get("project") or meta["default_project"]
     return {
+        "forge": "gitlab",
         "base": (cfg.get("base") or DEFAULT_BASE).rstrip("/"),
         "project": project,
         "branch": cfg.get("branch") or "main",
@@ -404,34 +420,36 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
         # listing/index pages for us.
         layout = detect_layout(cfg)
         if layout["format"] == "markdown":
+            ops = _repo_ops(cfg)
             excerpt_md = (post.get("description")
                           or content_studio._excerpt_from_html(post.get("html") or ""))[:220]
-            sample = _fetch_file(cfg, layout["sample_path"]) or "---\ntitle: x\n---\n"
+            sample = ops["fetch"](layout["sample_path"]) or "---\ntitle: x\n---\n"
             ext = layout["sample_path"].rsplit(".", 1)[-1]
             md_path = f"{layout['content_dir']}/{slug}.{ext}"
             md_url = f"{meta['site']}/blog/{slug}/"
-            exists_md = _fetch_file(cfg, md_path) is not None
-            commit = _HTTP("POST", f"{_proj_url(cfg)}/repository/commits", cfg["token"], {
-                "branch": cfg["branch"],
-                "commit_message": f"blog: {post.get('title', slug)[:80]} (via Pulse)",
-                "actions": [{"action": "update" if exists_md else "create",
-                             "file_path": md_path,
-                             "content": _markdown_for(post, slug, sample, excerpt_md)}],
-            })
-            sha = commit.get("id")
+            exists_md = ops["fetch"](md_path) is not None
+            sha = ops["commit"](md_path, _markdown_for(post, slug, sample, excerpt_md),
+                                f"blog: {post.get('title', slug)[:80]} (via Pulse)",
+                                exists_md)
             conn = secure_config.get_platform(db, meta["provider"])
             raw = dict((conn.config if conn else None) or {})
-            pending = list(raw.get("pending") or [])
-            pending.append({"sha": sha, "slug": slug,
-                            "at": datetime.now(timezone.utc).isoformat(), "checks": 0})
-            raw["pending"] = pending[-10:]
-            secure_config.upsert_platform(db, meta["provider"], meta["name"], "Publishing", raw)
+            # GitLab pipelines report the Cloudflare build (verify+auto-revert);
+            # GitHub-forge commits deploy via Cloudflare's GitHub integration,
+            # which doesn't report back here — skip the pending watch for those.
+            if cfg.get("forge") != "github":
+                pending = list(raw.get("pending") or [])
+                pending.append({"sha": sha, "slug": slug,
+                                "at": datetime.now(timezone.utc).isoformat(), "checks": 0})
+                raw["pending"] = pending[-10:]
+                secure_config.upsert_platform(db, meta["provider"], meta["name"],
+                                              "Publishing", raw)
             from . import cloudflare
             purge = cloudflare.purge_urls(db, site, [md_url, f"{meta['site']}/blog/",
                                                      f"{meta['site']}/"])
             return {"ok": True, "sha": sha, "slug": slug, "url": md_url,
                     "listings_updated": [], "listings_skipped": [],
                     "listing_generated": True, "engine": layout["engine_file"],
+                    "forge": cfg.get("forge", "gitlab"),
                     "content_path": md_path,
                     "cache_purged": purge.get("ok"), "cache_detail": purge.get("detail")}
 
@@ -494,6 +512,132 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# v1.37 GitHub forge support — the live bvtech.org repo turned out to live on
+# GITHUB (BVTECHLLC/bvtech-website-new), not GitLab: commits to the GitLab copy
+# succeeded but Cloudflare builds from GitHub, so nothing ever appeared. When a
+# GitHub token is connected, bvtech publishes through the GitHub Contents API
+# with the same adaptive (markdown/frontmatter-clone) pipeline.
+# --------------------------------------------------------------------------- #
+GITHUB_API = "https://api.github.com"
+DEFAULT_GITHUB_REPO = "BVTECHLLC/bvtech-website-new"
+
+
+def _gh_http(method: str, url: str, token: str, payload: dict | None = None) -> dict | list:
+    req = urllib.request.Request(url, method=method,
+                                 headers={"Authorization": f"Bearer {token}",
+                                          "Accept": "application/vnd.github+json",
+                                          "X-GitHub-Api-Version": "2022-11-28",
+                                          "User-Agent": "BVTech-OpsPilot"})
+    data = json.dumps(payload).encode() if payload is not None else None
+    try:
+        with urllib.request.urlopen(req, data=data, timeout=30) as r:
+            body = r.read().decode()
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            raw = e.read().decode()[:300]
+            detail = str(json.loads(raw).get("message", raw))[:200]
+        except Exception:  # noqa: BLE001
+            pass
+        raise RuntimeError(f"GitHub {e.code}: {detail or e.reason}") from e
+    return json.loads(body) if body else {}
+
+
+_GH = _gh_http   # test seam
+
+
+def _repo_ops(cfg: dict) -> dict:
+    """Forge-agnostic repo operations so detect_layout/publish work identically
+    against GitLab (API v4) and GitHub (Contents API):
+      tree(path)  -> [{"path": str, "type": "blob"|"tree"}]
+      fetch(path) -> str | None
+      commit(path, content, message, update) -> sha
+    """
+    import base64
+    if cfg.get("forge") == "github":
+        repo, branch, token = cfg["project"], cfg["branch"], cfg["token"]
+
+        def tree(path: str = ""):
+            try:
+                out = _GH("GET", f"{GITHUB_API}/repos/{repo}/contents/"
+                          f"{urllib.parse.quote(path)}?ref={branch}", token)
+            except Exception:  # noqa: BLE001
+                return []
+            if isinstance(out, dict):
+                out = [out]
+            return [{"path": it.get("path"),
+                     "type": "tree" if it.get("type") == "dir" else "blob"}
+                    for it in out]
+
+        def fetch(path: str):
+            try:
+                out = _GH("GET", f"{GITHUB_API}/repos/{repo}/contents/"
+                          f"{urllib.parse.quote(path)}?ref={branch}", token)
+                return base64.b64decode(out["content"]).decode("utf-8", "replace")
+            except Exception:  # noqa: BLE001
+                return None
+
+        def commit(path: str, content: str, message: str, update: bool):
+            payload = {"message": message, "branch": branch,
+                       "content": base64.b64encode(content.encode()).decode()}
+            if update:
+                cur = _GH("GET", f"{GITHUB_API}/repos/{repo}/contents/"
+                          f"{urllib.parse.quote(path)}?ref={branch}", token)
+                payload["sha"] = cur.get("sha")
+            out = _GH("PUT", f"{GITHUB_API}/repos/{repo}/contents/"
+                      f"{urllib.parse.quote(path)}", token, payload)
+            return (out.get("commit") or {}).get("sha")
+        return {"tree": tree, "fetch": fetch, "commit": commit}
+
+    def tree(path: str = ""):
+        q = f"&path={urllib.parse.quote_plus(path)}" if path else ""
+        try:
+            return _HTTP("GET", f"{_proj_url(cfg)}/repository/tree?ref={cfg['branch']}"
+                         f"&per_page=100{q}", cfg["token"]) or []
+        except Exception:  # noqa: BLE001
+            return []
+
+    def fetch(path: str):
+        return _fetch_file(cfg, path)
+
+    def commit(path: str, content: str, message: str, update: bool):
+        out = _HTTP("POST", f"{_proj_url(cfg)}/repository/commits", cfg["token"], {
+            "branch": cfg["branch"], "commit_message": message,
+            "actions": [{"action": "update" if update else "create",
+                         "file_path": path, "content": content}]})
+        return out.get("id")
+    return {"tree": tree, "fetch": fetch, "commit": commit}
+
+
+def gh_verify(db: Session) -> dict:
+    """Live check of the bvtech GitHub connection: token + repo reachability."""
+    cfg = get_config(db, "bvtech")
+    if cfg.get("forge") != "github":
+        return {"ok": False, "detail": "No GitHub token stored yet (paste a fine-grained "
+                                       "PAT with Contents read/write)."}
+    try:
+        me = _GH("GET", f"{GITHUB_API}/user", cfg["token"])
+        repo = _GH("GET", f"{GITHUB_API}/repos/{cfg['project']}", cfg["token"])
+        perm = (repo.get("permissions") or {})
+        if not (perm.get("push") or perm.get("admin") or perm.get("maintain")):
+            return {"ok": False,
+                    "detail": f"Token sees {cfg['project']} but can't WRITE - grant "
+                              "Contents: Read and write on the fine-grained token."}
+        return {"ok": True, "detail": f"Verified as {me.get('login', '?')} - can publish "
+                                      f"to {cfg['project']} (branch {cfg['branch']})."}
+    except Exception as e:  # noqa: BLE001
+        m = str(e)
+        if "401" in m:
+            return {"ok": False, "detail": "GitHub rejected the token (401) - generate a "
+                                           "new fine-grained PAT."}
+        if "404" in m:
+            return {"ok": False, "detail": f"Token can't see {cfg['project']} (404) - on the "
+                                           "fine-grained token, set Repository access to "
+                                           "include it."}
+        return {"ok": False, "detail": f"GitHub check failed: {m[:140]}"}
+
+
+# --------------------------------------------------------------------------- #
 # v1.36 Adaptive publishing — detect what KIND of site each repo is and publish
 # the format that will actually ship. jordanpolasek.com is plain HTML (commit ->
 # live). A generated site (Astro/Next/Hugo/Eleventy) only ships what its BUILD
@@ -511,22 +655,18 @@ _CONTENT_DIRS = ("src/content/blog", "src/content/posts", "content/blog", "conte
 
 def detect_layout(cfg: dict) -> dict:
     """{"format": "html"|"markdown", "content_dir": str|None, "sample_path": str|None,
-        "engine_file": str|None} — one root-tree call + a few cheap dir probes."""
-    try:
-        root = _HTTP("GET", f"{_proj_url(cfg)}/repository/tree?ref={cfg['branch']}&per_page=100",
-                     cfg["token"])
-    except Exception:  # noqa: BLE001
+        "engine_file": str|None} — one root-tree call + a few cheap dir probes.
+    Forge-agnostic (GitLab or GitHub) via _repo_ops."""
+    ops = _repo_ops(cfg)
+    root = ops["tree"]("")
+    if not root:
         return {"format": "html", "content_dir": None, "sample_path": None, "engine_file": None}
     names = {t.get("path") for t in root if t.get("type") == "blob"}
     engine = next((f for f in _ENGINE_FILES if f in names), None)
     if not engine:
         return {"format": "html", "content_dir": None, "sample_path": None, "engine_file": None}
     for d in _CONTENT_DIRS:
-        try:
-            tree = _HTTP("GET", f"{_proj_url(cfg)}/repository/tree?path={urllib.parse.quote_plus(d)}"
-                         f"&ref={cfg['branch']}&per_page=100", cfg["token"])
-        except Exception:  # noqa: BLE001
-            continue
+        tree = ops["tree"](d)
         md = sorted([t["path"] for t in tree if t.get("type") == "blob"
                      and t["path"].rsplit(".", 1)[-1] in ("md", "mdx", "markdown")],
                     reverse=True)
@@ -637,6 +777,9 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
     if detect_layout(cfg)["format"] == "markdown":
         return {"ok": True, "added": [],
                 "detail": "generated site - the build produces its own blog index; nothing to sync"}
+    if cfg.get("forge") == "github":
+        return {"ok": False, "error": "GitHub site with an unrecognized layout - run the "
+                                      "Doctor for details"}
     try:
         post_paths = _list_post_paths(cfg, cfg["style"])[:60]
         listings = {lp: _fetch_file(cfg, lp) for lp in meta.get("index_paths", ())}
@@ -699,6 +842,35 @@ def diagnose(db: Session, site: str) -> dict:
     def _check(name: str, ok: bool, detail: str, fix: str | None = None):
         checks.append({"name": name, "ok": ok, "detail": detail,
                        **({"fix": fix} if (fix and not ok) else {})})
+
+    if cfg.get("forge") == "github":
+        # v1.37: this site publishes through GitHub (where Cloudflare actually
+        # builds from). Token -> repo write -> engine, then done.
+        v = gh_verify(db)
+        _check("GitHub connection", v["ok"], v["detail"],
+               "Connection Center -> bvtech.org (GitHub) -> paste a fine-grained PAT "
+               "with Contents: Read and write on the site repo")
+        if not v["ok"]:
+            return {"site": meta["site"], "checks": checks, "healthy": False}
+        layout = detect_layout(cfg)
+        if layout["format"] == "markdown":
+            _check("Site engine", True,
+                   f"generated site ({layout['engine_file']}) - publishing markdown to "
+                   f"{layout['content_dir']}/ (frontmatter cloned from "
+                   f"{layout['sample_path'].rsplit('/', 1)[-1]}); the build creates the "
+                   "post page AND the blog index automatically")
+        else:
+            _check("Site engine", False,
+                   "no recognizable content folder found in the GitHub repo",
+                   "expected something like src/content/blog/*.md - check the repo layout")
+        from . import cloudflare
+        cf = cloudflare.verify(db) if cloudflare.configured(db) else {
+            "ok": False,
+            "detail": "not connected - cached pages update on their own TTL (can look stale for hours)"}
+        _check("Cloudflare cache purge", cf["ok"], cf["detail"],
+               "Connection Center -> Cloudflare -> paste an API token (Zone:Read + Cache Purge)")
+        healthy = all(c["ok"] for c in checks if not c["name"].startswith("Cloudflare cache"))
+        return {"site": meta["site"], "checks": checks, "healthy": healthy}
 
     _check("GitLab token", bool(cfg["token"]),
            "token found" if cfg["token"] else "no token anywhere in the chain",
