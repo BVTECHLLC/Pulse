@@ -1057,9 +1057,11 @@ def _first_commit_iso(cfg: dict, path: str) -> str | None:
                         f"{urllib.parse.quote_plus(path)}&ref_name={cfg['branch']}"
                         "&per_page=100", cfg["token"])
         if not commits:
+            _first_commit_iso.last_error = "empty commit list"   # type: ignore[attr-defined]
             return None
         return commits[-1].get("created_at") or None      # API lists newest first
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
+        _first_commit_iso.last_error = str(e)[:200]       # type: ignore[attr-defined]
         return None
 
 
@@ -1124,13 +1126,22 @@ def _all_card_spans(h: str, link_pat: str) -> list[tuple[int, int]]:
     """Source spans of every post card on a listing page, in page order."""
     spans: list[tuple[int, int]] = []
     off = 0
-    for _ in range(300):
+    for _ in range(400):
         seg = h[off:]
-        if not re.search(link_pat, seg):
+        m = re.search(link_pat, seg)
+        if not m:
             break
+        # v1.43.1: nav/menu/page links match the post pattern but are NOT
+        # cards — SKIP them and keep scanning. Breaking on the first one made
+        # the homepage trim silently see zero cards (the wall stayed).
+        slug = _slug_of(m.group(0)[6:-1])
+        if slug == "index" or any(slug.startswith(p) for p in _PAGE_SLUGS):
+            off += m.end()
+            continue
         span = _find_generic_card(seg, link_pat)
         if not span:
-            break
+            off += m.end()
+            continue
         spans.append((off + span[0], off + span[1]))
         off += span[1]
     return spans
@@ -1169,7 +1180,7 @@ def _dedupe_cards(h: str, slug: str) -> tuple[str, int]:
 
 
 def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
-                            now: datetime | None = None) -> dict:
+                            now: datetime | None = None, debug: bool = False) -> dict:
     """v1.40 FLOOD REPAIR: enforce ONE post per calendar day on the live site.
     Same-day extras (beyond the earliest-committed post) are deleted from the
     repo AND their cards removed from the listings — one commit, cache purged.
@@ -1191,18 +1202,25 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
         # post's date), so it is deliberately not consulted at all.
         by_day: dict = {}
         stamps: dict = {}
+        scan: list[str] = []                     # debug: per-path dating evidence
         for path in _list_post_paths(cfg, cfg["style"])[:80]:
             slug_root = (path.rsplit("/", 1)[-1] if cfg["style"] == "blog-file"
                          else path.split("/")[0])
             if any(slug_root.startswith(p) for p in _PAGE_SLUGS):
                 continue
+            _first_commit_iso.last_error = ""    # type: ignore[attr-defined]
             ts = _first_commit_iso(cfg, path)
             if not ts:
+                scan.append(f"{path} -> NO-DATE "
+                            f"({getattr(_first_commit_iso, 'last_error', '')})")
                 continue
             try:
                 d = datetime.fromisoformat(ts.replace("Z", "+00:00")).date()
             except ValueError:
+                scan.append(f"{path} -> UNPARSEABLE ({ts[:32]})")
                 continue
+            scan.append(f"{path} -> {d.isoformat()}"
+                        + ("" if d in window else " (outside window)"))
             if d not in window:
                 continue
             stamps[path] = ts
@@ -1267,8 +1285,11 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
                     listings[lp] = new_h
                     cards_deduped += n
         if not removed and not cards_deduped and not ghost_cards:
-            return {"ok": True, "removed": [], "cards_deduped": 0,
-                    "detail": "no same-day duplicates found"}
+            out = {"ok": True, "removed": [], "cards_deduped": 0,
+                   "detail": "no same-day duplicates found"}
+            if debug:
+                out["scan"] = scan
+            return out
         for lp, h in listings.items():
             orig = _fetch_file(cfg, lp)
             if orig is not None and h != orig:
@@ -1297,9 +1318,12 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
             db.commit()
         except Exception:  # noqa: BLE001
             db.rollback()
-        return {"ok": True, "sha": commit.get("id"), "removed": removed,
-                "cards_deduped": cards_deduped, "ghost_cards": ghost_cards,
-                "cache_purged": purge.get("ok")}
+        out = {"ok": True, "sha": commit.get("id"), "removed": removed,
+               "cards_deduped": cards_deduped, "ghost_cards": ghost_cards,
+               "cache_purged": purge.get("ok")}
+        if debug:
+            out["scan"] = scan
+        return out
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)[:300]}
 

@@ -38,6 +38,7 @@ cd "$REPO_DIR"
 # must exactly track origin/main, unconditionally.
 git checkout -f main 2>/dev/null || git checkout -B main origin/main 2>&1 | sed 's/^/  /'
 git reset --hard origin/main 2>&1 | sed 's/^/  /' || log "WARN: git reset failed"
+REPO_VER=$(grep -oP 'APP_VERSION: str = "\K[^"]+' "$COMPOSE_DIR/app/core/config.py" 2>/dev/null)  # re-read AFTER reset
 cd "$COMPOSE_DIR"
 log "building api image..."
 docker compose up -d --build api 2>&1 | tail -3 | sed 's/^/  /' || log "WARN: build/up failed"
