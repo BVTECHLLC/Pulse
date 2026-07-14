@@ -371,7 +371,8 @@ def inject_post_into_listing(listing_html: str, *, title: str, url: str,
     corrupted — the build-verify + auto-revert is the final safety net)."""
     import html as _html
     h = listing_html
-    if f'href="{url}"' in h:                       # already listed (re-publish)
+    # Already listed under ANY href form (absolute/relative) -> never re-inject.
+    if f'href="{url}"' in h or _slug_listed(h, _slug_of(url)):
         return h, False
     link_pat = _link_pat_for(style)
     # Prefer the standard posts grid (leaves any 'featured' card alone).
@@ -898,8 +899,11 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
         for path in post_paths:
             url = _post_url_for(meta, path, cfg["style"])
             rel = url.replace(meta["site"], "")            # href form used in listings
-            missing = [lp for lp, h in listings.items()
-                       if rel not in h and url not in h]
+            slug = _slug_of(path)
+            # v1.42: listed-detection by SLUG across any href form — exact-string
+            # matching re-injected "already listed" posts on every sync (the
+            # duplicate-card spam on bvtech.org's blog page).
+            missing = [lp for lp, h in listings.items() if not _slug_listed(h, slug)]
             if not missing:
                 continue
             page = _fetch_file(cfg, path)
@@ -941,7 +945,7 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
             date_lbl = date_str
             for lp in list(listings):
                 h = listings[lp]
-                pat = r'href="' + re.escape(rel) + r'"'
+                pat = _slug_href_pat(_slug_of(path))     # any href form (v1.42)
                 if not re.search(pat, h):
                     continue
                 span = _find_generic_card(h, pat)
@@ -1060,12 +1064,36 @@ def _refresh_cloned_date(rendered: str, skeleton: str | None,
     return rendered
 
 
-def _remove_card(h: str, rel: str) -> tuple[str, bool]:
-    """Delete the card containing the link `rel` from a listing page (both the
-    homepage 'Writing' section and the blog index use recognizable cards)."""
+def _slug_href_pat(slug: str) -> str:
+    """Match a post link by SLUG in ANY href form — relative ("/slug/"),
+    absolute ("https://site/slug/"), or blog-file ("blog/slug.html"). Listings
+    accumulated MIXED forms over time, and exact-string matching is exactly how
+    duplicate cards multiplied (a post 'already listed' under another form was
+    re-injected on every sync)."""
+    return r'href="[^"]*/' + re.escape(slug) + r'(?:/|\.html)?"'
+
+
+def _slug_of(url_or_path: str) -> str:
+    """Trailing slug of a post URL or repo path — "…/slug/", "…/slug.html",
+    AND the slug-folder repo form "slug/index.html" (the index file is the
+    page, the FOLDER is the slug)."""
+    s = url_or_path.rstrip("/")
+    if s.endswith("/index.html"):
+        s = s[: -len("/index.html")]
+    s = s.rsplit("/", 1)[-1]
+    return s[:-5] if s.endswith(".html") else s
+
+
+def _slug_listed(h: str, slug: str) -> bool:
+    return bool(re.search(_slug_href_pat(slug), h))
+
+
+def _remove_card(h: str, slug: str) -> tuple[str, bool]:
+    """Delete EVERY card linking to `slug` from a listing page — matching any
+    href form (relative or absolute)."""
     changed = False
-    for _ in range(3):                    # same card rarely appears >1x per page
-        pat = r'href="' + re.escape(rel) + r'"'
+    pat = _slug_href_pat(slug)
+    for _ in range(30):                   # flood-duplicated cards: remove all
         if not re.search(pat, h):
             break
         span = _find_generic_card(h, pat)
@@ -1074,6 +1102,26 @@ def _remove_card(h: str, rel: str) -> tuple[str, bool]:
         h = h[:span[0]] + h[span[1]:]
         changed = True
     return h, changed
+
+
+def _dedupe_cards(h: str, slug: str) -> tuple[str, int]:
+    """Keep the FIRST card linking to `slug`; remove every later duplicate card
+    (the 'same card repeated down the whole page' spam). Returns (html, n)."""
+    pat = _slug_href_pat(slug)
+    first = _find_generic_card(h, pat)
+    if not first:
+        return h, 0
+    removed = 0
+    for _ in range(30):
+        tail = h[first[1]:]
+        if not re.search(pat, tail):
+            break
+        span = _find_generic_card(tail, pat)
+        if not span:
+            break
+        h = h[:first[1] + span[0]] + h[first[1] + span[1]:]
+        removed += 1
+    return h, removed
 
 
 def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
@@ -1126,39 +1174,53 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
             for p in paths[1:]:
                 actions.append({"action": "delete", "file_path": p})
                 url = _post_url_for(meta, p, cfg["style"])
-                rel = url.replace(meta["site"], "")
                 for lp in list(listings):
-                    new_h, ch = _remove_card(listings[lp], rel)
+                    new_h, ch = _remove_card(listings[lp], _slug_of(p))
                     if ch:
                         listings[lp] = new_h
                 removed.append(url)
                 purge_urls.append(url)
-        if not removed:
-            return {"ok": True, "removed": [], "detail": "no same-day duplicates found"}
+        # v1.42: DE-SPAM pass — a post gets at most ONE card per listing. (The
+        # old exact-string listed-check re-injected posts whose existing card
+        # used a different href form, repeating the same card down the page.)
+        cards_deduped = 0
+        for path in _list_post_paths(cfg, cfg["style"])[:80]:
+            for lp in list(listings):
+                new_h, n = _dedupe_cards(listings[lp], _slug_of(path))
+                if n:
+                    listings[lp] = new_h
+                    cards_deduped += n
+        if not removed and not cards_deduped:
+            return {"ok": True, "removed": [], "cards_deduped": 0,
+                    "detail": "no same-day duplicates found"}
         for lp, h in listings.items():
             orig = _fetch_file(cfg, lp)
             if orig is not None and h != orig:
                 actions.append({"action": "update", "file_path": lp, "content": h})
                 purge_urls.append(f"{meta['site']}/{lp}".replace("/index.html", "/"))
+        if not actions:
+            return {"ok": True, "removed": [], "cards_deduped": 0,
+                    "detail": "no changes needed"}
         commit = _HTTP("POST", f"{_proj_url(cfg)}/repository/commits", cfg["token"], {
             "branch": cfg["branch"],
-            "commit_message": (f"blog: remove {len(removed)} same-day duplicate post(s) "
+            "commit_message": (f"blog: remove {len(removed)} duplicate post(s) + "
+                               f"{cards_deduped} duplicate card(s) "
                                "(1-post-per-day flood guard, via Pulse)"),
             "actions": actions,
         })
         from . import cloudflare
-        purge = cloudflare.purge_urls(db, site, purge_urls)
+        purge = cloudflare.purge_urls(db, site, purge_urls or [f"{meta['site']}/"])
         try:
             db.add(Notification(
                 client_id=None, target_user_id=None, kind="content", severity="info",
-                message=(f"🧹 Flood guard: removed {len(removed)} same-day duplicate "
-                         f"post(s) from {meta['site']} (kept the first post of each day). "
-                         "Listings updated + cache purged.")[:1000]))
+                message=(f"🧹 Flood guard: {meta['site']} — removed {len(removed)} same-day "
+                         f"duplicate post(s) (first of each day kept) and {cards_deduped} "
+                         "repeated listing card(s). Cache purged.")[:1000]))
             db.commit()
         except Exception:  # noqa: BLE001
             db.rollback()
         return {"ok": True, "sha": commit.get("id"), "removed": removed,
-                "cache_purged": purge.get("ok")}
+                "cards_deduped": cards_deduped, "cache_purged": purge.get("ok")}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)[:300]}
 

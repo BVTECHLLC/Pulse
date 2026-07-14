@@ -31,7 +31,13 @@ if [ "$LOCAL" = "$REMOTE" ] && [ -n "$RUN_VER" ] && [ "$RUN_VER" = "$REPO_VER" ]
 fi
 
 log "DEPLOY: git ${LOCAL:0:8}->${REMOTE:0:8} | running=${RUN_VER:-none} repo=${REPO_VER:-?}"
-cd "$REPO_DIR" && git pull --ff-only origin main 2>&1 | sed 's/^/  /' || log "WARN: git pull failed"
+cd "$REPO_DIR"
+# v1.41.2: self-heal ANY git wedge — wrong branch, local commits, dirty tree.
+# `git pull --ff-only` fails forever once the mirror diverges, and the old
+# script then quietly rebuilt STALE code every 2 minutes. The deploy mirror
+# must exactly track origin/main, unconditionally.
+git checkout -f main 2>/dev/null || git checkout -B main origin/main 2>&1 | sed 's/^/  /'
+git reset --hard origin/main 2>&1 | sed 's/^/  /' || log "WARN: git reset failed"
 cd "$COMPOSE_DIR"
 log "building api image..."
 docker compose up -d --build api 2>&1 | tail -3 | sed 's/^/  /' || log "WARN: build/up failed"
@@ -39,4 +45,8 @@ log "applying migrations..."
 docker compose exec -T api alembic upgrade head 2>&1 | tail -5 | sed 's/^/  /' || log "WARN: alembic failed"
 docker compose restart api >/dev/null 2>&1 || log "WARN: restart failed"
 sleep 3
-log "DEPLOY COMPLETE — running version now: $(ver)"
+NOW_VER=$(ver)
+log "DEPLOY COMPLETE — running version now: ${NOW_VER:-unknown}"
+if [ -n "$REPO_VER" ] && [ "$NOW_VER" != "$REPO_VER" ]; then
+  log "ERROR: running version ($NOW_VER) still != repo version ($REPO_VER) — check 'docker compose logs api' and disk space (df -h)"
+fi

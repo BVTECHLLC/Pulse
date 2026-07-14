@@ -1,5 +1,26 @@
 # BVTech OpsPilot — Changelog
 
+## v1.42.0 — Site separation + de-spam + deploy can never wedge (July 2026)
+Field screenshots showed the SAME cards repeated down bvtech.org's blog page
+and Jordan-persona titles on the company blog. Root causes killed:
+- **Slug-matched link detection everywhere**: listings accumulated MIXED href
+  forms (absolute vs relative) over time, so the exact-string 'already
+  listed?' check missed and every sync RE-INJECTED the post — the duplicate-
+  card spam. Inject/sync/repair now match by slug across any href form.
+- **De-spam pass**: the hourly cleanup collapses duplicate cards to ONE per
+  post per listing (first kept) and card removal matches any href form (the
+  flood cards used absolute links).
+- **STYLE LOCK on bvtech.org**: company voice ('we at BVTech'), MSP-authority
+  SEO style; never first-person founder voice, never 'Jordan Polasek on ...'
+  titles — personal posts belong on jordanpolasek.com only.
+- **Deploy can never wedge** (was staged as v1.41.2):
+The box's auto-deploy used `git pull --ff-only`: once the deploy mirror
+diverges (wrong branch, local commit, dirty file) that fails FOREVER — and the
+script then quietly rebuilt stale code every 2 minutes while the log said
+"WARN". Now every deploy force-converges the mirror to origin/main
+(checkout -f + reset --hard), and a version mismatch after deploy logs a loud
+ERROR with the exact next diagnostic step.
+
 ## v1.41.1 — Deploy busts the sweep cooldown (July 2026)
 The corrected v1.41 sweeper was sitting out the hourly cooldown STAMPED BY ITS
 BROKEN PREDECESSOR (v1.40's no-op sweep ran minutes before the deploy). Now a
