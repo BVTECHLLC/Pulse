@@ -345,19 +345,20 @@ def _rewrite_card(card: str, *, title: str, url: str, excerpt: str,
         card = _re.sub(r"(<p[^>]*>)([^<]{40,}?)(</p>)",
                        lambda m: m.group(1) + _html.escape(excerpt) + m.group(3),
                        card, count=1)
-    card = _re.sub(r"(>)([A-Z][a-z]+ \d{1,2}, \d{4})(<)",
-                   lambda m: m.group(1) + date_str + m.group(3), card, count=1)
-    card = _re.sub(r"(>)(\d{4}-\d{2}-\d{2})(<)",
-                   lambda m: m.group(1) + date_str + m.group(3), card, count=1)
-    # v1.40: badge-style dates without a year ("NEW · JUNE 22 WEEKLY REPORT",
-    # "June 22") also cloned verbatim — swap month+day, keep the badge text.
-    _md = date_str.rsplit(",", 1)[0]                  # "July 14, 2026" -> "July 14"
-    card = _re.sub(r"\b(JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|"
-                   r"OCTOBER|NOVEMBER|DECEMBER) \d{1,2}\b(?!, \d{4})",
-                   _md.upper(), card, count=1)
-    card = _re.sub(r"\b(January|February|March|April|May|June|July|August|September|"
-                   r"October|November|December) \d{1,2}\b(?!, \d{4})",
-                   _md, card, count=1)
+    if date_str:      # v1.41: empty date_str means "leave the card's date alone"
+        card = _re.sub(r"(>)([A-Z][a-z]+ \d{1,2}, \d{4})(<)",
+                       lambda m: m.group(1) + date_str + m.group(3), card, count=1)
+        card = _re.sub(r"(>)(\d{4}-\d{2}-\d{2})(<)",
+                       lambda m: m.group(1) + date_str + m.group(3), card, count=1)
+        # v1.40: badge-style dates without a year ("NEW · JUNE 22 WEEKLY REPORT",
+        # "June 22") also cloned verbatim — swap month+day, keep the badge text.
+        _md = date_str.rsplit(",", 1)[0]              # "July 14, 2026" -> "July 14"
+        card = _re.sub(r"\b(JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|"
+                       r"OCTOBER|NOVEMBER|DECEMBER) \d{1,2}\b(?!, \d{4})",
+                       _md.upper(), card, count=1)
+        card = _re.sub(r"\b(January|February|March|April|May|June|July|August|September|"
+                       r"October|November|December) \d{1,2}\b(?!, \d{4})",
+                       _md, card, count=1)
     return card
 
 
@@ -559,6 +560,9 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
             {**post, "slug": slug, "site": meta["site"], "org": meta["org"],
              "author_url": meta["author_url"]},
             skeleton_html=skeleton, content_classes=meta["content_classes"])
+        # v1.41: the cloned skeleton carries the ORIGINAL post's visible date —
+        # swap that exact stale date for today's so the page tells the truth.
+        rendered = _refresh_cloned_date(rendered, skeleton)
         # Idempotent: if this slug was already published (same-day re-run, retry
         # after a partial failure, deliberate re-publish), OVERWRITE it instead
         # of letting GitLab reject the commit with "file already exists".
@@ -946,10 +950,18 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
                 if page is None:
                     page = _fetch_file(cfg, path) or ""
                     title, excerpt = _post_meta_from_html(page)
-                    pdate = _post_date_from_html(page)
-                    if pdate:
-                        date_lbl = (f"{_MONTH_NAMES[pdate.month - 1]} "
-                                    f"{pdate.day}, {pdate.year}")
+                    # v1.41: the page's visible date can be a stale skeleton
+                    # clone — the first-commit date is the truth. Unknown ->
+                    # leave the card's date untouched ("" = no date swap).
+                    date_lbl = ""
+                    ts = _first_commit_iso(cfg, path)
+                    if ts:
+                        try:
+                            pdate = datetime.fromisoformat(ts.replace("Z", "+00:00")).date()
+                            date_lbl = (f"{_MONTH_NAMES[pdate.month - 1]} "
+                                        f"{pdate.day}, {pdate.year}")
+                        except ValueError:
+                            pass
                 card = h[span[0]:span[1]]
                 if (not excerpt or excerpt[:60] in card
                         or _html40.escape(excerpt)[:60] in card):
@@ -1016,6 +1028,38 @@ def _post_date_from_html(page_html: str):
     return None
 
 
+def _first_commit_iso(cfg: dict, path: str) -> str | None:
+    """ISO timestamp of the FIRST commit that touched `path` — its true creation
+    time. (Page-visible dates lie: skeleton-cloned pages carry the ORIGINAL
+    post's date, which is exactly how the July flood hid from the sweeper.)"""
+    try:
+        commits = _HTTP("GET", f"{_proj_url(cfg)}/repository/commits?path="
+                        f"{urllib.parse.quote_plus(path)}&ref_name={cfg['branch']}"
+                        "&per_page=100", cfg["token"])
+        if not commits:
+            return None
+        return commits[-1].get("created_at") or None      # API lists newest first
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _refresh_cloned_date(rendered: str, skeleton: str | None,
+                         now: datetime | None = None) -> str:
+    """The skeleton clone carries the ORIGINAL post's visible date — a post
+    published July 14 rendered saying 'June 30'. Swap every copy of that EXACT
+    stale date (text + datetime attrs + ISO) for today's. Exact-match only, so
+    dates the new article's own prose mentions are untouched."""
+    now = now or datetime.now(timezone.utc)
+    old = _post_date_from_html(skeleton or "")
+    if not old or old == now.date():
+        return rendered
+    old_txt = f"{_MONTH_NAMES[old.month - 1]} {old.day}, {old.year}"
+    today_txt = f"{_MONTH_NAMES[now.month - 1]} {now.day}, {now.year}"
+    rendered = rendered.replace(old_txt, today_txt)
+    rendered = rendered.replace(old.isoformat(), now.date().isoformat())
+    return rendered
+
+
 def _remove_card(h: str, rel: str) -> tuple[str, bool]:
     """Delete the card containing the link `rel` from a listing page (both the
     homepage 'Writing' section and the blog index use recognizable cards)."""
@@ -1050,18 +1094,26 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
     try:
         from datetime import timedelta
         window = {now.date() - timedelta(days=i) for i in range(days)}
+        # Group posts by their FIRST-COMMIT date — the true creation day. The
+        # page's visible date is unreliable (skeleton clones carry the original
+        # post's date), so it is deliberately not consulted at all.
         by_day: dict = {}
+        stamps: dict = {}
         for path in _list_post_paths(cfg, cfg["style"])[:80]:
             slug_root = (path.rsplit("/", 1)[-1] if cfg["style"] == "blog-file"
                          else path.split("/")[0])
             if any(slug_root.startswith(p) for p in _PAGE_SLUGS):
                 continue
-            page = _fetch_file(cfg, path)
-            if not page:
+            ts = _first_commit_iso(cfg, path)
+            if not ts:
                 continue
-            d = _post_date_from_html(page)
+            try:
+                d = datetime.fromisoformat(ts.replace("Z", "+00:00")).date()
+            except ValueError:
+                continue
             if d not in window:
                 continue
+            stamps[path] = ts
             by_day.setdefault(d, []).append(path)
         removed, actions, purge_urls = [], [], []
         listings = {lp: _fetch_file(cfg, lp) for lp in meta.get("index_paths", ())}
@@ -1070,18 +1122,8 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
             if len(paths) <= 1:
                 continue
             # Keep the day's EARLIEST-committed post; everything after is flood.
-            stamped = []
-            for p in paths:
-                try:
-                    commits = _HTTP("GET", f"{_proj_url(cfg)}/repository/commits?path="
-                                    f"{urllib.parse.quote_plus(p)}&ref_name={cfg['branch']}"
-                                    "&per_page=1", cfg["token"])
-                    ts = (commits[0].get("created_at") or "") if commits else ""
-                except Exception:  # noqa: BLE001
-                    ts = ""
-                stamped.append((ts or "9999", p))
-            stamped.sort()
-            for _ts, p in stamped[1:]:
+            paths.sort(key=lambda p: stamps[p])
+            for p in paths[1:]:
                 actions.append({"action": "delete", "file_path": p})
                 url = _post_url_for(meta, p, cfg["style"])
                 rel = url.replace(meta["site"], "")
@@ -1122,20 +1164,25 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
 
 
 def sweep_duplicates(db: Session, now: datetime | None = None) -> dict:
-    """Heartbeat hook: self-healing duplicate cleanup for both sites, at most
-    once per hour per site (cheap idempotent no-op when the sites are clean)."""
+    """Heartbeat hook: self-healing content hygiene for both sites, at most
+    once per hour per site — (1) delete same-day duplicate posts, then
+    (2) sync the listings (backfill unlisted posts + repair stale cloned
+    cards). Idempotent no-ops when the sites are clean; zero clicks ever."""
     now = now or datetime.now(timezone.utc)
     out: dict = {}
     for sk, meta in SITES.items():
         conn = secure_config.get_platform(db, meta["provider"])
         raw = (conn.config if conn else None) or {}
+        if not configured(db, sk):
+            continue
         last = raw.get("last_dupe_sweep")
         try:
             if last and (now - datetime.fromisoformat(last)).total_seconds() < 3600:
                 continue
         except ValueError:
             pass
-        out[sk] = cleanup_duplicate_posts(db, sk, now=now)
+        out[sk] = {"cleanup": cleanup_duplicate_posts(db, sk, now=now),
+                   "sync": sync_listings(db, sk)}
         secure_config.upsert_platform(db, meta["provider"], meta["name"], "Publishing",
                                       {"last_dupe_sweep": now.isoformat()})
     return out

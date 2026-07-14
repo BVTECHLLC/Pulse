@@ -3566,9 +3566,11 @@ def main():
             #     rebuilt from each post's own metadata.
             _stale40 = ('<div class="posts">'
                         '<article class="post-card"><h2><a href="/keep-today/">K</a></h2>'
-                        '<p class="excerpt">Same stale cloned text.</p></article>'
+                        '<p class="excerpt">Same stale cloned text.</p>'
+                        '<span>June 30, 2026</span></article>'
                         '<article class="post-card"><h2><a href="/old-post/">O</a></h2>'
-                        '<p class="excerpt">Same stale cloned text.</p></article></div>')
+                        '<p class="excerpt">Same stale cloned text.</p>'
+                        '<span>June 30, 2026</span></article></div>')
             _state40["blog/index.html"] = _stale40
             _jp40.SITES["jp"]["index_paths"] = ("blog/index.html",)
             sy40 = _jp40.sync_listings(db, "jp")
@@ -3576,6 +3578,14 @@ def main():
             assert "First of the day." in _state40["blog/index.html"]
             assert "Old one." in _state40["blog/index.html"]
             assert "Same stale cloned text." not in _state40["blog/index.html"]
+            # v1.41: repaired cards carry the COMMIT date (the page's visible
+            # date lies — skeleton clones keep the original post's date).
+            assert "July 10, 2026" in _state40["blog/index.html"], \
+                "old-post's card must show its real (commit) date"
+            # v1.41: hourly sweep = cleanup + listing sync, per configured site.
+            sw41 = _jp40.sweep_duplicates(db, now=_now40)
+            assert sw41, "sweep must run for configured sites"
+            assert all("cleanup" in v and "sync" in v for v in sw41.values()), sw41
         finally:
             _jp40.SITES["jp"]["index_paths"] = _opaths40
             _jp40._HTTP = _ojp40
@@ -3591,6 +3601,21 @@ def main():
         assert ch40f and "A brand new summary." in h40f, h40f[:300]
         assert "NEW · JULY 14 WEEKLY REPORT" in h40f, "cloned badge date must update"
         assert h40f.count("JUNE 22") == 1, "original card must keep its own badge"
+        # (g2) v1.41: pages never ship with a cloned stale date (the exact live
+        #      bug: a July 14 post rendered saying "June 30" because the cloned
+        #      skeleton kept its original date) + "" date_str = leave dates alone.
+        _skel41 = ('<html><body><p class="post-meta">June 30, 2026</p>'
+                   '<time datetime="2026-06-30T09:00:00Z">June 30, 2026</time>'
+                   '<article>old</article></body></html>')
+        _out41 = _jp40._refresh_cloned_date(_skel41.replace("old", "new body"), _skel41,
+                                            now=_dt40(2026, 7, 14, tzinfo=_tz40.utc))
+        assert "June 30, 2026" not in _out41 and "July 14, 2026" in _out41, _out41
+        assert 'datetime="2026-07-14' in _out41, _out41
+        _c41 = _jp40._rewrite_card('<article><h2><a href="/blog/x.html">T</a></h2>'
+                                   '<span>June 30, 2026</span></article>',
+                                   title="N", url="/blog/n.html", excerpt="",
+                                   date_str="", link_pat=r'href="/blog/x\.html"')
+        assert "June 30, 2026" in _c41 and 'href="/blog/n.html"' in _c41, _c41
         # (g) The GH tick cron warns instead of failing when Cloudflare blocks it.
         import os as _os40
         _wf40 = open(_os40.path.join(_os40.path.dirname(__file__), "..", "..",
@@ -5337,7 +5362,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.40.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.41.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
