@@ -1,5 +1,23 @@
 # BVTech OpsPilot — Changelog
 
+## v1.37.0 — The bvtech.org case CLOSED: the live site is on GitHub (July 2026)
+The operator's screenshot revealed the final truth: the live bvtech.org repo is
+**BVTECHLLC/bvtech-website-new on GITHUB** — Pulse had been committing to the
+GitLab copy all along, which Cloudflare doesn't build from. Commits ✅, site
+never changes. (jordanpolasek.com genuinely lives on GitLab, which is why it
+always worked.)
+- **New Connection Center tile: "bvtech.org site repo (GitHub)"** — paste one
+  fine-grained PAT (Contents: Read & write on the site repo; deep link + exact
+  steps on the tile). Saving verifies LIVE: who the token is, that it can WRITE,
+  which repo/branch it publishes to.
+- **Forge-aware publisher**: with the GitHub token connected, bvtech flips to
+  the GitHub Contents API automatically — same adaptive pipeline (engine
+  detection, content-folder discovery, frontmatter cloned from the site's own
+  newest post, article HTML embedded). The site build then produces the post
+  page AND the blog index. Cache purged on publish.
+- Doctor runs GitHub-specific checks for bvtech (connection → write access →
+  engine/target folder); GitLab checks still cover jordanpolasek.com.
+
 ## v1.36.0 — Adaptive publishing + fail-proof delivery (July 2026)
 Two root causes from the field, both killed:
 - **"bvtech posts commit but NEVER appear on the site."** jordanpolasek.com is

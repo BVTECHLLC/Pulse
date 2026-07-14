@@ -103,6 +103,7 @@ def connection_center(db: Session = Depends(get_db),
     status = {
         "anthropic": ai_svc.enabled(),
         "gitlab_sites": jp_site.configured(db, "bvtech") and jp_site.configured(db, "jp"),
+        "bvtech_github": jp_site.get_config(db, "bvtech").get("forge") == "github",
         "cloudflare": _cf_svc_mod.configured(db),
         "m365_mailbox": vault_has("m365_mailbox", "client_id", "client_secret")
                         or bool(_s.M365_CLIENT_ID and _s.M365_CLIENT_SECRET),
@@ -131,7 +132,8 @@ def connection_center(db: Session = Depends(get_db),
             conn = secure_config.get_platform(db, sp)
             cfg = (conn.config if conn else None) or {}
             it["credential_state"] = secure_config.secret_state(cfg, spec["secret_field"])
-        it["testable"] = spec["key"] in ("gitlab_sites", "anthropic", "stripe", "hubspot", "cloudflare")
+        it["testable"] = spec["key"] in ("gitlab_sites", "anthropic", "stripe", "hubspot",
+                                         "cloudflare", "bvtech_github")
         items.append(it)
     p1 = [i for i in items if i["priority"] == 1]
     done = sum(1 for i in items if i["connected"])
@@ -157,6 +159,17 @@ CONNECTORS = [
      "console_hint": "Generate token -> name 'Pulse Publisher' -> scope: api -> copy (glpat-...)",
      "save": "gitlab_sites", "secret_provider": "gitlab", "secret_field": "token",
      "fields": [{"key": "token", "label": "GitLab token (api scope) - connects BOTH sites", "secret": True}]},
+    {"key": "bvtech_github", "name": "bvtech.org site repo (GitHub)", "priority": 1,
+     "unlocks": "Publishing to the LIVE bvtech.org - the site deploys from GitHub "
+                "(BVTECHLLC/bvtech-website-new), not GitLab. Daily posts land here.",
+     "console_url": "https://github.com/settings/personal-access-tokens/new",
+     "console_hint": "Fine-grained token -> Repository access: Only select repositories -> "
+                     "bvtech-website-new -> Permissions: Contents = Read and write -> Generate",
+     "save": "bvtech_github", "secret_provider": "bvtech_site", "secret_field": "gh_token",
+     "fields": [{"key": "gh_token",
+                 "label": "GitHub fine-grained PAT (Contents: Read and write)", "secret": True},
+                {"key": "github_repo",
+                 "label": "Repo (default BVTECHLLC/bvtech-website-new)", "secret": False}]},
     {"key": "cloudflare", "name": "Cloudflare (instant cache purge)", "priority": 1,
      "unlocks": "Published posts show on the sites IMMEDIATELY - without this, "
                 "Cloudflare's edge cache can serve the old page for hours.",
@@ -283,6 +296,14 @@ def save_connection(key: str, body: SaveCredIn, db: Session = Depends(get_db),
         return {"key": key,
                 "connected": jp_site.configured(db, "bvtech") and jp_site.configured(db, "jp"),
                 "verified": v.get("ok"), "detail": v.get("detail")}
+    if prov == "bvtech_github":
+        from ...services import jp_site
+        gh_payload = {k: v for k, v in payload.items() if k in ("gh_token", "github_repo")}
+        secure_config.upsert_platform(db, "bvtech_site", "BVTech.org Site", "Publishing",
+                                      gh_payload)
+        v = jp_site.gh_verify(db)
+        return {"key": key, "connected": v.get("ok", False),
+                "verified": v.get("ok"), "detail": v.get("detail")}
     if prov == "cloudflare":
         from ...services import cloudflare
         cf_payload = {k: v for k, v in payload.items() if k in ("api_token", "auth_email")}
@@ -325,6 +346,8 @@ def _verify_connector(db: Session, key: str) -> dict:
         return jp_site.verify_token(db)
     if key == "cloudflare":
         return cloudflare.verify(db)
+    if key == "bvtech_github":
+        return jp_site.gh_verify(db)
     if key == "anthropic":
         if not ai_svc.enabled():
             return {"ok": False, "detail": "No Claude key stored yet."}

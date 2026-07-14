@@ -3220,6 +3220,73 @@ def main():
               "metadata kept, HTML body embedded) + build-owned listing acknowledged by "
               "sync + Doctor names the engine and target folder OK")
 
+        # ==== v1.37: GitHub-native publishing — the LIVE bvtech.org forge ====
+        from app.services import jp_site as _jp37
+        import base64 as _b64_37
+        _sample37 = "---\ntitle: \"Old\"\ndescription: \"o\"\npubDate: 2026-06-01\n---\nold\n"
+        _gh_calls37 = []
+        def _gh37(method, url, token, payload=None):
+            _gh_calls37.append((method, url.split("api.github.com")[1][:60]))
+            assert token == "ghp_TEST37", token[:8]
+            if url.endswith("/user"):
+                return {"login": "bvtechllc"}
+            if "/repos/BVTECHLLC/bvtech-website-new" in url and "/contents/" not in url:
+                return {"full_name": "BVTECHLLC/bvtech-website-new",
+                        "permissions": {"push": True}}
+            if "/contents/?ref=" in url or url.endswith("/contents/?ref=main"):
+                return [{"path": "package.json", "type": "file"},
+                        {"path": "astro.config.mjs", "type": "file"},
+                        {"path": "src", "type": "dir"}]
+            if "/contents/src%2Fcontent%2Fblog?ref=" in url or "/contents/src/content/blog?ref=" in url:
+                return [{"path": "src/content/blog/old.md", "type": "file"}]
+            if method == "GET" and "old.md" in url:
+                return {"content": _b64_37.b64encode(_sample37.encode()).decode(),
+                        "sha": "abc37"}
+            if method == "GET" and "/contents/" in url:
+                raise RuntimeError("GitHub 404: Not Found")
+            if method == "PUT" and "/contents/" in url:
+                _gh_calls37.append(("PUT-BODY", payload))
+                return {"commit": {"sha": "ghsha37"}}
+            return {}
+        _ogh37 = _jp37._GH
+        _jp37._GH = _gh37
+        try:
+            # Connect via the new tile -> verified against GitHub live.
+            r37 = c.post("/api/setup/connections/bvtech_github",
+                         json={"values": {"gh_token": "ghp_TEST37"}}).json()
+            assert r37["verified"] is True and "bvtechllc" in r37["detail"], r37
+            cfg37 = _jp37.get_config(db, "bvtech")
+            assert cfg37["forge"] == "github" and cfg37["project"] == "BVTECHLLC/bvtech-website-new"
+            # Publish -> markdown via the GitHub Contents API with cloned frontmatter.
+            out37 = _jp37.publish(db, {"title": "GitHub Native Post",
+                                       "html": "<p>Live-site body.</p>",
+                                       "slug": "github-native-post"}, site="bvtech")
+            assert out37["ok"] and out37["forge"] == "github", out37
+            assert out37["content_path"] == "src/content/blog/github-native-post.md", out37
+            _put37 = next(p for m, p in _gh_calls37 if m == "PUT-BODY")
+            _md37 = _b64_37.b64decode(_put37["content"]).decode()
+            assert 'title: "GitHub Native Post"' in _md37 and "<p>Live-site body.</p>" in _md37
+            assert _put37["branch"] == "main" and "sha" not in _put37   # create, not update
+            # Doctor: GitHub connection + engine named; no GitLab checks run.
+            d37 = _jp37.diagnose(db, "bvtech")
+            names37 = [ck["name"] for ck in d37["checks"]]
+            assert "GitHub connection" in names37 and "Site engine" in names37, names37
+            assert "GitLab token" not in names37
+            # Connection Center tile shows connected + testable.
+            cc37 = {i["key"]: i for i in c.get("/api/setup/connections").json()["items"]}
+            assert cc37["bvtech_github"]["connected"] is True
+            assert cc37["bvtech_github"]["testable"] is True
+            t37 = c.post("/api/setup/connections/bvtech_github/test").json()
+            assert t37["ok"] is True, t37
+        finally:
+            _jp37._GH = _ogh37
+            _cl37 = _SL27()
+            _cl37.query(_IC27).filter(_IC27.provider.in_(["gitlab", "bvtech_site", "jp_site"])).delete(synchronize_session=False)
+            _cl37.commit(); _cl37.close()
+        print("GitHub-native publishing: fine-grained PAT tile (save->live verify as user + "
+              "write check) + forge flips to github + markdown committed via Contents API "
+              "with cloned frontmatter + Doctor runs GitHub checks + tile testable OK")
+
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
@@ -4949,7 +5016,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.36.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.37.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
