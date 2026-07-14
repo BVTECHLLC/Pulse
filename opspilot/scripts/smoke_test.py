@@ -3624,6 +3624,31 @@ def main():
                                    title="N", url="/blog/n.html", excerpt="",
                                    date_str="", link_pat=r'href="/blog/x\.html"')
         assert "June 30, 2026" in _c41 and 'href="/blog/n.html"' in _c41, _c41
+        # ==== v1.42: site separation + de-spam ====
+        from app.services import blog_autopilot as _ba42
+        assert "STYLE LOCK" in _ba42._SYSTEM and "company voice" in _ba42._SYSTEM
+        _card42 = ('<article class="pc"><h2><a href="https://bvtech.org/blog/'
+                   'supply-chain-risks.html">Supply Chain</a></h2>'
+                   '<p class="excerpt">e</p></article>')
+        _other42 = ('<article class="pc"><h2><a href="/blog/other-post.html">Other</a>'
+                    '</h2><p class="excerpt">o</p></article>')
+        _spam42 = '<div class="posts">' + _card42 + _other42 + _card42 + _card42 + '</div>'
+        # (a) listed-detection across href forms: an absolute-href card blocks
+        #     re-injection of the same post (the duplicate-card spam root cause).
+        _h42, _ch42 = _jp40.inject_post_into_listing(
+            _spam42, title="Supply Chain", url="/blog/supply-chain-risks.html",
+            excerpt="e", date_str="July 14, 2026", style="blog-file")
+        assert _ch42 is False, "absolute-href card must count as already listed"
+        # (b) de-spam: duplicate cards collapse to ONE (first kept, others gone).
+        _h42b, _n42 = _jp40._dedupe_cards(_spam42, "supply-chain-risks")
+        assert _n42 == 2 and _h42b.count("supply-chain-risks") == 1, (_n42, _h42b[:200])
+        assert "other-post" in _h42b
+        # (c) card removal matches ANY href form (the flood cards use absolute).
+        _h42c, _ch42c = _jp40._remove_card(_spam42, "supply-chain-risks")
+        assert _ch42c and "supply-chain-risks" not in _h42c and "other-post" in _h42c
+        print("Site separation + de-spam: slug-matched listed-check (absolute/relative "
+              "hrefs) + duplicate cards collapse to one + any-form card removal + bvtech "
+              "company-voice STYLE LOCK OK")
         # (g) The GH tick cron warns instead of failing when Cloudflare blocks it.
         import os as _os40
         _wf40 = open(_os40.path.join(_os40.path.dirname(__file__), "..", "..",
@@ -5370,7 +5395,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.41.1 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.42.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

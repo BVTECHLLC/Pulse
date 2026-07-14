@@ -47,7 +47,12 @@ _SYSTEM = (
     "Structure: a hook paragraph, 3-5 sections with h2 headings, a practical "
     "checklist or takeaways list, and a closing paragraph that invites the reader "
     "to reach out to BVTech ({cta}). Concrete and useful over promotional; one "
-    "natural mention of the focus metro; never invent statistics or client names."
+    "natural mention of the focus metro; never invent statistics or client names.\n"
+    "STYLE LOCK (bvtech.org is the COMPANY blog): write in BVTech's company voice "
+    "('we at BVTech'), MSP-authority style for SEO. NEVER first-person founder "
+    "voice, NEVER start the title with a person's name, NEVER title posts "
+    "'Jordan Polasek on ...' — personal founder posts belong on jordanpolasek.com, "
+    "not here."
 )
 
 
