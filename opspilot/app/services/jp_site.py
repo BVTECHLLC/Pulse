@@ -270,7 +270,10 @@ def _find_generic_card(html_text: str, link_pat: str) -> tuple[int, int] | None:
         line_off.append(line_off[-1] + len(ln) + 1)
 
     class _P(HTMLParser):
-        CONTAINERS = ("article", "li", "section", "div")
+        # v1.39: <a> counts as a container too — modern card grids often make
+        # the whole card ONE anchor (<a class="card"><h3>...</h3>...</a>), so
+        # the smallest element wrapping the link+heading IS the link itself.
+        CONTAINERS = ("article", "li", "section", "div", "a")
 
         def __init__(self):
             super().__init__(convert_charrefs=False)
@@ -285,8 +288,13 @@ def _find_generic_card(html_text: str, link_pat: str) -> tuple[int, int] | None:
         def handle_starttag(self, tag, attrs):
             if tag in self.CONTAINERS:
                 self.stack.append((tag, self._off()))
-            elif tag in ("h1", "h2", "h3", "h4"):
+            if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
                 self.headings.append(self._off())
+            elif tag in ("div", "span", "p", "strong", "b"):
+                # Heading-less cards: a class named *title* is the headline.
+                cls = next((v for k, v in attrs if k == "class" and v), "")
+                if "title" in cls.lower():
+                    self.headings.append(self._off())
 
         def handle_endtag(self, tag):
             if tag not in self.CONTAINERS:
@@ -318,14 +326,21 @@ def _rewrite_card(card: str, *, title: str, url: str, excerpt: str,
     import html as _html
     import re as _re
     card = _re.sub(link_pat, f'href="{url}"', card)
-    card = _re.sub(r"(<h[1-4][^>]*>\s*(?:<a[^>]*>)?)(.*?)((?:</a>\s*)?</h[1-4]>)",
-                   lambda m: m.group(1) + _html.escape(title) + m.group(3),
-                   card, count=1, flags=_re.S)
+    card, n_head = _re.subn(r"(<h[1-6][^>]*>\s*(?:<a[^>]*>)?)(.*?)((?:</a>\s*)?</h[1-6]>)",
+                            lambda m: m.group(1) + _html.escape(title) + m.group(3),
+                            card, count=1, flags=_re.S)
+    if not n_head:
+        # Heading-less cards: rewrite the first element whose class says "title".
+        card = _re.sub(r'(<(\w+)[^>]*class="[^"]*[Tt]itle[^"]*"[^>]*>)(.*?)(</\2>)',
+                       lambda m: m.group(1) + _html.escape(title) + m.group(4),
+                       card, count=1, flags=_re.S)
     if _re.search(r'class="excerpt"', card):
         card = _re.sub(r'(<p[^>]*class="excerpt"[^>]*>)(.*?)(</p>)',
                        lambda m: m.group(1) + _html.escape(excerpt) + m.group(3),
                        card, count=1, flags=_re.S)
     card = _re.sub(r"(>)([A-Z][a-z]+ \d{1,2}, \d{4})(<)",
+                   lambda m: m.group(1) + date_str + m.group(3), card, count=1)
+    card = _re.sub(r"(>)(\d{4}-\d{2}-\d{2})(<)",
                    lambda m: m.group(1) + date_str + m.group(3), card, count=1)
     return card
 
@@ -341,8 +356,7 @@ def inject_post_into_listing(listing_html: str, *, title: str, url: str,
     h = listing_html
     if f'href="{url}"' in h:                       # already listed (re-publish)
         return h, False
-    link_pat = (r'href="[^"]*blog/[a-z0-9\-]+\.html"' if style == "blog-file"
-                else r'href="/[a-z0-9\-]{6,}/"')
+    link_pat = _link_pat_for(style)
     # Prefer the standard posts grid (leaves any 'featured' card alone).
     grid = re.search(r'<div[^>]*class="[^"]*\bposts\b[^"]*"[^>]*>', h)
     art_re = re.compile(r'<article\b[^>]*>.*?</article>', re.S | re.I)
@@ -371,6 +385,74 @@ def inject_post_into_listing(listing_html: str, *, title: str, url: str,
     card = _rewrite_card(h[span[0]:span[1]], title=title, url=url, excerpt=excerpt,
                          date_str=date_str, link_pat=link_pat)
     return h[:span[0]] + card + "\n" + h[span[0]:], True
+
+
+def _link_pat_for(style: str) -> str:
+    return (r'href="[^"]*blog/[a-z0-9\-]+\.html"' if style == "blog-file"
+            else r'href="/[a-z0-9\-]{6,}/"')
+
+
+def _ai_inject_listing(html_text: str, *, title: str, url: str, excerpt: str,
+                       date_str: str, link_pat: str) -> tuple[str, bool]:
+    """v1.39 last resort: when the deterministic card-finder can't parse the
+    page's markup, have Claude clone the page's OWN newest card for the new
+    post. The model only AUTHORS the card + names an anchor; the splice itself
+    is deterministic and validated hard (the anchor must exist verbatim near
+    the first post link, the card must link the new URL and carry its title) —
+    a wrong answer changes NOTHING, exactly like an unrecognized listing today."""
+    import html as _html
+    import re as _re
+    from . import ai as ai_svc
+    if not ai_svc.enabled():
+        return html_text, False
+    m = _re.search(link_pat, html_text)
+    if not m:
+        return html_text, False
+    frag = html_text[max(0, m.start() - 4000): m.start() + 4000]
+    system = (
+        "You are an exact HTML templating engine for a static blog listing page. "
+        "Clone the existing post-card markup for a NEW post: same tags, same class "
+        "names, same attribute style, same indentation. Never invent classes or "
+        "restructure anything. Reply in EXACTLY this format (nothing else):\n"
+        "ANCHOR: <the first 60-120 characters of the newest existing post card, copied "
+        "VERBATIM from the fragment starting at its opening tag; the new card will be "
+        "inserted immediately before this text>\n"
+        "CARD_START\n<the new card's html>\nCARD_END")
+    user = (f"New post to insert:\nTITLE: {title}\nURL: {url}\nDATE: {date_str}\n"
+            f"EXCERPT: {excerpt}\n\nListing page fragment:\n{frag}")
+    try:
+        raw = ai_svc.complete(system, user, max_tokens=1600)
+    except Exception:  # noqa: BLE001 — AI down: behave like "not recognized"
+        return html_text, False
+    am = _re.search(r"ANCHOR:[ \t]*(.+)", raw)
+    cm = _re.search(r"CARD_START\s*\n(.*?)\nCARD_END", raw, _re.S)
+    if not am or not cm:
+        return html_text, False
+    anchor = am.group(1).strip()[:200]
+    card = cm.group(1).strip()
+    idx = html_text.find(anchor)
+    # Validation gauntlet — every miss returns the page untouched.
+    if (len(anchor) < 20 or idx < 0 or not card or len(card) > 4000
+            or f'href="{url}"' not in card
+            or (title[:40] not in card and _html.escape(title)[:40] not in card)
+            or "<html" in card.lower() or "<body" in card.lower()
+            or abs(idx - m.start()) > 8000):
+        return html_text, False
+    return html_text[:idx] + card + "\n" + html_text[idx:], True
+
+
+def _inject_listing(html_text: str, *, title: str, url: str, excerpt: str,
+                    date_str: str, style: str, allow_ai: bool = True) -> tuple[str, bool]:
+    """Deterministic injection first; AI card-clone fallback when the markup
+    isn't recognized (and Claude is connected). This is what publish and
+    sync_listings actually call."""
+    new_html, changed = inject_post_into_listing(
+        html_text, title=title, url=url, excerpt=excerpt,
+        date_str=date_str, style=style)
+    if changed or f'href="{url}"' in html_text or not allow_ai:
+        return new_html, changed
+    return _ai_inject_listing(html_text, title=title, url=url, excerpt=excerpt,
+                              date_str=date_str, link_pat=_link_pat_for(style))
 
 
 def _newest_skeleton(cfg: dict, style: str) -> str | None:
@@ -478,7 +560,7 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
             current = _fetch_file(cfg, lp)
             if current is None:
                 continue                              # no such listing on this site
-            new_html, changed = inject_post_into_listing(
+            new_html, changed = _inject_listing(
                 current, title=post.get("title", slug), url=public_url,
                 excerpt=excerpt, date_str=date_str, style=cfg["style"])
             if changed:
@@ -792,6 +874,7 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
             return {"ok": False, "error": "no listing pages found in the repo"}
         date_str = datetime.now(timezone.utc).strftime("%B %-d, %Y")
         added, actions, purge_urls = [], [], []
+        ai_misses: dict[str, int] = {}
         for path in post_paths:
             url = _post_url_for(meta, path, cfg["style"])
             rel = url.replace(meta["site"], "")            # href form used in listings
@@ -803,12 +886,21 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
             if not page:
                 continue
             title, excerpt = _post_meta_from_html(page)
+            any_change = False
             for lp in missing:
-                new_html, changed = inject_post_into_listing(
+                # AI fallback is capped per listing page: after 2 misses the
+                # page clearly isn't AI-fixable either — stop burning calls.
+                use_ai = ai_misses.get(lp, 0) < 2
+                new_html, changed = _inject_listing(
                     listings[lp], title=title, url=rel, excerpt=excerpt,
-                    date_str=date_str, style=cfg["style"])
+                    date_str=date_str, style=cfg["style"], allow_ai=use_ai)
                 if changed:
                     listings[lp] = new_html
+                    any_change = True
+                elif use_ai:
+                    ai_misses[lp] = ai_misses.get(lp, 0) + 1
+            if not any_change:
+                continue                    # nothing injectable for this post
             added.append({"path": path, "title": title, "url": url})
             purge_urls.append(url)
             if len(added) >= limit:
@@ -821,6 +913,11 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
                 changed_files.append(lp)
                 purge_urls.append(f"{meta['site']}/{lp}".replace("/index.html", "/"))
         if not actions:
+            if ai_misses:
+                return {"ok": False,
+                        "error": "listing card markup not recognized (deterministic + AI "
+                                 "fallback both missed) - run the Doctor; the listing "
+                                 "template needs a tweak"}
             return {"ok": True, "added": [], "detail": "listings already complete - nothing to sync"}
         commit = _HTTP("POST", f"{_proj_url(cfg)}/repository/commits", cfg["token"], {
             "branch": cfg["branch"],
@@ -936,12 +1033,22 @@ def diagnose(db: Session, site: str) -> dict:
         _probe, changed = inject_post_into_listing(
             h, title="probe", url="/pulse-doctor-probe/", excerpt="probe",
             date_str="January 1, 2026", style=cfg["style"])
-        _check(f"Listing {lp}", changed,
-               "structure recognized - new posts will be inserted" if changed
-               else "card structure NOT recognized - new posts won't appear here",
-               "the listing markup changed; publishing still works but listings need a template tweak")
         if changed:
+            _check(f"Listing {lp}", True, "structure recognized - new posts will be inserted")
             recognized.append(lp)
+        else:
+            # v1.39: not deterministically parseable, but Claude clones the
+            # page's own card at publish/Sync time — that's a working state.
+            from . import ai as _ai_svc
+            if _ai_svc.enabled():
+                _check(f"Listing {lp}", True,
+                       "custom card markup - Claude clones this page's own card at "
+                       "publish/Sync time (validated splice; a bad answer changes nothing)")
+            else:
+                _check(f"Listing {lp}", False,
+                       "card structure NOT recognized - new posts won't appear here",
+                       "connect Claude (Connection Center) to enable AI card cloning, or "
+                       "the listing template needs a tweak")
     # Orphaned posts (in repo, absent from every listing).
     try:
         for path in _list_post_paths(cfg, cfg["style"])[:60]:
@@ -962,9 +1069,17 @@ def diagnose(db: Session, site: str) -> dict:
         try:
             pipes = _HTTP("GET", f"{_proj_url(cfg)}/pipelines?sha={pend[-1]['sha']}", cfg["token"])
             st = (pipes[0].get("status") if pipes else "none") or "none"
-            _check("Cloudflare build", st in ("success", "running", "pending", "created"),
-                   f"last publish pipeline: {st}",
-                   "the deploy failed - Pulse auto-reverted; re-publish after fixing")
+            if st == "none":
+                # v1.39: Cloudflare can deploy a repo without reporting a GitLab
+                # pipeline at all — "no pipeline" is NOT a failure. The posts
+                # being live at their URLs is the real signal.
+                _check("Cloudflare build", True,
+                       "no pipeline reported for the last publish (Cloudflare can deploy "
+                       "without one) - the post URLs being live is the real check")
+            else:
+                _check("Cloudflare build", st in ("success", "running", "pending", "created"),
+                       f"last publish pipeline: {st}",
+                       "the deploy failed - Pulse auto-reverted; re-publish after fixing")
         except Exception:  # noqa: BLE001
             _check("Cloudflare build", True, "no pipeline info (deploy may not report to GitLab)")
     from . import cloudflare

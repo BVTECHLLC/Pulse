@@ -3327,6 +3327,109 @@ def main():
               "switch (off -> GitLab authoritative even with a stored PAT, tile says so, "
               "Doctor 'Publish route' names the repo + dormant token) + on -> GitHub OK")
 
+        # ==== v1.39: Listing Whisperer — anchor cards + AI card-clone fallback ====
+        from app.services import ai as _ai39, jp_site as _jp39, secure_config as _sc39
+        # (a) anchor-as-card grids (the whole card is ONE <a>) are now recognized.
+        _anchor39 = ('<main><section><div class="grid">'
+                     '<a class="article-card" href="/blog/old-post.html">'
+                     '<span class="card-date">2026-07-01</span>'
+                     '<h3 class="card-title">Old Post</h3>'
+                     '<p>Old summary.</p></a>'
+                     '</div></section></main>')
+        _h39a, _ch39a = _jp39.inject_post_into_listing(
+            _anchor39, title='New "Anchor" Post', url="https://bvtech.org/blog/new-post.html",
+            excerpt="Fresh.", date_str="July 14, 2026", style="blog-file")
+        assert _ch39a, "anchor-as-card listing must be recognized"
+        assert (_h39a.index('href="https://bvtech.org/blog/new-post.html"')
+                < _h39a.index('href="/blog/old-post.html"'))
+        assert "New &quot;Anchor&quot; Post" in _h39a and ">July 14, 2026<" in _h39a
+        # (b) heading-less cards: an element with class *title* is the headline.
+        _divs39 = ('<div class="posts"><div class="post-box">'
+                   '<a class="stretch" href="/blog/older.html"></a>'
+                   '<div class="post-title">Older Title</div>'
+                   '<p class="excerpt">Old text.</p></div></div>')
+        _h39b, _ch39b = _jp39.inject_post_into_listing(
+            _divs39, title="Titleless Card Post", url="https://bvtech.org/blog/titleless.html",
+            excerpt="Ex39.", date_str="July 14, 2026", style="blog-file")
+        assert _ch39b and ">Titleless Card Post<" in _h39b and "Ex39." in _h39b, _h39b[:400]
+        # (c) AI card-clone fallback: markup NOTHING deterministic understands
+        #     (table rows) — Claude authors the card, the splice is validated.
+        _weird39 = ('<table id="bloglist"><tr class="rowx"><td>'
+                    '<a href="/blog/first.html">First</a></td><td>2026-06-01</td></tr></table>')
+        assert _jp39.inject_post_into_listing(_weird39, title="t", url="/blog/u.html",
+                                              excerpt="e", date_str="d",
+                                              style="blog-file")[1] is False
+        _oai_en39, _oai_c39 = _ai39.enabled, _ai39.complete
+        _ai39.enabled = lambda: True
+        def _aic39(system, user, **k):
+            assert "CARD_START" in system and "ai-post.html" in user, "prompt malformed"
+            return ('ANCHOR: <tr class="rowx"><td><a href="/blog/first.html">First</a>\n'
+                    'CARD_START\n<tr class="rowx"><td><a href="https://bvtech.org/blog/'
+                    'ai-post.html">AI Crafted Post</a></td><td>July 14, 2026</td></tr>\nCARD_END')
+        _ai39.complete = _aic39
+        try:
+            _h39c, _ch39c = _jp39._inject_listing(
+                _weird39, title="AI Crafted Post", url="https://bvtech.org/blog/ai-post.html",
+                excerpt="x", date_str="July 14, 2026", style="blog-file")
+            assert _ch39c, "AI fallback must inject when deterministic parsing fails"
+            assert _h39c.index("ai-post.html") < _h39c.index('href="/blog/first.html"')
+            # A bad AI answer (anchor not on the page) must change NOTHING.
+            _ai39.complete = lambda s, u, **k: ('ANCHOR: <tr class="not-on-this-page-marker-xyz123">\n'
+                                                'CARD_START\n<tr><td><a href="https://bvtech.org/blog/'
+                                                'ai2.html">T2 title here</a></td></tr>\nCARD_END')
+            _h39d, _ch39d = _jp39._inject_listing(
+                _weird39, title="T2 title here", url="https://bvtech.org/blog/ai2.html",
+                excerpt="x", date_str="July 14, 2026", style="blog-file")
+            assert _ch39d is False and _h39d == _weird39, "bad AI answer must be a no-op"
+            # (d) Doctor: unrecognized listing + Claude connected -> working state
+            #     (AI cloning), and a missing pipeline is NOT a failed deploy.
+            _ojp39 = _jp39._HTTP
+            def _jphttp39(method, url, token, payload=None):
+                import base64 as _b39
+                import urllib.parse as _u39
+                if "/pipelines" in url:
+                    return []                                     # no pipeline reported
+                if method == "GET" and "/repository/tree" in url:
+                    if "path=blog" in url:
+                        return [{"type": "blob", "path": "blog/first.html"}]
+                    return []
+                if method == "GET" and "/repository/files/" in url:
+                    p = _u39.unquote_plus(url.split("files/")[1].split("?")[0])
+                    if p == "blog/index.html":
+                        return {"content": _b39.b64encode(_weird39.encode()).decode()}
+                    raise Exception("404")
+                if method == "GET" and "/projects/" in url:
+                    return {"path_with_namespace": "BVTECHLLC-group/bvtech-website-new"}
+                return {}
+            _jp39._HTTP = _jphttp39
+            try:
+                _jp39.save_shared_token(db, "glpat-DOC39")
+                from app.services.secure_config import upsert_platform as _up39
+                _up39(db, "bvtech_site", "BVTech.org Site", "Publishing",
+                      {"pending": [{"sha": "x39"}]})
+                d39 = _jp39.diagnose(db, "bvtech")
+                by39 = {ck["name"]: ck for ck in d39["checks"]}
+                l39 = by39["Listing blog/index.html"]
+                assert l39["ok"] is True and "Claude clones" in l39["detail"], l39
+                cfb39 = by39["Cloudflare build"]
+                assert cfb39["ok"] is True and "no pipeline reported" in cfb39["detail"], cfb39
+                assert by39["Orphaned posts"]["ok"], by39["Orphaned posts"]
+            finally:
+                _jp39._HTTP = _ojp39
+        finally:
+            _ai39.enabled, _ai39.complete = _oai_en39, _oai_c39
+            _cl39 = _SL27()
+            _cl39.query(_IC27).filter(_IC27.provider.in_(["gitlab", "bvtech_site", "jp_site"])).delete(synchronize_session=False)
+            _cl39.commit(); _cl39.close()
+        # (e) round-tripping an already-encrypted config can never double-encrypt.
+        _enc39 = _sc39.encrypt_config({"token": "glpat-secret39"})
+        _enc39b = _sc39.encrypt_config(dict(_enc39), previous=_enc39)
+        assert _sc39.get_secret(_enc39b, "token") == "glpat-secret39", \
+            "full-config re-submit double-encrypted the secret!"
+        print("Listing Whisperer: anchor-as-card + title-class cards recognized + AI "
+              "card-clone fallback (validated splice, bad answer = no-op) + Doctor treats "
+              "AI cloning as healthy + pipeline-none not a failure + enc:: round-trip safe OK")
+
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
@@ -5056,7 +5159,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.38.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.39.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

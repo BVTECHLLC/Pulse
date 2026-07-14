@@ -74,6 +74,13 @@ def encrypt_config(raw: dict, *, previous: dict | None = None) -> dict:
                 if k in previous:
                     out[k] = previous[k]
                 continue
+            # v1.39: already-encrypted value round-tripped back in (a caller
+            # re-submitting a full stored config, e.g. the pending-deploy
+            # watcher) — keep it as-is. Without this guard it would be
+            # encrypted AGAIN and the secret silently stops decrypting.
+            if isinstance(v, str) and v.startswith(_ENC_PREFIX):
+                out[k] = v
+                continue
             out[k] = _ENC_PREFIX + crypto.encrypt(str(v))
         else:
             out[k] = v

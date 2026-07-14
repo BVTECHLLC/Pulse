@@ -1,5 +1,31 @@
 # BVTech OpsPilot — Changelog
 
+## v1.39.0 — The Listing Whisperer: bvtech.org posts become VISIBLE (July 2026)
+The Doctor's field report showed the last gap exactly: bvtech posts publish
+fine (12 live at their URLs) but `blog/index.html`'s card markup wasn't
+recognized, so new posts never appeared in the blog listing. Killed three ways:
+- **Anchor-as-card support**: modern grids make the whole card ONE `<a>`
+  (`<a class="card"><h3>…</h3></a>`). The universal card-finder now treats
+  anchors as containers, understands `h1–h6`, and treats a `class*="title"`
+  element as the headline on heading-less cards (rewritten correctly when
+  cloned). ISO dates (`2026-07-01`) get swapped too.
+- **AI card-clone fallback**: when the deterministic parser still can't read a
+  listing, Claude clones the page's OWN newest card for the new post. The model
+  only authors the card + names a verbatim anchor; the splice is deterministic
+  and validated hard (anchor must exist near the first post link, card must
+  carry the new URL + title) — a bad answer changes NOTHING. Wired into publish
+  AND Sync listings (with a per-page miss cap), so one click of **Sync
+  listings** backfills the 12 orphaned bvtech posts.
+- **Doctor honesty upgrades**: an AI-cloneable listing now reads as healthy
+  (with an explanation) instead of a red X; "last publish pipeline: none" is no
+  longer reported as a failed deploy (Cloudflare can deploy without reporting a
+  GitLab pipeline — jordanpolasek.com's false red); Sync results only count
+  posts that were actually injected and say when markup defeated both engines.
+- **Vault hardening**: `encrypt_config` now recognizes already-encrypted
+  (`enc::`) values round-tripped back in and keeps them as-is — previously a
+  caller re-submitting a full stored config (e.g. the pending-deploy watcher)
+  would encrypt them AGAIN and the secret silently stopped decrypting.
+
 ## v1.38.0 — Forge safety: GitLab is authoritative, GitHub strictly opt-in (July 2026)
 Correction to v1.37: the operator's GitLab dashboard confirms the live
 bvtech.org repo **IS on GitLab — `BVTECHLLC-group/bvtech-website-new`** (the
