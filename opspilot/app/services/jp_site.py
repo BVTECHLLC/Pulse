@@ -1234,6 +1234,29 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
                 if n:
                     listings[lp] = new_h
                     cards_deduped += n
+        # v1.43: GHOST cards — cards whose post no longer exists in the repo
+        # (deleted flood files whose cards survived under another href form)
+        # link straight to 404s; remove them everywhere. Own-site links only,
+        # never pages/nav.
+        site_host = meta["site"].split("//", 1)[1]
+        if cfg["style"] == "blog-file":
+            ghost_rx = r'href="[^"]*/blog/([a-z0-9\-]+)\.html"'
+        else:
+            ghost_rx = (r'href="(?:https?://' + re.escape(site_host)
+                        + r')?/([a-z0-9\-]{6,})/"')
+        repo_slugs = {_slug_of(p) for p in _list_post_paths(cfg, cfg["style"])}
+        ghost_cards = 0
+        for lp in list(listings):
+            h = listings[lp]
+            for gslug in set(re.findall(ghost_rx, h)):
+                if (gslug in repo_slugs or gslug == "index"
+                        or any(gslug.startswith(pfx) for pfx in _PAGE_SLUGS)):
+                    continue
+                new_h, ch = _remove_card(h, gslug)
+                if ch:
+                    h = new_h
+                    ghost_cards += 1
+            listings[lp] = h
         # v1.43: PREVIEW cap — the homepage blog section keeps only the newest
         # N cards (the full archive lives on /blog/). This shrinks the
         # "100 writings on the main page" flood in the same commit.
@@ -1243,7 +1266,7 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
                 if n:
                     listings[lp] = new_h
                     cards_deduped += n
-        if not removed and not cards_deduped:
+        if not removed and not cards_deduped and not ghost_cards:
             return {"ok": True, "removed": [], "cards_deduped": 0,
                     "detail": "no same-day duplicates found"}
         for lp, h in listings.items():
@@ -1256,8 +1279,9 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
                     "detail": "no changes needed"}
         commit = _HTTP("POST", f"{_proj_url(cfg)}/repository/commits", cfg["token"], {
             "branch": cfg["branch"],
-            "commit_message": (f"blog: remove {len(removed)} duplicate post(s) + "
-                               f"{cards_deduped} duplicate card(s) "
+            "commit_message": (f"blog: remove {len(removed)} duplicate post(s), "
+                               f"{cards_deduped} duplicate/extra card(s), "
+                               f"{ghost_cards} ghost card(s) "
                                "(1-post-per-day flood guard, via Pulse)"),
             "actions": actions,
         })
@@ -1267,13 +1291,15 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
             db.add(Notification(
                 client_id=None, target_user_id=None, kind="content", severity="info",
                 message=(f"🧹 Flood guard: {meta['site']} — removed {len(removed)} same-day "
-                         f"duplicate post(s) (first of each day kept) and {cards_deduped} "
-                         "repeated listing card(s). Cache purged.")[:1000]))
+                         f"duplicate post(s) (first of each day kept), {cards_deduped} "
+                         f"repeated/extra listing card(s) and {ghost_cards} dead-link "
+                         "card(s). Cache purged.")[:1000]))
             db.commit()
         except Exception:  # noqa: BLE001
             db.rollback()
         return {"ok": True, "sha": commit.get("id"), "removed": removed,
-                "cards_deduped": cards_deduped, "cache_purged": purge.get("ok")}
+                "cards_deduped": cards_deduped, "ghost_cards": ghost_cards,
+                "cache_purged": purge.get("ok")}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)[:300]}
 

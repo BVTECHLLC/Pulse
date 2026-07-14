@@ -3669,8 +3669,23 @@ def main():
             _dt40(2026, 7, 14, tzinfo=_tz40.utc))
         assert _ca40.bvtech_angle(_dt40(2026, 7, 14, tzinfo=_tz40.utc)) == \
             _ca40.day_angle(_dt40(2026, 7, 14, tzinfo=_tz40.utc))
+        # Ghost cards: own-site links to deleted posts are detected (absolute or
+        # relative) while foreign-domain links never match.
+        import re as _re43
+        _ghost43 = ('<div class="posts"><article><h2>'
+                    '<a href="https://jordanpolasek.com/deleted-flood-post/">G</a></h2>'
+                    '<p class="excerpt">x</p></article><article><h2>'
+                    '<a href="/kept-post-here/">K</a></h2><p class="excerpt">y</p>'
+                    '</article></div><a href="https://www.linkedin.com/in/jordanbvtech/">li</a>')
+        _rx43 = r'href="(?:https?://jordanpolasek\.com)?/([a-z0-9\-]{6,})/"'
+        assert set(_re43.findall(_rx43, _ghost43)) == {"deleted-flood-post",
+                                                       "kept-post-here"}
+        _g43, _gch43 = _jp40._remove_card(_ghost43, "deleted-flood-post")
+        assert _gch43 and "deleted-flood-post" not in _g43 and "kept-post-here" in _g43
+        assert "linkedin.com" in _g43                     # foreign links untouched
         print("Homepage preview cap (newest 6 cards kept, idempotent, both sites) + "
-              "Monday weekly cybersecurity recap edition for bvtech.org OK")
+              "Monday weekly cybersecurity recap edition + ghost-card detection "
+              "(own-site any-form links, foreign domains ignored) OK")
         # (g) The GH tick cron warns instead of failing when Cloudflare blocks it.
         import os as _os40
         _wf40 = open(_os40.path.join(_os40.path.dirname(__file__), "..", "..",
