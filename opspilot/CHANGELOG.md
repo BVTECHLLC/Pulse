@@ -1,5 +1,34 @@
 # BVTech OpsPilot — Changelog
 
+## v1.40.0 — FLOOD GUARD: one post per day, ALWAYS (July 2026)
+Field report: 19 posts dated July 14 on jordanpolasek.com — every "Post to all
+now" press generated a fresh article, because force bypassed the daily dedupe.
+Fixed at every layer, plus automatic damage repair:
+- **Smash-proof cap**: `run_daily` now enforces one post per channel per day
+  even under force — pressing "Post to all now" again replies "already posted
+  today" instead of publishing. Custom posts respect the same cap, with an
+  explicit `override` flag as the only escape hatch.
+- **Queue can't stack**: a newer LinkedIn/GBP draft REPLACES the queued one
+  (one queued draft per channel, ever) and `collapse_queue()` self-heals any
+  pre-existing backlog every heartbeat — a paused channel can no longer flood
+  on reconnect.
+- **Duplicate sweeper**: `cleanup_duplicate_posts` deletes same-day extras from
+  the live site (keeps the earliest-committed post of each day), removes their
+  listing cards in the same commit, and purges the cache. Pages (about/contact/
+  certifications/…) are never candidates. Runs automatically every hour while
+  the autopilot is ON, plus a 🧹 "Remove duplicates" button and OWNER endpoint —
+  so the July-14 flood cleans itself up on deploy.
+- **Card text finally personal**: cloned cards without a `class="excerpt"` kept
+  the template post's summary (every bvtech card showed the same June-22 text).
+  The first substantial paragraph is now rewritten with the post's own excerpt,
+  and badge-style dates without a year ("NEW · JUNE 22") get swapped too.
+  **Sync listings** additionally REPAIRS existing stale cards from each post's
+  own metadata.
+- **Daily Content Tick cron goes quiet**: Cloudflare challenges GitHub's
+  runners, so "unreachable" is now a warning, not a failed run — no more
+  red-run emails for a network path that's blocked by design. The in-app
+  scheduler (whose pulse the Doctor checks) remains the primary engine.
+
 ## v1.39.0 — The Listing Whisperer: bvtech.org posts become VISIBLE (July 2026)
 The Doctor's field report showed the last gap exactly: bvtech posts publish
 fine (12 live at their URLs) but `blog/index.html`'s card markup wasn't

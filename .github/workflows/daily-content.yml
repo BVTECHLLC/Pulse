@@ -38,8 +38,14 @@ jobs:
             if [ "$code" = "200" ] || [ "$code" = "429" ]; then exit 0; fi
             sleep $((15 * i))
           done
-          echo "::error::content tick unreachable after 5 attempts"
-          exit 1
+          # v1.40: Cloudflare challenges non-browser traffic to the portal, so
+          # this cron often CANNOT get through from GitHub's runners — and that
+          # is fine: the in-process scheduler on the box is the primary engine
+          # (its pulse is checked below and by the in-app Doctor). Unreachable
+          # here is a WARNING, not a failed run — no more red-run emails for a
+          # network path that's blocked by design.
+          echo "::warning::content tick unreachable after 5 attempts (Cloudflare likely challenged the request) - the portal's own scheduler still posts daily; check the in-app Doctor if posts are missing"
+          exit 0
 
       - name: Verify autopilot proof-of-life
         if: always()

@@ -249,6 +249,17 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         db.rollback()
 
+    # 13.57) v1.40 FLOOD GUARD self-heal — collapse duplicate queued social
+    #        drafts and sweep same-day duplicate posts off the live sites
+    #        (hourly per site). Only while the autopilot is enabled, so the
+    #        guard follows the same master switch as the engine it protects.
+    try:
+        if content_autopilot.get_config(db)["enabled"]:
+            content_autopilot.collapse_queue(db)
+            jp_site.sweep_duplicates(db, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
     # 13) Academy AI question refresh (v1.3) — monthly, only when Claude is
     #     connected; cheap month-key check otherwise.
     academy_ai = {"refreshed": False}

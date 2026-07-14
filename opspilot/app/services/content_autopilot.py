@@ -219,11 +219,49 @@ def _run_jp(db: Session, now: datetime) -> tuple[bool, str]:
     return True, (out.get("url") or post["title"]) + (f" | {note}" if note else "")
 
 
-def _enqueue_social(db: Session, body: str, channel: str, link: str = "") -> None:
-    db.add(SocialPost(body=body[:2800], link=link or "https://bvtech.org",
+def _enqueue_social(db: Session, body: str, channel: str, link: str = "") -> SocialPost:
+    # v1.40 FLOOD GUARD: ONE queued draft per channel — a newer draft REPLACES
+    # the queued one instead of stacking. Smashing 'Post to all now' while a
+    # channel is paused can never build a backlog that floods it on reconnect.
+    queued = [r for r in db.query(SocialPost).filter(SocialPost.status == "queued").all()
+              if channel in (r.channels or [])]
+    keep = queued[0] if queued else None
+    for r in queued[1:]:
+        r.status = "skipped"
+        r.result = "superseded by a newer draft (1-post-per-day flood guard)"
+    if keep is not None:
+        keep.body = body[:2800]
+        keep.link = link or "https://bvtech.org"
+        keep.scheduled_for = datetime.now(timezone.utc)
+        keep.result = "draft refreshed (flood guard keeps one queued post per channel)"
+        db.commit()
+        return keep
+    post = SocialPost(body=body[:2800], link=link or "https://bvtech.org",
                       channels=[channel], status="queued",
-                      scheduled_for=datetime.now(timezone.utc)))
+                      scheduled_for=datetime.now(timezone.utc))
+    db.add(post)
     db.commit()
+    return post
+
+
+def collapse_queue(db: Session) -> int:
+    """Backlog self-heal (runs every heartbeat tick): keep only the NEWEST
+    queued post per channel, mark older duplicates skipped. Returns how many
+    were collapsed. This drains any flood that accumulated before v1.40."""
+    rows = (db.query(SocialPost).filter(SocialPost.status == "queued")
+            .order_by(SocialPost.created_at.desc()).all())
+    seen: set[str] = set()
+    collapsed = 0
+    for r in rows:                                   # newest first
+        chans = tuple(r.channels or ["linkedin"])
+        if all(c in seen for c in chans):
+            r.status = "skipped"
+            r.result = "superseded by a newer draft (1-post-per-day flood guard)"
+            collapsed += 1
+        seen.update(chans)
+    if collapsed:
+        db.commit()
+    return collapsed
 
 
 def _run_linkedin(db: Session, now: datetime) -> tuple[bool, str]:
@@ -268,12 +306,24 @@ def publish_custom(db: Session, channel: str, *, title: str | None = None,
                    html: str | None = None, body: str | None = None,
                    excerpt: str | None = None, slug: str | None = None,
                    keywords: str | None = None, kind: str | None = None,
-                   link: str = "") -> dict:
+                   link: str = "", override: bool = False) -> dict:
     """Publish one operator-authored post to one channel. Returns
     {ok, channel, detail, url?/queued_id?}. Never raises for a 'not connected'
     channel — it reports it, exactly like the daily runner."""
     if channel not in ("bvtech", "jp", "linkedin", "gbp"):
         return {"ok": False, "channel": channel, "detail": f"unknown channel '{channel}'"}
+
+    # v1.40 FLOOD GUARD: custom posts respect the 1-post-per-day cap too —
+    # repeated Publish clicks can't stack same-day posts and tank SEO. An
+    # explicit override exists for the rare deliberate second post.
+    now = datetime.now(timezone.utc)
+    cfg = get_config(db)
+    if not override and cfg["last"].get(channel) == _today(now):
+        return {"ok": False, "channel": channel, "capped": True,
+                "detail": "already posted to this channel today - the 1-post-per-day "
+                          "guard protects your SEO. It resets at midnight UTC (7pm "
+                          "Central); tick 'post anyway' only if you truly want a second "
+                          "same-day post."}
 
     if channel in ("bvtech", "jp"):
         from . import jp_site
@@ -292,6 +342,7 @@ def publish_custom(db: Session, channel: str, *, title: str | None = None,
         out = jp_site.publish(db, post, site=channel)
         if not out.get("ok"):
             return {"ok": False, "channel": channel, "detail": out.get("error") or "publish failed"}
+        _mark(db, channel, ok=True, now=now)   # counts toward the 1/day cap
         note = _pub_note(out)
         return {"ok": True, "channel": channel,
                 "detail": "committed" + (f" | {note}" if note else ""),
@@ -304,14 +355,11 @@ def publish_custom(db: Session, channel: str, *, title: str | None = None,
     if not text:
         return {"ok": False, "channel": channel, "detail": "no post text"}
     social_channel = "linkedin" if channel == "linkedin" else "google_business"
-    from ..models import SocialPost
-    post = SocialPost(body=text[:2800], link=link or "https://bvtech.org",
-                      channels=[social_channel], status="queued",
-                      scheduled_for=datetime.now(timezone.utc))
-    db.add(post)
-    db.commit()
-    return {"ok": True, "channel": channel, "queued_id": post.id,
-            "detail": f"queued to {social_channel} (autopost engine delivers + retries)"}
+    row = _enqueue_social(db, text, social_channel, link=link)   # flood-guarded queue
+    _mark(db, channel, ok=True, now=now)                   # counts toward the 1/day cap
+    return {"ok": True, "channel": channel, "queued_id": row.id,
+            "detail": f"queued to {social_channel} (autopost engine delivers + retries; "
+                      "one queued draft per channel - a newer draft replaces it)"}
 
 
 # --------------------------------------------------------------------------- #
@@ -333,8 +381,16 @@ def run_daily(db: Session, now: datetime | None = None, *, force: bool = False) 
     for ch in CHANNELS:
         if not cfg["channels"].get(ch, True):
             continue
-        if not force and cfg["last"].get(ch) == _today(now):
-            continue   # already succeeded today
+        if cfg["last"].get(ch) == _today(now):
+            # v1.40 FLOOD GUARD: one post per channel per day, ALWAYS — even on
+            # 'Post to all now'. Smashing the button can never stack extra posts
+            # (19-a-day floods murder SEO). Force still runs channels that
+            # haven't shipped today (e.g. retrying a failed one right now).
+            if force:
+                results[ch] = {"ok": True, "skipped_daily_cap": True,
+                               "detail": "already posted today - the 1-post-per-day guard "
+                                         "protects your SEO; the next post ships tomorrow"}
+            continue
         try:
             ok, detail = _RUNNERS[ch](db, now)
         except Exception as e:  # noqa: BLE001
