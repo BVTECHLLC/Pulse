@@ -45,13 +45,18 @@ SITES = {
            # Listing pages that must show the new post (homepage "Writing" +
            # the /blog/ index). Without updating these, a published post is live
            # at its URL but invisible in the site's navigation.
-           "index_paths": ("index.html", "blog/index.html")},
+           "index_paths": ("index.html", "blog/index.html"),
+           # v1.43: the HOMEPAGE is a PREVIEW — newest N cards only. The full
+           # archive lives on /blog/. Without a cap the homepage section grew a
+           # card for every post ever published (the "100 writings" flood).
+           "preview_caps": {"index.html": 6}},
     "bvtech": {"provider": "bvtech_site", "name": "BVTech.org Site",
                "default_project": "BVTECHLLC-group/bvtech-website-new",
                "style": "blog-file", "site": "https://bvtech.org",
                "org": "BVTech LLC", "author_url": "https://bvtech.org",
                "content_classes": None,
-               "index_paths": ("blog/index.html", "index.html")},
+               "index_paths": ("blog/index.html", "index.html"),
+               "preview_caps": {"index.html": 6}},
 }
 
 # Alias list matching the old cron's lib_env.sh — the token that already exists
@@ -584,6 +589,10 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
             new_html, changed = _inject_listing(
                 current, title=post.get("title", slug), url=public_url,
                 excerpt=excerpt, date_str=date_str, style=cfg["style"])
+            cap = (meta.get("preview_caps") or {}).get(lp)
+            if cap:                                   # homepage = preview only
+                new_html, trimmed = _trim_listing(new_html, cfg["style"], cap)
+                changed = changed or bool(trimmed)
             if changed:
                 actions.append({"action": "update", "file_path": lp, "content": new_html})
                 listings_updated.append(lp)
@@ -976,6 +985,13 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
                     listings[lp] = h[:span[0]] + new_card + h[span[1]:]
                     repaired.append(f"{lp}: {rel}")
                     purge_urls.append(f"{meta['site']}/{lp}".replace("/index.html", "/"))
+        # v1.43: homepage sections are PREVIEWS — newest N cards only.
+        for lp, cap in (meta.get("preview_caps") or {}).items():
+            if lp in listings:
+                new_h, n = _trim_listing(listings[lp], cfg["style"], cap)
+                if n:
+                    listings[lp] = new_h
+                    repaired.append(f"{lp}: trimmed {n} extra preview card(s)")
         changed_files = []
         for lp, h in listings.items():
             orig = _fetch_file(cfg, lp)
@@ -1104,6 +1120,34 @@ def _remove_card(h: str, slug: str) -> tuple[str, bool]:
     return h, changed
 
 
+def _all_card_spans(h: str, link_pat: str) -> list[tuple[int, int]]:
+    """Source spans of every post card on a listing page, in page order."""
+    spans: list[tuple[int, int]] = []
+    off = 0
+    for _ in range(300):
+        seg = h[off:]
+        if not re.search(link_pat, seg):
+            break
+        span = _find_generic_card(seg, link_pat)
+        if not span:
+            break
+        spans.append((off + span[0], off + span[1]))
+        off += span[1]
+    return spans
+
+
+def _trim_listing(h: str, style: str, keep: int) -> tuple[str, int]:
+    """v1.43: PREVIEW listings (the homepage blog section) keep only the newest
+    `keep` cards — the full archive lives on /blog/. Cards are newest-first, so
+    everything after the first `keep` is removed. Returns (html, n_removed)."""
+    spans = _all_card_spans(h, _link_pat_for(style))
+    if len(spans) <= keep:
+        return h, 0
+    for s, e in reversed(spans[keep:]):
+        h = h[:s] + h[e:]
+    return h, len(spans) - keep
+
+
 def _dedupe_cards(h: str, slug: str) -> tuple[str, int]:
     """Keep the FIRST card linking to `slug`; remove every later duplicate card
     (the 'same card repeated down the whole page' spam). Returns (html, n)."""
@@ -1190,7 +1234,39 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
                 if n:
                     listings[lp] = new_h
                     cards_deduped += n
-        if not removed and not cards_deduped:
+        # v1.43: GHOST cards — cards whose post no longer exists in the repo
+        # (deleted flood files whose cards survived under another href form)
+        # link straight to 404s; remove them everywhere. Own-site links only,
+        # never pages/nav.
+        site_host = meta["site"].split("//", 1)[1]
+        if cfg["style"] == "blog-file":
+            ghost_rx = r'href="[^"]*/blog/([a-z0-9\-]+)\.html"'
+        else:
+            ghost_rx = (r'href="(?:https?://' + re.escape(site_host)
+                        + r')?/([a-z0-9\-]{6,})/"')
+        repo_slugs = {_slug_of(p) for p in _list_post_paths(cfg, cfg["style"])}
+        ghost_cards = 0
+        for lp in list(listings):
+            h = listings[lp]
+            for gslug in set(re.findall(ghost_rx, h)):
+                if (gslug in repo_slugs or gslug == "index"
+                        or any(gslug.startswith(pfx) for pfx in _PAGE_SLUGS)):
+                    continue
+                new_h, ch = _remove_card(h, gslug)
+                if ch:
+                    h = new_h
+                    ghost_cards += 1
+            listings[lp] = h
+        # v1.43: PREVIEW cap — the homepage blog section keeps only the newest
+        # N cards (the full archive lives on /blog/). This shrinks the
+        # "100 writings on the main page" flood in the same commit.
+        for lp, cap in (meta.get("preview_caps") or {}).items():
+            if lp in listings:
+                new_h, n = _trim_listing(listings[lp], cfg["style"], cap)
+                if n:
+                    listings[lp] = new_h
+                    cards_deduped += n
+        if not removed and not cards_deduped and not ghost_cards:
             return {"ok": True, "removed": [], "cards_deduped": 0,
                     "detail": "no same-day duplicates found"}
         for lp, h in listings.items():
@@ -1203,8 +1279,9 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
                     "detail": "no changes needed"}
         commit = _HTTP("POST", f"{_proj_url(cfg)}/repository/commits", cfg["token"], {
             "branch": cfg["branch"],
-            "commit_message": (f"blog: remove {len(removed)} duplicate post(s) + "
-                               f"{cards_deduped} duplicate card(s) "
+            "commit_message": (f"blog: remove {len(removed)} duplicate post(s), "
+                               f"{cards_deduped} duplicate/extra card(s), "
+                               f"{ghost_cards} ghost card(s) "
                                "(1-post-per-day flood guard, via Pulse)"),
             "actions": actions,
         })
@@ -1214,13 +1291,15 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
             db.add(Notification(
                 client_id=None, target_user_id=None, kind="content", severity="info",
                 message=(f"🧹 Flood guard: {meta['site']} — removed {len(removed)} same-day "
-                         f"duplicate post(s) (first of each day kept) and {cards_deduped} "
-                         "repeated listing card(s). Cache purged.")[:1000]))
+                         f"duplicate post(s) (first of each day kept), {cards_deduped} "
+                         f"repeated/extra listing card(s) and {ghost_cards} dead-link "
+                         "card(s). Cache purged.")[:1000]))
             db.commit()
         except Exception:  # noqa: BLE001
             db.rollback()
         return {"ok": True, "sha": commit.get("id"), "removed": removed,
-                "cards_deduped": cards_deduped, "cache_purged": purge.get("ok")}
+                "cards_deduped": cards_deduped, "ghost_cards": ghost_cards,
+                "cache_purged": purge.get("ok")}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)[:300]}
 

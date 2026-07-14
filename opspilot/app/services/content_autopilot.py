@@ -49,6 +49,20 @@ WEEKDAY_ANGLES = (
 def day_angle(now: datetime) -> str:
     return WEEKDAY_ANGLES[now.weekday()]
 
+
+def bvtech_angle(now: datetime) -> str:
+    """bvtech.org's editorial calendar: Monday is the WEEKLY CYBERSECURITY
+    RECAP edition (the CVE/KEV-roundup style the site is known for); the other
+    six days rotate the normal MSP-SEO weekday angles."""
+    if now.weekday() == 0:
+        return ("the WEEKLY CYBERSECURITY RECAP edition: a plain-English roundup of "
+                "this week's most important vulnerability and threat news for Texas "
+                "small businesses — what changed, who is affected, and exactly what to "
+                "do about each item. Reference specific CVEs/CISA-KEV entries ONLY if "
+                "you are certain they are real; otherwise cover the week's threat "
+                "themes generically. Title it like a weekly security briefing.")
+    return day_angle(now)
+
 _JP_SYSTEM = (
     "You are ghost-writing for Jordan Polasek — founder of BVTech, writing on his "
     "personal site jordanpolasek.com. Voice: direct, practical, first-person founder "
@@ -163,7 +177,7 @@ def _run_bvtech(db: Session, now: datetime) -> tuple[bool, str]:
     """bvtech.org is a static site in GitLab (deployed by Cloudflare) — publish
     there natively; WordPress only as a legacy fallback if someone connected it."""
     from . import blog_autopilot, jp_site, wordpress
-    article = blog_autopilot.generate_article(db, now, angle=day_angle(now))
+    article = blog_autopilot.generate_article(db, now, angle=bvtech_angle(now))
     if not article:
         return False, "article generation returned nothing"
     if jp_site.configured(db, "bvtech"):

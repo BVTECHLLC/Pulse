@@ -1,5 +1,15 @@
 # BVTech OpsPilot — Changelog
 
+## v1.43.0 — Homepage previews + the Monday security briefing (July 2026)
+- **Homepage blog sections are PREVIEWS now**: newest 6 cards only, on BOTH
+  sites — the full archive lives on /blog/. Publish, Sync and the hourly sweep
+  all enforce the cap, so the "every post ever, on the main page" flood shrinks
+  to a clean preview in the next sweep commit and can never regrow.
+- **Monday is recap day on bvtech.org**: the daily article becomes the WEEKLY
+  CYBERSECURITY RECAP edition (the CVE/KEV-roundup style the site is known
+  for, plain-English, no invented CVEs); Tuesday-Sunday keep the normal
+  MSP-SEO rotation.
+
 ## v1.42.0 — Site separation + de-spam + deploy can never wedge (July 2026)
 Field screenshots showed the SAME cards repeated down bvtech.org's blog page
 and Jordan-persona titles on the company blog. Root causes killed:
