@@ -1168,6 +1168,8 @@ def sweep_duplicates(db: Session, now: datetime | None = None) -> dict:
     once per hour per site — (1) delete same-day duplicate posts, then
     (2) sync the listings (backfill unlisted posts + repair stale cloned
     cards). Idempotent no-ops when the sites are clean; zero clicks ever."""
+    from ..core.config import get_settings
+    ver = get_settings().APP_VERSION
     now = now or datetime.now(timezone.utc)
     out: dict = {}
     for sk, meta in SITES.items():
@@ -1175,16 +1177,32 @@ def sweep_duplicates(db: Session, now: datetime | None = None) -> dict:
         raw = (conn.config if conn else None) or {}
         if not configured(db, sk):
             continue
+        # v1.41.1: a NEW DEPLOY busts the hourly cooldown — a fixed sweeper must
+        # act on its first tick, not sit out a stamp its broken predecessor left.
         last = raw.get("last_dupe_sweep")
-        try:
-            if last and (now - datetime.fromisoformat(last)).total_seconds() < 3600:
-                continue
-        except ValueError:
-            pass
-        out[sk] = {"cleanup": cleanup_duplicate_posts(db, sk, now=now),
-                   "sync": sync_listings(db, sk)}
+        if raw.get("last_sweep_version") == ver:
+            try:
+                if last and (now - datetime.fromisoformat(last)).total_seconds() < 3600:
+                    continue
+            except ValueError:
+                pass
+        res = {"cleanup": cleanup_duplicate_posts(db, sk, now=now),
+               "sync": sync_listings(db, sk)}
+        out[sk] = res
+        for step, r in res.items():
+            if isinstance(r, dict) and r.get("ok") is False:
+                try:
+                    db.add(Notification(
+                        client_id=None, target_user_id=None, kind="content",
+                        severity="warning",
+                        message=(f"🧹 Flood-guard {step} hit a problem on {meta['site']}: "
+                                 f"{str(r.get('error'))[:200]} - will retry next hour.")[:1000]))
+                    db.commit()
+                except Exception:  # noqa: BLE001
+                    db.rollback()
         secure_config.upsert_platform(db, meta["provider"], meta["name"], "Publishing",
-                                      {"last_dupe_sweep": now.isoformat()})
+                                      {"last_dupe_sweep": now.isoformat(),
+                                       "last_sweep_version": ver})
     return out
 
 

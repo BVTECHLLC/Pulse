@@ -1,5 +1,12 @@
 # BVTech OpsPilot — Changelog
 
+## v1.41.1 — Deploy busts the sweep cooldown (July 2026)
+The corrected v1.41 sweeper was sitting out the hourly cooldown STAMPED BY ITS
+BROKEN PREDECESSOR (v1.40's no-op sweep ran minutes before the deploy). Now a
+version change triggers an immediate sweep on the first heartbeat after every
+deploy, and any sweep step that fails raises a notification instead of failing
+silently.
+
 ## v1.41.0 — Truth on the Page: the flood ACTUALLY gets removed (July 2026)
 v1.40's sweeper shipped but the 19-post flood stayed live. Root cause, found by
 running the sweeper's logic against the REAL site HTML: skeleton-cloned post
