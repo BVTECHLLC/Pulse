@@ -2124,7 +2124,7 @@ def main():
             # shared token connects both, with the known repos as defaults.
             r21 = c.put("/api/content-autopilot/sites", json={"token": "glpat-shared"})
             assert r21.status_code == 200 and r21.json()["jp"] and r21.json()["bvtech"], r21.text
-            assert r21.json()["bvtech_project"] == "bvtechllc-group/bvtech-website-new"
+            assert r21.json()["bvtech_project"] == "BVTECHLLC-group/bvtech-website-new"
             assert ca_c.put("/api/content-autopilot/sites", json={"token": "x"}).status_code == 403
             # bvtech publishes GitLab-first now: blog/<slug>.html on the bvtech repo.
             out21 = _jp20.publish(_c20, {"title": "Houston IT Guide", "html": "<p>x</p>",
@@ -3286,6 +3286,46 @@ def main():
         print("GitHub-native publishing: fine-grained PAT tile (save->live verify as user + "
               "write check) + forge flips to github + markdown committed via Contents API "
               "with cloned frontmatter + Doctor runs GitHub checks + tile testable OK")
+
+        # ==== v1.38: Forge safety — GitLab is authoritative; GitHub strictly opt-in ====
+        from app.services import jp_site as _jp38
+        # The live bvtech.org repo path, exact case (GitLab namespaces are
+        # case-sensitive in the UI; the API tolerates either, but the config
+        # must match what the operator sees).
+        assert _jp38.SITES["bvtech"]["default_project"] == "BVTECHLLC-group/bvtech-website-new"
+        assert _jp38.get_config(db, "bvtech")["project"] == "BVTECHLLC-group/bvtech-website-new"
+        _jp38._GH = _gh37   # reuse the scripted GitHub double
+        try:
+            # A stored GitHub token with the switch OFF must NOT hijack the forge.
+            r38 = c.post("/api/setup/connections/bvtech_github",
+                         json={"values": {"gh_token": "ghp_TEST37",
+                                          "github_active": "no"}}).json()
+            assert r38["verified"] is True and r38["connected"] is False, r38
+            assert "OFF" in r38["detail"] and "GitLab" in r38["detail"], r38
+            cfg38 = _jp38.get_config(db, "bvtech")
+            assert cfg38["forge"] == "gitlab", cfg38["forge"]
+            assert cfg38["project"] == "BVTECHLLC-group/bvtech-website-new"
+            cc38 = {i["key"]: i for i in c.get("/api/setup/connections").json()["items"]}
+            assert cc38["bvtech_github"]["connected"] is False
+            # Doctor (GitLab route) says exactly which repo publishes and that the
+            # dormant GitHub token is ignored.
+            d38 = _jp38.diagnose(db, "bvtech")
+            pr38 = next(ck for ck in d38["checks"] if ck["name"] == "Publish route")
+            assert pr38["ok"] and "GitLab -> BVTECHLLC-group/bvtech-website-new" in pr38["detail"]
+            assert "GitHub token is stored" in pr38["detail"], pr38
+            # Flip the switch back on (token already stored, not re-sent) -> GitHub.
+            r38b = c.post("/api/setup/connections/bvtech_github",
+                          json={"values": {"github_active": "yes"}}).json()
+            assert r38b["verified"] is True and r38b["connected"] is True, r38b
+            assert _jp38.get_config(db, "bvtech")["forge"] == "github"
+        finally:
+            _jp38._GH = _ogh37
+            _cl38 = _SL27()
+            _cl38.query(_IC27).filter(_IC27.provider.in_(["gitlab", "bvtech_site", "jp_site"])).delete(synchronize_session=False)
+            _cl38.commit(); _cl38.close()
+        print("Forge safety: exact GitLab repo path (BVTECHLLC-group) + github_active "
+              "switch (off -> GitLab authoritative even with a stored PAT, tile says so, "
+              "Doctor 'Publish route' names the repo + dormant token) + on -> GitHub OK")
 
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
@@ -5016,7 +5056,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.37.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.38.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

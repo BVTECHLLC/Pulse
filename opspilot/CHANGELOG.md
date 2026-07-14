@@ -1,5 +1,25 @@
 # BVTech OpsPilot — Changelog
 
+## v1.38.0 — Forge safety: GitLab is authoritative, GitHub strictly opt-in (July 2026)
+Correction to v1.37: the operator's GitLab dashboard confirms the live
+bvtech.org repo **IS on GitLab — `BVTECHLLC-group/bvtech-website-new`** (the
+GitHub repo was a look-alike). The existing shared GitLab token already covers
+it, and v1.36's adaptive-markdown pipeline is the operative fix. This release
+makes sure v1.37's GitHub option can never silently pull publishing the wrong
+way:
+- **GitHub is now strictly opt-in.** The forge only flips to GitHub when a PAT
+  is stored AND the new `github_active` switch is on; saving `github_active: no`
+  (or clearing the token) always returns bvtech to GitLab — the tile answers
+  "GitHub publishing is OFF — bvtech.org publishes via GitLab".
+- **Exact repo path**: bvtech default project corrected to
+  `BVTECHLLC-group/bvtech-website-new` (exact case, matching GitLab).
+- **Doctor "Publish route" line**: the bvtech Doctor now states exactly which
+  forge + repo + branch it publishes through, and calls out a stored-but-ignored
+  GitHub token so there's never a mystery about where posts go.
+- Connection Center: the GitHub tile is demoted to optional (priority 3) with
+  copy that says to leave it disconnected — the Websites (GitLab) tile is the
+  real path for both sites.
+
 ## v1.37.0 — The bvtech.org case CLOSED: the live site is on GitHub (July 2026)
 The operator's screenshot revealed the final truth: the live bvtech.org repo is
 **BVTECHLLC/bvtech-website-new on GITHUB** — Pulse had been committing to the
