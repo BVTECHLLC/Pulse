@@ -1,5 +1,15 @@
 # BVTech OpsPilot — Changelog
 
+## v1.43.1 — Deep-clean diagnostics + nav-proof trimming (July 2026)
+- The homepage trim silently did nothing when the FIRST post-pattern link on
+  the page was a nav/menu link (not a card): the card scanner now SKIPS
+  non-card and page links instead of stopping — the wall actually shrinks.
+- `cleanup_duplicate_posts(debug=True)` returns the per-post dating evidence
+  (first-commit date, or the exact API error that prevented dating) so an
+  on-box run shows precisely why something was or wasn't grouped for removal.
+- deploy.sh re-reads the repo version AFTER converging git (the completion
+  check compared against the pre-pull version and logged a false ERROR).
+
 ## v1.43.0 — Homepage previews + the Monday security briefing (July 2026)
 - **Homepage blog sections are PREVIEWS now**: newest 6 cards only, on BOTH
   sites — the full archive lives on /blog/. Publish, Sync and the hourly sweep

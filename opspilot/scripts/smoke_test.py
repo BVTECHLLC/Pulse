@@ -3655,7 +3655,8 @@ def main():
         assert _jp40.SITES["bvtech"]["preview_caps"] == {"index.html": 6}
         _mk43 = lambda i: (f'<article class="pc"><h2><a href="/blog/post-{i}.html">P{i}</a>'
                            f'</h2><p class="excerpt">e{i}</p></article>')
-        _home43 = '<div class="posts">' + "".join(_mk43(i) for i in range(9)) + '</div>'
+        _home43 = ('<nav><a href="/blog/index.html">All</a><a href="/blog/services-overview.html">Sv</a></nav>'
+                    '<div class="posts">' + "".join(_mk43(i) for i in range(9)) + '</div>')
         _t43, _n43 = _jp40._trim_listing(_home43, "blog-file", 6)
         assert _n43 == 3, _n43
         assert "post-0.html" in _t43 and "post-5.html" in _t43   # newest 6 kept
@@ -5432,7 +5433,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.43.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.43.1 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
