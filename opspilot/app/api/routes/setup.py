@@ -159,9 +159,10 @@ CONNECTORS = [
      "console_hint": "Generate token -> name 'Pulse Publisher' -> scope: api -> copy (glpat-...)",
      "save": "gitlab_sites", "secret_provider": "gitlab", "secret_field": "token",
      "fields": [{"key": "token", "label": "GitLab token (api scope) - connects BOTH sites", "secret": True}]},
-    {"key": "bvtech_github", "name": "bvtech.org site repo (GitHub)", "priority": 1,
-     "unlocks": "Publishing to the LIVE bvtech.org - the site deploys from GitHub "
-                "(BVTECHLLC/bvtech-website-new), not GitLab. Daily posts land here.",
+    {"key": "bvtech_github", "name": "bvtech.org on GitHub (optional)", "priority": 3,
+     "unlocks": "OPTIONAL - only if bvtech.org ever moves to GitHub. The live site "
+                "deploys from GitLab (BVTECHLLC-group/bvtech-website-new), which the "
+                "Websites tile above already covers. Leave this disconnected.",
      "console_url": "https://github.com/settings/personal-access-tokens/new",
      "console_hint": "Fine-grained token -> Repository access: Only select repositories -> "
                      "bvtech-website-new -> Permissions: Contents = Read and write -> Generate",
@@ -169,7 +170,10 @@ CONNECTORS = [
      "fields": [{"key": "gh_token",
                  "label": "GitHub fine-grained PAT (Contents: Read and write)", "secret": True},
                 {"key": "github_repo",
-                 "label": "Repo (default BVTECHLLC/bvtech-website-new)", "secret": False}]},
+                 "label": "Repo (owner/name on GitHub)", "secret": False},
+                {"key": "github_active",
+                 "label": "Use GitHub instead of GitLab? (yes/no - default yes once a "
+                          "token is saved; set no to switch back to GitLab)", "secret": False}]},
     {"key": "cloudflare", "name": "Cloudflare (instant cache purge)", "priority": 1,
      "unlocks": "Published posts show on the sites IMMEDIATELY - without this, "
                 "Cloudflare's edge cache can serve the old page for hours.",
@@ -298,9 +302,15 @@ def save_connection(key: str, body: SaveCredIn, db: Session = Depends(get_db),
                 "verified": v.get("ok"), "detail": v.get("detail")}
     if prov == "bvtech_github":
         from ...services import jp_site
-        gh_payload = {k: v for k, v in payload.items() if k in ("gh_token", "github_repo")}
+        gh_payload = {k: v for k, v in payload.items()
+                      if k in ("gh_token", "github_repo", "github_active")}
         secure_config.upsert_platform(db, "bvtech_site", "BVTech.org Site", "Publishing",
                                       gh_payload)
+        # Turning the switch off is a valid save even with no token in payload.
+        if jp_site.get_config(db, "bvtech").get("forge") != "github":
+            return {"key": key, "connected": False, "verified": True,
+                    "detail": "GitHub publishing is OFF - bvtech.org publishes via "
+                              "GitLab (the Websites tile)."}
         v = jp_site.gh_verify(db)
         return {"key": key, "connected": v.get("ok", False),
                 "verified": v.get("ok"), "detail": v.get("detail")}

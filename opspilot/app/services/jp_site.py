@@ -47,7 +47,7 @@ SITES = {
            # at its URL but invisible in the site's navigation.
            "index_paths": ("index.html", "blog/index.html")},
     "bvtech": {"provider": "bvtech_site", "name": "BVTech.org Site",
-               "default_project": "bvtechllc-group/bvtech-website-new",
+               "default_project": "BVTECHLLC-group/bvtech-website-new",
                "style": "blog-file", "site": "https://bvtech.org",
                "org": "BVTech LLC", "author_url": "https://bvtech.org",
                "content_classes": None,
@@ -168,11 +168,14 @@ def get_config(db: Session, site: str = "jp") -> dict:
     meta = SITES[site]
     conn = secure_config.get_platform(db, meta["provider"])
     cfg = (conn.config if conn else None) or {}
-    # v1.37: a stored GitHub token flips this site to the GitHub forge — the
-    # live bvtech.org deploys from GitHub, so when the operator connects a
-    # GitHub PAT it takes precedence over the (stale-copy) GitLab repo.
+    # v1.37 added an optional GitHub forge; v1.38 makes it strictly OPT-IN.
+    # The live bvtech.org repo is on GitLab (BVTECHLLC-group/bvtech-website-new),
+    # so GitLab stays authoritative unless a GitHub token is stored AND the
+    # switch hasn't been turned off. Setting github_active to "no" (or clearing
+    # the token) always falls straight back to GitLab.
     gh_token = secure_config.get_secret(cfg, "gh_token")
-    if site == "bvtech" and gh_token:
+    gh_active = str(cfg.get("github_active", "yes")).strip().lower()
+    if site == "bvtech" and gh_token and gh_active not in ("no", "false", "0", "off"):
         return {
             "forge": "github",
             "base": GITHUB_API,
@@ -512,11 +515,12 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# v1.37 GitHub forge support — the live bvtech.org repo turned out to live on
-# GITHUB (BVTECHLLC/bvtech-website-new), not GitLab: commits to the GitLab copy
-# succeeded but Cloudflare builds from GitHub, so nothing ever appeared. When a
-# GitHub token is connected, bvtech publishes through the GitHub Contents API
-# with the same adaptive (markdown/frontmatter-clone) pipeline.
+# v1.37 GitHub forge support (OPTIONAL) — kept for sites whose repo lives on
+# GitHub. The live bvtech.org repo is confirmed on GitLab
+# (BVTECHLLC-group/bvtech-website-new), so this path only activates when the
+# operator explicitly connects a GitHub token AND leaves github_active on.
+# When active, publishing goes through the GitHub Contents API with the same
+# adaptive (markdown/frontmatter-clone) pipeline.
 # --------------------------------------------------------------------------- #
 GITHUB_API = "https://api.github.com"
 DEFAULT_GITHUB_REPO = "BVTECHLLC/bvtech-website-new"
@@ -872,6 +876,14 @@ def diagnose(db: Session, site: str) -> dict:
         healthy = all(c["ok"] for c in checks if not c["name"].startswith("Cloudflare cache"))
         return {"site": meta["site"], "checks": checks, "healthy": healthy}
 
+    # v1.38 clarity: say exactly which repo this site publishes through, and —
+    # if a GitHub token is stored but switched off — that GitLab is in charge.
+    conn = secure_config.get_platform(db, meta["provider"])
+    raw_cfg = (conn.config if conn else None) or {}
+    route = f"publishing via GitLab -> {cfg['project']} (branch {cfg['branch']})"
+    if secure_config.get_secret(raw_cfg, "gh_token"):
+        route += "; a GitHub token is stored but github_active=no, so it is ignored"
+    _check("Publish route", True, route)
     _check("GitLab token", bool(cfg["token"]),
            "token found" if cfg["token"] else "no token anywhere in the chain",
            "Connection Center -> Websites -> paste a GitLab token (scope: api)")
