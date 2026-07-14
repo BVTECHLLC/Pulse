@@ -338,10 +338,26 @@ def _rewrite_card(card: str, *, title: str, url: str, excerpt: str,
         card = _re.sub(r'(<p[^>]*class="excerpt"[^>]*>)(.*?)(</p>)',
                        lambda m: m.group(1) + _html.escape(excerpt) + m.group(3),
                        card, count=1, flags=_re.S)
+    elif excerpt:
+        # v1.40: cards without class="excerpt" kept the CLONED post's summary —
+        # every card on bvtech.org showed the same stale text. The first
+        # substantial paragraph (>=40 chars of plain text) is the summary.
+        card = _re.sub(r"(<p[^>]*>)([^<]{40,}?)(</p>)",
+                       lambda m: m.group(1) + _html.escape(excerpt) + m.group(3),
+                       card, count=1)
     card = _re.sub(r"(>)([A-Z][a-z]+ \d{1,2}, \d{4})(<)",
                    lambda m: m.group(1) + date_str + m.group(3), card, count=1)
     card = _re.sub(r"(>)(\d{4}-\d{2}-\d{2})(<)",
                    lambda m: m.group(1) + date_str + m.group(3), card, count=1)
+    # v1.40: badge-style dates without a year ("NEW · JUNE 22 WEEKLY REPORT",
+    # "June 22") also cloned verbatim — swap month+day, keep the badge text.
+    _md = date_str.rsplit(",", 1)[0]                  # "July 14, 2026" -> "July 14"
+    card = _re.sub(r"\b(JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|"
+                   r"OCTOBER|NOVEMBER|DECEMBER) \d{1,2}\b(?!, \d{4})",
+                   _md.upper(), card, count=1)
+    card = _re.sub(r"\b(January|February|March|April|May|June|July|August|September|"
+                   r"October|November|December) \d{1,2}\b(?!, \d{4})",
+                   _md, card, count=1)
     return card
 
 
@@ -905,6 +921,45 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
             purge_urls.append(url)
             if len(added) >= limit:
                 break
+        # v1.40 REPAIR: cards whose text was CLONED from another post (the
+        # "every card shows the same stale excerpt/date badge" bug) get rebuilt
+        # from their own post's metadata. Deterministic span replace only.
+        import html as _html40
+        repaired = []
+        for path in post_paths[:40]:
+            slug_root = (path.rsplit("/", 1)[-1] if cfg["style"] == "blog-file"
+                         else path.split("/")[0])
+            if any(slug_root.startswith(pfx) for pfx in _PAGE_SLUGS):
+                continue
+            url = _post_url_for(meta, path, cfg["style"])
+            rel = url.replace(meta["site"], "")
+            page = title = excerpt = None
+            date_lbl = date_str
+            for lp in list(listings):
+                h = listings[lp]
+                pat = r'href="' + re.escape(rel) + r'"'
+                if not re.search(pat, h):
+                    continue
+                span = _find_generic_card(h, pat)
+                if not span:
+                    continue
+                if page is None:
+                    page = _fetch_file(cfg, path) or ""
+                    title, excerpt = _post_meta_from_html(page)
+                    pdate = _post_date_from_html(page)
+                    if pdate:
+                        date_lbl = (f"{_MONTH_NAMES[pdate.month - 1]} "
+                                    f"{pdate.day}, {pdate.year}")
+                card = h[span[0]:span[1]]
+                if (not excerpt or excerpt[:60] in card
+                        or _html40.escape(excerpt)[:60] in card):
+                    continue              # card already carries its own summary
+                new_card = _rewrite_card(card, title=title, url=rel, excerpt=excerpt,
+                                         date_str=date_lbl, link_pat=pat)
+                if new_card != card:
+                    listings[lp] = h[:span[0]] + new_card + h[span[1]:]
+                    repaired.append(f"{lp}: {rel}")
+                    purge_urls.append(f"{meta['site']}/{lp}".replace("/index.html", "/"))
         changed_files = []
         for lp, h in listings.items():
             orig = _fetch_file(cfg, lp)
@@ -921,16 +976,169 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
             return {"ok": True, "added": [], "detail": "listings already complete - nothing to sync"}
         commit = _HTTP("POST", f"{_proj_url(cfg)}/repository/commits", cfg["token"], {
             "branch": cfg["branch"],
-            "commit_message": f"blog: sync listings - add {len(added)} missing post(s) (via Pulse)",
+            "commit_message": (f"blog: sync listings - add {len(added)} missing, "
+                               f"repair {len(repaired)} stale card(s) (via Pulse)"),
             "actions": actions,
         })
         from . import cloudflare
         purge = cloudflare.purge_urls(db, site, purge_urls)
         return {"ok": True, "sha": commit.get("id"), "added": added,
-                "listings_updated": changed_files,
+                "repaired": repaired, "listings_updated": changed_files,
                 "cache_purged": purge.get("ok"), "cache_detail": purge.get("detail")}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)[:300]}
+
+
+_MONTH_NAMES = ("January", "February", "March", "April", "May", "June", "July",
+                "August", "September", "October", "November", "December")
+# Slug prefixes that are PAGES, never blog posts — the duplicate sweeper must
+# never consider (let alone delete) these.
+_PAGE_SLUGS = ("about", "contact", "certification", "service", "pricing", "portfolio",
+               "resume", "privacy", "terms", "book", "review", "case-stud", "academy")
+
+
+def _post_date_from_html(page_html: str):
+    """Best-effort publish date of a post page -> datetime.date | None."""
+    from datetime import date as _date
+    m = re.search(r'datetime="(\d{4})-(\d{2})-(\d{2})', page_html)
+    if m:
+        try:
+            return _date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            return None
+    m = re.search(r">([A-Z][a-z]+) (\d{1,2}), (\d{4})<", page_html)
+    if m and m.group(1) in _MONTH_NAMES:
+        try:
+            return _date(int(m.group(3)), _MONTH_NAMES.index(m.group(1)) + 1,
+                         int(m.group(2)))
+        except ValueError:
+            return None
+    return None
+
+
+def _remove_card(h: str, rel: str) -> tuple[str, bool]:
+    """Delete the card containing the link `rel` from a listing page (both the
+    homepage 'Writing' section and the blog index use recognizable cards)."""
+    changed = False
+    for _ in range(3):                    # same card rarely appears >1x per page
+        pat = r'href="' + re.escape(rel) + r'"'
+        if not re.search(pat, h):
+            break
+        span = _find_generic_card(h, pat)
+        if not span:
+            break
+        h = h[:span[0]] + h[span[1]:]
+        changed = True
+    return h, changed
+
+
+def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
+                            now: datetime | None = None) -> dict:
+    """v1.40 FLOOD REPAIR: enforce ONE post per calendar day on the live site.
+    Same-day extras (beyond the earliest-committed post) are deleted from the
+    repo AND their cards removed from the listings — one commit, cache purged.
+    Pages (about/contact/...) are never candidates. Idempotent: with no
+    duplicates it changes nothing."""
+    meta = SITES[site]
+    cfg = get_config(db, site)
+    if not cfg["configured"]:
+        return {"ok": False, "error": f"{meta['site']} not connected"}
+    if cfg.get("forge") == "github" or detect_layout(cfg)["format"] == "markdown":
+        return {"ok": True, "removed": [],
+                "detail": "generated/GitHub site - the build owns its listings"}
+    now = now or datetime.now(timezone.utc)
+    try:
+        from datetime import timedelta
+        window = {now.date() - timedelta(days=i) for i in range(days)}
+        by_day: dict = {}
+        for path in _list_post_paths(cfg, cfg["style"])[:80]:
+            slug_root = (path.rsplit("/", 1)[-1] if cfg["style"] == "blog-file"
+                         else path.split("/")[0])
+            if any(slug_root.startswith(p) for p in _PAGE_SLUGS):
+                continue
+            page = _fetch_file(cfg, path)
+            if not page:
+                continue
+            d = _post_date_from_html(page)
+            if d not in window:
+                continue
+            by_day.setdefault(d, []).append(path)
+        removed, actions, purge_urls = [], [], []
+        listings = {lp: _fetch_file(cfg, lp) for lp in meta.get("index_paths", ())}
+        listings = {lp: h for lp, h in listings.items() if h is not None}
+        for d, paths in sorted(by_day.items()):
+            if len(paths) <= 1:
+                continue
+            # Keep the day's EARLIEST-committed post; everything after is flood.
+            stamped = []
+            for p in paths:
+                try:
+                    commits = _HTTP("GET", f"{_proj_url(cfg)}/repository/commits?path="
+                                    f"{urllib.parse.quote_plus(p)}&ref_name={cfg['branch']}"
+                                    "&per_page=1", cfg["token"])
+                    ts = (commits[0].get("created_at") or "") if commits else ""
+                except Exception:  # noqa: BLE001
+                    ts = ""
+                stamped.append((ts or "9999", p))
+            stamped.sort()
+            for _ts, p in stamped[1:]:
+                actions.append({"action": "delete", "file_path": p})
+                url = _post_url_for(meta, p, cfg["style"])
+                rel = url.replace(meta["site"], "")
+                for lp in list(listings):
+                    new_h, ch = _remove_card(listings[lp], rel)
+                    if ch:
+                        listings[lp] = new_h
+                removed.append(url)
+                purge_urls.append(url)
+        if not removed:
+            return {"ok": True, "removed": [], "detail": "no same-day duplicates found"}
+        for lp, h in listings.items():
+            orig = _fetch_file(cfg, lp)
+            if orig is not None and h != orig:
+                actions.append({"action": "update", "file_path": lp, "content": h})
+                purge_urls.append(f"{meta['site']}/{lp}".replace("/index.html", "/"))
+        commit = _HTTP("POST", f"{_proj_url(cfg)}/repository/commits", cfg["token"], {
+            "branch": cfg["branch"],
+            "commit_message": (f"blog: remove {len(removed)} same-day duplicate post(s) "
+                               "(1-post-per-day flood guard, via Pulse)"),
+            "actions": actions,
+        })
+        from . import cloudflare
+        purge = cloudflare.purge_urls(db, site, purge_urls)
+        try:
+            db.add(Notification(
+                client_id=None, target_user_id=None, kind="content", severity="info",
+                message=(f"🧹 Flood guard: removed {len(removed)} same-day duplicate "
+                         f"post(s) from {meta['site']} (kept the first post of each day). "
+                         "Listings updated + cache purged.")[:1000]))
+            db.commit()
+        except Exception:  # noqa: BLE001
+            db.rollback()
+        return {"ok": True, "sha": commit.get("id"), "removed": removed,
+                "cache_purged": purge.get("ok")}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:300]}
+
+
+def sweep_duplicates(db: Session, now: datetime | None = None) -> dict:
+    """Heartbeat hook: self-healing duplicate cleanup for both sites, at most
+    once per hour per site (cheap idempotent no-op when the sites are clean)."""
+    now = now or datetime.now(timezone.utc)
+    out: dict = {}
+    for sk, meta in SITES.items():
+        conn = secure_config.get_platform(db, meta["provider"])
+        raw = (conn.config if conn else None) or {}
+        last = raw.get("last_dupe_sweep")
+        try:
+            if last and (now - datetime.fromisoformat(last)).total_seconds() < 3600:
+                continue
+        except ValueError:
+            pass
+        out[sk] = cleanup_duplicate_posts(db, sk, now=now)
+        secure_config.upsert_platform(db, meta["provider"], meta["name"], "Publishing",
+                                      {"last_dupe_sweep": now.isoformat()})
+    return out
 
 
 def diagnose(db: Session, site: str) -> dict:

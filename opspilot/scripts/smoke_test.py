@@ -2399,6 +2399,11 @@ def main():
             return {}
         _jp27._HTTP = _http27
         try:
+            # v1.40: custom posts respect the 1-post-per-day cap, and earlier
+            # blocks already "posted today" — start this block with a clean ledger.
+            _cl27a = _SL27()
+            _cl27a.query(_IC27).filter(_IC27.provider == "content_autopilot").delete(synchronize_session=False)
+            _cl27a.commit(); _cl27a.close()
             _jp27.save_shared_token(db, "glpat-CUSTOM27")
             r_bv = c.post("/api/content-autopilot/publish-custom", json={
                 "channel": "bvtech", "title": "Custom Security Report 27", "kind": "advisory",
@@ -2444,7 +2449,8 @@ def main():
         finally:
             _jp27._HTTP = _o27
             _cl27 = _SL27()
-            _cl27.query(_IC27).filter(_IC27.provider.in_(["gitlab", "bvtech_site", "jp_site"])).delete(synchronize_session=False)
+            _cl27.query(_IC27).filter(_IC27.provider.in_(
+                ["gitlab", "bvtech_site", "jp_site", "content_autopilot"])).delete(synchronize_session=False)
             _cl27.query(_SP27).delete(synchronize_session=False)
             _cl27.commit(); _cl27.close()
         print("Content publish-custom: hand-written post -> BOTH sites (real body + SEO in "
@@ -3429,6 +3435,178 @@ def main():
         print("Listing Whisperer: anchor-as-card + title-class cards recognized + AI "
               "card-clone fallback (validated splice, bad answer = no-op) + Doctor treats "
               "AI cloning as healthy + pipeline-none not a failure + enc:: round-trip safe OK")
+
+        # ==== v1.40: FLOOD GUARD — 1 post/day ALWAYS + duplicate sweeper ====
+        from datetime import datetime as _dt40, timezone as _tz40
+        from app.services import content_autopilot as _ca40, jp_site as _jp40
+        _cl40a = _SL27()
+        _cl40a.query(_IC27).filter(_IC27.provider.in_(
+            ["gitlab", "bvtech_site", "jp_site", "content_autopilot"])).delete(synchronize_session=False)
+        _cl40a.query(_SP27).delete(synchronize_session=False)
+        _cl40a.commit(); _cl40a.close()
+        _now40 = _dt40(2026, 7, 14, 15, tzinfo=_tz40.utc)
+        _commits40 = []
+        def _http40(method, url, token, payload=None):
+            if method == "GET" and "/repository/tree" in url:
+                return []
+            if method == "GET" and "/repository/files/" in url:
+                raise Exception("404")
+            if method == "POST" and "/repository/commits" in url:
+                _commits40.append(payload)
+                return {"id": f"sha40-{len(_commits40)}"}
+            if "/pipelines" in url:
+                return [{"status": "success"}]
+            return {}
+        _oai40c, _oai40e, _ojp40 = _ca40.ai.complete, _ca40.ai.enabled, _jp40._HTTP
+        _ca40.ai.complete = lambda s, p, smart=False, max_tokens=1000: (
+            "TITLE: Daily Post 40\nEXCERPT: x\nHTML:\n<p>" + ("Body text. " * 40) + "</p>")
+        _ca40.ai.enabled = lambda: True
+        _jp40._HTTP = _http40
+        try:
+            _jp40.save_shared_token(db, "glpat-V140")
+            _ca40.save_config(db, enabled=True,
+                              channels={"bvtech": False, "linkedin": False, "gbp": False, "jp": True})
+            # (a) SMASH-PROOF: force-run posts once; smashing again the same day
+            #     is a friendly no-op — no second article, no second commit.
+            out40 = _ca40.run_daily(db, _now40, force=True)
+            assert out40["results"]["jp"]["ok"] is True, out40
+            _n40 = len(_commits40)
+            out40b = _ca40.run_daily(db, _now40, force=True)
+            assert out40b["results"]["jp"].get("skipped_daily_cap") is True, out40b
+            assert "1-post-per-day" in out40b["results"]["jp"]["detail"]
+            assert len(_commits40) == _n40, "force re-run must NOT publish a second post!"
+            # (b) Custom posts hit the same cap; explicit override is the escape hatch.
+            r40 = _ca40.publish_custom(db, "jp", title="Second Today", html="<p>x</p>")
+            assert r40["ok"] is False and r40.get("capped") is True, r40
+            r40b = _ca40.publish_custom(db, "jp", title="Second Today", html="<p>x</p>",
+                                        override=True)
+            assert r40b["ok"] is True, r40b
+            # (c) Social queue can never stack: a newer draft REPLACES the queued
+            #     one; collapse_queue() self-heals any pre-existing backlog.
+            _ca40._enqueue_social(db, "draft one", "linkedin")
+            _ca40._enqueue_social(db, "draft two", "linkedin")
+            _q40 = [p for p in db.query(_SP27).filter(_SP27.status == "queued").all()
+                    if "linkedin" in (p.channels or [])]
+            assert len(_q40) == 1 and _q40[0].body == "draft two", \
+                [(p.id, p.body) for p in _q40]
+            db.add(_SP27(body="stale backlog", channels=["linkedin"], status="queued",
+                         scheduled_for=_now40)); db.commit()
+            assert _ca40.collapse_queue(db) >= 1
+            _q40b = [p for p in db.query(_SP27).filter(_SP27.status == "queued").all()
+                     if "linkedin" in (p.channels or [])]
+            assert len(_q40b) == 1, "collapse_queue must leave ONE queued draft per channel"
+        finally:
+            _ca40.ai.complete, _ca40.ai.enabled = _oai40c, _oai40e
+            _jp40._HTTP = _ojp40
+        # (d) The duplicate SWEEPER: three posts dated today -> the two later-
+        #     committed ones are deleted (repo + listing cards); pages and older
+        #     posts are untouched. Second run: nothing to do.
+        def _page40(date_txt, desc):
+            return (f'<html><head><title>P | J</title>'
+                    f'<meta name="description" content="{desc}"></head>'
+                    f'<body><p>{date_txt}</p><p>body</p></body></html>')
+        _repo40 = {
+            "keep-today/index.html": _page40("July 14, 2026", "First of the day."),
+            "dupe-a-today/index.html": _page40("July 14, 2026", "Extra A."),
+            "dupe-b-today/index.html": _page40("July 14, 2026", "Extra B."),
+            "old-post/index.html": _page40("July 10, 2026", "Old one."),
+            "about-jordan/index.html": _page40("July 14, 2026", "Bio page."),
+        }
+        def _card40(slug, title):
+            return (f'<article class="post-card"><h2><a href="/{slug}/">{title}</a></h2>'
+                    f'<p class="excerpt">e</p><span>July 14, 2026</span></article>')
+        _listing40 = ('<div class="posts">' + _card40("dupe-b-today", "B")
+                      + _card40("dupe-a-today", "A") + _card40("keep-today", "K")
+                      + _card40("old-post", "O") + '</div>')
+        _state40 = {"blog/index.html": _listing40, "index.html": _listing40}
+        _CREATED40 = {"keep-today": "2026-07-14T14:00:00Z",
+                      "dupe-a-today": "2026-07-14T15:00:00Z",
+                      "dupe-b-today": "2026-07-14T16:00:00Z",
+                      "old-post": "2026-07-10T14:00:00Z",
+                      "about-jordan": "2026-07-14T13:00:00Z"}
+        def _http40d(method, url, token, payload=None):
+            import urllib.parse as _u40
+            if method == "GET" and "/repository/tree" in url:
+                return [{"type": "tree", "path": p.split("/")[0]} for p in _repo40]
+            if method == "GET" and "/repository/commits?path=" in url:
+                slug = _u40.unquote_plus(url.split("path=")[1].split("&")[0]).split("/")[0]
+                return [{"created_at": _CREATED40.get(slug, "")}]
+            if method == "GET" and "/repository/files/" in url:
+                p = _u40.unquote_plus(url.split("files/")[1].split("?")[0])
+                if p in _state40:
+                    return {"content": _b64_29.b64encode(_state40[p].encode()).decode()}
+                if p in _repo40:
+                    return {"content": _b64_29.b64encode(_repo40[p].encode()).decode()}
+                raise Exception("404")
+            if method == "POST" and "/repository/commits" in url:
+                for a in payload["actions"]:
+                    if a["action"] == "delete":
+                        _repo40.pop(a["file_path"], None)
+                    elif a["action"] == "update":
+                        _state40[a["file_path"]] = a["content"]
+                return {"id": "sha40-sweep"}
+            if "/pipelines" in url:
+                return [{"status": "success"}]
+            return {}
+        _jp40._HTTP = _http40d
+        _opaths40 = _jp40.SITES["jp"]["index_paths"]
+        try:
+            res40 = _jp40.cleanup_duplicate_posts(db, "jp", now=_now40)
+            assert res40["ok"], res40
+            _rm40 = {u.rsplit("/", 2)[-2] for u in res40["removed"]}
+            assert _rm40 == {"dupe-a-today", "dupe-b-today"}, res40
+            assert "keep-today/index.html" in _repo40 and "old-post/index.html" in _repo40
+            assert "about-jordan/index.html" in _repo40, "pages must NEVER be swept"
+            assert "/dupe-a-today/" not in _state40["blog/index.html"]
+            assert "/dupe-b-today/" not in _state40["index.html"]
+            assert "/keep-today/" in _state40["blog/index.html"]
+            res40b = _jp40.cleanup_duplicate_posts(db, "jp", now=_now40)
+            assert res40b["ok"] and not res40b["removed"], res40b
+            # (e) Sync REPAIR: two cards showing the SAME cloned excerpt get
+            #     rebuilt from each post's own metadata.
+            _stale40 = ('<div class="posts">'
+                        '<article class="post-card"><h2><a href="/keep-today/">K</a></h2>'
+                        '<p class="excerpt">Same stale cloned text.</p></article>'
+                        '<article class="post-card"><h2><a href="/old-post/">O</a></h2>'
+                        '<p class="excerpt">Same stale cloned text.</p></article></div>')
+            _state40["blog/index.html"] = _stale40
+            _jp40.SITES["jp"]["index_paths"] = ("blog/index.html",)
+            sy40 = _jp40.sync_listings(db, "jp")
+            assert sy40["ok"] and sy40.get("repaired"), sy40
+            assert "First of the day." in _state40["blog/index.html"]
+            assert "Old one." in _state40["blog/index.html"]
+            assert "Same stale cloned text." not in _state40["blog/index.html"]
+        finally:
+            _jp40.SITES["jp"]["index_paths"] = _opaths40
+            _jp40._HTTP = _ojp40
+        # (f) Cleanup endpoint: OWNER-only; badge-style cloned dates get swapped.
+        assert ca_c.post("/api/content-autopilot/cleanup-duplicates").status_code == 403
+        _badge40 = ('<div class="posts"><article><h3><a href="/blog/old.html">Old</a></h3>'
+                    '<span class="badge">NEW · JUNE 22 WEEKLY REPORT</span>'
+                    '<p>Same stale cloned excerpt text repeated on every single card here.</p>'
+                    '</article></div>')
+        h40f, ch40f = _jp40.inject_post_into_listing(
+            _badge40, title="Fresh Post", url="https://bvtech.org/blog/fresh.html",
+            excerpt="A brand new summary.", date_str="July 14, 2026", style="blog-file")
+        assert ch40f and "A brand new summary." in h40f, h40f[:300]
+        assert "NEW · JULY 14 WEEKLY REPORT" in h40f, "cloned badge date must update"
+        assert h40f.count("JUNE 22") == 1, "original card must keep its own badge"
+        # (g) The GH tick cron warns instead of failing when Cloudflare blocks it.
+        import os as _os40
+        _wf40 = open(_os40.path.join(_os40.path.dirname(__file__), "..", "..",
+                                     ".github", "workflows", "daily-content.yml")).read()
+        assert "::warning::content tick unreachable" in _wf40
+        assert "::error::content tick unreachable" not in _wf40
+        _cl40z = _SL27()
+        _cl40z.query(_IC27).filter(_IC27.provider.in_(
+            ["gitlab", "bvtech_site", "jp_site", "content_autopilot"])).delete(synchronize_session=False)
+        _cl40z.query(_SP27).delete(synchronize_session=False)
+        _cl40z.commit(); _cl40z.close()
+        c.put("/api/content-autopilot/settings", json={"enabled": False})
+        print("FLOOD GUARD: 1 post/day ALWAYS (force re-run + custom post capped, override "
+              "explicit) + queue keeps ONE draft/channel + same-day duplicate sweeper "
+              "(earliest kept, pages/old posts untouched, listings cleaned, idempotent) + "
+              "sync repairs cloned excerpts + badge dates + tick cron warns not fails OK")
 
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
@@ -5159,7 +5337,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.39.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.40.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

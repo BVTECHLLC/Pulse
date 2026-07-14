@@ -215,6 +215,7 @@
           <label class="flex" style="margin:0;gap:6px;color:var(--muted)"><input type="checkbox" id="cap-enabled" style="width:auto" onchange="saveCap()"> Daily posts to all channels</label>
           <button class="btn sm ghost" onclick="capDiagnose(this)">🩺 Doctor</button>
           <button class="btn sm ghost" onclick="capSyncListings(this)">🧩 Sync listings</button>
+          <button class="btn sm ghost" onclick="capCleanupDupes(this)">🧹 Remove duplicates</button>
           <button class="btn sm" onclick="capRunNow(this)">🚀 Post to all now</button>
         </div>
       </div>
@@ -3253,6 +3254,19 @@ async function capSyncListings(btn){
       return `✅ ${k==='bvtech'?'bvtech.org':'jordanpolasek.com'}: ${n?`added ${n} missing post(s) to the listing`:(s.detail||'already complete')}${s.cache_purged?' · cache purged':''}`;
     }).join('\n'));
   } else alert(j.detail||'Sync failed');
+  btn.disabled=false;btn.textContent=old;
+}
+async function capCleanupDupes(btn){
+  if(!confirm('Remove same-day duplicate posts from BOTH live sites?\n\nKeeps the FIRST post of each day; extras are deleted from the repo and the blog listings (one commit, cache purged). The hourly flood-guard sweep does this automatically too.'))return;
+  btn.disabled=true;const old=btn.textContent;btn.textContent='Cleaning…';
+  const r=await post('/api/content-autopilot/cleanup-duplicates');const j=await r.json().catch(()=>({}));
+  if(r.ok){
+    alert(['bvtech','jp'].map(k=>{const s=j[k]||{};
+      if(!s.ok)return `❌ ${k==='bvtech'?'bvtech.org':'jordanpolasek.com'}: ${s.error||'failed'}`;
+      const n=(s.removed||[]).length;
+      return `✅ ${k==='bvtech'?'bvtech.org':'jordanpolasek.com'}: ${n?`removed ${n} same-day duplicate(s) - kept the first post of each day`:(s.detail||'no duplicates')}`;
+    }).join('\n')+(j.queue_collapsed?`\n🧵 queue: collapsed ${j.queue_collapsed} duplicate queued draft(s)`:''));
+  } else alert(j.detail||'Cleanup failed');
   btn.disabled=false;btn.textContent=old;
 }
 async function loadAutopost(){

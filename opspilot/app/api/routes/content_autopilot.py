@@ -256,6 +256,25 @@ def sync_listings(request: Request, db: Session = Depends(get_db),
     return out
 
 
+@router.post("/cleanup-duplicates")
+def cleanup_duplicates(request: Request, db: Session = Depends(get_db),
+                       user: User = Depends(require_roles(Role.OWNER))):
+    """v1.40 flood repair, on demand: enforce ONE post per calendar day on both
+    live sites — same-day extras are deleted (repo + listing cards, one commit,
+    cache purged), keeping the earliest post of each day. Idempotent."""
+    out = {}
+    for site in ("bvtech", "jp"):
+        out[site] = jp_site.cleanup_duplicate_posts(db, site)
+    removed = content_autopilot.collapse_queue(db)
+    out["queue_collapsed"] = removed
+    audit.record(db, action="content_autopilot.cleanup_duplicates", actor_user_id=user.id,
+                 actor_email=user.email, actor_role=user.role.value,
+                 target_type="content", ip=_ip(request),
+                 detail=str({k: len(v.get("removed", [])) if isinstance(v, dict) and v.get("ok")
+                             else v for k, v in out.items()})[:200])
+    return out
+
+
 class CustomPostIn(BaseModel):
     channel: str                       # bvtech | jp | linkedin | gbp
     title: str | None = None           # required for site posts
@@ -266,6 +285,7 @@ class CustomPostIn(BaseModel):
     keywords: str | None = None
     kind: str | None = None            # blog | advisory
     link: str | None = None
+    override: bool = False             # bypass the 1-post-per-day guard (deliberate 2nd post)
 
 
 @router.post("/publish-custom")
@@ -278,7 +298,7 @@ def publish_custom(body: CustomPostIn, request: Request, db: Session = Depends(g
     out = content_autopilot.publish_custom(
         db, body.channel, title=body.title, html=body.html, body=body.body,
         excerpt=body.excerpt, slug=body.slug, keywords=body.keywords,
-        kind=body.kind, link=body.link or "")
+        kind=body.kind, link=body.link or "", override=body.override)
     audit.record(db, action="content_autopilot.publish_custom", actor_user_id=user.id,
                  actor_email=user.email, actor_role=user.role.value,
                  target_type="content", ip=_ip(request),
