@@ -1,5 +1,25 @@
 # BVTech OpsPilot — Changelog
 
+## v1.41.0 — Truth on the Page: the flood ACTUALLY gets removed (July 2026)
+v1.40's sweeper shipped but the 19-post flood stayed live. Root cause, found by
+running the sweeper's logic against the REAL site HTML: skeleton-cloned post
+pages carry the ORIGINAL post's visible date (a July 14 post renders saying
+"June 30"), so grouping by page date put the whole flood outside the sweep
+window. Card removal itself worked perfectly on the real markup.
+- **Sweeper now groups by FIRST-COMMIT date** — the true, unfakeable creation
+  day straight from git. Page-visible dates are no longer consulted at all.
+  The July-14 flood groups correctly and 18 of 19 are removed on the next
+  hourly sweep, keeping the earliest.
+- **Pages tell the truth at publish time**: `_refresh_cloned_date` swaps the
+  skeleton's exact stale date (text + datetime attrs + ISO) for today's, so a
+  post published July 14 never again says June 30. Exact-match only — dates in
+  the article's own prose are untouched.
+- **Repair uses commit dates too** (and leaves a card's date alone when the
+  commit date is unknown, instead of guessing).
+- **The hourly sweep now also runs Sync listings** — unlisted posts backfilled
+  and stale cloned cards (bvtech's "same June-22 excerpt on every card")
+  repaired automatically. Zero clicks, ever.
+
 ## v1.40.0 — FLOOD GUARD: one post per day, ALWAYS (July 2026)
 Field report: 19 posts dated July 14 on jordanpolasek.com — every "Post to all
 now" press generated a fresh article, because force bypassed the daily dedupe.
