@@ -1006,6 +1006,11 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
                 if n:
                     listings[lp] = new_h
                     repaired.append(f"{lp}: trimmed {n} extra preview card(s)")
+        for lp in list(listings):
+            new_h, _n45 = _strip_empty_shells(listings[lp])
+            if _n45:
+                listings[lp] = new_h
+                repaired.append(f"{lp}: removed {_n45} empty card shell(s)")
         changed_files = []
         for lp, h in listings.items():
             orig = _fetch_file(cfg, lp)
@@ -1173,6 +1178,21 @@ def _trim_listing(h: str, style: str, keep: int) -> tuple[str, int]:
     return h, len(spans) - keep
 
 
+def _strip_empty_shells(h: str) -> tuple[str, int]:
+    """v1.45: card removal can leave HOLLOW WRAPPERS behind (empty divs/
+    articles/li that render as bare divider lines down the page). Remove
+    elements with no text and no children, iterating until stable. Elements
+    with an id= are spared (functional placeholders)."""
+    n = 0
+    pat = re.compile(r"<(div|article|li|section)\b(?![^>]*\bid=)[^>]*>\s*</\1>")
+    for _ in range(30):
+        h2, k = pat.subn("", h)
+        if not k:
+            break
+        h, n = h2, n + k
+    return h, n
+
+
 def _dedupe_cards(h: str, slug: str) -> tuple[str, int]:
     """Keep the FIRST card linking to `slug`; remove every later duplicate card
     (the 'same card repeated down the whole page' spam). Returns (html, n)."""
@@ -1298,6 +1318,11 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
                 if n:
                     listings[lp] = new_h
                     cards_deduped += n
+        for lp in list(listings):
+            new_h, n = _strip_empty_shells(listings[lp])
+            if n:
+                listings[lp] = new_h
+                cards_deduped += n
         if not removed and not cards_deduped and not ghost_cards:
             out = {"ok": True, "removed": [], "cards_deduped": 0,
                    "detail": "no same-day duplicates found"}

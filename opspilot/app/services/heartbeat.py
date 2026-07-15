@@ -257,6 +257,12 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
         if content_autopilot.get_config(db)["enabled"]:
             content_autopilot.collapse_queue(db)
             jp_site.sweep_duplicates(db, now)
+            # v1.45: the LIVE CISA-KEV homepage ticker refreshes on the
+            # heartbeat (self-stamped once per day) instead of waiting for the
+            # 9am-CT posting window — a fresh deploy updates it within minutes.
+            import os as _os_hb
+            if not _os_hb.environ.get("PULSE_DISABLE_KEV_TICKER"):
+                jp_site.update_kev_ticker(db, now)
     except Exception:  # noqa: BLE001
         db.rollback()
 
