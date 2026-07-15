@@ -3699,6 +3699,12 @@ def main():
                                    excerpt="Real summary.", date_str="July 3, 2026",
                                    link_pat=r'href="/kept-post-x/"')
         assert "July 3, 2026" in _c44 and "July 14, 2026" not in _c44
+        _sh45, _n45 = _jp40._strip_empty_shells(
+            '<div class="posts"><div class="row"><article></article></div>'
+            '<div class="row"> </div><div id="keep-me"></div>'
+            '<article><h2><a href="/blog/x.html">T</a></h2></article></div>')
+        assert _n45 >= 3 and 'id="keep-me"' in _sh45 and 'href="/blog/x.html"' in _sh45
+        assert '<div class="row">' not in _sh45, _sh45
         _home44 = ('<html><body><div class="ticker"><b>LIVE · CISA KEV FEED</b>'
                    '<span class="tk">Apr 20 · CVE-2026-11111 Old Item · badge</span>'
                    '<span class="tk">Apr 18 · CVE-2026-22222 Older · badge</span>'
@@ -5490,7 +5496,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.44.1 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.45.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -1,5 +1,15 @@
 # BVTech OpsPilot — Changelog
 
+## v1.45.0 — KEV ticker rides the heartbeat (July 2026)
+The LIVE CISA-KEV homepage ticker refreshed only inside the 9am-CT posting
+window; it now runs on the 2-minute heartbeat with its own once-per-day
+stamp — a fresh deploy (or a new day) updates the banner within minutes,
+and it still can never commit more than once per day.
+- **Hollow card shells stripped**: removing a card could leave its empty
+  wrapper behind — rendering as rows of bare divider lines down the page
+  (the jordanpolasek.com homepage artifact). The hourly sweep and Sync now
+  strip empty wrappers (id= elements spared) until the page is stable.
+
 ## v1.44.1 — Cards behind early links get found (July 2026)
 A post's URL often appears BEFORE its card (JSON-LD schema, head links) —
 the card finder anchored on the first occurrence and gave up, which is why
