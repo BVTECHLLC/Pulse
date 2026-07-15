@@ -363,6 +363,8 @@ def _rewrite_card(card: str, *, title: str, url: str, excerpt: str,
                        lambda m: m.group(1) + date_str + m.group(3), card, count=1)
         card = _re.sub(r"(>)(\d{4}-\d{2}-\d{2})(<)",
                        lambda m: m.group(1) + date_str + m.group(3), card, count=1)
+        card = _re.sub(r"(\u00b7\s*)([A-Z][a-z]+ \d{1,2}, \d{4})",
+                       lambda m: m.group(1) + date_str, card, count=1)
         # v1.40: badge-style dates without a year ("NEW · JUNE 22 WEEKLY REPORT",
         # "June 22") also cloned verbatim — swap month+day, keep the badge text.
         _md = date_str.rsplit(",", 1)[0]              # "July 14, 2026" -> "July 14"
@@ -990,7 +992,8 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
                 # (every JP card said "July 14" after the flood era) — repair
                 # whenever the visible date disagrees with the commit date too.
                 date_ok = (not date_lbl or date_lbl in card
-                           or not re.search(r">[A-Z][a-z]+ \d{1,2}, \d{4}<", card))
+                           or not re.search(r"(>|\u00b7\s*)[A-Z][a-z]+ \d{1,2}, \d{4}",
+                                            card))
                 if ex_ok and date_ok:
                     continue              # card already tells the truth
                 new_card = _rewrite_card(card, title=title, url=rel, excerpt=excerpt,
@@ -1184,7 +1187,7 @@ def _strip_empty_shells(h: str) -> tuple[str, int]:
     elements with no text and no children, iterating until stable. Elements
     with an id= are spared (functional placeholders)."""
     n = 0
-    pat = re.compile(r"<(div|article|li|section)\b(?![^>]*\bid=)[^>]*>\s*</\1>")
+    pat = re.compile(r"<(div|article|li|section|span|p)\b(?![^>]*\bid=)[^>]*>(?:\s|&nbsp;)*</\1>")
     for _ in range(30):
         h2, k = pat.subn("", h)
         if not k:
