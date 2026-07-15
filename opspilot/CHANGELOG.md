@@ -1,5 +1,12 @@
 # BVTech OpsPilot — Changelog
 
+## v1.47.2 — Cloned card dates die for good (July 2026)
+The news card kept 'June 20, 2026 · 9 min read' - a date followed by more
+text in the same node matched no swap pattern. Dates with a ·-suffix now
+swap too; the news listing joins the hourly sweep with backfill disabled
+(repair yes, mass-inject never); briefing titles carry the date after an
+em dash, never parentheses.
+
 ## v1.47.1 — News editions publish where the news page actually points (July 2026)
 The /news/ page's cards link to /blog/ files - news editions now publish as
 blog files with their card injected on news/index.html (+ blog index and

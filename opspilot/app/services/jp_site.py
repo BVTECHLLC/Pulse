@@ -66,7 +66,7 @@ SITES = {
     # news page - the bvtech site entry already guards the blog dir itself.
     "bvtech_news": {"provider": "bvtech_site", "name": "BVTech.org News",
                     "default_project": "BVTECHLLC-group/bvtech-website-new",
-                    "style": "blog-file", "file_dir": "blog", "sweep": False,
+                    "style": "blog-file", "file_dir": "blog", "backfill": False,
                     "site": "https://bvtech.org", "org": "BVTech LLC",
                     "author_url": "https://bvtech.org", "content_classes": None,
                     "index_paths": ("news/index.html", "blog/index.html", "index.html")},
@@ -374,6 +374,8 @@ def _rewrite_card(card: str, *, title: str, url: str, excerpt: str,
                        card, count=1)
     if date_str:      # v1.41: empty date_str means "leave the card's date alone"
         card = _re.sub(r"(>)([A-Z][a-z]+ \d{1,2}, \d{4})(<)",
+                       lambda m: m.group(1) + date_str + m.group(3), card, count=1)
+        card = _re.sub(r"(>)([A-Z][a-z]+ \d{1,2}, \d{4})(\s*\u00b7)",
                        lambda m: m.group(1) + date_str + m.group(3), card, count=1)
         card = _re.sub(r"(>)(\d{4}-\d{2}-\d{2})(<)",
                        lambda m: m.group(1) + date_str + m.group(3), card, count=1)
@@ -936,7 +938,7 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
         date_str = datetime.now(timezone.utc).strftime("%B %-d, %Y")
         added, actions, purge_urls = [], [], []
         ai_misses: dict[str, int] = {}
-        for path in post_paths:
+        for path in (post_paths if meta.get("backfill", True) else []):
             url = _post_url_for(meta, path, cfg["style"])
             rel = url.replace(meta["site"], "")            # href form used in listings
             slug = _slug_of(path)

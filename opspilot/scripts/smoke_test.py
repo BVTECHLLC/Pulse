@@ -3699,6 +3699,12 @@ def main():
                                    excerpt="Real summary.", date_str="July 3, 2026",
                                    link_pat=r'href="/kept-post-x/"')
         assert "July 3, 2026" in _c44 and "July 14, 2026" not in _c44
+        _sfx47 = _jp40._rewrite_card(
+            '<article><h2><a href="/blog/s.html">T</a></h2>'
+            '<span>June 20, 2026 \u00b7 9 min read \u00b7 Jordan Polasek</span></article>',
+            title="T", url="/blog/s.html", excerpt="", date_str="July 15, 2026",
+            link_pat=r'href="/blog/s\.html"')
+        assert "July 15, 2026 \u00b7 9 min read" in _sfx47 and "June 20" not in _sfx47
         _sh45, _n45 = _jp40._strip_empty_shells(
             '<div class="posts"><div class="row"><article></article></div>'
             '<div class="row"> </div><div id="keep-me"></div>'
@@ -5502,7 +5508,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.47.1 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.47.2 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

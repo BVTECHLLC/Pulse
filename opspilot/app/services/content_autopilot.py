@@ -211,7 +211,7 @@ _NEWS_SYSTEM = (
     "plain-English KEV/CVE analysis with real remediation steps for Texas small "
     "businesses. Use ONLY the real CVE facts provided; never invent CVEs. NEVER "
     "mention El Campo.\n"
-    "Reply EXACTLY:\nTITLE: <briefing headline with the date>\n"
+    "Reply EXACTLY:\nTITLE: <briefing headline; the date written naturally after an em dash, e.g. '... — July 15, 2026', NEVER in parentheses>\n"
     "EXCERPT: <120-155 chars>\nHTML:\n<body html: <p>,<h2>,<ul> only>")
 
 
