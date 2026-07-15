@@ -1,5 +1,13 @@
 # BVTech OpsPilot — Changelog
 
+## v1.46.0 — Sync commits watched + backfilled cards dated truthfully (July 2026)
+- A sync commit failed the bvtech.org Workers build with NO auto-revert —
+  sync/cleanup commits now register with the build watchdog exactly like
+  publishes (failed build -> auto-revert + notification).
+- Backfilled listing cards were stamped with TODAY's date, making whole
+  batches look same-day published on both sites; they now carry each
+  post's first-commit date.
+
 ## v1.45.1 — Mid-text dates repaired + wider shell stripping (July 2026)
 Card dates rendered as 'Jordan Polasek \u00b7 June 30, 2026' (text before the
 date in the same node) matched neither the date-swap nor the mismatch

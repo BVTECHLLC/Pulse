@@ -929,6 +929,17 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
             if not page:
                 continue
             title, excerpt = _post_meta_from_html(page)
+            # v1.46: date the backfilled card by the POST'S first-commit date —
+            # stamping TODAY on every backfilled card made whole batches look
+            # same-day published (the "multi post per day" spam look).
+            post_date = date_str
+            _ts46 = _first_commit_iso(cfg, path)
+            if _ts46:
+                try:
+                    _d46 = datetime.fromisoformat(_ts46.replace("Z", "+00:00")).date()
+                    post_date = f"{_MONTH_NAMES[_d46.month - 1]} {_d46.day}, {_d46.year}"
+                except ValueError:
+                    pass
             any_change = False
             for lp in missing:
                 # AI fallback is capped per listing page: after 2 misses the
@@ -936,7 +947,7 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
                 use_ai = ai_misses.get(lp, 0) < 2
                 new_html, changed = _inject_listing(
                     listings[lp], title=title, url=rel, excerpt=excerpt,
-                    date_str=date_str, style=cfg["style"], allow_ai=use_ai)
+                    date_str=post_date, style=cfg["style"], allow_ai=use_ai)
                 if changed:
                     listings[lp] = new_html
                     any_change = True
@@ -1034,6 +1045,13 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
                                f"repair {len(repaired)} stale card(s) (via Pulse)"),
             "actions": actions,
         })
+        conn46 = secure_config.get_platform(db, meta["provider"])
+        raw46 = dict((conn46.config if conn46 else None) or {})
+        _pend = list(raw46.get("pending") or [])
+        _pend.append({"sha": commit.get("id"), "slug": "sync-listings",
+                      "at": datetime.now(timezone.utc).isoformat(), "checks": 0})
+        raw46["pending"] = _pend[-10:]
+        secure_config.upsert_platform(db, meta["provider"], meta["name"], "Publishing", raw46)
         from . import cloudflare
         purge = cloudflare.purge_urls(db, site, purge_urls)
         return {"ok": True, "sha": commit.get("id"), "added": added,
@@ -1348,6 +1366,13 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
                                "(1-post-per-day flood guard, via Pulse)"),
             "actions": actions,
         })
+        conn46 = secure_config.get_platform(db, meta["provider"])
+        raw46 = dict((conn46.config if conn46 else None) or {})
+        _pend = list(raw46.get("pending") or [])
+        _pend.append({"sha": commit.get("id"), "slug": "flood-cleanup",
+                      "at": datetime.now(timezone.utc).isoformat(), "checks": 0})
+        raw46["pending"] = _pend[-10:]
+        secure_config.upsert_platform(db, meta["provider"], meta["name"], "Publishing", raw46)
         from . import cloudflare
         purge = cloudflare.purge_urls(db, site, purge_urls or [f"{meta['site']}/"])
         try:
