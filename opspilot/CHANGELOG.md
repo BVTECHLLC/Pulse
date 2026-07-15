@@ -1,5 +1,11 @@
 # BVTech OpsPilot — Changelog
 
+## v1.47.1 — News editions publish where the news page actually points (July 2026)
+The /news/ page's cards link to /blog/ files - news editions now publish as
+blog files with their card injected on news/index.html (+ blog index and
+homepage preview). The sweep never syncs the news listing (sweep=False), so
+the news page can never be flooded with regular blog posts.
+
 ## v1.47.0 — The full editorial engine (July 2026)
 - **bvtech.org/news/ discovered and wired**: the 'This Week in Cybersecurity'
   briefings live in a separate /news/ section - Pulse now publishes a DAILY

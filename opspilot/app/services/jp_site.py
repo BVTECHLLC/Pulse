@@ -59,12 +59,17 @@ SITES = {
                "preview_caps": {"index.html": 6}},
     # bvtech.org's SEPARATE news section ("This Week in Cybersecurity" KEV
     # briefings live at /news/, not /blog/). Same repo/token, own folder+index.
+    # The /news/ page is a LISTING whose cards link to /blog/ files (the
+    # Splunk edition lives at /blog/jordan-polasek-june-20-...). So news
+    # editions publish as BLOG files and their card lands on news/index.html.
+    # sweep=False: the hourly sweep must never sync ALL blog posts onto the
+    # news page - the bvtech site entry already guards the blog dir itself.
     "bvtech_news": {"provider": "bvtech_site", "name": "BVTech.org News",
                     "default_project": "BVTECHLLC-group/bvtech-website-new",
-                    "style": "blog-file", "file_dir": "news",
+                    "style": "blog-file", "file_dir": "blog", "sweep": False,
                     "site": "https://bvtech.org", "org": "BVTech LLC",
                     "author_url": "https://bvtech.org", "content_classes": None,
-                    "index_paths": ("news/index.html",)},
+                    "index_paths": ("news/index.html", "blog/index.html", "index.html")},
 }
 
 # Alias list matching the old cron's lib_env.sh — the token that already exists
@@ -1423,6 +1428,8 @@ def sweep_duplicates(db: Session, now: datetime | None = None) -> dict:
     now = now or datetime.now(timezone.utc)
     out: dict = {}
     for sk, meta in SITES.items():
+        if not meta.get("sweep", True):
+            continue                      # listing-only pseudo-sites: never sync
         conn = secure_config.get_platform(db, meta["provider"])
         raw = (conn.config if conn else None) or {}
         if not configured(db, sk):
