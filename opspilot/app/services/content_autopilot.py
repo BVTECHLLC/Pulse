@@ -414,6 +414,17 @@ def run_daily(db: Session, now: datetime | None = None, *, force: bool = False) 
         if not ok:
             _notify_fail(db, ch, detail)
         results[ch] = {"ok": ok, "detail": detail}
+    # v1.44: refresh bvtech.org's LIVE CISA-KEV homepage ticker with today's
+    # real exploited-vulnerability entries — once per day (stamped inside).
+    # Kept OUT of `results` (its own key) so channel semantics stay untouched.
+    import os as _os
+    kev = None
+    if cfg["channels"].get("bvtech", True) and not _os.environ.get("PULSE_DISABLE_KEV_TICKER"):
+        try:
+            from . import jp_site
+            kev = jp_site.update_kev_ticker(db, now)
+        except Exception:  # noqa: BLE001
+            db.rollback()
     # v1.33 daily receipt: on the scheduled (non-force) run, drop ONE summary
     # notification with the day's shipped URLs — hands-free means the operator
     # never has to check; the proof comes to them. Failures already notify
@@ -428,7 +439,7 @@ def run_daily(db: Session, now: datetime | None = None, *, force: bool = False) 
             db.commit()
         except Exception:  # noqa: BLE001
             db.rollback()
-    return {"ran": True, "results": results}
+    return {"ran": True, "results": results, "kev_ticker": kev}
 
 
 def status(db: Session) -> dict:

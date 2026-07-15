@@ -976,9 +976,15 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
                         except ValueError:
                             pass
                 card = h[span[0]:span[1]]
-                if (not excerpt or excerpt[:60] in card
-                        or _html40.escape(excerpt)[:60] in card):
-                    continue              # card already carries its own summary
+                ex_ok = (not excerpt or excerpt[:60] in card
+                         or _html40.escape(excerpt)[:60] in card)
+                # v1.44: a card can have the RIGHT excerpt but the WRONG date
+                # (every JP card said "July 14" after the flood era) — repair
+                # whenever the visible date disagrees with the commit date too.
+                date_ok = (not date_lbl or date_lbl in card
+                           or not re.search(r">[A-Z][a-z]+ \d{1,2}, \d{4}<", card))
+                if ex_ok and date_ok:
+                    continue              # card already tells the truth
                 new_card = _rewrite_card(card, title=title, url=rel, excerpt=excerpt,
                                          date_str=date_lbl, link_pat=pat)
                 if new_card != card:
@@ -1588,3 +1594,92 @@ def verify_pending(db: Session, now: datetime | None = None,
         raw["pending"] = keep
         secure_config.upsert_platform(db, meta["provider"], meta["name"], "Publishing", raw)
     return results
+
+
+# --------------------------------------------------------------------------- #
+# v1.44 LIVE CISA-KEV ticker — bvtech.org's homepage marquee gets TODAY's real
+# exploited-vulnerability entries, once per day. Data straight from CISA's
+# public KEV feed; the markup edit is Claude-templated and hard-validated
+# (anchor must exist, new block must carry the real CVE ids, sane size) — a
+# bad answer changes nothing.
+# --------------------------------------------------------------------------- #
+KEV_FEED_URL = ("https://www.cisa.gov/sites/default/files/feeds/"
+                "known_exploited_vulnerabilities.json")
+
+
+def _fetch_kev(limit: int = 5) -> list[dict]:
+    req = urllib.request.Request(KEV_FEED_URL, headers={"User-Agent": "BVTech-OpsPilot"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        data = json.loads(r.read().decode())
+    vulns = sorted(data.get("vulnerabilities", []),
+                   key=lambda v: v.get("dateAdded", ""), reverse=True)[:limit]
+    return [{"cve": v.get("cveID"), "name": v.get("vulnerabilityName"),
+             "vendor": v.get("vendorProject"), "product": v.get("product"),
+             "added": v.get("dateAdded"), "due": v.get("dueDate")} for v in vulns]
+
+
+_KEV_FETCH = _fetch_kev   # test seam
+
+
+def update_kev_ticker(db: Session, now: datetime | None = None) -> dict:
+    """Refresh the homepage 'LIVE - CISA KEV FEED' marquee with today's real
+    KEV entries. Once per day (stamped); idempotent and validated."""
+    from . import ai as ai_svc
+    now = now or datetime.now(timezone.utc)
+    meta = SITES["bvtech"]
+    cfg = get_config(db, "bvtech")
+    if not cfg["configured"]:
+        return {"ok": False, "error": "bvtech.org not connected"}
+    conn = secure_config.get_platform(db, meta["provider"])
+    raw = dict((conn.config if conn else None) or {})
+    if raw.get("last_kev_ticker") == now.date().isoformat():
+        return {"ok": True, "detail": "ticker already updated today"}
+    if not ai_svc.enabled():
+        return {"ok": False, "error": "Claude not connected"}
+    try:
+        kev = _KEV_FETCH(5)
+        if not kev:
+            return {"ok": False, "error": "CISA KEV feed returned nothing"}
+        home = _fetch_file(cfg, "index.html")
+        if not home:
+            return {"ok": False, "error": "index.html not found"}
+        m = re.search(r"CISA[ ·\-·]*KEV", home, re.I)
+        if not m:
+            return {"ok": False, "error": "KEV ticker marker not found on homepage"}
+        frag = home[max(0, m.start() - 1500): m.start() + 6000]
+        items = "\n".join(f"- {k['cve']}: {k['vendor']} {k['product']} - {k['name']}"
+                          f" (added {k['added']}, federal due {k['due']})" for k in kev)
+        raw_ai = ai_svc.complete(
+            "You are an exact HTML templating engine. The fragment contains a scrolling "
+            "'LIVE CISA KEV FEED' ticker with repeated item markup. Rebuild ONLY the ticker "
+            "items with the NEW entries provided, cloning the existing item markup exactly "
+            "(same tags/classes/badges/separators, month-day date style). Reply EXACTLY:\n"
+            "ANCHOR_START: <first 60-120 chars of the FIRST existing ticker item, verbatim>\n"
+            "ANCHOR_END: <last 40-80 chars of the LAST existing ticker item, verbatim>\n"
+            "BLOCK_START\n<replacement items html>\nBLOCK_END",
+            f"New KEV entries (newest first):\n{items}\n\nFragment:\n{frag}",
+            max_tokens=2500)
+        a1 = re.search(r"ANCHOR_START:[ \t]*(.+)", raw_ai)
+        a2 = re.search(r"ANCHOR_END:[ \t]*(.+)", raw_ai)
+        bl = re.search(r"BLOCK_START\s*\n(.*?)\nBLOCK_END", raw_ai, re.S)
+        if not (a1 and a2 and bl):
+            return {"ok": False, "error": "AI reply unparsable - ticker left untouched"}
+        s1, s2, block = a1.group(1).strip()[:200], a2.group(1).strip()[:120], bl.group(1)
+        i1 = home.find(s1)
+        i2 = home.find(s2, i1 + 1) if i1 >= 0 else -1
+        hits = sum(1 for k in kev if k["cve"] and k["cve"] in block)
+        if (i1 < 0 or i2 < 0 or not (0 < (i2 + len(s2)) - i1 < 20000)
+                or hits < 2 or len(block) > 12000 or "<script" in block.lower()):
+            return {"ok": False, "error": "AI ticker block failed validation - untouched"}
+        new_home = home[:i1] + block + home[i2 + len(s2):]
+        _HTTP("POST", f"{_proj_url(cfg)}/repository/commits", cfg["token"], {
+            "branch": cfg["branch"],
+            "commit_message": f"homepage: refresh LIVE CISA KEV ticker ({kev[0]['cve']}, via Pulse)",
+            "actions": [{"action": "update", "file_path": "index.html", "content": new_home}]})
+        from . import cloudflare
+        cloudflare.purge_urls(db, "bvtech", [f"{meta['site']}/"])
+        raw["last_kev_ticker"] = now.date().isoformat()
+        secure_config.upsert_platform(db, meta["provider"], meta["name"], "Publishing", raw)
+        return {"ok": True, "cves": [k["cve"] for k in kev]}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:300]}
