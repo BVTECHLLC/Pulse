@@ -1,5 +1,15 @@
 # BVTech OpsPilot — Changelog
 
+## v1.44.0 — LIVE CISA-KEV marquee + honest card dates (July 2026)
+- **bvtech.org's homepage 'LIVE - CISA KEV FEED' ticker is actually live now**:
+  once a day the autopilot pulls the newest entries from CISA's public KEV
+  feed and rewrites ONLY the ticker items (Claude clones the existing item
+  markup; the splice is validated hard — real CVE ids required, page body
+  untouched, once-per-day stamp).
+- **Cards with the right excerpt but the WRONG date get repaired too** — after
+  the flood era every JP card said 'July 14'; the hourly sweep now rewrites
+  any card whose visible date disagrees with the post's commit date.
+
 ## v1.43.1 — Deep-clean diagnostics + nav-proof trimming (July 2026)
 - The homepage trim silently did nothing when the FIRST post-pattern link on
   the page was a nav/menu link (not a card): the card scanner now SKIPS

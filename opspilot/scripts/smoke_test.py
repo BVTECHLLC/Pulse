@@ -10,6 +10,7 @@ isolation.
 """
 import sys, os
 sys.path.insert(0, os.getcwd())
+os.environ["PULSE_DISABLE_KEV_TICKER"] = "1"
 from fastapi.testclient import TestClient
 from app.main import app
 
@@ -3476,6 +3477,7 @@ def main():
             assert "1-post-per-day" in out40b["results"]["jp"]["detail"]
             assert len(_commits40) == _n40, "force re-run must NOT publish a second post!"
             # (b) Custom posts hit the same cap; explicit override is the escape hatch.
+            _ca40._mark(db, "jp", ok=True)   # date-independent: mark success TODAY (real clock)
             r40 = _ca40.publish_custom(db, "jp", title="Second Today", html="<p>x</p>")
             assert r40["ok"] is False and r40.get("capped") is True, r40
             r40b = _ca40.publish_custom(db, "jp", title="Second Today", html="<p>x</p>",
@@ -3687,6 +3689,61 @@ def main():
         print("Homepage preview cap (newest 6 cards kept, idempotent, both sites) + "
               "Monday weekly cybersecurity recap edition + ghost-card detection "
               "(own-site any-form links, foreign domains ignored) OK")
+
+        # ==== v1.44: date-repair + LIVE CISA-KEV ticker (validated AI splice) ====
+        _stale44 = ('<div class="posts"><article class="post-card"><h2>'
+                    '<a href="/kept-post-x/">K</a></h2><p class="excerpt">Real summary.</p>'
+                    '<span>July 14, 2026</span></article></div>')
+        # right excerpt + wrong date must STILL be repaired (excerpt matches meta)
+        _c44 = _jp40._rewrite_card(_stale44[24:-6], title="K", url="/kept-post-x/",
+                                   excerpt="Real summary.", date_str="July 3, 2026",
+                                   link_pat=r'href="/kept-post-x/"')
+        assert "July 3, 2026" in _c44 and "July 14, 2026" not in _c44
+        _home44 = ('<html><body><div class="ticker"><b>LIVE · CISA KEV FEED</b>'
+                   '<span class="tk">Apr 20 · CVE-2026-11111 Old Item · badge</span>'
+                   '<span class="tk">Apr 18 · CVE-2026-22222 Older · badge</span>'
+                   '</div><main>rest of page</main></body></html>')
+        _committed44 = {}
+        def _http44(method, url, token, payload=None):
+            if method == "GET" and "/repository/files/" in url:
+                import base64 as _b44
+                return {"content": _b44.b64encode(_home44.encode()).decode()}
+            if method == "POST" and "/repository/commits" in url:
+                _committed44["home"] = payload["actions"][0]["content"]
+                return {"id": "sha44"}
+            return {}
+        _okev = _jp40._KEV_FETCH
+        _jp40._KEV_FETCH = lambda n=5: [
+            {"cve": "CVE-2026-77777", "name": "New RCE", "vendor": "VendorX",
+             "product": "Prod", "added": "2026-07-15", "due": "2026-07-22"},
+            {"cve": "CVE-2026-88888", "name": "Auth bypass", "vendor": "VendorY",
+             "product": "Gate", "added": "2026-07-14", "due": "2026-07-21"}]
+        _oai44e, _oai44c, _ojp44 = _ai39.enabled, _ai39.complete, _jp40._HTTP
+        _ai39.enabled = lambda: True
+        _ai39.complete = lambda s, u, **k: (
+            'ANCHOR_START: <span class="tk">Apr 20 · CVE-2026-11111 Old Item · badge</span>\n'
+            'ANCHOR_END: <span class="tk">Apr 18 · CVE-2026-22222 Older · badge</span>\n'
+            'BLOCK_START\n<span class="tk">Jul 15 · CVE-2026-77777 VendorX Prod · badge</span>'
+            '<span class="tk">Jul 14 · CVE-2026-88888 VendorY Gate · badge</span>\nBLOCK_END')
+        _jp40._HTTP = _http44
+        try:
+            _jp40.save_shared_token(db, "glpat-KEV44")
+            r44 = _jp40.update_kev_ticker(db)
+            assert r44["ok"] is True, r44
+            assert "CVE-2026-77777" in _committed44["home"]
+            assert "CVE-2026-11111" not in _committed44["home"]  # old items replaced
+            assert "rest of page" in _committed44["home"]        # page body intact
+            r44b = _jp40.update_kev_ticker(db)                   # once per day
+            assert r44b["ok"] and "already updated today" in r44b.get("detail", ""), r44b
+        finally:
+            _jp40._KEV_FETCH, _jp40._HTTP = _okev, _ojp44
+            _ai39.enabled, _ai39.complete = _oai44e, _oai44c
+            _clk = _SL27()
+            _clk.query(_IC27).filter(_IC27.provider.in_(["gitlab", "bvtech_site", "jp_site"])).delete(synchronize_session=False)
+            _clk.commit(); _clk.close()
+        print("v1.44: wrong-date cards repaired even with right excerpts + LIVE CISA-KEV "
+              "ticker (real feed data, AI-templated splice validated, page intact, "
+              "once-per-day stamp) OK")
         # (g) The GH tick cron warns instead of failing when Cloudflare blocks it.
         import os as _os40
         _wf40 = open(_os40.path.join(_os40.path.dirname(__file__), "..", "..",
@@ -5433,7 +5490,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.43.1 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.44.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
