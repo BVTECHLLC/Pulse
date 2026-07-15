@@ -3705,6 +3705,12 @@ def main():
             '<article><h2><a href="/blog/x.html">T</a></h2></article></div>')
         assert _n45 >= 3 and 'id="keep-me"' in _sh45 and 'href="/blog/x.html"' in _sh45
         assert '<div class="row">' not in _sh45, _sh45
+        _mid45 = _jp40._rewrite_card(
+            '<article><h2><a href="/blog/m.html">T</a></h2>'
+            '<span>NEW \u00b7 Jordan Polasek \u00b7 June 30, 2026</span></article>',
+            title="T", url="/blog/m.html", excerpt="", date_str="July 3, 2026",
+            link_pat=r'href="/blog/m\.html"')
+        assert "July 3, 2026" in _mid45 and "June 30" not in _mid45, _mid45
         _home44 = ('<html><body><div class="ticker"><b>LIVE · CISA KEV FEED</b>'
                    '<span class="tk">Apr 20 · CVE-2026-11111 Old Item · badge</span>'
                    '<span class="tk">Apr 18 · CVE-2026-22222 Older · badge</span>'
@@ -5496,7 +5502,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.45.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.45.1 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

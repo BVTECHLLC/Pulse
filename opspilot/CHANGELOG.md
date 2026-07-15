@@ -1,5 +1,11 @@
 # BVTech OpsPilot — Changelog
 
+## v1.45.1 — Mid-text dates repaired + wider shell stripping (July 2026)
+Card dates rendered as 'Jordan Polasek \u00b7 June 30, 2026' (text before the
+date in the same node) matched neither the date-swap nor the mismatch
+detector, so homepage cards never repaired. Both now handle the \u00b7-prefixed
+form, and empty span/p wrappers (incl. &nbsp;) collapse too.
+
 ## v1.45.0 — KEV ticker rides the heartbeat (July 2026)
 The LIVE CISA-KEV homepage ticker refreshed only inside the 9am-CT posting
 window; it now runs on the 2-minute heartbeat with its own once-per-day
