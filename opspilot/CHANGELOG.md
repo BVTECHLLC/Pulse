@@ -1,5 +1,10 @@
 # BVTech OpsPilot — Changelog
 
+## v1.47.3 — The marquee can never fail silently (July 2026)
+The KEV ticker retries every heartbeat, but its failures were invisible.
+It now drops ONE portal notification per day - success (with the CVEs) or
+the exact failure reason - so the operator's bell always tells the truth.
+
 ## v1.47.2 — Cloned card dates die for good (July 2026)
 The news card kept 'June 20, 2026 · 9 min read' - a date followed by more
 text in the same node matched no swap pattern. Dates with a ·-suffix now

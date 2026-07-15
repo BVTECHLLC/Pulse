@@ -5508,7 +5508,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.47.2 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.47.3 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
