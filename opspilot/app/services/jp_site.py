@@ -1709,6 +1709,22 @@ def _fetch_kev(limit: int = 5) -> list[dict]:
 _KEV_FETCH = _fetch_kev   # test seam
 
 
+
+def _notify_ticker(db: Session, raw: dict, now: datetime, msg: str) -> None:
+    """One ticker status notification per day (success or failure) - the
+    marquee can never fail silently again."""
+    try:
+        if raw.get("last_kev_note") == now.date().isoformat():
+            return
+        raw["last_kev_note"] = now.date().isoformat()
+        secure_config.upsert_platform(db, SITES["bvtech"]["provider"],
+                                      SITES["bvtech"]["name"], "Publishing", raw)
+        db.add(Notification(client_id=None, target_user_id=None, kind="content",
+                            severity="info", message=msg[:1000]))
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
 def update_kev_ticker(db: Session, now: datetime | None = None) -> dict:
     """Refresh the homepage 'LIVE - CISA KEV FEED' marquee with today's real
     KEV entries. Once per day (stamped); idempotent and validated."""
@@ -1733,6 +1749,7 @@ def update_kev_ticker(db: Session, now: datetime | None = None) -> dict:
             return {"ok": False, "error": "index.html not found"}
         m = re.search(r"CISA[ ·\-·]*KEV", home, re.I)
         if not m:
+            _notify_ticker(db, raw, now, "\u26a0\ufe0f KEV marquee: 'CISA KEV' marker not found on the homepage")
             return {"ok": False, "error": "KEV ticker marker not found on homepage"}
         frag = home[max(0, m.start() - 1500): m.start() + 6000]
         items = "\n".join(f"- {k['cve']}: {k['vendor']} {k['product']} - {k['name']}"
@@ -1758,6 +1775,7 @@ def update_kev_ticker(db: Session, now: datetime | None = None) -> dict:
         hits = sum(1 for k in kev if k["cve"] and k["cve"] in block)
         if (i1 < 0 or i2 < 0 or not (0 < (i2 + len(s2)) - i1 < 20000)
                 or hits < 2 or len(block) > 12000 or "<script" in block.lower()):
+            _notify_ticker(db, raw, now, "\u26a0\ufe0f KEV marquee: AI block failed validation - page untouched, retrying")
             return {"ok": False, "error": "AI ticker block failed validation - untouched"}
         new_home = home[:i1] + block + home[i2 + len(s2):]
         _HTTP("POST", f"{_proj_url(cfg)}/repository/commits", cfg["token"], {
@@ -1768,6 +1786,8 @@ def update_kev_ticker(db: Session, now: datetime | None = None) -> dict:
         cloudflare.purge_urls(db, "bvtech", [f"{meta['site']}/"])
         raw["last_kev_ticker"] = now.date().isoformat()
         secure_config.upsert_platform(db, meta["provider"], meta["name"], "Publishing", raw)
+        _notify_ticker(db, raw, now, f"\u2705 KEV marquee updated: {', '.join(k['cve'] for k in kev[:3])}\u2026")
         return {"ok": True, "cves": [k["cve"] for k in kev]}
     except Exception as e:  # noqa: BLE001
+        _notify_ticker(db, raw, now, f"\u26a0\ufe0f KEV marquee update FAILED: {str(e)[:180]} - retrying every 2 min")
         return {"ok": False, "error": str(e)[:300]}
