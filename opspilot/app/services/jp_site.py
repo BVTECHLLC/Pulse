@@ -1218,9 +1218,22 @@ def _trim_listing(h: str, style: str, keep: int, file_dir: str = "blog") -> tupl
     spans = _all_card_spans(h, _link_pat_for(style, file_dir))
     if len(spans) <= keep:
         return h, 0
-    for s, e in reversed(spans[keep:]):
+    # v1.47.4: SECTION-AWARE - the homepage has multiple card sections (a small
+    # featured strip + the big archive wall). Cluster cards by proximity and
+    # trim ONLY the largest cluster; small featured sections are never touched
+    # (the cap once ate the This Week in Cybersecurity feature - never again).
+    clusters: list[list[tuple[int, int]]] = [[spans[0]]]
+    for sp in spans[1:]:
+        if sp[0] - clusters[-1][-1][1] < 2500:
+            clusters[-1].append(sp)
+        else:
+            clusters.append([sp])
+    big = max(clusters, key=len)
+    if len(big) <= keep:
+        return h, 0
+    for s, e in reversed(big[keep:]):
         h = h[:s] + h[e:]
-    return h, len(spans) - keep
+    return h, len(big) - keep
 
 
 def _strip_empty_shells(h: str) -> tuple[str, int]:
@@ -1700,7 +1713,11 @@ def _fetch_kev(limit: int = 5) -> list[dict]:
     with urllib.request.urlopen(req, timeout=30) as r:
         data = json.loads(r.read().decode())
     vulns = sorted(data.get("vulnerabilities", []),
-                   key=lambda v: v.get("dateAdded", ""), reverse=True)[:limit]
+                   key=lambda v: v.get("dateAdded", ""), reverse=True)
+    from datetime import date, timedelta
+    cutoff = (date.today() - timedelta(days=15)).isoformat()
+    recent = [v for v in vulns if (v.get("dateAdded") or "") >= cutoff]
+    vulns = (recent or vulns)[:max(limit, len(recent[:10]))]
     return [{"cve": v.get("cveID"), "name": v.get("vulnerabilityName"),
              "vendor": v.get("vendorProject"), "product": v.get("product"),
              "added": v.get("dateAdded"), "due": v.get("dueDate")} for v in vulns]
@@ -1755,10 +1772,12 @@ def update_kev_ticker(db: Session, now: datetime | None = None) -> dict:
         items = "\n".join(f"- {k['cve']}: {k['vendor']} {k['product']} - {k['name']}"
                           f" (added {k['added']}, federal due {k['due']})" for k in kev)
         raw_ai = ai_svc.complete(
-            "You are an exact HTML templating engine. The fragment contains a scrolling "
-            "'LIVE CISA KEV FEED' ticker with repeated item markup. Rebuild ONLY the ticker "
-            "items with the NEW entries provided, cloning the existing item markup exactly "
-            "(same tags/classes/badges/separators, month-day date style). Reply EXACTLY:\n"
+            "You are an exact templating engine. The fragment contains a scrolling "
+            "'LIVE CISA KEV FEED' ticker whose items are either repeated HTML spans OR "
+            "entries in a JavaScript data array. Rebuild ONLY the ticker items with the "
+            "NEW entries provided, cloning the existing item form exactly (same tags/"
+            "classes/badges/separators OR same array-object keys/quoting, month-day date "
+            "style). Never include <script> tags themselves. Reply EXACTLY:\n"
             "ANCHOR_START: <first 60-120 chars of the FIRST existing ticker item, verbatim>\n"
             "ANCHOR_END: <last 40-80 chars of the LAST existing ticker item, verbatim>\n"
             "BLOCK_START\n<replacement items html>\nBLOCK_END",
@@ -1774,8 +1793,9 @@ def update_kev_ticker(db: Session, now: datetime | None = None) -> dict:
         i2 = home.find(s2, i1 + 1) if i1 >= 0 else -1
         hits = sum(1 for k in kev if k["cve"] and k["cve"] in block)
         if (i1 < 0 or i2 < 0 or not (0 < (i2 + len(s2)) - i1 < 20000)
-                or hits < 2 or len(block) > 12000 or "<script" in block.lower()):
-            _notify_ticker(db, raw, now, "\u26a0\ufe0f KEV marquee: AI block failed validation - page untouched, retrying")
+                or hits < 2 or len(block) > 20000 or "<script" in block.lower()):
+            _notify_ticker(db, raw, now, ("\u26a0\ufe0f KEV marquee: AI block failed validation - page untouched, "
+                                          f"retrying. Fragment starts: {frag[:160]!r}"))
             return {"ok": False, "error": "AI ticker block failed validation - untouched"}
         new_home = home[:i1] + block + home[i2 + len(s2):]
         _HTTP("POST", f"{_proj_url(cfg)}/repository/commits", cfg["token"], {

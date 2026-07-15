@@ -1,5 +1,15 @@
 # BVTech OpsPilot — Changelog
 
+## v1.47.4 — Marquee handles JS-array tickers + full 15-day KEV window (July 2026)
+The homepage ticker is likely built from a JavaScript data array; the
+updater's prompt now clones either form (HTML spans or array entries,
+never script tags), pulls the last 15 days of KEV entries (up to 10), and
+failure notifications include a fragment sample for remote diagnosis.
+- **Section-aware homepage trim**: cards cluster by proximity and only the
+  largest cluster (the archive wall) is capped - small featured strips
+  (This Week in Cybersecurity) are never trimmed again; the sweep re-lists
+  the newest editions on the homepage.
+
 ## v1.47.3 — The marquee can never fail silently (July 2026)
 The KEV ticker retries every heartbeat, but its failures were invisible.
 It now drops ONE portal notification per day - success (with the CVEs) or
