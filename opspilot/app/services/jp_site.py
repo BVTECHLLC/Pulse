@@ -263,12 +263,20 @@ def _find_generic_card(html_text: str, link_pat: str) -> tuple[int, int] | None:
     it works on ANY card markup — no assumptions about class names. This is
     what lets bvtech.org's custom blog cards get injected, not just <article>s."""
     import re as _re
+
+    # v1.44.1: a post's link can appear OUTSIDE its card first (JSON-LD blocks,
+    # raw head links) — try every occurrence until one is inside a real card,
+    # instead of giving up on the first non-card hit.
+    for _m in list(_re.finditer(link_pat, html_text))[:20]:
+        span = _find_card_at(html_text, _m.start())
+        if span:
+            return span
+    return None
+
+
+def _find_card_at(html_text: str, link_pos: int) -> tuple[int, int] | None:
     from html.parser import HTMLParser
 
-    m = _re.search(link_pat, html_text)
-    if not m:
-        return None
-    link_pos = m.start()
     lines = html_text.split("\n")
     line_off = [0]
     for ln in lines:

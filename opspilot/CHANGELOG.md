@@ -1,5 +1,12 @@
 # BVTech OpsPilot — Changelog
 
+## v1.44.1 — Cards behind early links get found (July 2026)
+A post's URL often appears BEFORE its card (JSON-LD schema, head links) —
+the card finder anchored on the first occurrence and gave up, which is why
+the homepage cards kept their stale June dates while /blog/ was repaired.
+It now tries every occurrence until one is inside a real card, so repair,
+dedupe, ghost-removal and trim all see the same cards everywhere.
+
 ## v1.44.0 — LIVE CISA-KEV marquee + honest card dates (July 2026)
 - **bvtech.org's homepage 'LIVE - CISA KEV FEED' ticker is actually live now**:
   once a day the autopilot pulls the newest entries from CISA's public KEV
