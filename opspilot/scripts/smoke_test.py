@@ -2052,7 +2052,7 @@ def main():
         _o20 = (_ai20.enabled, _ai20.complete, _jp20._HTTP, _wp20.configured,
                 _ba20.generate_article, _ba20.publish_article)
         try:
-            now20 = _dt20.datetime.now(_dt20.timezone.utc).replace(hour=15)
+            now20 = _dt20.datetime(2026, 7, 6, 15, tzinfo=_dt20.timezone.utc)  # a Monday (weekly channels run)
             # One-click JP repo setup via the API (token encrypted in the vault).
             assert c.put("/api/content-autopilot/jp-site",
                          json={"project": "BVTECHLLC-group/jordanpolasek-website",
@@ -5502,7 +5502,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.46.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.47.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -194,13 +194,49 @@ def _run_bvtech(db: Session, now: datetime) -> tuple[bool, str]:
                         status="posted", url=out.get("url"), source="autopilot"))
         db.commit()
         note = _pub_note(out)
-        return True, (out.get("url") or article.get("title", "")) + (f" | {note}" if note else "")
+        news_note = _publish_news_edition(db, now)
+        return True, ((out.get("url") or article.get("title", ""))
+                      + (f" | {note}" if note else "") + news_note)
     if wordpress.configured(db):
         row = blog_autopilot.publish_article(db, article, source="autopilot")
         if row.status != "posted":
             return False, row.error or "WordPress publish failed"
         return True, row.url or row.title
     return False, "bvtech.org not connected (GitLab token — one paste connects both sites)"
+
+
+_NEWS_SYSTEM = (
+    "You are Jordan Polasek, Founder of BVTech LLC, writing your DAILY 'BVTech News - "
+    "Cybersecurity Intelligence' briefing at bvtech.org/news/ - first-person, expert, "
+    "plain-English KEV/CVE analysis with real remediation steps for Texas small "
+    "businesses. Use ONLY the real CVE facts provided; never invent CVEs. NEVER "
+    "mention El Campo.\n"
+    "Reply EXACTLY:\nTITLE: <briefing headline with the date>\n"
+    "EXCERPT: <120-155 chars>\nHTML:\n<body html: <p>,<h2>,<ul> only>")
+
+
+def _publish_news_edition(db: Session, now: datetime) -> str:
+    """Daily KEV briefing to bvtech.org/news/ (its own page + index), cloned
+    from the newest existing edition's markup. 1/day rides the bvtech cap."""
+    import os as _os
+    if _os.environ.get("PULSE_DISABLE_KEV_TICKER"):
+        return ""
+    from . import jp_site
+    try:
+        kev = jp_site._KEV_FETCH(6)
+        items = "; ".join(f"{k['cve']} ({k['vendor']} {k['product']}: {k['name']}, "
+                          f"added {k['added']}, federal due {k['due']})" for k in kev)
+        raw = ai.complete(_NEWS_SYSTEM,
+                          f"Today: {now:%B %d, %Y}. Real CISA KEV entries to cover "
+                          f"(exact facts): {items}", smart=True, max_tokens=4000)
+        npost = ai.parse_article(raw)
+        if not npost:
+            return " | news: article unparseable"
+        nout = jp_site.publish(db, npost, site="bvtech_news")
+        return (f" | news: {nout.get('url')}" if nout.get("ok")
+                else f" | news FAILED: {nout.get('error', '?')[:80]}")
+    except Exception as e:  # noqa: BLE001
+        return f" | news FAILED: {str(e)[:80]}"
 
 
 def _run_jp(db: Session, now: datetime) -> tuple[bool, str]:
@@ -394,6 +430,10 @@ def run_daily(db: Session, now: datetime | None = None, *, force: bool = False) 
     results: dict[str, dict] = {}
     for ch in CHANNELS:
         if not cfg["channels"].get(ch, True):
+            continue
+        # v1.47: LinkedIn + Google Business are WEEKLY - Mondays only (a
+        # deliberate force-run can still post any day, capped 1/day).
+        if ch in ("linkedin", "gbp") and not force and now.weekday() != 0:
             continue
         if cfg["last"].get(ch) == _today(now):
             # v1.40 FLOOD GUARD: one post per channel per day, ALWAYS — even on
