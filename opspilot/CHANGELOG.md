@@ -1,5 +1,16 @@
 # BVTech OpsPilot — Changelog
 
+## v1.47.0 — The full editorial engine (July 2026)
+- **bvtech.org/news/ discovered and wired**: the 'This Week in Cybersecurity'
+  briefings live in a separate /news/ section - Pulse now publishes a DAILY
+  first-person KEV briefing there (real CISA feed facts, cloned from the
+  newest edition's markup) alongside the daily MSP blog post. The hourly
+  sweep guards /news/ like every other listing.
+- **LinkedIn + Google Business go WEEKLY**: Mondays only (force-run can still
+  post deliberately, 1/day cap always).
+- Cadence: bvtech news daily + bvtech blog daily + JP blog daily + LinkedIn
+  Monday + GBP Monday - one each, never more, SEO-safe by construction.
+
 ## v1.46.0 — Sync commits watched + backfilled cards dated truthfully (July 2026)
 - A sync commit failed the bvtech.org Workers build with NO auto-revert —
   sync/cleanup commits now register with the build watchdog exactly like

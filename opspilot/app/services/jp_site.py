@@ -57,6 +57,14 @@ SITES = {
                "content_classes": None,
                "index_paths": ("blog/index.html", "index.html"),
                "preview_caps": {"index.html": 6}},
+    # bvtech.org's SEPARATE news section ("This Week in Cybersecurity" KEV
+    # briefings live at /news/, not /blog/). Same repo/token, own folder+index.
+    "bvtech_news": {"provider": "bvtech_site", "name": "BVTech.org News",
+                    "default_project": "BVTECHLLC-group/bvtech-website-new",
+                    "style": "blog-file", "file_dir": "news",
+                    "site": "https://bvtech.org", "org": "BVTech LLC",
+                    "author_url": "https://bvtech.org", "content_classes": None,
+                    "index_paths": ("news/index.html",)},
 }
 
 # Alias list matching the old cron's lib_env.sh — the token that already exists
@@ -202,6 +210,7 @@ def get_config(db: Session, site: str = "jp") -> dict:
         "pending": cfg.get("pending") or [],
         "configured": bool(project and token),
         "style": meta["style"], "site": meta["site"], "org": meta["org"],
+        "file_dir": meta.get("file_dir", "blog"),
     }
 
 
@@ -378,7 +387,8 @@ def _rewrite_card(card: str, *, title: str, url: str, excerpt: str,
 
 
 def inject_post_into_listing(listing_html: str, *, title: str, url: str,
-                             excerpt: str, date_str: str, style: str) -> tuple[str, bool]:
+                             excerpt: str, date_str: str, style: str,
+                             file_dir: str = "blog") -> tuple[str, bool]:
     """Clone the newest post card in a listing page and insert a fresh card for
     `url` at the top of the posts grid. Returns (new_html, changed). Never raises;
     returns (listing_html, False) when the listing already has the post or its
@@ -389,7 +399,7 @@ def inject_post_into_listing(listing_html: str, *, title: str, url: str,
     # Already listed under ANY href form (absolute/relative) -> never re-inject.
     if f'href="{url}"' in h or _slug_listed(h, _slug_of(url)):
         return h, False
-    link_pat = _link_pat_for(style)
+    link_pat = _link_pat_for(style, file_dir)
     # Prefer the standard posts grid (leaves any 'featured' card alone).
     grid = re.search(r'<div[^>]*class="[^"]*\bposts\b[^"]*"[^>]*>', h)
     art_re = re.compile(r'<article\b[^>]*>.*?</article>', re.S | re.I)
@@ -420,9 +430,9 @@ def inject_post_into_listing(listing_html: str, *, title: str, url: str,
     return h[:span[0]] + card + "\n" + h[span[0]:], True
 
 
-def _link_pat_for(style: str) -> str:
-    return (r'href="[^"]*blog/[a-z0-9\-]+\.html"' if style == "blog-file"
-            else r'href="/[a-z0-9\-]{6,}/"')
+def _link_pat_for(style: str, file_dir: str = "blog") -> str:
+    return (r'href="[^"]*' + re.escape(file_dir) + r'/[a-z0-9\-]+\.html"'
+            if style == "blog-file" else r'href="/[a-z0-9\-]{6,}/"')
 
 
 def _ai_inject_listing(html_text: str, *, title: str, url: str, excerpt: str,
@@ -475,24 +485,27 @@ def _ai_inject_listing(html_text: str, *, title: str, url: str, excerpt: str,
 
 
 def _inject_listing(html_text: str, *, title: str, url: str, excerpt: str,
-                    date_str: str, style: str, allow_ai: bool = True) -> tuple[str, bool]:
+                    date_str: str, style: str, allow_ai: bool = True,
+                    file_dir: str = "blog") -> tuple[str, bool]:
     """Deterministic injection first; AI card-clone fallback when the markup
     isn't recognized (and Claude is connected). This is what publish and
     sync_listings actually call."""
     new_html, changed = inject_post_into_listing(
         html_text, title=title, url=url, excerpt=excerpt,
-        date_str=date_str, style=style)
+        date_str=date_str, style=style, file_dir=file_dir)
     if changed or f'href="{url}"' in html_text or not allow_ai:
         return new_html, changed
     return _ai_inject_listing(html_text, title=title, url=url, excerpt=excerpt,
-                              date_str=date_str, link_pat=_link_pat_for(style))
+                              date_str=date_str,
+                              link_pat=_link_pat_for(style, file_dir))
 
 
 def _newest_skeleton(cfg: dict, style: str) -> str | None:
     """Fetch the most recent post's HTML to clone header/footer/CSS from."""
     import base64
     if style == "blog-file":
-        tree = _HTTP("GET", f"{_proj_url(cfg)}/repository/tree?path=blog&ref={cfg['branch']}&per_page=100",
+        _fd = cfg.get("file_dir", "blog")
+        tree = _HTTP("GET", f"{_proj_url(cfg)}/repository/tree?path={_fd}&ref={cfg['branch']}&per_page=100",
                      cfg["token"])
         files = sorted([t["path"] for t in tree if t.get("type") == "blob"
                         and t["path"].endswith(".html")], reverse=True)
@@ -526,9 +539,10 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
     if not cfg["configured"]:
         return {"ok": False, "error": f"{meta['site']} not connected (GitLab token needed)"}
     slug = post.get("slug") or _slugify(post.get("title") or "")
-    file_path = (f"blog/{slug}.html" if cfg["style"] == "blog-file"
+    fdir = meta.get("file_dir", "blog")
+    file_path = (f"{fdir}/{slug}.html" if cfg["style"] == "blog-file"
                  else f"{slug}/index.html")
-    public_url = (f"{meta['site']}/blog/{slug}.html" if cfg["style"] == "blog-file"
+    public_url = (f"{meta['site']}/{fdir}/{slug}.html" if cfg["style"] == "blog-file"
                   else f"{meta['site']}/{slug}/")
     try:
         from . import content_studio
@@ -598,7 +612,8 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
                 continue                              # no such listing on this site
             new_html, changed = _inject_listing(
                 current, title=post.get("title", slug), url=public_url,
-                excerpt=excerpt, date_str=date_str, style=cfg["style"])
+                excerpt=excerpt, date_str=date_str, style=cfg["style"],
+                file_dir=cfg.get("file_dir", "blog"))
             cap = (meta.get("preview_caps") or {}).get(lp)
             if cap:                                   # homepage = preview only
                 new_html, trimmed = _trim_listing(new_html, cfg["style"], cap)
@@ -860,7 +875,8 @@ def _markdown_for(post: dict, slug: str, sample_md: str, excerpt: str) -> str:
 def _list_post_paths(cfg: dict, style: str) -> list[str]:
     """All post files in the repo for this site's layout, newest-ish first."""
     if style == "blog-file":
-        tree = _HTTP("GET", f"{_proj_url(cfg)}/repository/tree?path=blog&ref={cfg['branch']}&per_page=100",
+        _fd = cfg.get("file_dir", "blog")
+        tree = _HTTP("GET", f"{_proj_url(cfg)}/repository/tree?path={_fd}&ref={cfg['branch']}&per_page=100",
                      cfg["token"])
         return sorted([t["path"] for t in tree if t.get("type") == "blob"
                        and t["path"].endswith(".html")
@@ -947,7 +963,8 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
                 use_ai = ai_misses.get(lp, 0) < 2
                 new_html, changed = _inject_listing(
                     listings[lp], title=title, url=rel, excerpt=excerpt,
-                    date_str=post_date, style=cfg["style"], allow_ai=use_ai)
+                    date_str=post_date, style=cfg["style"], allow_ai=use_ai,
+                    file_dir=cfg.get("file_dir", "blog"))
                 if changed:
                     listings[lp] = new_html
                     any_change = True
@@ -1187,11 +1204,11 @@ def _all_card_spans(h: str, link_pat: str) -> list[tuple[int, int]]:
     return spans
 
 
-def _trim_listing(h: str, style: str, keep: int) -> tuple[str, int]:
+def _trim_listing(h: str, style: str, keep: int, file_dir: str = "blog") -> tuple[str, int]:
     """v1.43: PREVIEW listings (the homepage blog section) keep only the newest
     `keep` cards — the full archive lives on /blog/. Cards are newest-first, so
     everything after the first `keep` is removed. Returns (html, n_removed)."""
-    spans = _all_card_spans(h, _link_pat_for(style))
+    spans = _all_card_spans(h, _link_pat_for(style, file_dir))
     if len(spans) <= keep:
         return h, 0
     for s, e in reversed(spans[keep:]):
@@ -1313,7 +1330,8 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
         # never pages/nav.
         site_host = meta["site"].split("//", 1)[1]
         if cfg["style"] == "blog-file":
-            ghost_rx = r'href="[^"]*/blog/([a-z0-9\-]+)\.html"'
+            ghost_rx = (r'href="[^"]*/' + re.escape(cfg.get("file_dir", "blog"))
+                        + r'/([a-z0-9\-]+)\.html"')
         else:
             ghost_rx = (r'href="(?:https?://' + re.escape(site_host)
                         + r')?/([a-z0-9\-]{6,})/"')
