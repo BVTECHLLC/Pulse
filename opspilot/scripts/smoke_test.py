@@ -3781,6 +3781,45 @@ def main():
               "(earliest kept, pages/old posts untouched, listings cleaned, idempotent) + "
               "sync repairs cloned excerpts + badge dates + tick cron warns not fails OK")
 
+        # ==== v1.47.6: card repair tells the truth (page date + prose-safe swaps) ====
+        # (a) the no-year date swap must NEVER touch prose inside the fresh
+        #     excerpt (live bug: "...the June 9 KEV additions" -> "April 5").
+        _c476 = _jp40._rewrite_card(
+            '<a href="/blog/old.html" class="intel-mini">'
+            '<div class="intel-mini-date">June 20, 2026 · Zero-day alert</div>'
+            '<h4>Old</h4><p>Old cloned summary text, long enough to be the excerpt '
+            'paragraph.</p></a>',
+            title="Chrome Zero-Day", url="/blog/chrome.html",
+            excerpt="Exploited in the wild, and the rest of the June 9 KEV additions.",
+            date_str="June 11, 2026", link_pat=r'href="/blog/[a-z.\-]+\.html"')
+        assert "June 9 KEV additions" in _c476, _c476[:300]   # prose untouched
+        assert "June 11, 2026 · Zero-day alert" in _c476, _c476[:300]
+        # (b) a year-less badge still gets swapped when the card has no full date.
+        _c476b = _jp40._rewrite_card(
+            '<article><h2><a href="/blog/b.html">T</a></h2><span>JUNE 22</span></article>',
+            title="T", url="/blog/b.html", excerpt="", date_str="July 2, 2026",
+            link_pat=r'href="/blog/b\.html"')
+        assert "JULY 2" in _c476b and "JUNE 22" not in _c476b, _c476b
+        # (c) excerpts cut on a word boundary, never mid-word.
+        _t476, _e476 = _jp40._post_meta_from_html(
+            "<title>T</title>\n" + '<meta name="description" content="'
+            + ("word " * 60).strip() + '">')
+        assert len(_e476) <= 221 and _e476.endswith("word…"), repr(_e476[-20:])
+        # (d) date truth: the page's own date OUTRANKS git first-commit (GitLab
+        #     commits-by-path follows renames — June posts got stamped April 5).
+        _ofc476 = _jp40._first_commit_iso
+        _jp40._first_commit_iso = lambda cfg, path: "2026-04-05T15:17:51.000-05:00"
+        try:
+            _lbl476 = _jp40._post_date_label(
+                {}, "blog/x.html", '<time datetime="2026-06-11T09:00:00Z">x</time>')
+            assert _lbl476 == "June 11, 2026", _lbl476
+            _lbl476b = _jp40._post_date_label({}, "blog/y.html", "<p>no date here</p>")
+            assert _lbl476b == "April 5, 2026", _lbl476b     # fallback still works
+        finally:
+            _jp40._first_commit_iso = _ofc476
+        print("v1.47.6: page date outranks rename-poisoned git first-commit + no-year "
+              "swap never rewrites excerpt prose + word-boundary excerpts OK")
+
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
@@ -5510,7 +5549,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.47.5 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.47.6 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

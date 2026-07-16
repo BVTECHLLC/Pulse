@@ -1,5 +1,20 @@
 # BVTech OpsPilot — Changelog
 
+## v1.47.6 — Card repair tells the truth (July 2026)
+- **Page date outranks git**: GitLab's commits-by-path API follows renames,
+  so a June post that resembled a bulk-uploaded file "first appeared" months
+  earlier - the repair pass stamped live cards "April 5" on June posts. The
+  post page's own machine date (datetime attr / datePublished, refreshed on
+  every publish since v1.44) is now the truth; first-commit is fallback only.
+- **Prose is never date-swapped**: the year-less badge swap matched the first
+  bare month-day anywhere in the card - including inside the freshly written
+  excerpt ("...the June 9 KEV additions" became "the April 5 KEV additions").
+  The excerpt is sentinel-protected during date swaps, and the year-less swap
+  only fires when the card shows no full date at all.
+- **Excerpts end on a word**: the hard 220-char cut left cards ending
+  mid-word ("...the June 9 KEV additio"); now cut at a word boundary with an
+  ellipsis.
+
 ## v1.47.5 — Deterministic KEV marquee + the hourly sync loop dies (July 2026)
 - Direct repo inspection (operator-granted token) revealed the ticker's exact
   markup (intel-ticker-scroll divs of tk-item spans); the updater rebuilds
