@@ -3717,10 +3717,12 @@ def main():
             title="T", url="/blog/m.html", excerpt="", date_str="July 3, 2026",
             link_pat=r'href="/blog/m\.html"')
         assert "July 3, 2026" in _mid45 and "June 30" not in _mid45, _mid45
-        _home44 = ('<html><body><div class="ticker"><b>LIVE · CISA KEV FEED</b>'
-                   '<span class="tk">Apr 20 · CVE-2026-11111 Old Item · badge</span>'
-                   '<span class="tk">Apr 18 · CVE-2026-22222 Older · badge</span>'
-                   '</div><main>rest of page</main></body></html>')
+        _home44 = ('<html><body><div class="intel-ticker"><b>LIVE · CISA KEV FEED</b>'
+                   '<div class="intel-ticker-track"><div class="intel-ticker-scroll">'
+                   '<span class="tk-item tk-crit">Apr 20 · <strong>CVE-2026-11111</strong> Old · <em>x</em></span>'
+                   '</div></div><div class="intel-ticker-track"><div class="intel-ticker-scroll">'
+                   '<span class="tk-item tk-crit">Apr 18 · <strong>CVE-2026-22222</strong> Older · <em>x</em></span>'
+                   '</div></div></div><main>rest of page</main></body></html>')
         _committed44 = {}
         def _http44(method, url, token, payload=None):
             if method == "GET" and "/repository/files/" in url:
@@ -5508,7 +5510,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.47.4 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.47.5 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
