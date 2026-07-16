@@ -1,5 +1,13 @@
 # BVTech OpsPilot — Changelog
 
+## v1.47.5 — Deterministic KEV marquee + the hourly sync loop dies (July 2026)
+- Direct repo inspection (operator-granted token) revealed the ticker's exact
+  markup (intel-ticker-scroll divs of tk-item spans); the updater rebuilds
+  both scroll tracks deterministically - no AI templating, no misses.
+- Sync no longer backfills into preview-capped listings: injecting cards for
+  the trim to remove re-marked them missing every hour - an infinite hourly
+  commit/build loop, now dead.
+
 ## v1.47.4 — Marquee handles JS-array tickers + full 15-day KEV window (July 2026)
 The homepage ticker is likely built from a JavaScript data array; the
 updater's prompt now clones either form (HTML spans or array entries,

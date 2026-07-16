@@ -945,7 +945,9 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
             # v1.42: listed-detection by SLUG across any href form — exact-string
             # matching re-injected "already listed" posts on every sync (the
             # duplicate-card spam on bvtech.org's blog page).
-            missing = [lp for lp, h in listings.items() if not _slug_listed(h, slug)]
+            caps = meta.get("preview_caps") or {}
+            missing = [lp for lp, h in listings.items()
+                       if lp not in caps and not _slug_listed(h, slug)]
             if not missing:
                 continue
             page = _fetch_file(cfg, path)
@@ -1743,9 +1745,11 @@ def _notify_ticker(db: Session, raw: dict, now: datetime, msg: str) -> None:
         db.rollback()
 
 def update_kev_ticker(db: Session, now: datetime | None = None) -> dict:
-    """Refresh the homepage 'LIVE - CISA KEV FEED' marquee with today's real
-    KEV entries. Once per day (stamped); idempotent and validated."""
-    from . import ai as ai_svc
+    """Refresh the homepage 'LIVE - CISA KEV FEED' marquee with the last 15
+    days of real KEV entries. DETERMINISTIC (v1.47.5): the ticker's markup is
+    known exactly (<div class="intel-ticker-scroll"> of tk-item/tk-sep spans,
+    duplicated for the seamless scroll) - both tracks are rebuilt in place.
+    Once per day, stamped; every failure notifies."""
     now = now or datetime.now(timezone.utc)
     meta = SITES["bvtech"]
     cfg = get_config(db, "bvtech")
@@ -1755,53 +1759,40 @@ def update_kev_ticker(db: Session, now: datetime | None = None) -> dict:
     raw = dict((conn.config if conn else None) or {})
     if raw.get("last_kev_ticker") == now.date().isoformat():
         return {"ok": True, "detail": "ticker already updated today"}
-    if not ai_svc.enabled():
-        return {"ok": False, "error": "Claude not connected"}
     try:
-        kev = _KEV_FETCH(5)
+        kev = _KEV_FETCH(12)
         if not kev:
             return {"ok": False, "error": "CISA KEV feed returned nothing"}
         home = _fetch_file(cfg, "index.html")
         if not home:
             return {"ok": False, "error": "index.html not found"}
-        m = re.search(r"CISA[ ·\-·]*KEV", home, re.I)
-        if not m:
-            _notify_ticker(db, raw, now, "\u26a0\ufe0f KEV marquee: 'CISA KEV' marker not found on the homepage")
-            return {"ok": False, "error": "KEV ticker marker not found on homepage"}
-        frag = home[max(0, m.start() - 1500): m.start() + 6000]
-        items = "\n".join(f"- {k['cve']}: {k['vendor']} {k['product']} - {k['name']}"
-                          f" (added {k['added']}, federal due {k['due']})" for k in kev)
-        raw_ai = ai_svc.complete(
-            "You are an exact templating engine. The fragment contains a scrolling "
-            "'LIVE CISA KEV FEED' ticker whose items are either repeated HTML spans OR "
-            "entries in a JavaScript data array. Rebuild ONLY the ticker items with the "
-            "NEW entries provided, cloning the existing item form exactly (same tags/"
-            "classes/badges/separators OR same array-object keys/quoting, month-day date "
-            "style). Never include <script> tags themselves. Reply EXACTLY:\n"
-            "ANCHOR_START: <first 60-120 chars of the FIRST existing ticker item, verbatim>\n"
-            "ANCHOR_END: <last 40-80 chars of the LAST existing ticker item, verbatim>\n"
-            "BLOCK_START\n<replacement items html>\nBLOCK_END",
-            f"New KEV entries (newest first):\n{items}\n\nFragment:\n{frag}",
-            max_tokens=2500)
-        a1 = re.search(r"ANCHOR_START:[ \t]*(.+)", raw_ai)
-        a2 = re.search(r"ANCHOR_END:[ \t]*(.+)", raw_ai)
-        bl = re.search(r"BLOCK_START\s*\n(.*?)\nBLOCK_END", raw_ai, re.S)
-        if not (a1 and a2 and bl):
-            return {"ok": False, "error": "AI reply unparsable - ticker left untouched"}
-        s1, s2, block = a1.group(1).strip()[:200], a2.group(1).strip()[:120], bl.group(1)
-        i1 = home.find(s1)
-        i2 = home.find(s2, i1 + 1) if i1 >= 0 else -1
-        hits = sum(1 for k in kev if k["cve"] and k["cve"] in block)
-        if (i1 < 0 or i2 < 0 or not (0 < (i2 + len(s2)) - i1 < 20000)
-                or hits < 2 or len(block) > 20000 or "<script" in block.lower()):
-            _notify_ticker(db, raw, now, ("\u26a0\ufe0f KEV marquee: AI block failed validation - page untouched, "
-                                          f"retrying. Fragment starts: {frag[:160]!r}"))
-            return {"ok": False, "error": "AI ticker block failed validation - untouched"}
-        new_home = home[:i1] + block + home[i2 + len(s2):]
+        tracks = list(re.finditer(r'(<div class="intel-ticker-scroll"[^>]*>)(.*?)(</div>)',
+                                  home, re.S))
+        if not tracks:
+            _notify_ticker(db, raw, now, "\u26a0\ufe0f KEV marquee: intel-ticker-scroll div not found")
+            return {"ok": False, "error": "intel-ticker-scroll not found on homepage"}
+        mons = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+        items = []
+        for v in kev:
+            try:
+                _y, _m, _d = (v.get("added") or "").split("-")
+                lbl = f"{mons[int(_m) - 1]} {int(_d)}"
+            except Exception:  # noqa: BLE001
+                lbl = ""
+            prod = f"{v.get('vendor', '')} {v.get('product', '')}".strip()[:40]
+            name = (v.get("name") or "").replace(v.get("vendor") or "", "").replace(
+                v.get("product") or "", "").strip(" -")[:42]
+            items.append(f'<span class="tk-item tk-crit">{lbl} \u00b7 <strong>{v["cve"]}</strong> '
+                         f"{prod} \u2014 {name} \u00b7 <em>CISA KEV</em></span>")
+        body = ("\n          "
+                + '\n          <span class="tk-sep">\u25cf</span>\n          '.join(items)
+                + "\n        ")
+        for m in reversed(tracks):
+            home = home[:m.start(2)] + body + home[m.end(2):]
         _HTTP("POST", f"{_proj_url(cfg)}/repository/commits", cfg["token"], {
             "branch": cfg["branch"],
             "commit_message": f"homepage: refresh LIVE CISA KEV ticker ({kev[0]['cve']}, via Pulse)",
-            "actions": [{"action": "update", "file_path": "index.html", "content": new_home}]})
+            "actions": [{"action": "update", "file_path": "index.html", "content": home}]})
         from . import cloudflare
         cloudflare.purge_urls(db, "bvtech", [f"{meta['site']}/"])
         raw["last_kev_ticker"] = now.date().isoformat()
