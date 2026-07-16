@@ -80,8 +80,36 @@ def markdown_lite(body: str) -> str:
                 i += 1
             out.append("<ul>" + "".join(items) + "</ul>")
             continue
-        elif line.startswith("> "):
-            out.append(f'<blockquote>{_inline(line[2:].strip())}</blockquote>')
+        elif line.startswith(">"):
+            # v1.47.7: consecutive quote lines become ONE blockquote, and the
+            # markdown INSIDE the quote renders too. The old branch emitted the
+            # raw text per line, so "> ## Heading" leaked literal ## into pages
+            # and a bare ">" spacer line became a stray <p>&gt;</p>.
+            qlines = []
+            while i < len(lines) and lines[i].strip().startswith(">"):
+                qlines.append(lines[i].strip().lstrip(">").strip())
+                i += 1
+            inner: list[str] = []
+            j = 0
+            while j < len(qlines):
+                ql = qlines[j]
+                if not ql:
+                    j += 1
+                    continue
+                if ql.startswith(("# ", "## ", "### ")):
+                    inner.append(f"<strong>{_inline(ql.lstrip('#').strip())}</strong>")
+                elif ql.startswith(("- ", "* ")):
+                    items = []
+                    while j < len(qlines) and qlines[j].startswith(("- ", "* ")):
+                        items.append(f"<li>{_inline(qlines[j][2:].strip())}</li>")
+                        j += 1
+                    inner.append("<ul>" + "".join(items) + "</ul>")
+                    continue
+                else:
+                    inner.append(f"<p>{_inline(ql)}</p>")
+                j += 1
+            out.append("<blockquote>" + "".join(inner) + "</blockquote>")
+            continue
         else:
             out.append(f"<p>{_inline(line.strip())}</p>")
         i += 1
@@ -222,6 +250,7 @@ def render_from_skeleton(skeleton_html: str, post: dict,
     # the article body — prefer a known content wrapper (preserves a sibling
     # <h1>/byline); only fall back to replacing the whole <article> interior.
     new_body = (f'<p class="meta">By {p["author"]} · {dateline}</p>\n{p["body_html"]}')
+    done = False
     for cls in (content_classes or _CONTENT_CLASSES):
         # Match an opening tag with class="...cls..." then its content up to the
         # NEXT closing tag of the same element. We approximate by matching to the
@@ -229,9 +258,19 @@ def render_from_skeleton(skeleton_html: str, post: dict,
         pat = rf'(<div[^>]*class="[^"]*\b{re.escape(cls)}\b[^"]*"[^>]*>)(.*?)(</div>)'
         if re.search(pat, h, flags=re.S):
             h = re.sub(pat, lambda m: m.group(1) + new_body + m.group(3), h, count=1, flags=re.S)
-            return h
-    h = re.sub(r"(<article[^>]*>).*?(</article>)",
-               lambda m: m.group(1) + new_body + m.group(2), h, count=1, flags=re.S)
+            done = True
+            break
+    if not done:
+        h = re.sub(r"(<article[^>]*>).*?(</article>)",
+                   lambda m: m.group(1) + new_body + m.group(2), h, count=1, flags=re.S)
+    # v1.47.7: a post page must ALWAYS carry an <h1>. bvtech's blog skeleton
+    # lost its headline in the flood era, and because every publish clones the
+    # newest post, the defect self-perpetuated - months of posts rendered with
+    # no visible title. If nothing upstream produced one, lead the article.
+    if not re.search(r"<h1[\s>]", h):
+        h = re.sub(r"(<article[^>]*>)",
+                   lambda m: m.group(1) + f"\n<h1>{html.escape(p['title'])}</h1>",
+                   h, count=1)
     return h
 
 
