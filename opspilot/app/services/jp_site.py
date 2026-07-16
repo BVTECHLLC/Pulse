@@ -361,36 +361,50 @@ def _rewrite_card(card: str, *, title: str, url: str, excerpt: str,
         card = _re.sub(r'(<(\w+)[^>]*class="[^"]*[Tt]itle[^"]*"[^>]*>)(.*?)(</\2>)',
                        lambda m: m.group(1) + _html.escape(title) + m.group(4),
                        card, count=1, flags=_re.S)
+    # v1.47.6: the fresh excerpt goes in as a SENTINEL until the date swaps are
+    # done. The no-year date swap used to hit month-day mentions INSIDE the new
+    # excerpt text ("...the rest of the June 9 KEV additions" turned into "the
+    # rest of the April 5 KEV additions") - prose must never be date-swapped.
+    _SENT = "\x00PULSE-EXCERPT\x00"
     if _re.search(r'class="excerpt"', card):
         card = _re.sub(r'(<p[^>]*class="excerpt"[^>]*>)(.*?)(</p>)',
-                       lambda m: m.group(1) + _html.escape(excerpt) + m.group(3),
+                       lambda m: m.group(1) + _SENT + m.group(3),
                        card, count=1, flags=_re.S)
     elif excerpt:
         # v1.40: cards without class="excerpt" kept the CLONED post's summary —
         # every card on bvtech.org showed the same stale text. The first
         # substantial paragraph (>=40 chars of plain text) is the summary.
         card = _re.sub(r"(<p[^>]*>)([^<]{40,}?)(</p>)",
-                       lambda m: m.group(1) + _html.escape(excerpt) + m.group(3),
+                       lambda m: m.group(1) + _SENT + m.group(3),
                        card, count=1)
     if date_str:      # v1.41: empty date_str means "leave the card's date alone"
-        card = _re.sub(r"(>)([A-Z][a-z]+ \d{1,2}, \d{4})(<)",
-                       lambda m: m.group(1) + date_str + m.group(3), card, count=1)
-        card = _re.sub(r"(>)([A-Z][a-z]+ \d{1,2}, \d{4})(\s*\u00b7)",
-                       lambda m: m.group(1) + date_str + m.group(3), card, count=1)
-        card = _re.sub(r"(>)(\d{4}-\d{2}-\d{2})(<)",
-                       lambda m: m.group(1) + date_str + m.group(3), card, count=1)
-        card = _re.sub(r"(\u00b7\s*)([A-Z][a-z]+ \d{1,2}, \d{4})",
-                       lambda m: m.group(1) + date_str, card, count=1)
+        n_dated = 0
+        card, _n = _re.subn(r"(>)([A-Z][a-z]+ \d{1,2}, \d{4})(<)",
+                            lambda m: m.group(1) + date_str + m.group(3), card, count=1)
+        n_dated += _n
+        card, _n = _re.subn(r"(>)([A-Z][a-z]+ \d{1,2}, \d{4})(\s*\u00b7)",
+                            lambda m: m.group(1) + date_str + m.group(3), card, count=1)
+        n_dated += _n
+        card, _n = _re.subn(r"(>)(\d{4}-\d{2}-\d{2})(<)",
+                            lambda m: m.group(1) + date_str + m.group(3), card, count=1)
+        n_dated += _n
+        card, _n = _re.subn(r"(\u00b7\s*)([A-Z][a-z]+ \d{1,2}, \d{4})",
+                            lambda m: m.group(1) + date_str, card, count=1)
+        n_dated += _n
         # v1.40: badge-style dates without a year ("NEW · JUNE 22 WEEKLY REPORT",
         # "June 22") also cloned verbatim — swap month+day, keep the badge text.
-        _md = date_str.rsplit(",", 1)[0]              # "July 14, 2026" -> "July 14"
-        card = _re.sub(r"\b(JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|"
-                       r"OCTOBER|NOVEMBER|DECEMBER) \d{1,2}\b(?!, \d{4})",
-                       _md.upper(), card, count=1)
-        card = _re.sub(r"\b(January|February|March|April|May|June|July|August|September|"
-                       r"October|November|December) \d{1,2}\b(?!, \d{4})",
-                       _md, card, count=1)
-    return card
+        # v1.47.6: only when NO full date matched above - a card that already
+        # shows a full date has no year-less badge, so this loose pattern could
+        # only ever hit innocent prose (a month-day inside a title or caption).
+        if not n_dated:
+            _md = date_str.rsplit(",", 1)[0]          # "July 14, 2026" -> "July 14"
+            card = _re.sub(r"\b(JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|"
+                           r"OCTOBER|NOVEMBER|DECEMBER) \d{1,2}\b(?!, \d{4})",
+                           _md.upper(), card, count=1)
+            card = _re.sub(r"\b(January|February|March|April|May|June|July|August|September|"
+                           r"October|November|December) \d{1,2}\b(?!, \d{4})",
+                           _md, card, count=1)
+    return card.replace(_SENT, _html.escape(excerpt))
 
 
 def inject_post_into_listing(listing_html: str, *, title: str, url: str,
@@ -904,7 +918,11 @@ def _post_meta_from_html(page_html: str) -> tuple[str, str]:
     title = _h.unescape((t.group(1) if t else "").split("|")[0].strip()) or "Untitled"
     d = re.search(r'<meta\s+name="description"\s+content="(.*?)"', page_html, re.S)
     excerpt = _h.unescape(d.group(1).strip()) if d else ""
-    return title[:180], excerpt[:220]
+    if len(excerpt) > 220:
+        # v1.47.6: cut on a word boundary — the hard [:220] slice left cards
+        # ending mid-word ("...and the rest of the June 9 KEV additio").
+        excerpt = excerpt[:220].rsplit(" ", 1)[0].rstrip(" ,;:-") + "…"
+    return title[:180], excerpt
 
 
 def _post_url_for(meta: dict, path: str, style: str) -> str:
@@ -954,17 +972,11 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
             if not page:
                 continue
             title, excerpt = _post_meta_from_html(page)
-            # v1.46: date the backfilled card by the POST'S first-commit date —
-            # stamping TODAY on every backfilled card made whole batches look
-            # same-day published (the "multi post per day" spam look).
-            post_date = date_str
-            _ts46 = _first_commit_iso(cfg, path)
-            if _ts46:
-                try:
-                    _d46 = datetime.fromisoformat(_ts46.replace("Z", "+00:00")).date()
-                    post_date = f"{_MONTH_NAMES[_d46.month - 1]} {_d46.day}, {_d46.year}"
-                except ValueError:
-                    pass
+            # v1.46: date the backfilled card by the POST'S own date — stamping
+            # TODAY on every backfilled card made whole batches look same-day
+            # published (the "multi post per day" spam look). v1.47.6: page
+            # date first, first-commit fallback (see _post_date_label).
+            post_date = _post_date_label(cfg, path, page) or date_str
             any_change = False
             for lp in missing:
                 # AI fallback is capped per listing page: after 2 misses the
@@ -1010,18 +1022,11 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
                 if page is None:
                     page = _fetch_file(cfg, path) or ""
                     title, excerpt = _post_meta_from_html(page)
-                    # v1.41: the page's visible date can be a stale skeleton
-                    # clone — the first-commit date is the truth. Unknown ->
-                    # leave the card's date untouched ("" = no date swap).
-                    date_lbl = ""
-                    ts = _first_commit_iso(cfg, path)
-                    if ts:
-                        try:
-                            pdate = datetime.fromisoformat(ts.replace("Z", "+00:00")).date()
-                            date_lbl = (f"{_MONTH_NAMES[pdate.month - 1]} "
-                                        f"{pdate.day}, {pdate.year}")
-                        except ValueError:
-                            pass
+                    # v1.47.6: page date first, first-commit fallback — git
+                    # "first commit" follows renames on GitLab and stamped
+                    # months-early dates on repaired cards. Unknown -> leave
+                    # the card's date untouched ("" = no date swap).
+                    date_lbl = _post_date_label(cfg, path, page)
                 card = h[span[0]:span[1]]
                 ex_ok = (not excerpt or excerpt[:60] in card
                          or _html40.escape(excerpt)[:60] in card)
@@ -1112,6 +1117,27 @@ def _post_date_from_html(page_html: str):
         except ValueError:
             return None
     return None
+
+
+def _post_date_label(cfg: dict, path: str, page_html: str) -> str:
+    """Truth hierarchy for a post's DISPLAY date -> "July 14, 2026" or "".
+    v1.47.6: the page's own machine date (datetime attr / datePublished — the
+    publisher refreshes these on every publish since v1.44) now outranks git.
+    GitLab's commits-by-path API follows renames, so a June post that resembles
+    a bulk-uploaded file 'first appeared' in April — every repaired card got
+    stamped with a date months before the post existed. Fall back to the
+    first-commit date only when the page itself carries no parseable date."""
+    d = _post_date_from_html(page_html or "")
+    if d is None:
+        ts = _first_commit_iso(cfg, path)
+        if ts:
+            try:
+                d = datetime.fromisoformat(ts.replace("Z", "+00:00")).date()
+            except ValueError:
+                d = None
+    if d is None:
+        return ""
+    return f"{_MONTH_NAMES[d.month - 1]} {d.day}, {d.year}"
 
 
 def _first_commit_iso(cfg: dict, path: str) -> str | None:
