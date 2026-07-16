@@ -3820,6 +3820,36 @@ def main():
         print("v1.47.6: page date outranks rename-poisoned git first-commit + no-year "
               "swap never rewrites excerpt prose + word-boundary excerpts OK")
 
+        # ==== v1.47.7: guaranteed post <h1> + blockquotes render their markdown ====
+        from app.services import content_studio as _cs477
+        _md477 = _cs477.markdown_lite(
+            "Intro line.\n> ## The 60-Second Version\n>\n> - **What:** device code phishing\n"
+            "> - **Fix:** conditional access\nAfter.")
+        assert "##" not in _md477 and "&gt;" not in _md477, _md477
+        assert _md477.count("<blockquote>") == 1, _md477
+        assert "<strong>The 60-Second Version</strong>" in _md477, _md477
+        assert "<ul><li><strong>What:</strong> device code phishing</li>" in _md477, _md477
+        # a skeleton WITHOUT any <h1> (the flood-era bvtech blog template) still
+        # renders a headline; one WITH an h1 outside the wrapper never gets two.
+        _skel477 = ('<html><head><title>Old | X | Y</title>'
+                    '<meta name="description" content="old"></head><body>'
+                    '<article class="wrap"><p class="meta">By X · June 1, 2026</p>'
+                    '<p>old body text</p></article></body></html>')
+        _out477 = _cs477.render_from_skeleton(_skel477, {
+            "title": "Fresh Headline", "body": "New body.", "date": "2026-07-16",
+            "author": "Jordan Polasek", "org": "BVTech LLC",
+            "base_url": "https://bvtech.org"})
+        assert "<h1>Fresh Headline</h1>" in _out477, _out477[:400]
+        assert _out477.count("<h1") == 1, _out477.count("<h1")
+        _skel477b = _skel477.replace("<article", "<h1>Old Head</h1><article")
+        _out477b = _cs477.render_from_skeleton(_skel477b, {
+            "title": "Fresh Headline", "body": "New body.", "date": "2026-07-16",
+            "author": "Jordan Polasek", "org": "BVTech LLC",
+            "base_url": "https://bvtech.org"})
+        assert _out477b.count("<h1") == 1 and "Fresh Headline" in _out477b, _out477b[:400]
+        print("v1.47.7: blockquote markdown renders (no literal ##/&gt;) + every "
+              "rendered post carries exactly one <h1> OK")
+
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
@@ -5549,7 +5579,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.47.6 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.47.7 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

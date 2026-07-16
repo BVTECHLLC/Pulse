@@ -1,5 +1,16 @@
 # BVTech OpsPilot — Changelog
 
+## v1.47.7 — Every post gets a headline + quotes render their markdown (July 2026)
+- **Guaranteed `<h1>`**: bvtech's blog skeleton lost its headline in the flood
+  era, and because publishes clone the newest post the defect self-perpetuated -
+  months of posts had NO visible title. The renderer now leads the article with
+  an `<h1>` whenever nothing upstream produced one. (The 25 affected live posts
+  were backfilled by hand the same day.)
+- **Blockquotes render their contents**: "> ## Heading" leaked a literal `##`
+  into pages and a bare ">" spacer became a stray `<p>&gt;</p>`. Consecutive
+  quote lines now become one blockquote with headings (as bold lead-ins) and
+  bullet lists rendered properly.
+
 ## v1.47.6 — Card repair tells the truth (July 2026)
 - **Page date outranks git**: GitLab's commits-by-path API follows renames,
   so a June post that resembled a bulk-uploaded file "first appeared" months
