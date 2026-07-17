@@ -1051,6 +1051,31 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
                 if n:
                     listings[lp] = new_h
                     repaired.append(f"{lp}: trimmed {n} extra preview card(s)")
+        # v1.47.8: the featured briefing follows the newest news edition.
+        if 'class="intel-featured"' in (listings.get("index.html") or ""):
+            _best48 = None
+            for _p48 in [p for p in post_paths
+                         if p.rsplit("/", 1)[-1].startswith("bvtech-news-")][:15]:
+                _pg48 = _fetch_file(cfg, _p48)
+                if not _pg48:
+                    continue
+                _d48 = _post_date_from_html(_pg48)
+                if _d48 and (_best48 is None or _d48 > _best48[0]):
+                    _best48 = (_d48, _p48, _pg48)
+            if _best48:
+                _d48, _p48, _pg48 = _best48
+                _t48, _ex48 = _post_meta_from_html(_pg48)
+                _t48 = re.sub(r"^BVTech News\s*[—-]+\s*", "", _t48)
+                _t48 = re.sub(r"\s*[—-]+\s*[A-Z][a-z]+ \d{1,2}, \d{4}$", "", _t48)
+                _lbl48 = f"{_MONTH_NAMES[_d48.month - 1]} {_d48.day}"
+                _nh48, _ch48 = _promote_featured(
+                    listings["index.html"],
+                    url=_post_url_for(meta, _p48, cfg["style"]).replace(meta["site"], ""),
+                    title=_t48, date_lbl=f"{_lbl48} \u00b7 daily briefing \u00b7 KEV alert",
+                    excerpt=_ex48)
+                if _ch48:
+                    listings["index.html"] = _nh48
+                    repaired.append("index.html: featured -> newest news edition")
         for lp in list(listings):
             new_h, _n45 = _strip_empty_shells(listings[lp])
             if _n45:
@@ -1100,6 +1125,32 @@ _PAGE_SLUGS = ("about", "contact", "certification", "service", "pricing", "portf
                "resume", "privacy", "terms", "book", "review", "case-stud", "academy")
 
 
+def _promote_featured(home: str, *, url: str, title: str, date_lbl: str,
+                      excerpt: str) -> tuple[str, bool]:
+    """Deterministically point the homepage intel-featured card at the newest
+    news edition (href, headline, dateline, excerpt, generic tags). v1.47.8:
+    the capped homepage no longer takes backfill, so nothing else updates it."""
+    import html as _h
+    m = re.search(r'<a href="([^"]*)" class="intel-featured".*?</a>', home, re.S)
+    if not m:
+        return home, False
+    if _slug_of(url.strip("/")) == _slug_of(m.group(1).strip("/")):
+        return home, False                       # already promoted
+    f = m.group(0)
+    f = re.sub(r'^<a href="[^"]*"', f'<a href="{url}"', f, count=1)
+    f = re.sub(r"(<h3[^>]*>).*?(</h3>)",
+               lambda mm: mm.group(1) + _h.escape(title) + mm.group(2),
+               f, count=1, flags=re.S)
+    f = re.sub(r'(intel-featured-date"[^>]*>)[^<]*(<)',
+               lambda mm: mm.group(1) + date_lbl + mm.group(2), f, count=1)
+    f = re.sub(r"(<p[^>]*>)[^<]{40,}?(</p>)",
+               lambda mm: mm.group(1) + _h.escape(excerpt) + mm.group(2), f, count=1)
+    f = re.sub(r'(<div class="intel-tags">).*?(</div>)',
+               r"\1<span>CISA KEV</span><span>daily briefing</span>\2",
+               f, count=1, flags=re.S)
+    return home[:m.start()] + f + home[m.end():], True
+
+
 def _post_date_from_html(page_html: str):
     """Best-effort publish date of a post page -> datetime.date | None."""
     from datetime import date as _date
@@ -1138,6 +1189,24 @@ def _post_date_label(cfg: dict, path: str, page_html: str) -> str:
     if d is None:
         return ""
     return f"{_MONTH_NAMES[d.month - 1]} {d.day}, {d.year}"
+
+
+def _commit_span(cfg: dict, path: str) -> tuple[str | None, str | None]:
+    """(oldest_iso, newest_iso) commit timestamps for `path` in ONE API call.
+    v1.47.8: cleanup needs both — the oldest is rename-follow poisoned (GitLab
+    matches new posts to old lookalikes), the newest says whether the file was
+    touched recently at all."""
+    try:
+        commits = _HTTP("GET", f"{_proj_url(cfg)}/repository/commits?path="
+                        f"{urllib.parse.quote_plus(path)}&ref_name={cfg['branch']}"
+                        "&per_page=100", cfg["token"])
+        if not commits:
+            _first_commit_iso.last_error = "empty commit list"   # type: ignore[attr-defined]
+            return (None, None)
+        return (commits[-1].get("created_at"), commits[0].get("created_at"))
+    except Exception as e:  # noqa: BLE001
+        _first_commit_iso.last_error = str(e)[:200]       # type: ignore[attr-defined]
+        return (None, None)
 
 
 def _first_commit_iso(cfg: dict, path: str) -> str | None:
@@ -1317,9 +1386,13 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
     try:
         from datetime import timedelta
         window = {now.date() - timedelta(days=i) for i in range(days)}
-        # Group posts by their FIRST-COMMIT date — the true creation day. The
-        # page's visible date is unreliable (skeleton clones carry the original
-        # post's date), so it is deliberately not consulted at all.
+        # v1.47.8: a post's "day" is its OWN page date first (the publisher
+        # refreshes it on every publish since v1.44), first-commit only as a
+        # fallback — GitLab's commits-by-path follows renames, so a brand-new
+        # post can "first appear" on an old lookalike's date. That poisoned
+        # grouping deleted a freshly published JP post two minutes after it
+        # went live. News editions (bvtech-news-*) are their OWN channel: a
+        # briefing and a blog post legally share a day, never dedupe across.
         by_day: dict = {}
         stamps: dict = {}
         scan: list[str] = []                     # debug: per-path dating evidence
@@ -1329,26 +1402,35 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
             if any(slug_root.startswith(p) for p in _PAGE_SLUGS):
                 continue
             _first_commit_iso.last_error = ""    # type: ignore[attr-defined]
-            ts = _first_commit_iso(cfg, path)
-            if not ts:
+            first_ts, last_ts = _commit_span(cfg, path)
+            if not first_ts:
                 scan.append(f"{path} -> NO-DATE "
                             f"({getattr(_first_commit_iso, 'last_error', '')})")
                 continue
             try:
-                d = datetime.fromisoformat(ts.replace("Z", "+00:00")).date()
+                first_d = datetime.fromisoformat(first_ts.replace("Z", "+00:00")).date()
+                last_d = datetime.fromisoformat((last_ts or first_ts).replace("Z", "+00:00")).date()
             except ValueError:
-                scan.append(f"{path} -> UNPARSEABLE ({ts[:32]})")
+                scan.append(f"{path} -> UNPARSEABLE ({first_ts[:32]})")
                 continue
+            if first_d not in window and last_d not in window:
+                scan.append(f"{path} -> {first_d.isoformat()} (untouched, outside window)")
+                continue                      # floods are recent; skip the page fetch
+            page = _fetch_file(cfg, path) or ""
+            pd = _post_date_from_html(page)
+            d = pd or first_d
             scan.append(f"{path} -> {d.isoformat()}"
+                        + (" (page date)" if pd else " (commit date)")
                         + ("" if d in window else " (outside window)"))
             if d not in window:
                 continue
-            stamps[path] = ts
-            by_day.setdefault(d, []).append(path)
+            stamps[path] = first_ts
+            channel = "news" if slug_root.startswith("bvtech-news") else "post"
+            by_day.setdefault((channel, d), []).append(path)
         removed, actions, purge_urls = [], [], []
         listings = {lp: _fetch_file(cfg, lp) for lp in meta.get("index_paths", ())}
         listings = {lp: h for lp, h in listings.items() if h is not None}
-        for d, paths in sorted(by_day.items()):
+        for (_ch48, d), paths in sorted(by_day.items()):
             if len(paths) <= 1:
                 continue
             # Keep the day's EARLIEST-committed post; everything after is flood.
