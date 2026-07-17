@@ -1,5 +1,16 @@
 # BVTech OpsPilot — Changelog
 
+## v1.47.8 — Dedupe can't eat real posts + the featured briefing follows the news (July 2026)
+- **Page-date-first flood grouping**: the dedupe grouped posts by rename-follow
+  poisoned first-commit dates and deleted a freshly published JP post two
+  minutes after it went live. A post's own page date now decides its day;
+  news editions (bvtech-news-*) are their own channel so a briefing and a
+  blog post can legally share a day.
+- **Deterministic featured promotion**: the capped homepage takes no backfill
+  anymore, so nothing updated the This Week in Cybersecurity card. Sync now
+  points it at the newest news edition every pass (headline, dateline,
+  excerpt, tags).
+
 ## v1.47.7 — Every post gets a headline + quotes render their markdown (July 2026)
 - **Guaranteed `<h1>`**: bvtech's blog skeleton lost its headline in the flood
   era, and because publishes clone the newest post the defect self-perpetuated -

@@ -3850,6 +3850,35 @@ def main():
         print("v1.47.7: blockquote markdown renders (no literal ##/&gt;) + every "
               "rendered post carries exactly one <h1> OK")
 
+        # ==== v1.47.8: featured promotion + span helper ====
+        _home48 = ('<div class="intel-grid"><a href="/blog/bvtech-news-old-edition.html" '
+                   'class="intel-featured"><div class="intel-featured-date">July 16 · daily '
+                   'briefing · KEV alert</div><h3>Old Headline</h3><p>Old excerpt text long '
+                   'enough to be replaced by the fresh one here.</p>'
+                   '<div class="intel-tags"><span>CVE-1</span></div></a></div>')
+        _nh48, _ch48 = _jp40._promote_featured(
+            _home48, url="/blog/bvtech-news-new-edition-july-17-2026.html",
+            title="SharePoint and FortiSandbox Under Attack",
+            date_lbl="July 17 · daily briefing · KEV alert",
+            excerpt="Three new KEV entries with 3-day deadlines, explained.")
+        assert _ch48 and "bvtech-news-new-edition" in _nh48, _nh48[:200]
+        assert "July 17 · daily briefing" in _nh48 and "Old Headline" not in _nh48
+        assert "CISA KEV</span><span>daily briefing" in _nh48 and "CVE-1" not in _nh48
+        _nh48b, _ch48b = _jp40._promote_featured(
+            _nh48, url="/blog/bvtech-news-new-edition-july-17-2026.html",
+            title="x", date_lbl="x", excerpt="x")
+        assert _ch48b is False, "same edition must be a no-op"
+        _osp48 = _jp40._HTTP
+        _jp40._HTTP = lambda m, u, t, p=None: [
+            {"created_at": "2026-07-17T14:01:00Z"}, {"created_at": "2026-07-16T09:00:00Z"}]
+        try:
+            _sp48 = _jp40._commit_span({"token": "x", "base": "https://gitlab.com", "project": "g/r", "branch": "main"}, "blog/p.html")
+            assert _sp48 == ("2026-07-16T09:00:00Z", "2026-07-17T14:01:00Z"), _sp48
+        finally:
+            _jp40._HTTP = _osp48
+        print("v1.47.8: featured follows newest news edition (idempotent) + "
+              "commit span (oldest,newest) in one call OK")
+
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
@@ -5579,7 +5608,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.47.7 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.47.8 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
