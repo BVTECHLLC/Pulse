@@ -3879,6 +3879,33 @@ def main():
         print("v1.47.8: featured follows newest news edition (idempotent) + "
               "commit span (oldest,newest) in one call OK")
 
+        # ==== v1.48.0: public free-tools API (SSRF guard + rate limit + CORS) ====
+        _PH = {"origin": "https://bvtech.org", "cf-connecting-ip": "203.0.113.200"}
+        _rw = c.get("/api/public-tools/whoami", headers=_PH)
+        assert _rw.status_code == 200 and _rw.json()["ip"] == "203.0.113.200", _rw.text
+        assert _rw.headers.get("access-control-allow-origin") == "https://bvtech.org"
+        # a foreign origin gets no ACAO header
+        _rf = c.get("/api/public-tools/whoami",
+                    headers={"origin": "https://evil.example", "cf-connecting-ip": "203.0.113.201"})
+        assert _rf.headers.get("access-control-allow-origin") is None, "CORS must pin to bvtech.org"
+        # SSRF guard: private/loopback/link-local/reserved all refused
+        for _bad in ("localhost", "127.0.0.1", "192.168.0.1", "169.254.169.254", "10.1.2.3", "not a host"):
+            _rb = c.get("/api/public-tools/ssl-check", params={"host": _bad},
+                        headers={"origin": "https://bvtech.org", "cf-connecting-ip": "203.0.113.20%d" % (len(_bad) % 9)})
+            assert "error" in _rb.json(), (_bad, _rb.json())
+        # rate limit trips after 20/min for one IP
+        _rl = None
+        for _ in range(25):
+            _rl = c.get("/api/public-tools/whoami",
+                        headers={"origin": "https://bvtech.org", "cf-connecting-ip": "203.0.113.222"}).json()
+        assert "rate limit" in str(_rl), _rl
+        # dns-check grading shape (no network dependency on the record contents)
+        from app.api.routes import public_tools as _pt48
+        assert _pt48._safe_host("bvtech.org") == "bvtech.org"
+        assert _pt48._safe_host("127.0.0.1") is None and _pt48._safe_host("../etc") is None
+        print("v1.48.0: public-tools API — whoami echo + CORS pinned to bvtech.org + "
+              "SSRF guard (private/loopback/link-local/reserved refused) + 20/min rate limit OK")
+
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
@@ -5608,7 +5635,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.47.8 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.48.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

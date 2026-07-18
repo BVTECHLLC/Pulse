@@ -1,5 +1,15 @@
 # BVTech OpsPilot — Changelog
 
+## v1.48.0 — Public free-tools API (the server-side half of bvtech.org/tools) (July 2026)
+- New unauthenticated `/api/public-tools/*` surface powering four live security
+  tools: **ssl-check** (cert issuer/expiry/TLS/SANs with verdict), **dns-check**
+  (SPF/DMARC/MX email-security grade), **headers-check** (HTTP security-header
+  report card), and **whoami** (public IP echo).
+- Hardened by design since it's public: per-IP rate limiting (20/min),
+  an SSRF guard that refuses private/loopback/link-local/reserved targets,
+  tight timeouts, and CORS pinned to bvtech.org. No DB access, isolated from
+  the authenticated app. Adds the `dnspython` dependency.
+
 ## v1.47.8 — Dedupe can't eat real posts + the featured briefing follows the news (July 2026)
 - **Page-date-first flood grouping**: the dedupe grouped posts by rename-follow
   poisoned first-commit dates and deleted a freshly published JP post two
