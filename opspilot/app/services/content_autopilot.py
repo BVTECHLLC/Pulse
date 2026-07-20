@@ -215,21 +215,132 @@ _NEWS_SYSTEM = (
     "EXCERPT: <120-155 chars>\nHTML:\n<body html: <p>,<h2>,<ul> only>")
 
 
+def _news_remediation(product: str, vendor: str) -> str:
+    """Deterministic, product-aware 'what to do' line — no AI, no tokens."""
+    p = f"{vendor} {product}".lower()
+    if any(k in p for k in ("sharepoint", "exchange", "outlook", "iis")):
+        return ("On-premises servers are the exposure here — patch them today. "
+                "Microsoft 365/SharePoint Online is patched for you by Microsoft.")
+    if any(k in p for k in ("forti", "sonicwall", "cisco", "palo alto", "netscaler",
+                            "citrix", "firewall", "vpn", "sandbox", "sma", "ivanti",
+                            "pulse", "router", "gateway")):
+        return ("This is an internet-facing edge/security appliance — apply the "
+                "vendor fix now, and lock its management interface to a private "
+                "network or VPN so it isn't reachable from the open internet.")
+    if any(k in p for k in ("chrome", "firefox", "edge", "safari", "webkit", "v8")):
+        return ("Update the browser AND relaunch it — the fix doesn't take effect "
+                "until every window is closed and reopened.")
+    if any(k in p for k in ("wordpress", "plugin", "drupal", "joomla", "wp")):
+        return ("Update the plugin (or core) immediately and delete any plugins "
+                "you're not actively using — every extra plugin is another door.")
+    if any(k in p for k in ("oracle", "sap", "vmware", "esxi", "weblogic", "java")):
+        return ("Patch the affected version now and restrict admin access to a "
+                "management network; these systems are high-value targets.")
+    return ("Apply the vendor's latest security update now, and review logs for "
+            "signs the flaw was already used before you patched.")
+
+
+def _compose_news_deterministic(now: datetime, kev: list[dict]) -> dict | None:
+    """Build a real, useful daily KEV briefing from the CISA feed with ZERO AI
+    tokens — factual security bulletins don't need a language model, just
+    accurate data and clear remediation. Returns an article dict (title/excerpt/
+    html) shaped exactly like ai.parse_article's output."""
+    import html as _h
+    from datetime import date as _date
+    if not kev:
+        return None
+    date_str = now.strftime("%B %-d, %Y")
+    n = len(kev)
+    vendors = []
+    for k in kev:
+        v = (k.get("vendor") or "").strip()
+        if v and v not in vendors:
+            vendors.append(v)
+    vsum = (vendors[0] if len(vendors) == 1
+            else f"{vendors[0]} and {vendors[1]}" if len(vendors) == 2
+            else f"{vendors[0]}, {vendors[1]}, and more")
+    title = (f"BVTech News — {n} New KEV {'Entry' if n == 1 else 'Entries'} "
+             f"Hit {vsum} — {date_str}")
+    excerpt = (f"CISA added {n} actively-exploited "
+               f"{'vulnerability' if n == 1 else 'vulnerabilities'} to the KEV "
+               f"catalog: {vsum}. What each one is, and what to do about it.")[:200]
+
+    def _days(added: str, due: str) -> str:
+        try:
+            a = _date.fromisoformat(added); d = _date.fromisoformat(due)
+            n = (d - a).days
+            return f"a {n}-day window" if n > 0 else "an immediate deadline"
+        except (ValueError, TypeError):
+            return "a short federal deadline"
+
+    parts = [
+        f"<p>CISA just added {n} new "
+        f"{'vulnerability' if n == 1 else 'vulnerabilities'} to its "
+        f"<strong>Known Exploited Vulnerabilities (KEV)</strong> catalog. A KEV "
+        f"listing isn't theoretical — it means attackers are exploiting the flaw "
+        f"right now. Here's each one in plain English, and exactly what a Texas "
+        f"business should do about it.</p>"
+    ]
+    for k in kev:
+        cve = _h.escape(k.get("cve", "CVE"))
+        vendor = _h.escape(k.get("vendor", ""))
+        product = _h.escape(k.get("product", ""))
+        name = _h.escape((k.get("name") or "").rstrip("."))
+        added = k.get("added", ""); due = k.get("due", "")
+        parts.append(f"<h2>{cve} — {product or vendor}</h2>")
+        parts.append(
+            f"<p>{vendor} {product} carries a serious flaw"
+            + (f" ({name})" if name else "")
+            + f". CISA added it to the KEV catalog on {_h.escape(added)}"
+            + (f", with a federal remediation deadline of {_h.escape(due)} — "
+               f"{_days(added, due)}, which is CISA telling everyone how fast "
+               f"this needs fixing" if due else "") + ".</p>")
+        parts.append(f"<p><strong>What to do:</strong> "
+                     f"{_news_remediation(k.get('product', ''), k.get('vendor', ''))}</p>")
+    parts.append("<h2>The 60-second version</h2><ul>" + "".join(
+        f"<li><strong>{_h.escape(k.get('cve',''))}</strong> — patch "
+        f"{_h.escape(k.get('product') or k.get('vendor') or 'the affected system')}"
+        + (f" by {_h.escape(k.get('due'))}" if k.get("due") else "") + "</li>"
+        for k in kev) + "</ul>")
+    parts.append(
+        "<p>Federal agencies are the only ones legally bound by these deadlines — "
+        "but the deadline length is CISA telling <em>everyone</em> how fast the "
+        "house is burning. If you're not sure whether any of this hardware or "
+        "software is in your environment, that's exactly the question we answer "
+        'for Texas businesses every day. <a href="/contact/">Ask us</a>.</p>')
+    return {"title": title, "excerpt": excerpt, "html": "\n".join(parts),
+            "date": now.date().isoformat()}
+
+
 def _publish_news_edition(db: Session, now: datetime) -> str:
     """Daily KEV briefing to bvtech.org/news/ (its own page + index), cloned
-    from the newest existing edition's markup. 1/day rides the bvtech cap."""
+    from the newest existing edition's markup. 1/day rides the bvtech cap.
+
+    v1.49: composed DETERMINISTICALLY from the CISA KEV feed — ZERO AI tokens.
+    Factual security bulletins don't need a language model. AI is opt-in only
+    (PULSE_NEWS_AI=1), and even then the deterministic edition is the fallback,
+    so the /news/ page publishes daily even when the AI balance is exhausted."""
     import os as _os
     if _os.environ.get("PULSE_DISABLE_KEV_TICKER"):
         return ""
     from . import jp_site
     try:
         kev = jp_site._KEV_FETCH(6)
-        items = "; ".join(f"{k['cve']} ({k['vendor']} {k['product']}: {k['name']}, "
-                          f"added {k['added']}, federal due {k['due']})" for k in kev)
-        raw = ai.complete(_NEWS_SYSTEM,
-                          f"Today: {now:%B %d, %Y}. Real CISA KEV entries to cover "
-                          f"(exact facts): {items}", smart=True, max_tokens=4000)
-        npost = ai.parse_article(raw)
+        if not kev:
+            return " | news: no KEV data available"
+        npost = None
+        if _os.environ.get("PULSE_NEWS_AI") and ai.enabled():
+            items = "; ".join(f"{k['cve']} ({k['vendor']} {k['product']}: {k['name']}, "
+                              f"added {k['added']}, federal due {k['due']})" for k in kev)
+            try:
+                raw = ai.complete(_NEWS_SYSTEM,
+                                  f"Today: {now:%B %d, %Y}. Real CISA KEV entries to cover "
+                                  f"(exact facts): {items}", smart=True, max_tokens=4000)
+                npost = ai.parse_article(raw)
+            except Exception:  # noqa: BLE001 — AI down/exhausted -> deterministic
+                npost = None
+        if not npost:
+            npost = _compose_news_deterministic(now, kev)   # zero-token default
         if not npost:
             return " | news: article unparseable"
         nout = jp_site.publish(db, npost, site="bvtech_news")

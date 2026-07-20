@@ -1,5 +1,15 @@
 # BVTech OpsPilot — Changelog
 
+## v1.49.0 — Zero-token daily KEV briefing (runs on data, not tokens) (July 2026)
+- The daily bvtech.org/news/ briefing is now composed DETERMINISTICALLY from
+  the live CISA KEV feed — no AI call, no tokens. A factual security bulletin
+  needs accurate data and clear remediation, not a language model: per-CVE
+  plain-English explanation, product-aware "what to do" (edge appliance vs
+  SharePoint vs browser vs WordPress...), a 60-second summary list, and a
+  contact CTA. AI is opt-in (PULSE_NEWS_AI=1) and only an enhancement — the
+  deterministic edition is always the fallback, so the news page publishes
+  every day even when the Claude balance is exhausted.
+
 ## v1.48.0 — Public free-tools API (the server-side half of bvtech.org/tools) (July 2026)
 - New unauthenticated `/api/public-tools/*` surface powering four live security
   tools: **ssl-check** (cert issuer/expiry/TLS/SANs with verdict), **dns-check**
