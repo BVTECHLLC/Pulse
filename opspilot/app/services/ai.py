@@ -214,14 +214,66 @@ def _http_complete(system: str, user: str, *, model: str, max_tokens: int) -> st
     return text
 
 
+def free_llm_enabled() -> bool:
+    """A free (non-Claude) LLM is configured — used to spare paid tokens."""
+    return bool(get_settings().free_llm_enabled)
+
+
+def _free_llm_complete(system: str, user: str, *, model: str, max_tokens: int) -> str:
+    """Single-shot completion against an OpenAI-COMPATIBLE endpoint (Groq,
+    OpenRouter, Together, Google's OpenAI-compat layer, a local Ollama, ...).
+    `model` here is ignored in favor of the configured FREE_LLM_MODEL so callers
+    don't need to know which free provider is wired. Raises AIError on failure so
+    the caller can fall back to the deterministic composer."""
+    s = get_settings()
+    if not s.FREE_LLM_KEY:
+        raise AIError("no free LLM configured")
+    payload = {"model": s.FREE_LLM_MODEL, "max_tokens": max_tokens,
+               "messages": [{"role": "system", "content": system},
+                            {"role": "user", "content": user}]}
+    req = urlrequest.Request(
+        s.FREE_LLM_BASE.rstrip("/") + "/chat/completions",
+        data=json.dumps(payload).encode(), method="POST",
+        headers={"authorization": f"Bearer {s.FREE_LLM_KEY}",
+                 "content-type": "application/json"})
+    try:
+        with urlrequest.urlopen(req, timeout=90) as r:
+            data = json.loads(r.read().decode())
+    except error.HTTPError as e:
+        raise AIError(f"free LLM HTTP {e.code}: {e.read().decode(errors='replace')[:200]}")
+    except Exception as e:  # noqa: BLE001
+        raise AIError(f"free LLM request failed: {e}")
+    try:
+        text = (data["choices"][0]["message"]["content"] or "").strip()
+    except (KeyError, IndexError, TypeError):
+        raise AIError("free LLM returned an unexpected shape")
+    if not text:
+        raise AIError("free LLM returned an empty response")
+    return text
+
+
 # Tests / offline runs override _CALLER to avoid real network I/O.
 _CALLER = _http_complete
+# Tests override this too; the real one is chosen per-call in complete().
+_FREE_CALLER = _free_llm_complete
 
 
 def complete(system: str, user: str, *, smart: bool = False, max_tokens: int = 1024) -> str:
-    """Run a single-shot completion. `smart=True` uses the heavier model."""
+    """Run a single-shot completion. `smart=True` uses the heavier model.
+
+    v1.50: when a FREE LLM is configured (Groq/OpenRouter/etc.), single-shot
+    content runs on it instead of paid Claude tokens. If the free model fails
+    AND Claude is connected, we fall through to Claude; if neither works the
+    AIError propagates so the caller can use its deterministic composer."""
     s = get_settings()
     model = s.AI_MODEL_SMART if smart else s.AI_MODEL
+    if s.free_llm_enabled:
+        try:
+            return _FREE_CALLER(system, user, model=model, max_tokens=max_tokens)
+        except AIError:
+            if not s.ai_enabled:
+                raise
+            # free model down but Claude available -> use Claude this once
     return _CALLER(system, user, model=model, max_tokens=max_tokens)
 
 

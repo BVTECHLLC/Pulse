@@ -177,9 +177,15 @@ def _run_bvtech(db: Session, now: datetime) -> tuple[bool, str]:
     """bvtech.org is a static site in GitLab (deployed by Cloudflare) — publish
     there natively; WordPress only as a legacy fallback if someone connected it."""
     from . import blog_autopilot, jp_site, wordpress
-    article = blog_autopilot.generate_article(db, now, angle=bvtech_angle(now))
+    try:
+        article = blog_autopilot.generate_article(db, now, angle=bvtech_angle(now))
+    except Exception:  # noqa: BLE001 — LLM down/exhausted
+        article = None
     if not article:
-        return False, "article generation returned nothing"
+        # v1.50: zero-token evergreen floor — the blog publishes even when no
+        # LLM (free or paid) is reachable, so a dead token balance never leaves
+        # bvtech.org without a post.
+        article = _compose_bvtech_deterministic(now)
     if jp_site.configured(db, "bvtech"):
         out = jp_site.publish(db, article, site="bvtech")
         if not out.get("ok"):
@@ -312,6 +318,143 @@ def _compose_news_deterministic(now: datetime, kev: list[dict]) -> dict | None:
             "date": now.date().isoformat()}
 
 
+# --------------------------------------------------------------------------- #
+# ZERO-TOKEN evergreen post library (the always-on floor). Only used when no
+# LLM is available at all — a free one (Groq/etc.) or Claude produces fresh
+# posts first. Each entry is a real, on-voice post as structured data; the
+# renderer turns it into the site's article HTML. Rotates by day so the floor
+# never repeats two days running.
+# --------------------------------------------------------------------------- #
+def _render_evergreen(topic: dict, *, byline: str, cta_html: str,
+                      date_str: str) -> dict:
+    import html as _h
+    parts = [f"<p>{topic['intro']}</p>"]
+    for sec in topic["sections"]:
+        parts.append(f"<h2>{_h.escape(sec['h2'])}</h2>")
+        if isinstance(sec["body"], list):
+            parts.append("<ul>" + "".join(f"<li>{b}</li>" for b in sec["body"]) + "</ul>")
+        else:
+            parts.append(f"<p>{sec['body']}</p>")
+    parts.append(cta_html)
+    return {"title": topic["title"], "excerpt": topic["excerpt"][:200],
+            "html": "\n".join(parts), "date": date_str}
+
+
+_BV_CTA = ('<p>If any of this hits close to home, that’s exactly what we help '
+           'Texas businesses with every day. <a href="/contact/">Book a free '
+           '15-minute IT assessment</a> — no pressure, no sales theater.</p>')
+_JP_CTA = ('<p>That’s how I think about it, anyway. If you want a second set of '
+           'eyes on your own setup, <a href="https://bvtech.org/contact/">reach '
+           'out</a> — happy to talk it through.</p>')
+
+_BV_EVERGREEN = [
+    {"title": "The 3-2-1 Backup Rule, in Plain English",
+     "excerpt": "Three copies, two kinds of media, one off-site. Why the rule that sounds boring is the one that saves businesses.",
+     "intro": "Everybody nods along when you say “back up your data.” Almost nobody can tell you whether their backups actually work. Here’s the rule we build every client’s recovery plan around — and how to test yours in fifteen minutes.",
+     "sections": [
+        {"h2": "What 3-2-1 actually means", "body": ["<strong>3 copies</strong> of anything you can’t afford to lose — the live copy plus two backups.", "<strong>2 different kinds of media</strong> so one failure can’t take out both backups.", "<strong>1 copy off-site</strong> (cloud counts) so a fire, flood, or ransomware hitting the office doesn’t take the backup with it."]},
+        {"h2": "The part people skip", "body": "A backup you’ve never restored from is a hope, not a backup. Once a quarter, actually pull a file back from each copy and confirm it opens. The first time you test a backup should never be the day you need it."},
+     ]},
+    {"title": "Multi-Factor Authentication Is the Cheapest Insurance You’ll Ever Buy",
+     "excerpt": "MFA blocks the vast majority of account takeovers, costs nothing, and takes an afternoon. Here’s where to turn it on first.",
+     "intro": "If I could get every business owner in Texas to do one security thing this week, it wouldn’t be a fancy firewall. It would be turning on multi-factor authentication everywhere it’s offered. Here’s why, and where to start.",
+     "sections": [
+        {"h2": "Why a stolen password isn’t enough anymore", "body": "Passwords leak — in breaches, in phishing, in reused-everywhere habits. MFA means a leaked password alone can’t get anyone in; they’d also need the code on your phone. That single extra step stops the overwhelming majority of account takeovers."},
+        {"h2": "Turn it on here first", "body": ["Email — it’s the master key that resets every other password.", "Banking and payroll.", "Your Microsoft 365 or Google Workspace admin account.", "Anything with customer data."]},
+        {"h2": "Skip SMS if you can", "body": "Text-message codes are better than nothing, but an authenticator app (or a hardware key) can’t be intercepted by SIM-swapping. Five minutes to set up, and it’s meaningfully stronger."},
+     ]},
+    {"title": "“We’re Too Small to Be a Target” Is Exactly Why You’re a Target",
+     "excerpt": "Attackers automate. They don’t pick you — they scan everyone and hit whoever’s unlocked. Small doesn’t mean invisible.",
+     "intro": "It’s the most common thing I hear from small business owners: “Who’d bother with us?” I understand the instinct. It’s also exactly backwards, and here’s the honest reason.",
+     "sections": [
+        {"h2": "Attacks are automated, not personal", "body": "The people trying doors on the internet aren’t hand-picking victims. They run software that scans millions of addresses looking for anything unpatched or misconfigured, then hit whatever’s open. Your size never comes up — only whether your door was locked."},
+        {"h2": "Small businesses are the sweet spot", "body": "Big enough to have money and data worth taking, small enough to often lack a dedicated IT team. That combination is why small and mid-sized businesses absorb a huge share of attacks — not despite being small, but because of it."},
+     ]},
+    {"title": "The Email That Looks Real Is the Whole Problem",
+     "excerpt": "Modern phishing doesn’t look like a scam. It looks like your boss, your vendor, your bank. Here’s how to slow down and catch it.",
+     "intro": "The Nigerian-prince email was easy to laugh off. Today’s phishing is a short, polite note that looks exactly like it came from your boss or your bookkeeper. That’s the point — and here’s how to spot it anyway.",
+     "sections": [
+        {"h2": "The tells that still work", "body": ["Urgency — “right now,” “before end of day,” “don’t call me, I’m in a meeting.”", "A payment detail that changed — new bank account, new wiring instructions.", "A reply-to address that’s subtly off from the name shown.", "A link that doesn’t match where it claims to go (hover before you click)."]},
+        {"h2": "The one habit that beats all of it", "body": "For anything involving money or credentials, verify through a second channel you already trust — call the person on the number you have, not the one in the email. Thirty seconds of friction has saved businesses tens of thousands of dollars."},
+     ]},
+    {"title": "Your Firewall Is Not Your Whole Security Plan",
+     "excerpt": "A firewall matters, but it’s one layer. Real security is a stack — and most breaches walk in through the gaps between.",
+     "intro": "“We have a firewall” is a sentence I hear a lot, usually as a full answer to “how’s your security?” A firewall is real and useful. It’s also one layer of many, and attackers make their living in the gaps.",
+     "sections": [
+        {"h2": "What a firewall does and doesn’t do", "body": "It controls traffic in and out of your network — valuable. It does nothing about a phished password, a malicious email attachment, an unpatched laptop, or an employee clicking a bad link. Those don’t knock on the firewall; they’re invited in."},
+        {"h2": "Think in layers", "body": ["Patched, up-to-date devices.", "MFA on every account.", "Endpoint protection that catches malware on the machine itself.", "Backups you’ve tested.", "People who know how to spot a scam."]},
+     ]},
+    {"title": "Patch Management: The Boring Habit That Prevents the Emergencies",
+     "excerpt": "Most breaches exploit a flaw that already had a fix available. Staying patched is unglamorous and it works.",
+     "intro": "When you read about a big breach, the flaw usually had a patch available — sometimes for months. The break-in wasn’t clever; it was a door someone forgot to close. Boring, consistent patching is how you close them.",
+     "sections": [
+        {"h2": "Why the gap exists", "body": "Updates are annoying. They interrupt work, occasionally break things, and it’s easy to click “remind me later” forever. Attackers count on exactly that delay — the window between a fix being released and you installing it is their opportunity."},
+        {"h2": "Make it automatic", "body": "The fix isn’t discipline, it’s automation: managed updates that install on a schedule, with someone watching for the rare one that needs a careful hand. Set it up once and the emergencies quietly stop happening."},
+     ]},
+]
+
+_JP_EVERGREEN = [
+    {"title": "The Best IT Decision Is Usually the Boring One",
+     "excerpt": "The flashy tool rarely moves the needle. The unglamorous fundamentals — backups, MFA, patching — are what actually keep a business standing.",
+     "intro": "After enough years doing this, I’ve noticed the technology that saves a business is almost never the exciting kind. It’s the boring, dependable stuff nobody posts about. I’ve made my peace with that, and honestly I’ve come to love it.",
+     "sections": [
+        {"h2": "Exciting fails loudly; boring works quietly", "body": "The dramatic tools get the attention, but when something goes wrong at 2am, what saves you is a backup that was quietly running the whole time and a login that needed a second factor. Nobody celebrates the disaster that didn’t happen — which is exactly why it’s worth building for."},
+        {"h2": "Spend your attention where it compounds", "body": "Get the fundamentals right and most “IT emergencies” never start. That’s not a lack of ambition; it’s where the real leverage is. Solid, boring infrastructure is what lets a business take a swing at the exciting stuff without falling over."},
+     ]},
+    {"title": "What a Slow Response Really Costs You",
+     "excerpt": "The follow-up nobody sends, the ticket that sits for a day — small delays quietly decide who keeps customers and who loses them.",
+     "intro": "I think a lot about response time — not just in IT, in everything. The gap between “something broke” and “someone’s on it” is where trust is either built or quietly lost. Most businesses underrate how much that gap costs.",
+     "sections": [
+        {"h2": "People forgive problems, not silence", "body": "Nobody expects perfection. What they can’t stand is not knowing whether anyone heard them. A fast “we’ve got it, here’s what’s happening” buys more goodwill than a slow, perfect fix. Silence is the thing that ends relationships."},
+        {"h2": "Speed is a system, not a hero", "body": "Fast response isn’t about someone heroically staying up late. It’s monitoring that catches the problem before the customer does, and a clear path for who picks it up. Build the system and the speed stops depending on any one person’s energy."},
+     ]},
+    {"title": "You Are Probably Your Business’s Single Point of Failure",
+     "excerpt": "If the passwords, the vendor relationships, and the how-it-all-works live only in your head, the business can’t run without you — and it can’t grow past you either.",
+     "intro": "Here’s an uncomfortable exercise I put owners through: if you vanished for two weeks with no warning, what would break? For most small businesses the honest answer is “nearly everything,” and it’s worth sitting with why.",
+     "sections": [
+        {"h2": "Convenience today, fragility tomorrow", "body": "It’s efficient to keep it all in your head — the passwords, the vendor contacts, the reason things are set up the way they are. Right up until you’re sick, on vacation, or hit by a bus, and nobody else can log in or knows who to call. Convenient and fragile are often the same decision."},
+        {"h2": "Write it down; share the keys", "body": "A password manager the right people can access. A short doc of critical vendors and accounts. Backups someone other than you can restore. None of it is glamorous, and all of it is what lets a business survive its founder — and eventually outgrow them."},
+     ]},
+    {"title": "The Twenty Minutes on Friday That Make Monday Easy",
+     "excerpt": "A small end-of-week habit — close the loops, note where you stopped, tidy the desk — quietly buys back your Monday morning.",
+     "intro": "For years my Fridays ended mid-thought: laptop closed, half-finished task, a vague promise to remember on Monday where I left off. I never did. The fix turned out to be about twenty minutes, and it changed how my weeks feel.",
+     "sections": [
+        {"h2": "Close the open loops", "body": "The last twenty minutes of the week, I write down exactly where each open thing stands and what the next step is. Not a plan — just a breadcrumb trail so Monday-morning me doesn’t have to reconstruct Friday-afternoon me’s brain from scratch."},
+        {"h2": "Protect the handoff to yourself", "body": "You hand off work to your future self every single day. Most people are terrible teammates to that person. Twenty quiet minutes to set them up well is the highest-return meeting on my calendar, and it’s with me."},
+     ]},
+    {"title": "Where AI Actually Saves a Small Business Time — and Where It Just Wastes It",
+     "excerpt": "AI is genuinely useful for the boring 80% and genuinely dangerous for the judgment calls. Knowing the line is the whole skill.",
+     "intro": "Everyone wants to know if they should be “using AI” in their business. It’s the wrong question. The right one is <em>where</em> — because it’s a fantastic assistant for some things and a confident liar about others.",
+     "sections": [
+        {"h2": "Great at the boring, repetitive 80%", "body": ["First drafts you’re going to edit anyway.", "Summarizing long threads and documents.", "Turning messy notes into a clean checklist.", "Rewriting the same message for three different audiences."]},
+        {"h2": "Keep a human on the judgment calls", "body": "Anything with legal, financial, or safety weight — or anything where being confidently wrong is expensive — needs a person who owns the outcome. AI drafts; you decide. Blur that line and it’ll eventually cost you more time than it ever saved."},
+     ]},
+    {"title": "The Cheapest Growth Move Is Turning On What You Already Pay For",
+     "excerpt": "Most businesses are sitting on features inside tools they already own. Before you buy the next thing, use the thing you’ve got.",
+     "intro": "Before a client spends on a shiny new platform, I ask to see what they already pay for. Almost every time, half the answer they were about to buy is sitting unused inside a subscription they’ve had for two years.",
+     "sections": [
+        {"h2": "You’re probably paying for tools you never turned on", "body": "Microsoft 365, your CRM, your accounting software — they’ve quietly grown features you’re not touching. Automations, security settings, reporting, integrations. It’s money already spent, delivering nothing, waiting to be switched on."},
+        {"h2": "Audit before you add", "body": "Once or twice a year, list what you pay for monthly and what each one actually does for you. The exercise usually finds two things: subscriptions to cancel, and features to finally use. Both make you money, and neither requires buying anything new."},
+     ]},
+]
+
+
+def _compose_bvtech_deterministic(now: datetime) -> dict:
+    """Zero-token evergreen bvtech blog post (rotates daily). The floor that
+    publishes when no LLM is available."""
+    topic = _BV_EVERGREEN[now.toordinal() % len(_BV_EVERGREEN)]
+    return _render_evergreen(topic, byline="BVTech LLC", cta_html=_BV_CTA,
+                             date_str=now.date().isoformat())
+
+
+def _compose_jp_deterministic(now: datetime) -> dict:
+    """Zero-token evergreen founder post for jordanpolasek.com (rotates daily)."""
+    topic = _JP_EVERGREEN[now.toordinal() % len(_JP_EVERGREEN)]
+    art = _render_evergreen(topic, byline="Jordan Polasek", cta_html=_JP_CTA,
+                            date_str=now.date().isoformat())
+    return art
+
+
 def _publish_news_edition(db: Session, now: datetime) -> str:
     """Daily KEV briefing to bvtech.org/news/ (its own page + index), cloned
     from the newest existing edition's markup. 1/day rides the bvtech cap.
@@ -360,19 +503,23 @@ def _run_jp(db: Session, now: datetime) -> tuple[bool, str]:
               f"vendor costs, growth systems). Today's editorial style: {day_angle(now)}. "
               f"Date: {now:%B %d, %Y}.")
     # Quote-proof delimited format (JSON kept breaking on unescaped quotes in
-    # the HTML) + JSON fallback + ONE corrective retry. On total failure the
-    # error carries a snippet of what Claude actually said, so it's diagnosable.
-    raw = ai.complete(_JP_SYSTEM, prompt, smart=True, max_tokens=4000)
-    post = ai.parse_article(raw)
-    if not post:
-        raw = ai.complete(_JP_SYSTEM, prompt + "\nIMPORTANT: use EXACTLY the "
-                          "TITLE:/EXCERPT:/HTML: format - nothing before TITLE:, "
-                          "no JSON, no code fences.",
-                          smart=True, max_tokens=4000)
+    # the HTML) + JSON fallback + ONE corrective retry. v1.50: the whole LLM
+    # path is wrapped — if it's down/exhausted/unparseable, fall to the
+    # zero-token evergreen floor so JP publishes daily regardless.
+    post = None
+    try:
+        raw = ai.complete(_JP_SYSTEM, prompt, smart=True, max_tokens=4000)
         post = ai.parse_article(raw)
+        if not post:
+            raw = ai.complete(_JP_SYSTEM, prompt + "\nIMPORTANT: use EXACTLY the "
+                              "TITLE:/EXCERPT:/HTML: format - nothing before TITLE:, "
+                              "no JSON, no code fences.",
+                              smart=True, max_tokens=4000)
+            post = ai.parse_article(raw)
+    except Exception:  # noqa: BLE001
+        post = None
     if not post:
-        head = " ".join(str(raw or "")[:120].split())
-        return False, f"JP article unparseable after retry; Claude said: '{head}...'"
+        post = _compose_jp_deterministic(now)
     out = jp_site.publish(db, post)
     if not out.get("ok"):
         return False, out.get("error") or "publish failed"
