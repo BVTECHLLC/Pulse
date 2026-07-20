@@ -3906,6 +3906,30 @@ def main():
         print("v1.48.0: public-tools API — whoami echo + CORS pinned to bvtech.org + "
               "SSRF guard (private/loopback/link-local/reserved refused) + 20/min rate limit OK")
 
+        # ==== v1.49.0: zero-token deterministic KEV briefing ====
+        from app.services import content_autopilot as _ca49
+        _kev49 = [
+            {"cve": "CVE-2026-58644", "vendor": "Microsoft", "product": "SharePoint Server",
+             "name": "Deserialization of Untrusted Data.", "added": "2026-07-16", "due": "2026-07-19"},
+            {"cve": "CVE-2026-25089", "vendor": "Fortinet", "product": "FortiSandbox",
+             "name": "OS Command Injection", "added": "2026-07-16", "due": "2026-07-19"},
+        ]
+        _art49 = _ca49._compose_news_deterministic(_dt40(2026, 7, 20, tzinfo=_tz40.utc), _kev49)
+        assert _art49 and _art49["title"].startswith("BVTech News"), _art49
+        assert "July 20, 2026" in _art49["title"], _art49["title"]
+        _b49 = _art49["html"]
+        assert "CVE-2026-58644" in _b49 and "CVE-2026-25089" in _b49
+        # product-aware remediation: SharePoint -> on-prem line, FortiSandbox -> edge line
+        assert "On-premises servers" in _b49 and "edge/security appliance" in _b49
+        assert "<h2>" in _b49 and "The 60-second version" in _b49 and 'href="/contact/"' in _b49
+        assert "El Campo" not in _b49
+        # 3-day window computed from added->due
+        assert "3-day window" in _b49, _b49
+        # empty feed -> None (caller degrades gracefully, never crashes)
+        assert _ca49._compose_news_deterministic(_dt40(2026, 7, 20, tzinfo=_tz40.utc), []) is None
+        print("v1.49.0: zero-token deterministic KEV briefing (real CVEs, product-aware "
+              "remediation, day-window math, contact CTA, no AI call) OK")
+
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
@@ -5635,7 +5659,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.48.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.49.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
