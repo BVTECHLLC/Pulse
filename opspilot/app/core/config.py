@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # --- Identity ---
     APP_NAME: str = "BVTech OpsPilot"
-    APP_VERSION: str = "1.49.0"
+    APP_VERSION: str = "1.50.0"
     ENV: str = "development"  # development | production
 
     # --- Security ---
@@ -97,6 +97,20 @@ class Settings(BaseSettings):
     @property
     def ai_enabled(self) -> bool:
         return bool(self.ANTHROPIC_API_KEY)
+
+    # --- FREE LLM (token relief). An OpenAI-compatible endpoint (Groq,
+    #     OpenRouter, Together, Google's OpenAI-compat, a local Ollama, ...).
+    #     When a key is set, in-app single-shot content generation uses THIS
+    #     instead of paid Claude tokens. Everything degrades to the zero-token
+    #     deterministic composer if the free model is unreachable, so daily
+    #     posting never depends on any paid balance. ---
+    FREE_LLM_BASE: str = "https://api.groq.com/openai/v1"
+    FREE_LLM_KEY: str | None = None
+    FREE_LLM_MODEL: str = "llama-3.3-70b-versatile"
+
+    @property
+    def free_llm_enabled(self) -> bool:
+        return bool(self.FREE_LLM_KEY)
 
     # --- Rate limiting ---
     RATE_LIMIT_LOGIN_PER_MIN: int = 5

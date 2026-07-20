@@ -2759,11 +2759,12 @@ def main():
             ok31, det31 = _ca31._run_jp(db, _dt31.now(_tz31.utc))
             assert ok31, det31
             assert len(_calls31) == 2 and "TITLE:" in _calls31[1], _calls31
-            # both attempts unparseable -> clean failure message, no crash
+            # v1.50: both AI attempts unparseable -> the zero-token evergreen
+            # floor takes over and JP STILL publishes (no dead-balance downtime).
             _calls31.clear()
             _ca31.ai.complete = lambda s, p, smart=False, max_tokens=1000: "still not json"
             ok31b, det31b = _ca31._run_jp(db, _dt31.now(_tz31.utc))
-            assert ok31b is False and "unparseable" in det31b, (ok31b, det31b)
+            assert ok31b is True and "jordanpolasek.com" in det31b, (ok31b, det31b)
         finally:
             _ca31.ai.complete = _oc31
             _jp31._HTTP = _ojp31
@@ -2839,10 +2840,11 @@ def main():
             assert len(_calls32) == 1, "quoted HTML must parse FIRST try now"
             assert "listed in" in det32, det32                     # listing note present
             assert "cache:" in det32 or "cache purged" in det32, det32   # cache note present
-            # total-failure error now includes what Claude actually said.
+            # v1.50: an AI refusal no longer takes the day down — the evergreen
+            # floor publishes instead.
             _ca32.ai.complete = lambda s, p, smart=False, max_tokens=1000: "I cannot do that."
             ok32b, det32b = _ca32._run_jp(db, _dt32.now(_tz32.utc))
-            assert ok32b is False and "I cannot do that" in det32b, det32b
+            assert ok32b is True and "jordanpolasek.com" in det32b, det32b
         finally:
             _ca32.ai.complete = _oc32
             _jp32._HTTP = _ojp32
@@ -3929,6 +3931,41 @@ def main():
         assert _ca49._compose_news_deterministic(_dt40(2026, 7, 20, tzinfo=_tz40.utc), []) is None
         print("v1.49.0: zero-token deterministic KEV briefing (real CVEs, product-aware "
               "remediation, day-window math, contact CTA, no AI call) OK")
+
+        # ==== v1.50.0: free-LLM provider + zero-token evergreen floor ====
+        from app.services import ai as _ai50
+        # free-LLM path: when a free caller is set, complete() uses it (not Claude)
+        _oldfree, _oldcaller = _ai50._FREE_CALLER, _ai50._CALLER
+        import app.core.config as _cfg50
+        _cfg50.get_settings.cache_clear()
+        _s50 = _cfg50.get_settings()
+        _s50.FREE_LLM_KEY = "gsk_test"          # pretend a free key is configured
+        try:
+            _ai50._FREE_CALLER = lambda sys, usr, **k: "FREE-MODEL-OUTPUT"
+            _ai50._CALLER = lambda sys, usr, **k: (_ for _ in ()).throw(AssertionError("Claude should NOT be called when free LLM works"))
+            assert _ai50.complete("s", "u") == "FREE-MODEL-OUTPUT"
+            # free down + Claude connected -> falls through to Claude
+            _s50.ANTHROPIC_API_KEY = "sk-test"
+            _ai50._FREE_CALLER = lambda sys, usr, **k: (_ for _ in ()).throw(_ai50.AIError("free down"))
+            _ai50._CALLER = lambda sys, usr, **k: "CLAUDE-FALLBACK"
+            assert _ai50.complete("s", "u") == "CLAUDE-FALLBACK"
+        finally:
+            _ai50._FREE_CALLER, _ai50._CALLER = _oldfree, _oldcaller
+            _s50.FREE_LLM_KEY = None; _s50.ANTHROPIC_API_KEY = None
+            _cfg50.get_settings.cache_clear()
+        # zero-token evergreen floor: real posts, valid shape, rotate by day, contact CTA
+        _bv50 = _ca49._compose_bvtech_deterministic(_dt40(2026, 7, 20, tzinfo=_tz40.utc))
+        _jp50 = _ca49._compose_jp_deterministic(_dt40(2026, 7, 20, tzinfo=_tz40.utc))
+        for _a in (_bv50, _jp50):
+            assert _a["title"] and _a["html"].count("<h2>") >= 1 and len(_a["html"]) > 400, _a["title"]
+            assert "El Campo" not in _a["html"]
+        assert 'href="/contact/"' in _bv50["html"]
+        assert 'bvtech.org/contact' in _jp50["html"]
+        # rotates: a different day yields a different post
+        _bv50b = _ca49._compose_bvtech_deterministic(_dt40(2026, 7, 21, tzinfo=_tz40.utc))
+        assert _bv50b["title"] != _bv50["title"], "evergreen floor must rotate daily"
+        print("v1.50.0: free-LLM provider (OpenAI-compatible, prefers free over Claude, "
+              "Claude fallback) + zero-token evergreen blog+JP floor (rotating, on-voice) OK")
 
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
@@ -5659,7 +5696,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.49.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.50.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

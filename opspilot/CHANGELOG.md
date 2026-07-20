@@ -1,5 +1,19 @@
 # BVTech OpsPilot — Changelog
 
+## v1.50.0 — Token-relief engine: free LLM + zero-token evergreen floor (July 2026)
+- **Free-LLM provider**: `ai.complete()` now routes single-shot content to any
+  OpenAI-compatible endpoint (Groq, OpenRouter, Together, Google's OpenAI-compat
+  layer, a local Ollama...) when `FREE_LLM_KEY` is set — sparing paid Claude
+  tokens entirely. One integration covers every provider that speaks the
+  OpenAI /chat/completions shape. If the free model fails and Claude is
+  connected, it falls through to Claude for that one call.
+- **Zero-token evergreen floor**: the daily bvtech.org blog post and the
+  jordanpolasek.com founder post now fall back to a rotating library of real,
+  on-voice posts composed with NO LLM at all. Combined with the deterministic
+  KEV briefing (v1.49), all THREE daily channels publish every day even when
+  every LLM — free and paid — is unreachable. A dead token balance can no
+  longer leave either site without a post.
+
 ## v1.49.0 — Zero-token daily KEV briefing (runs on data, not tokens) (July 2026)
 - The daily bvtech.org/news/ briefing is now composed DETERMINISTICALLY from
   the live CISA KEV feed — no AI call, no tokens. A factual security bulletin
