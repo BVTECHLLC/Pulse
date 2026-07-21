@@ -683,8 +683,14 @@ def run_daily(db: Session, now: datetime | None = None, *, force: bool = False) 
             return {"ran": False, "reason": "disabled", "results": {}}
         if now.hour < cfg["hour_utc"]:
             return {"ran": False, "reason": "too_early", "results": {}}
-    if not ai.enabled():
-        return {"ran": False, "reason": "ai_off", "results": {}}
+    # v1.51: DO NOT hard-abort the whole day just because paid Claude is off.
+    # Every channel runner has a free-LLM path (Groq/OpenRouter/…) and, beneath
+    # that, a zero-token deterministic composer — so the daily posts must ship
+    # regardless of any API balance. The old `if not ai.enabled(): return ai_off`
+    # short-circuit sat OUTSIDE the force check and silently killed EVERY channel
+    # the moment the Claude key lapsed or ran out of credit (the exact outage
+    # this removes). AI availability is now decided per-channel, inside each
+    # runner, where a failure degrades gracefully instead of blanking the day.
     results: dict[str, dict] = {}
     for ch in CHANNELS:
         if not cfg["channels"].get(ch, True):

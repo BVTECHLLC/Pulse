@@ -3967,6 +3967,20 @@ def main():
         print("v1.50.0: free-LLM provider (OpenAI-compatible, prefers free over Claude, "
               "Claude fallback) + zero-token evergreen blog+JP floor (rotating, on-voice) OK")
 
+        # ==== v1.51.0: the daily conductor never blacks out when Claude is off ====
+        # Root cause of the 2026-07-21 outage: run_daily had
+        #   `if not ai.enabled(): return {"reason": "ai_off", "results": {}}`
+        # OUTSIDE the force check, so a lapsed/credit-exhausted Claude key silently
+        # killed EVERY channel — even though each runner has a free-LLM path and a
+        # zero-token deterministic floor. Lock the short-circuit out for good.
+        import inspect as _insp51
+        _src51 = _insp51.getsource(_ca49.run_daily)
+        assert '"ai_off"' not in _src51 and "'ai_off'" not in _src51, \
+            "run_daily must NOT hard-abort the day when Claude is off (v1.51 regression)"
+        assert "per-channel" in _src51, "expected v1.51 per-channel-fallback rationale in run_daily"
+        print("v1.51.0: daily conductor never blacks out when Claude is off "
+              "(ai_off short-circuit removed; free-LLM + deterministic floor decide per channel) OK")
+
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
@@ -5696,7 +5710,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.50.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.51.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
