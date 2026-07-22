@@ -4002,6 +4002,45 @@ def main():
               "address required, OFF by default), finite 3-touch sequence, suppression + "
               "daily-cap idempotency OK")
 
+        # ==== v1.53.0: pipeline never spends Claude credit (FREE_LLM_ONLY) ====
+        import app.services.ai as _ai53
+        from app.core.config import get_settings as _gs53
+        _prevfree = _ai53._FREE_CALLER
+        _prevpaid = _ai53._CALLER
+        try:
+            import os as _os53
+            _os53.environ["FREE_LLM_KEY"] = "dummy-free-key"
+            _os53.environ["FREE_LLM_ONLY"] = "1"
+            _os53.environ["ANTHROPIC_API_KEY"] = "sk-fake-present"
+            _gs53.cache_clear()
+            _ai53._FREE_CALLER = lambda *a, **k: (_ for _ in ()).throw(_ai53.AIError("free down"))
+            _claude_hits = {"n": 0}
+            def _paid53(*a, **k):
+                _claude_hits["n"] += 1
+                return "CLAUDE"
+            _ai53._CALLER = _paid53
+            try:
+                _ai53.complete("s", "u")
+                assert False, "FREE_LLM_ONLY must not fall through to Claude"
+            except _ai53.AIError:
+                pass
+            assert _claude_hits["n"] == 0, "Claude was called despite FREE_LLM_ONLY"
+        finally:
+            _ai53._FREE_CALLER = _prevfree
+            _ai53._CALLER = _prevpaid
+            import os as _os53b
+            _os53b.environ.pop("FREE_LLM_ONLY", None)
+            _os53b.environ.pop("FREE_LLM_KEY", None)
+            _os53b.environ.pop("ANTHROPIC_API_KEY", None)
+            _gs53.cache_clear()
+        # linkedin + gbp now have a zero-token deterministic floor (no channel can error)
+        _li53 = _ca49._social_deterministic("Houston", "linkedin", _dt40(2026, 7, 22, tzinfo=_tz40.utc))
+        _gb53 = _ca49._social_deterministic("Austin", "gbp", _dt40(2026, 7, 22, tzinfo=_tz40.utc))
+        assert _li53 and "El Campo" not in _li53 and len(_li53) > 60, _li53
+        assert _gb53 and "bvtech.org" in _gb53 and "El Campo" not in _gb53, _gb53
+        print("v1.53.0: FREE_LLM_ONLY keeps the automated pipeline off paid Claude (free LLM "
+              "→ deterministic, never Claude) + linkedin/gbp zero-token floor OK")
+
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
@@ -5731,7 +5770,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.52.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.53.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

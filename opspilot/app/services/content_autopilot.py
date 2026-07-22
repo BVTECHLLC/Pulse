@@ -572,6 +572,36 @@ def collapse_queue(db: Session) -> int:
     return collapsed
 
 
+def _social_deterministic(metro: str, kind: str, now: datetime) -> str:
+    """Zero-token social post — the floor when no LLM (free or paid) is reachable.
+    Short, on-voice, metro-aware, rotates by day. Never mentions El Campo."""
+    tips = [
+        ("Turn on multi-factor authentication everywhere — email, banking, remote "
+         "access. It's free, takes an afternoon, and stops the vast majority of "
+         "account takeovers."),
+        ("Test your backups by actually restoring one. A backup you've never "
+         "restored is a hope, not a plan."),
+        ("That 'IT can wait' repair quote is cheaper than the outage it prevents. "
+         "Small problems are the affordable ones."),
+        ("Patch the known stuff fast. Most breaches ride in on vulnerabilities that "
+         "had a fix available for weeks."),
+        ("Write down who to call before something breaks. The worst time to find a "
+         "provider is mid-outage."),
+        ("Password managers beat sticky notes and reused passwords — for every "
+         "person on your team, on every login."),
+        ("Old accounts for people who left are open doors. Review who still has "
+         "access this month."),
+    ]
+    tip = tips[now.toordinal() % len(tips)]
+    if kind == "gbp":
+        return (f"Serving {metro} and the surrounding Texas communities. Quick tip "
+                f"from the BVTech team: {tip} Need a hand? Call (210) 538-3669 or "
+                f"visit bvtech.org.")
+    return (f"{tip}\n\nWe see it constantly with {metro}-area businesses. BVTech has "
+            f"handled IT and cybersecurity for Texas small businesses since 2013 — "
+            f"happy to point you in the right direction. bvtech.org")
+
+
 def _run_linkedin(db: Session, now: datetime) -> tuple[bool, str]:
     conn = secure_config.get_platform(db, "pub_linkedin")
     cfg = (conn.config if conn else None) or {}
@@ -580,9 +610,12 @@ def _run_linkedin(db: Session, now: datetime) -> tuple[bool, str]:
     if not (secure_config.get_secret(cfg, "access_token") or has_oauth):
         return False, "LinkedIn not connected (Settings → One-click Connect)"
     metro = _METROS[(now.toordinal() + 1) % len(_METROS)]
-    text = ai.complete(_LI_SYSTEM,
-                       f"Topic seed: one thing {metro}-area businesses get wrong about IT/"
-                       f"security, and the fix. Date: {now:%B %d}.", max_tokens=400)
+    try:
+        text = ai.complete(_LI_SYSTEM,
+                           f"Topic seed: one thing {metro}-area businesses get wrong about IT/"
+                           f"security, and the fix. Date: {now:%B %d}.", max_tokens=400)
+    except ai.AIError:
+        text = _social_deterministic(metro, "linkedin", now)   # zero-token floor
     _enqueue_social(db, text.strip(), "linkedin")
     return True, "queued to LinkedIn (autopost engine delivers + retries)"
 
@@ -593,9 +626,12 @@ def _run_gbp(db: Session, now: datetime) -> tuple[bool, str]:
     if not (cfg.get("account_name") and cfg.get("location_name")):
         return False, "Google Business Profile not connected (Settings → GBP)"
     metro = _METROS[(now.toordinal() + 2) % len(_METROS)]
-    text = ai.complete(_GBP_SYSTEM,
-                       f"Write today's update for the {metro} area. Date: {now:%B %d}.",
-                       max_tokens=300)
+    try:
+        text = ai.complete(_GBP_SYSTEM,
+                           f"Write today's update for the {metro} area. Date: {now:%B %d}.",
+                           max_tokens=300)
+    except ai.AIError:
+        text = _social_deterministic(metro, "gbp", now)        # zero-token floor
     _enqueue_social(db, text.strip(), "google_business")
     return True, "queued to Google Business (autopost engine delivers + retries)"
 

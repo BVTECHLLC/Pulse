@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # --- Identity ---
     APP_NAME: str = "BVTech OpsPilot"
-    APP_VERSION: str = "1.52.0"
+    APP_VERSION: str = "1.53.0"
     ENV: str = "development"  # development | production
 
     # --- Security ---
@@ -107,6 +107,11 @@ class Settings(BaseSettings):
     FREE_LLM_BASE: str = "https://api.groq.com/openai/v1"
     FREE_LLM_KEY: str | None = None
     FREE_LLM_MODEL: str = "llama-3.3-70b-versatile"
+    # When true, the automated pipeline NEVER falls back to paid Claude: it uses
+    # the free LLM, and if that's down it uses the zero-token deterministic
+    # composer. Set FREE_LLM_ONLY=1 on the box so daily posting can never spend a
+    # cent of Claude credit (keep Claude for interactive building instead).
+    FREE_LLM_ONLY: bool = False
 
     @property
     def free_llm_enabled(self) -> bool:

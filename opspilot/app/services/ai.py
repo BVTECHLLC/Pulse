@@ -234,8 +234,12 @@ def _free_llm_complete(system: str, user: str, *, model: str, max_tokens: int) -
     req = urlrequest.Request(
         s.FREE_LLM_BASE.rstrip("/") + "/chat/completions",
         data=json.dumps(payload).encode(), method="POST",
+        # A real User-Agent is REQUIRED: Groq (and most free LLM APIs) sit behind
+        # Cloudflare, which blocks urllib's default "Python-urllib/x.y" signature
+        # with HTTP 403 error 1010. Any normal UA sails through.
         headers={"authorization": f"Bearer {s.FREE_LLM_KEY}",
-                 "content-type": "application/json"})
+                 "content-type": "application/json",
+                 "user-agent": "BVTech-OpsPilot/1.0 (+https://bvtech.org)"})
     try:
         with urlrequest.urlopen(req, timeout=90) as r:
             data = json.loads(r.read().decode())
@@ -271,7 +275,10 @@ def complete(system: str, user: str, *, smart: bool = False, max_tokens: int = 1
         try:
             return _FREE_CALLER(system, user, model=model, max_tokens=max_tokens)
         except AIError:
-            if not s.ai_enabled:
+            # FREE_LLM_ONLY: never spend paid Claude credit on the automated
+            # pipeline — let the AIError propagate so the caller uses its
+            # deterministic composer. (Also raise if Claude simply isn't set up.)
+            if s.FREE_LLM_ONLY or not s.ai_enabled:
                 raise
             # free model down but Claude available -> use Claude this once
     return _CALLER(system, user, model=model, max_tokens=max_tokens)
