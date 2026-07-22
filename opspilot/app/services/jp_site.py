@@ -34,6 +34,25 @@ from sqlalchemy.orm import Session
 from ..models import Notification
 from . import secure_config
 
+# BVTech is a Texas business, so every human-facing date must read in Central
+# time — NOT the box's UTC. Without this a post published at, say, 9pm Central
+# gets stamped with tomorrow's UTC date ("posting the future"). tzdata (in
+# requirements) makes ZoneInfo work on the slim image; we fall back to UTC only
+# if the zone is somehow unavailable.
+BIZ_TZ = "America/Chicago"
+
+
+def biz_now(now: datetime | None = None) -> datetime:
+    """`now` (UTC) as Central time, for datelines and date-based slugs."""
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    try:
+        from zoneinfo import ZoneInfo
+        return now.astimezone(ZoneInfo(BIZ_TZ))
+    except Exception:  # noqa: BLE001 — missing tzdata: degrade to UTC, never crash
+        return now
+
 DEFAULT_BASE = "https://gitlab.com"
 
 SITES = {
@@ -625,7 +644,7 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
         # up in navigation, not just at its own URL. Best-effort per file: an
         # unrecognized/absent listing is skipped (and reported), never corrupted.
         excerpt = (post.get("description") or content_studio._excerpt_from_html(rendered))[:220]
-        date_str = datetime.now(timezone.utc).strftime("%B %-d, %Y")
+        date_str = biz_now().strftime("%B %-d, %Y")
         listings_updated, listings_skipped = [], []
         for lp in meta.get("index_paths", ()):
             current = _fetch_file(cfg, lp)
@@ -847,7 +866,7 @@ def _markdown_for(post: dict, slug: str, sample_md: str, excerpt: str) -> str:
     HTML skeleton cloning uses. Body: the article HTML (all major generators
     render embedded HTML inside markdown)."""
     import json as _json
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = biz_now().strftime("%Y-%m-%d")
     title_q = _json.dumps((post.get("title") or slug)[:180])
     desc_q = _json.dumps((excerpt or "")[:220])
     fm_lines, body_start = [], 0
@@ -953,7 +972,7 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
         listings = {lp: h for lp, h in listings.items() if h is not None}
         if not listings:
             return {"ok": False, "error": "no listing pages found in the repo"}
-        date_str = datetime.now(timezone.utc).strftime("%B %-d, %Y")
+        date_str = biz_now().strftime("%B %-d, %Y")
         added, actions, purge_urls = [], [], []
         ai_misses: dict[str, int] = {}
         for path in (post_paths if meta.get("backfill", True) else []):

@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Notification, SocialPost
 from . import ai, secure_config
+from .jp_site import biz_now   # Central-time dates (Texas), never UTC "future" dates
 
 PROVIDER = "content_autopilot"
 POST_HOUR_UTC = 14        # ~9am Central — content lands before the business day
@@ -255,7 +256,8 @@ def _compose_news_deterministic(now: datetime, kev: list[dict]) -> dict | None:
     from datetime import date as _date
     if not kev:
         return None
-    date_str = now.strftime("%B %-d, %Y")
+    from .jp_site import biz_now
+    date_str = biz_now(now).strftime("%B %-d, %Y")   # Central time, not UTC
     n = len(kev)
     vendors = []
     for k in kev:
@@ -477,7 +479,7 @@ def _publish_news_edition(db: Session, now: datetime) -> str:
                               f"added {k['added']}, federal due {k['due']})" for k in kev)
             try:
                 raw = ai.complete(_NEWS_SYSTEM,
-                                  f"Today: {now:%B %d, %Y}. Real CISA KEV entries to cover "
+                                  f"Today: {biz_now(now):%B %d, %Y}. Real CISA KEV entries to cover "
                                   f"(exact facts): {items}", smart=True, max_tokens=4000)
                 npost = ai.parse_article(raw)
             except Exception:  # noqa: BLE001 — AI down/exhausted -> deterministic
@@ -501,7 +503,7 @@ def _run_jp(db: Session, now: datetime) -> tuple[bool, str]:
     prompt = (f"Write today's post. Angle it for business owners around {metro}. "
               f"Pick ONE specific, practical topic (IT strategy, security, hiring, "
               f"vendor costs, growth systems). Today's editorial style: {day_angle(now)}. "
-              f"Date: {now:%B %d, %Y}.")
+              f"Date: {biz_now(now):%B %d, %Y}.")
     # Quote-proof delimited format (JSON kept breaking on unescaped quotes in
     # the HTML) + JSON fallback + ONE corrective retry. v1.50: the whole LLM
     # path is wrapped — if it's down/exhausted/unparseable, fall to the

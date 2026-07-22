@@ -3916,7 +3916,7 @@ def main():
             {"cve": "CVE-2026-25089", "vendor": "Fortinet", "product": "FortiSandbox",
              "name": "OS Command Injection", "added": "2026-07-16", "due": "2026-07-19"},
         ]
-        _art49 = _ca49._compose_news_deterministic(_dt40(2026, 7, 20, tzinfo=_tz40.utc), _kev49)
+        _art49 = _ca49._compose_news_deterministic(_dt40(2026, 7, 20, 15, 0, tzinfo=_tz40.utc), _kev49)
         assert _art49 and _art49["title"].startswith("BVTech News"), _art49
         assert "July 20, 2026" in _art49["title"], _art49["title"]
         _b49 = _art49["html"]
@@ -3928,7 +3928,7 @@ def main():
         # 3-day window computed from added->due
         assert "3-day window" in _b49, _b49
         # empty feed -> None (caller degrades gracefully, never crashes)
-        assert _ca49._compose_news_deterministic(_dt40(2026, 7, 20, tzinfo=_tz40.utc), []) is None
+        assert _ca49._compose_news_deterministic(_dt40(2026, 7, 20, 15, 0, tzinfo=_tz40.utc), []) is None
         print("v1.49.0: zero-token deterministic KEV briefing (real CVEs, product-aware "
               "remediation, day-window math, contact CTA, no AI call) OK")
 
@@ -4040,6 +4040,18 @@ def main():
         assert _gb53 and "bvtech.org" in _gb53 and "El Campo" not in _gb53, _gb53
         print("v1.53.0: FREE_LLM_ONLY keeps the automated pipeline off paid Claude (free LLM "
               "→ deterministic, never Claude) + linkedin/gbp zero-token floor OK")
+
+        # ==== v1.54.0: posts dated in Central time, not UTC (no 'posting the future') ====
+        from app.services.jp_site import biz_now as _bn54
+        # 02:00 UTC Jul 22 is 9pm Central Jul 21 (CDT) — the exact "future date" bug
+        _c54 = _bn54(_dt40(2026, 7, 22, 2, 0, tzinfo=_tz40.utc))
+        assert _c54.strftime("%Y-%m-%d") == "2026-07-21", ("late-night UTC must stamp the "
+                                                           "Central calendar date, got " + _c54.isoformat())
+        # DST-correct in winter too (CST, UTC-6): 05:00 UTC Jan 2 == 11pm Jan 1 Central
+        _w54 = _bn54(_dt40(2026, 1, 2, 5, 0, tzinfo=_tz40.utc))
+        assert _w54.strftime("%Y-%m-%d") == "2026-01-01", _w54.isoformat()
+        print("v1.54.0: human-facing post dates render in Central time (Texas), DST-correct "
+              "— no more future-dated posts OK")
 
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
@@ -5770,7 +5782,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.53.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.54.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
