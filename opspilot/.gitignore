@@ -6,3 +6,6 @@ __pycache__/
 backups/
 *.sql.gz
 .DS_Store
+*.db-journal
+*.db-wal
+*.db-shm
