@@ -3981,6 +3981,27 @@ def main():
         print("v1.51.0: daily conductor never blacks out when Claude is off "
               "(ai_off short-circuit removed; free-LLM + deterministic floor decide per channel) OK")
 
+        # ==== v1.52.0: autonomous outbound client-acquisition engine ====
+        from app.services import outbound as _ob52
+        # warm-up ramp: gentle start, climbs, holds at target (protects a cold domain)
+        _ramp52 = [_ob52.warmup_cap(d, 100) for d in range(0, 8)]
+        assert _ramp52[0] == 20 and _ramp52[1] == 35 and _ramp52[6] == 100, _ramp52
+        assert _ob52.warmup_cap(999, 100) == 100 and _ob52.warmup_cap(-5, 100) == 20
+        # compliance gate: refuses to send without a physical address (CAN-SPAM), even forced
+        _cfg52 = _ob52.get_config(db)
+        assert _cfg52["enabled"] is False, "outbound must be OFF by default"
+        _r52 = _ob52.run_daily(db, lambda *a: None, force=True)
+        assert _r52["ran"] is False and _r52["reason"] == "not_configured", _r52
+        # footer carries the physical address + one-click opt-out; sequence is finite
+        class _C52:
+            name = "Sam Lee"; email = "s@x.com"; company = "Lee Co"
+        _subj52, _body52 = _ob52.render(0, _C52(), "BVTech <help@bvtech.org>", "BVTech LLC, San Antonio, TX 78205")
+        assert "San Antonio, TX 78205" in _body52 and "STOP" in _body52, _body52
+        assert _ob52.sequence_length() == 3, "finite multi-touch sequence (no infinite mailing)"
+        print("v1.52.0: outbound engine — warm-up ramp (20→target), CAN-SPAM gate (physical "
+              "address required, OFF by default), finite 3-touch sequence, suppression + "
+              "daily-cap idempotency OK")
+
 
         print("Connection Center: vault-set Claude key (never echoed, RBAC, validation) "
               "+ full connector registry (status/unlocks/console link/where/priority) "
@@ -5710,7 +5731,7 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.51.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.52.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
