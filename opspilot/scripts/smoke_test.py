@@ -5782,7 +5782,28 @@ def main():
         print("wordpress publisher + auto-blogger: config (masked, RBAC) + live-test auth + "
               "publish flow + cross-post + cadence + brand guard + env aliases OK")
 
-    print("\n=== OpsPilot v1.54.0 SMOKE TEST PASSED ===")
+        # ==== v1.55.0: Cloudflare cache auto-purge — env-var fallback + all 4 zones ====
+        from app.services import cloudflare as _cf
+        assert set(_cf.SITE_DOMAINS) == {"bvtech", "jp", "autumn", "txplants"}, _cf.SITE_DOMAINS
+        assert _cf.SITE_DOMAINS["autumn"] == "autumnpolasek.com"
+        assert _cf.SITE_DOMAINS["txplants"] == "tx-plants.com"
+        _edb3 = _ESL()
+        try:
+            # no Connection-Center token + no env -> None (best-effort, never raises)
+            _os.environ.pop("CLOUDFLARE_PURGE_TOKEN", None)
+            _os.environ.pop("CLOUDFLARE_API_TOKEN", None)
+            assert _cf.get_token(_edb3) is None
+            assert _cf.purge_urls(_edb3, "bvtech", ["https://bvtech.org/"])["ok"] is False
+            # env fallback lights it up without any portal config
+            _os.environ["CLOUDFLARE_PURGE_TOKEN"] = "cfut_env_fallback_token"
+            assert _cf.get_token(_edb3) == "cfut_env_fallback_token"
+        finally:
+            _os.environ.pop("CLOUDFLARE_PURGE_TOKEN", None)
+            _edb3.close()
+        print("cloudflare auto-purge: 4 zones registered + env-var (CLOUDFLARE_PURGE_TOKEN) "
+              "fallback + best-effort no-token guard OK")
+
+    print("\n=== OpsPilot v1.55.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # --- Identity ---
     APP_NAME: str = "BVTech OpsPilot"
-    APP_VERSION: str = "1.54.0"
+    APP_VERSION: str = "1.55.0"
     ENV: str = "development"  # development | production
 
     # --- Security ---
@@ -112,6 +112,14 @@ class Settings(BaseSettings):
     # composer. Set FREE_LLM_ONLY=1 on the box so daily posting can never spend a
     # cent of Claude credit (keep Claude for interactive building instead).
     FREE_LLM_ONLY: bool = False
+
+    # --- Cloudflare cache purge (v1.55). The daily publisher flushes the edge
+    #     cache after every post so new content is visible IMMEDIATELY instead of
+    #     hiding behind a stale cached listing/homepage for hours. Preferred path
+    #     is the Connection Center (encrypted); this env var is the box fallback
+    #     so the Linode host auto-purges with zero portal config. Token needs
+    #     Zone.Cache Purge:Purge + Zone.Zone:Read on all site zones. ---
+    CLOUDFLARE_PURGE_TOKEN: str | None = None
 
     @property
     def free_llm_enabled(self) -> bool:

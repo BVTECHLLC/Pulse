@@ -25,7 +25,8 @@ PROVIDER = "cloudflare"
 API = "https://api.cloudflare.com/client/v4"
 
 # site key (jp_site.SITES) -> apex domain the zone is looked up by
-SITE_DOMAINS = {"bvtech": "bvtech.org", "jp": "jordanpolasek.com"}
+SITE_DOMAINS = {"bvtech": "bvtech.org", "jp": "jordanpolasek.com",
+                "autumn": "autumnpolasek.com", "txplants": "tx-plants.com"}
 
 
 def _http(method: str, url: str, token: str, payload: dict | None = None,
@@ -56,7 +57,15 @@ def _cfg(db: Session) -> dict:
 
 
 def get_token(db: Session) -> str | None:
-    return secure_config.get_secret(_cfg(db), "api_token") or None
+    """Token comes from the Connection Center (encrypted, preferred) OR, when
+    that isn't set, from the box environment — CLOUDFLARE_PURGE_TOKEN so the
+    Linode host can auto-purge every publish with zero portal config."""
+    tok = secure_config.get_secret(_cfg(db), "api_token")
+    if tok:
+        return tok
+    import os
+    return (os.environ.get("CLOUDFLARE_PURGE_TOKEN")
+            or os.environ.get("CLOUDFLARE_API_TOKEN") or None)
 
 
 def get_auth_email(db: Session) -> str | None:
