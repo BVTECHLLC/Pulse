@@ -129,6 +129,8 @@ def get_config(db: Session) -> dict:
         "started_on": raw.get("started_on") or "",    # ISO date the ramp began
         "last": raw.get("last") or {},                # {date: sent_count}
         "test_sent_on": raw.get("test_sent_on") or "",  # last self-test date (v1.56)
+        "prospected_on": raw.get("prospected_on") or "",  # last auto-scrape date (v1.57)
+        "prospect_cycle": int(raw.get("prospect_cycle") or 0),  # market×industry rotation
     }
 
 
@@ -474,6 +476,14 @@ def tick(db: Session, now: datetime | None = None) -> dict:
     send_fn, transport = resolve_send_fn(db)
     if send_fn is None:
         return {"ran": False, "reason": "no_transport", "detail": transport}
+    # v1.57 AUTO-PROSPECTING: whenever the program is armed (test OR live),
+    # keep the lead tank full — once a day, scrape the next market×industry
+    # rotation and enrich lead emails from their own websites. Runs before the
+    # branches so even the test-mode preview fills with real leads.
+    try:
+        _ensure_leads(db, cfg, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
     if mode == "test" and not cfg["enabled"]:
         return _self_test(db, send_fn, transport, cfg, now)
     # LIVE — arm the portal flag once so counters/status all agree.
@@ -500,3 +510,177 @@ def tick(db: Session, now: datetime | None = None) -> dict:
                 f"(cap {out.get('cap')}, ramp day {out.get('day_index')}, "
                 f"{out.get('failed', 0)} failed) via {transport}.")
     return out
+
+
+# --------------------------------------------------------------------------- #
+# v1.57 AUTO-PROSPECTING — keep the lead tank full, hands-free.
+#
+# The gap this closes: Google Places returns phone/website/address but NEVER an
+# email, so scraped leads could not be emailed and "eligible today" sat at 0
+# forever unless someone hand-entered addresses. Two pieces:
+#   * _ensure_leads — once a day while the program is armed: if the untouched
+#     emailable pool is below ~3× today's cap, scrape the next market×industry
+#     combo in a 52-step rotation (4 Texas metros × 13 MSP-ready verticals),
+#     then run enrichment. PULSE_PROSPECT=off disables.
+#   * enrich_emails — visit each scraped lead's own website (homepage, then
+#     /contact) and extract their PUBLIC business contact email — mailto links
+#     first, domain-matching addresses preferred, junk filtered. B2B contact
+#     discovery from the business's own published pages.
+# Both are seam-injected (places client / page fetcher) for offline testing.
+# --------------------------------------------------------------------------- #
+POOL_LOW_FACTOR = 3          # top up when untouched pool < 3× today's cap
+PROSPECT_BATCH = 25          # max new leads per daily scrape
+ENRICH_BATCH = 25            # max websites visited per daily enrichment pass
+
+_EMAIL_RX = None             # compiled lazily (module import stays cheap)
+_JUNK_EMAIL = ("example.", "sentry", "wixpress", "@2x", "noreply", "no-reply",
+               "donotreply", "yourdomain", "domain.com", "email.com", ".png",
+               ".jpg", ".jpeg", ".gif", ".webp", ".svg")
+
+
+def _places_factory(key: str):
+    from .prospecting import PlacesClient
+    return PlacesClient(key)
+
+
+_PLACES_FACTORY = _places_factory     # test seam
+
+
+def _fetch_page(url: str) -> str:
+    """Fetch one public web page (the lead's own site). Small, tolerant, capped."""
+    import urllib.request
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0 (compatible; BVTech-Pulse/1.0; +https://bvtech.org)"})
+    with urllib.request.urlopen(req, timeout=12) as r:
+        return r.read(400_000).decode("utf-8", errors="replace")
+
+
+_FETCH_PAGE = _fetch_page             # test seam
+
+
+def _extract_email(html_text: str, site_host: str) -> str | None:
+    """Best public contact email on a page: mailto first, own-domain preferred,
+    then the classic info@/contact@/office@ shapes; junk filtered."""
+    import re as _re
+    global _EMAIL_RX
+    if _EMAIL_RX is None:
+        _EMAIL_RX = _re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+    mailtos = _re.findall(r'mailto:([^"\'\s?>]+)', html_text, _re.I)
+    everywhere = _EMAIL_RX.findall(html_text)
+    seen, ordered = set(), []
+    for e in [m.strip().lower() for m in mailtos + everywhere]:
+        if e and e not in seen and _EMAIL_RX.fullmatch(e):
+            seen.add(e)
+            ordered.append(e)
+    ordered = [e for e in ordered if not any(j in e for j in _JUNK_EMAIL)]
+    if not ordered:
+        return None
+    host = (site_host or "").lower().removeprefix("www.")
+    if host:
+        same = [e for e in ordered if e.rsplit("@", 1)[-1].removeprefix("www.")
+                in (host, "www." + host)]
+        if same:
+            return same[0]
+    for pref in ("info@", "contact@", "office@", "hello@", "admin@", "sales@"):
+        for e in ordered:
+            if e.startswith(pref):
+                return e
+    return ordered[0]
+
+
+def enrich_emails(db: Session, limit: int = ENRICH_BATCH, fetcher=None) -> dict:
+    """Fill in missing emails for scraped leads from their own websites.
+    fetcher(url)->html is injectable; failures skip quietly (site down ≠ error)."""
+    from urllib.parse import urlparse
+    fetch = fetcher or _FETCH_PAGE
+    rows = (db.query(CrmContact)
+            .filter(CrmContact.email.is_(None), CrmContact.website.isnot(None),
+                    CrmContact.do_not_contact.is_(False))
+            .order_by(CrmContact.score.desc().nullslast()
+                      if hasattr(CrmContact.score, "desc") else CrmContact.id.asc())
+            .limit(max(1, limit)).all())
+    found, checked = 0, 0
+    for c in rows:
+        checked += 1
+        site = (c.website or "").strip()
+        if not site.startswith(("http://", "https://")):
+            site = "https://" + site
+        host = urlparse(site).netloc
+        email = None
+        for candidate in (site, site.rstrip("/") + "/contact"):
+            try:
+                email = _extract_email(fetch(candidate), host)
+            except Exception:  # noqa: BLE001 — dead site/timeouts are normal
+                email = None
+            if email:
+                break
+        if email:
+            c.email = email
+            found += 1
+    if found:
+        db.commit()
+    return {"checked": checked, "emails_found": found}
+
+
+def _untouched_pool(db: Session) -> int:
+    """Emailable leads that haven't been touched yet (status still 'new')."""
+    return (db.query(CrmContact)
+            .filter(CrmContact.email.isnot(None),
+                    CrmContact.do_not_contact.is_(False),
+                    CrmContact.status == "new").count())
+
+
+def _ensure_leads(db: Session, cfg: dict, now: datetime) -> dict:
+    """Once a day while armed: scrape the next rotation combo when the pool is
+    low, then enrich emails. Never raises (tick wraps it anyway)."""
+    import os
+    if (os.environ.get("PULSE_PROSPECT") or "").strip().lower() in ("off", "0", "false"):
+        return {"ran": False, "reason": "disabled"}
+    today = _today(now)
+    if cfg.get("prospected_on") == today:
+        return {"ran": False, "reason": "already_today"}
+    conn = secure_config.get_platform(db, "google_places")
+    pcfg = dict((conn.config if conn else None) or {})
+    key = secure_config.get_secret(pcfg, "api_key") or ""
+    if not key:
+        save_config(db, prospected_on=today)   # don't re-check 720×/day
+        return {"ran": False, "reason": "no_places_key"}
+    # today's cap decides how full the tank should be
+    started = cfg.get("started_on") or today
+    try:
+        day_index = (now.date() - datetime.fromisoformat(started).date()).days
+    except ValueError:
+        day_index = 0
+    cap = warmup_cap(day_index, int(cfg.get("target") or 100))
+    pool = _untouched_pool(db)
+    scraped = {"created": 0, "market": "", "industry": ""}
+    if pool < cap * POOL_LOW_FACTOR:
+        from . import prospecting
+        combos = [(m, i["query"]) for m in prospecting.MARKETS
+                  for i in prospecting.INDUSTRIES]
+        cycle = int(cfg.get("prospect_cycle") or 0)
+        market, industry = combos[cycle % len(combos)]
+        try:
+            client = _PLACES_FACTORY(key)
+            scraped = prospecting.run(db, client, market, industry,
+                                      max_results=PROSPECT_BATCH)
+        except Exception as e:  # noqa: BLE001
+            _notify(db, "warning",
+                    f"🎯 Auto-prospecting hit a problem ({market}/{industry}): "
+                    f"{str(e)[:200]} — will try the next combo tomorrow.")
+        save_config(db, prospect_cycle=cycle + 1)
+    enriched = {"checked": 0, "emails_found": 0}
+    try:
+        enriched = enrich_emails(db)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+    save_config(db, prospected_on=today)
+    if scraped.get("created") or enriched.get("emails_found"):
+        _notify(db, "info",
+                f"🎯 Lead tank: +{scraped.get('created', 0)} new "
+                f"{scraped.get('market', '')} {scraped.get('industry', '')} lead(s) "
+                f"scraped, {enriched.get('emails_found', 0)} email(s) found on their "
+                f"websites — emailable untouched pool now {_untouched_pool(db)}.")
+    return {"ran": True, "scraped": scraped.get("created", 0),
+            "enriched": enriched.get("emails_found", 0),
+            "pool": _untouched_pool(db)}

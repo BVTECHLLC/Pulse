@@ -6013,6 +6013,56 @@ def main():
             _r56e = _ob56.tick(_edb6, _hour56)
             assert _r56e.get("sent", 0) == 0, _r56e
             assert len(_sent56) == _n56_before + 2
+            # 5) v1.57 AUTO-PROSPECTING: low pool -> scrape next rotation combo,
+            #    enrich the lead's email from its OWN website, once per day.
+            _sc56.upsert_platform(_edb6, "google_places", "Google Places",
+                                  "Prospecting", {"api_key": "places-key-56"})
+
+            class _FakePlaces56:
+                def __init__(self, key):
+                    assert "places" in key
+
+                def text_search(self, query, lat, lng, radius):
+                    return [{"place_id": "p1", "name": "Lone Star Dental",
+                             "rating": 4.6, "user_ratings_total": 120,
+                             "business_status": "OPERATIONAL"}]
+
+                def place_details(self, pid):
+                    return {"formatted_phone_number": "210-555-0101",
+                            "website": "https://lonestardental.com",
+                            "formatted_address": "1 Main St, San Antonio, TX"}
+
+            def _fake_fetch56(url):
+                assert "lonestardental.com" in url, url
+                return '<a href="mailto:frontdesk@lonestardental.com">Email us</a>'
+
+            _orig_pf56 = _ob56._PLACES_FACTORY
+            _orig_ff56 = _ob56._FETCH_PAGE
+            _ob56._PLACES_FACTORY = _FakePlaces56
+            _ob56._FETCH_PAGE = _fake_fetch56
+            try:
+                # earlier armed ticks stamped today via the no-key path — reset
+                # so this direct call exercises the full scrape+enrich flow
+                _ob56.save_config(_edb6, prospected_on="", prospect_cycle=0)
+                _r57 = _ob56._ensure_leads(_edb6, _ob56.get_config(_edb6), _hour56)
+                assert _r57["ran"] is True and _r57["scraped"] == 1, _r57
+                assert _r57["enriched"] == 1 and _r57["pool"] >= 1, _r57
+                _lead57 = (_edb6.query(_CC56)
+                           .filter(_CC56.company == "Lone Star Dental").first())
+                assert _lead57 and _lead57.email == "frontdesk@lonestardental.com"
+                assert (_lead57.score or 0) >= 60 and _lead57.source == "scrape"
+                _cfg57 = _ob56.get_config(_edb6)
+                assert _cfg57["prospected_on"] and _cfg57["prospect_cycle"] == 1
+                _r57b = _ob56._ensure_leads(_edb6, _cfg57, _hour56)
+                assert _r57b["reason"] == "already_today", _r57b
+                _os56.environ["PULSE_PROSPECT"] = "off"
+                try:
+                    assert _ob56._ensure_leads(_edb6, _cfg57, _hour56)["reason"] == "disabled"
+                finally:
+                    _os56.environ.pop("PULSE_PROSPECT", None)
+            finally:
+                _ob56._PLACES_FACTORY = _orig_pf56
+                _ob56._FETCH_PAGE = _orig_ff56
         finally:
             _ob56._GRAPH_FACTORY = _orig_gf56
             for _k56 in ("PULSE_OUTBOUND", "PULSE_OUTBOUND_ADDRESS"):
@@ -6022,7 +6072,7 @@ def main():
               "(self-inbox plan+sample, leads untouched, once/day) + LIVE mode (business "
               "hours, DNC excluded, CAN-SPAM footer, CRM-logged, same-day idempotent) OK")
 
-    print("\n=== OpsPilot v1.56.2 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.57.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
