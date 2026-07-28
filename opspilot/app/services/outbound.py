@@ -415,8 +415,29 @@ def _self_test(db: Session, send_fn, transport: str, cfg: dict,
         "Happy with it? Set PULSE_OUTBOUND=live in the box .env (or enable in "
         "the portal) and the ramp starts at 20/day."
     )
-    send_fn(inbox, f"[Pulse test] Outbound preview — {plan.get('eligible', 0)} "
-                   "leads ready, nothing sent", body)
+    # v1.56.1 NEVER-SILENT: a failed Graph/SMTP send used to bubble up into the
+    # heartbeat's blanket except and vanish — "no email, no error, retries
+    # forever". Catch it HERE, tell the operator exactly what broke (a 403 is
+    # almost always the Entra app missing the Mail.Send APPLICATION permission),
+    # and do NOT stamp test_sent_on so the next tick retries automatically.
+    try:
+        send_fn(inbox, f"[Pulse test] Outbound preview — {plan.get('eligible', 0)} "
+                       "leads ready, nothing sent", body)
+    except Exception as e:  # noqa: BLE001
+        m = str(e)
+        hint = ""
+        if any(t in m for t in ("403", "Forbidden", "Authorization_RequestDenied",
+                                "ErrorAccessDenied")):
+            hint = (" — this is almost always the Entra app missing the Mail.Send "
+                    "APPLICATION permission (Microsoft Graph) with admin consent. "
+                    "Entra admin center → App registrations → the mailbox app → "
+                    "API permissions → add Microsoft Graph → Application → "
+                    "Mail.Send → Grant admin consent.")
+        _notify(db, "warning",
+                f"📧 Outbound TEST email FAILED via {transport}: {m[:280]}{hint} "
+                "Will retry automatically next tick.")
+        return {"ran": False, "mode": "test", "reason": "send_failed",
+                "error": m[:300], "transport": transport}
     save_config(db, test_sent_on=today)
     _notify(db, "info",
             f"📧 Outbound TEST email sent to {inbox}: {plan.get('eligible', 0)} "

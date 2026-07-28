@@ -5953,6 +5953,26 @@ def main():
             # 3) TEST mode: plan + rendered sample to OUR inbox; leads untouched
             _os56.environ["PULSE_OUTBOUND"] = "test"
             _os56.environ["PULSE_OUTBOUND_ADDRESS"] = "BVTech LLC, San Antonio, TX 78205"
+            # 3a) v1.56.1 NEVER-SILENT: a failing transport (e.g. Graph 403 for a
+            # missing Mail.Send permission) must surface as send_failed + a
+            # warning notification, NOT vanish — and must NOT stamp the day, so
+            # the next tick retries and succeeds once the transport works.
+            class _Raising56:
+                def __init__(self, *a):
+                    pass
+
+                def send_mail(self, *a, **k):
+                    raise RuntimeError("Graph HTTP 403: Authorization_RequestDenied")
+
+            _ob56._GRAPH_FACTORY = _Raising56
+            _r56f = _ob56.tick(_edb6, _hour56)
+            assert _r56f["ran"] is False and _r56f["reason"] == "send_failed", _r56f
+            assert "403" in _r56f["error"], _r56f
+            assert _ob56.get_config(_edb6)["test_sent_on"] == "", "failed test must not stamp the day"
+            from app.models import Notification as _N56
+            assert _edb6.query(_N56).filter(
+                _N56.message.like("%Outbound TEST email FAILED%")).count() >= 1
+            _ob56._GRAPH_FACTORY = _FakeGraph56   # transport healthy again
             _r56b = _ob56.tick(_edb6, _hour56)
             assert _r56b["ran"] is True and _r56b["mode"] == "test", _r56b
             assert _r56b["eligible"] == 2, _r56b
@@ -5998,7 +6018,7 @@ def main():
               "(self-inbox plan+sample, leads untouched, once/day) + LIVE mode (business "
               "hours, DNC excluded, CAN-SPAM footer, CRM-logged, same-day idempotent) OK")
 
-    print("\n=== OpsPilot v1.56.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.56.1 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
