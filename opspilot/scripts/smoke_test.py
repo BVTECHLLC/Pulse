@@ -5899,7 +5899,99 @@ def main():
         print("tx-plants daily channel: opt-in (no-op until connected) + deterministic "
               "floor + sister-site/Scripture/remembrance interlinks + status row OK")
 
-    print("\n=== OpsPilot v1.55.6 SMOKE TEST PASSED ===")
+        # ==== v1.56.0: outbound engine WIRED — transport + heartbeat tick + test mode ====
+        import datetime as _dt56
+        import os as _os56
+        from app.models import CrmActivity as _CA56, CrmContact as _CC56
+        from app.services import outbound as _ob56
+        from app.services import secure_config as _sc56
+        _edb6 = _ESL()
+        _sent56 = []
+
+        class _FakeGraph56:
+            def __init__(self, *a):
+                pass
+
+            def send_mail(self, mailbox, to, subject, body, **k):
+                _sent56.append((mailbox, tuple(to), subject, body))
+
+        _orig_gf56 = _ob56._GRAPH_FACTORY
+        _ob56._GRAPH_FACTORY = _FakeGraph56
+        _hour56 = _dt56.datetime(2026, 7, 28, 16, 0, 0, tzinfo=_dt56.timezone.utc)
+        try:
+            # 1) no mailbox creds + no SMTP -> clean no-op even when armed live
+            _os56.environ["PULSE_OUTBOUND"] = "live"
+            _r56 = _ob56.tick(_edb6, _hour56)
+            assert _r56["ran"] is False and _r56["reason"] == "no_transport", _r56
+            # 2) the box's m365_mailbox creds light up the Graph transport
+            _sc56.upsert_platform(_edb6, "m365_mailbox", "M365 Mailbox", "Email",
+                                  {"tenant_id": "t1", "client_id": "c1",
+                                   "client_secret": "s1", "mailbox": "jordan@bvtech.org"})
+            _fn56, _det56 = _ob56.resolve_send_fn(_edb6)
+            assert _fn56 is not None and "jordan@bvtech.org" in _det56, _det56
+            # isolate from contacts earlier smoke sections created in this shared
+            # DB: suppress them all, then add a known trio
+            _edb6.query(_CC56).update({"do_not_contact": True})
+            _edb6.commit()
+            # leads: two eligible + one do-not-contact that must NEVER be touched
+            _lead_a = _CC56(name="Pat Aldis", email="pat@leadco-a.com",
+                            company="LeadCo A", score=90, status="new")
+            _lead_b = _CC56(name="Sam Boone", email="sam@leadco-b.com",
+                            company="LeadCo B", score=80, status="new")
+            _lead_x = _CC56(name="Nope Never", email="no@optout.com",
+                            company="OptOut", score=99, status="new",
+                            do_not_contact=True)
+            _edb6.add_all([_lead_a, _lead_b, _lead_x])
+            _edb6.commit()
+            # 3) TEST mode: plan + rendered sample to OUR inbox; leads untouched
+            _os56.environ["PULSE_OUTBOUND"] = "test"
+            _os56.environ["PULSE_OUTBOUND_ADDRESS"] = "BVTech LLC, San Antonio, TX 78205"
+            _r56b = _ob56.tick(_edb6, _hour56)
+            assert _r56b["ran"] is True and _r56b["mode"] == "test", _r56b
+            assert _r56b["eligible"] == 2, _r56b
+            assert _sent56 and _sent56[-1][0] == "jordan@bvtech.org", _sent56
+            _to56, _body56 = _sent56[-1][1], _sent56[-1][3]
+            assert all("leadco" not in a for a in _to56), "TEST mode emailed a lead!"
+            assert "TEST MODE" in _body56 and "quick question" in _body56
+            assert "San Antonio, TX 78205" in _body56 and "no@optout.com" not in _body56
+            _ourids56 = [_lead_a.id, _lead_b.id, _lead_x.id]
+            assert _edb6.query(_CA56).filter(
+                _CA56.contact_id.in_(_ourids56)).count() == 0, \
+                "test mode must not log lead sends"
+            # sender auto-defaulted from the connected mailbox
+            assert _ob56.get_config(_edb6)["sender"] == "jordan@bvtech.org"
+            # once per day, ever
+            _r56c = _ob56.tick(_edb6, _hour56)
+            assert _r56c["ran"] is False and _r56c["reason"] == "test_already_sent_today"
+            # 4) LIVE: business-hours gate, DNC excluded, capped, logged, idempotent
+            _os56.environ["PULSE_OUTBOUND"] = "live"
+            _early56 = _hour56.replace(hour=13)
+            assert _ob56.tick(_edb6, _early56)["reason"] == "outside_send_window"
+            _n56_before = len(_sent56)
+            _r56d = _ob56.tick(_edb6, _hour56)
+            assert _r56d["ran"] is True and _r56d["sent"] == 2, _r56d
+            _tos56 = {t[1][0] for t in _sent56[_n56_before:]}
+            assert _tos56 == {"pat@leadco-a.com", "sam@leadco-b.com"}, _tos56
+            assert all("STOP" in t[3] and "San Antonio, TX 78205" in t[3]
+                       for t in _sent56[_n56_before:]), "compliance footer missing"
+            _acts56 = (_edb6.query(_CA56)
+                       .filter(_CA56.contact_id.in_(_ourids56)).all())
+            assert len(_acts56) == 2 and all(
+                (a.meta or {}).get("campaign") == "bvtech_acq" for a in _acts56)
+            # same-day re-tick: both leads already touched today -> nothing new
+            _r56e = _ob56.tick(_edb6, _hour56)
+            assert _r56e.get("sent", 0) == 0, _r56e
+            assert len(_sent56) == _n56_before + 2
+        finally:
+            _ob56._GRAPH_FACTORY = _orig_gf56
+            for _k56 in ("PULSE_OUTBOUND", "PULSE_OUTBOUND_ADDRESS"):
+                _os56.environ.pop(_k56, None)
+            _edb6.close()
+        print("outbound engine WIRED: Graph transport from m365_mailbox creds + TEST mode "
+              "(self-inbox plan+sample, leads untouched, once/day) + LIVE mode (business "
+              "hours, DNC excluded, CAN-SPAM footer, CRM-logged, same-day idempotent) OK")
+
+    print("\n=== OpsPilot v1.56.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -249,6 +249,18 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         db.rollback()
 
+    # 13.565) v1.56 OUTBOUND acquisition engine — ramped cold-email touches to
+    #         scraped CRM leads over the M365 mailbox. Armed via the portal or
+    #         PULSE_OUTBOUND=test|live on the box; TEST emails the day's plan to
+    #         the shop's own inbox and never touches a lead. Daily counters and
+    #         stamps make the 2-minute tick harmless.
+    from . import outbound as outbound_eng
+    outb = {"ran": False}
+    try:
+        outb = outbound_eng.tick(db, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
     # 13.57) v1.40 FLOOD GUARD self-heal — collapse duplicate queued social
     #        drafts and sweep same-day duplicate posts off the live sites
     #        (hourly per site). Only while the autopilot is enabled, so the
@@ -289,4 +301,6 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
             "incidents_resolved": len(incidents_resolved),
             "content_autopilot": {k: v.get("ok") for k, v in
                                   (content.get("results") or {}).items()},
+            "outbound": {k: outb.get(k) for k in
+                         ("ran", "mode", "reason", "sent", "eligible") if k in outb},
             "jp_builds_checked": len(jp_verified)}

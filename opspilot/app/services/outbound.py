@@ -128,6 +128,7 @@ def get_config(db: Session) -> dict:
         "physical_address": raw.get("physical_address") or "",  # CAN-SPAM: required
         "started_on": raw.get("started_on") or "",    # ISO date the ramp began
         "last": raw.get("last") or {},                # {date: sent_count}
+        "test_sent_on": raw.get("test_sent_on") or "",  # last self-test date (v1.56)
     }
 
 
@@ -290,3 +291,177 @@ def run_daily(db: Session, send_fn, now: datetime | None = None, *,
             "cap": cap, "already_sent_today": already, "remaining": remaining,
             "eligible": len(due), "sent": sent, "failed": failed,
             "plan": plan[:50], "errors": errors[:10]}
+
+
+# --------------------------------------------------------------------------- #
+# v1.56 TRANSPORT + HEARTBEAT GLUE — the engine above was fully built (ramp,
+# sequence, compliance) but nothing ever CALLED it and no mail transport was
+# wired in, so not one email had actually gone out. This closes the loop:
+#   * resolve_send_fn — M365 Graph via the m365_mailbox credentials the box
+#     already loads from env (client_id/client_secret/tenant_id/mailbox),
+#     falling back to SMTP; None when neither is configured.
+#   * tick — the heartbeat entrypoint. Armed by the portal config OR the box
+#     env: PULSE_OUTBOUND=test|live.  TEST emails the day's would-be batch and
+#     a full rendered sample to the shop's own inbox — no lead is ever touched.
+#     LIVE runs the real ramped daily batch inside business hours (9am-6pm CT).
+# --------------------------------------------------------------------------- #
+def _graph_factory(tenant: str, client_id: str, client_secret: str):
+    from .m365 import GraphClient
+    return GraphClient(tenant, client_id, client_secret)
+
+
+_GRAPH_FACTORY = _graph_factory   # test seam
+
+
+def resolve_send_fn(db: Session):
+    """(send_fn, detail). Prefers the M365 Graph mailbox, then SMTP; (None,
+    why) when no transport is configured. Never raises."""
+    conn = secure_config.get_platform(db, "m365_mailbox")
+    cfg = dict((conn.config if conn else None) or {})
+    tenant = secure_config.get_secret(cfg, "tenant_id") or cfg.get("tenant_id") or ""
+    client_id = secure_config.get_secret(cfg, "client_id") or cfg.get("client_id") or ""
+    client_secret = secure_config.get_secret(cfg, "client_secret") or ""
+    mailbox = (cfg.get("mailbox") or "").strip()
+    if tenant and client_id and client_secret and mailbox:
+        graph = _GRAPH_FACTORY(str(tenant), str(client_id), str(client_secret))
+
+        def _send_graph(to: str, subject: str, body: str) -> None:
+            graph.send_mail(mailbox, [to], subject, body)
+
+        return _send_graph, f"M365 Graph as {mailbox}"
+    from ..core.config import get_settings
+    if get_settings().email_enabled:
+        from . import email as email_svc
+
+        def _send_smtp(to: str, subject: str, body: str) -> None:
+            if not email_svc.send(to, subject, body):
+                raise RuntimeError("SMTP send failed")
+
+        return _send_smtp, "SMTP"
+    return None, ("no email transport — connect the M365 mailbox (Settings → "
+                  "Mailbox) or set SMTP_HOST")
+
+
+def _env_mode() -> str:
+    import os
+    return (os.environ.get("PULSE_OUTBOUND") or "off").strip().lower()
+
+
+def _apply_env_defaults(db: Session, cfg: dict) -> dict:
+    """Box .env can fully configure the program — sender defaults to the
+    connected M365 mailbox, address/target from PULSE_OUTBOUND_* vars."""
+    import os
+    updates: dict = {}
+    if not cfg["sender"]:
+        conn = secure_config.get_platform(db, "m365_mailbox")
+        mcfg = dict((conn.config if conn else None) or {})
+        sender = (os.environ.get("PULSE_OUTBOUND_SENDER")
+                  or mcfg.get("mailbox") or "").strip()
+        if sender:
+            updates["sender"] = sender
+    if not cfg["physical_address"] and os.environ.get("PULSE_OUTBOUND_ADDRESS"):
+        updates["physical_address"] = os.environ["PULSE_OUTBOUND_ADDRESS"].strip()
+    if os.environ.get("PULSE_OUTBOUND_TARGET"):
+        try:
+            updates["target"] = int(os.environ["PULSE_OUTBOUND_TARGET"])
+        except ValueError:
+            pass
+    return save_config(db, **updates) if updates else cfg
+
+
+def _notify(db: Session, severity: str, message: str) -> None:
+    try:
+        from ..models import Notification
+        db.add(Notification(client_id=None, target_user_id=None, kind="content",
+                            severity=severity, message=message[:1000]))
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
+
+def _self_test(db: Session, send_fn, transport: str, cfg: dict,
+               now: datetime) -> dict:
+    """TEST mode: email the day's would-be batch + a fully rendered sample to
+    the shop's own inbox, once per day. No lead is ever emailed."""
+    from ..core.config import get_settings
+    today = _today(now)
+    if cfg.get("test_sent_on") == today:
+        return {"ran": False, "mode": "test", "reason": "test_already_sent_today"}
+    if not cfg["sender"] or not cfg["physical_address"]:
+        _notify(db, "warning",
+                "📧 Outbound is in TEST mode but not configured yet — set the "
+                "sender and the CAN-SPAM physical mailing address "
+                "(PULSE_OUTBOUND_ADDRESS in the box .env, or Campaigns → "
+                "Outbound config). No emails sent.")
+        return {"ran": False, "mode": "test", "reason": "not_configured"}
+    plan = run_daily(db, send_fn, now, force=True, dry_run=True)
+    lines = [f"  {i+1}. {p['email']}  (step {p['step'] + 1}/3)  —  {p['subject']}"
+             for i, p in enumerate(plan.get("plan") or [])][:15]
+    sample_subject, sample_body = render(
+        0, type("C", (), {"name": "Alex Carter", "company": "Carter & Co"})(),
+        cfg["sender"], cfg["physical_address"])
+    inbox = get_settings().SUPPORT_EMAIL
+    body = (
+        "PULSE OUTBOUND — TEST MODE (no leads were emailed)\n"
+        "==================================================\n\n"
+        f"Transport: {transport}\n"
+        f"Eligible leads today: {plan.get('eligible', 0)} "
+        f"(day-{plan.get('day_index', 0)} warm-up cap: {plan.get('cap', 0)})\n\n"
+        "Today's would-be batch:\n" + ("\n".join(lines) or "  (none eligible yet — "
+        "scrape leads in Growth → Prospecting)") + "\n\n"
+        "----- SAMPLE EMAIL (touch 1 of 3, exactly as a lead would get it) -----\n\n"
+        f"Subject: {sample_subject}\n\n{sample_body}\n\n"
+        "-----------------------------------------------------------------------\n"
+        "Happy with it? Set PULSE_OUTBOUND=live in the box .env (or enable in "
+        "the portal) and the ramp starts at 20/day."
+    )
+    send_fn(inbox, f"[Pulse test] Outbound preview — {plan.get('eligible', 0)} "
+                   "leads ready, nothing sent", body)
+    save_config(db, test_sent_on=today)
+    _notify(db, "info",
+            f"📧 Outbound TEST email sent to {inbox}: {plan.get('eligible', 0)} "
+            "leads eligible, full sample included. Flip PULSE_OUTBOUND=live to "
+            "start the warm-up ramp (20/day, business hours).")
+    return {"ran": True, "mode": "test", "test_sent_to": inbox,
+            "eligible": plan.get("eligible", 0), "transport": transport}
+
+
+def tick(db: Session, now: datetime | None = None) -> dict:
+    """Heartbeat entrypoint. Modes (PULSE_OUTBOUND env, or portal `enabled`):
+    off → nothing; test → daily self-test email only; live → real ramped sends
+    inside business hours. Extra ticks are harmless (daily counters + stamps)."""
+    now = now or datetime.now(timezone.utc)
+    mode = _env_mode()
+    cfg = get_config(db)
+    if mode not in ("test", "live") and not cfg["enabled"]:
+        return {"ran": False, "reason": "off"}
+    cfg = _apply_env_defaults(db, cfg)
+    send_fn, transport = resolve_send_fn(db)
+    if send_fn is None:
+        return {"ran": False, "reason": "no_transport", "detail": transport}
+    if mode == "test" and not cfg["enabled"]:
+        return _self_test(db, send_fn, transport, cfg, now)
+    # LIVE — arm the portal flag once so counters/status all agree.
+    if not cfg["enabled"]:
+        cfg = save_config(db, enabled=True)
+    # Cold email lands (and reads) best in business hours: 9am-6pm Central.
+    if not (14 <= now.hour < 23):
+        return {"ran": False, "reason": "outside_send_window",
+                "detail": "sends run 9am-6pm Central"}
+    # cheap early-out so the 2-minute heartbeat isn't rescanning the CRM all day
+    already = int((cfg["last"] or {}).get(_today(now), 0))
+    started = cfg["started_on"] or _today(now)
+    try:
+        day_index = (now.date() - datetime.fromisoformat(started).date()).days
+    except ValueError:
+        day_index = 0
+    if already >= warmup_cap(day_index, cfg["target"]):
+        return {"ran": False, "reason": "daily_cap_reached", "sent_today": already}
+    out = run_daily(db, send_fn, now)
+    out["transport"] = transport
+    if out.get("sent") or out.get("failed"):
+        _notify(db, "info" if not out.get("failed") else "warning",
+                f"📬 Outbound: {out.get('sent', 0)} cold touch(es) sent today "
+                f"(cap {out.get('cap')}, ramp day {out.get('day_index')}, "
+                f"{out.get('failed', 0)} failed) via {transport}.")
+    return out
