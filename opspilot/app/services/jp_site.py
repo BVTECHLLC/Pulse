@@ -1869,9 +1869,53 @@ def verify_pending(db: Session, now: datetime | None = None,
                                 "status": "success"})
                 continue
             if status in ("failed", "canceled"):
+                # v1.55.5 SELF-HEAL: most failed builds here are the Cloudflare
+                # Pages/Workers deploy (the "external" job) hiccuping — NOT a bad
+                # commit. The old first-failure auto-revert threw away good
+                # content and kicked off yet another build. Now: push a no-op
+                # nudge commit to re-trigger the deploy and watch THAT build;
+                # only a second consecutive failure reverts the original commit.
+                if not p.get("nudged") and cfg.get("forge") != "github":
+                    nudge_sha = None
+                    try:
+                        exists = _fetch_file(cfg, ".pulse-build-nudge") is not None
+                        nudge = _HTTP("POST", f"{_proj_url(cfg)}/repository/commits",
+                                      cfg["token"], {
+                            "branch": cfg["branch"],
+                            "commit_message": ("ci: re-trigger deploy after failed "
+                                               "build (auto self-heal, via Pulse)"),
+                            "actions": [{"action": "update" if exists else "create",
+                                         "file_path": ".pulse-build-nudge",
+                                         "content": datetime.now(timezone.utc).isoformat()}],
+                        })
+                        nudge_sha = nudge.get("id")
+                    except Exception:  # noqa: BLE001
+                        nudge_sha = None
+                    if nudge_sha:
+                        keep.append({"sha": nudge_sha, "slug": p.get("slug"),
+                                     "orig_sha": p.get("orig_sha") or p["sha"],
+                                     "nudged": True, "checks": 0,
+                                     "at": datetime.now(timezone.utc).isoformat()})
+                        try:
+                            db.add(Notification(
+                                client_id=None, target_user_id=None, kind="content",
+                                severity="info",
+                                message=(f"⚙️ {meta['site']} build failed for "
+                                         f"'{p.get('slug')}' — auto-retrying the deploy "
+                                         "(build hiccups are usually transient). The "
+                                         "commit is reverted only if the retry also "
+                                         "fails.")[:1000]))
+                            db.commit()
+                        except Exception:  # noqa: BLE001
+                            db.rollback()
+                        results.append({"site": sk, "sha": p["sha"], "slug": p.get("slug"),
+                                        "status": "retrying", "nudge_sha": nudge_sha})
+                        continue
+                    # nudge push failed -> fall through to the revert path below
+                revert_sha = p.get("orig_sha") or p["sha"]
                 reverted = False
                 try:
-                    _HTTP("POST", f"{_proj_url(cfg)}/repository/commits/{p['sha']}/revert",
+                    _HTTP("POST", f"{_proj_url(cfg)}/repository/commits/{revert_sha}/revert",
                           cfg["token"], {"branch": cfg["branch"]})
                     reverted = True
                 except Exception:  # noqa: BLE001
@@ -1881,7 +1925,8 @@ def verify_pending(db: Session, now: datetime | None = None,
                         client_id=None, target_user_id=None, kind="content",
                         severity="warning",
                         message=(f"🛑 {meta['site']} deploy FAILED for '{p.get('slug')}' "
-                                 f"(commit {str(p['sha'])[:8]}). "
+                                 f"(commit {str(revert_sha)[:8]}) — twice in a row, so this "
+                                 "looks real, not transient. "
                                  f"{'Commit auto-reverted — the site stays on the last good build. ' if reverted else 'Auto-revert failed — revert manually. '}"
                                  f"Pulse will write a fresh post on the next daily run.")[:1000]))
                     db.commit()

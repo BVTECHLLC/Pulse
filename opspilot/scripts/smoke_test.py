@@ -2104,10 +2104,15 @@ def main():
             # JSON list — exactly what autopost.publish_due expects).
             q20 = {(tuple(p.channels or []), p.status) for p in _c20.query(_SP20).all()}
             assert (("linkedin",), "queued") in q20 and (("google_business",), "queued") in q20, q20
-            # JP build verification: failed Cloudflare pipeline -> auto-REVERT + notify.
+            # JP build verification, v1.55.5 SELF-HEAL: first failed Cloudflare
+            # build -> no-op nudge commit re-triggers the deploy (status
+            # "retrying", nothing reverted); a SECOND consecutive failure is
+            # treated as real -> the ORIGINAL commit auto-reverts + notify.
             ver20 = _jp20.verify_pending(_c20, now20)
-            assert ver20 and ver20[0]["status"] == "failed" and ver20[0]["reverted"] is True, ver20
-            assert _c20.query(_N20).filter(_N20.kind == "content").count() >= 1
+            assert ver20 and ver20[0]["status"] == "retrying" and ver20[0].get("nudge_sha"), ver20
+            ver20b = _jp20.verify_pending(_c20, now20)
+            assert ver20b and ver20b[0]["status"] == "failed" and ver20b[0]["reverted"] is True, ver20b
+            assert _c20.query(_N20).filter(_N20.kind == "content").count() >= 2
             # Failure path: break one channel -> notification + NOT marked done (retries).
             _sc20.upsert_platform(_c20, "content_autopilot", "Content Autopilot",
                                   "Publishing", {"enabled": True, "last": {}, "last_error": {}})
@@ -5885,7 +5890,7 @@ def main():
         print("tx-plants daily channel: opt-in (no-op until connected) + deterministic "
               "floor + sister-site/Scripture/remembrance interlinks + status row OK")
 
-    print("\n=== OpsPilot v1.55.4 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.55.5 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
