@@ -1,0 +1,206 @@
+<title>A Daily Note to Autumn — preview</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --ground:#f7f2ea; --card:#fbf7f1; --card-2:#f2e8da; --edge:#e6d9c6;
+    --ink:#433426; --ink-soft:#7b6350; --eyebrow:#a9865f;
+    --accent:#b3714f; --accent-soft:#c98b7a; --shadow:rgba(120,90,60,.15);
+    --code-bg:#efe6d8; --code-ink:#5c4a38;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --ground:#1b1713; --card:#2a241f; --card-2:#221d18; --edge:#3d342b;
+      --ink:#eaddcb; --ink-soft:#c9b49d; --eyebrow:#caa578;
+      --accent:#d59267; --accent-soft:#e0a985; --shadow:rgba(0,0,0,.45);
+      --code-bg:#211c18; --code-ink:#cdbca6;
+    }
+  }
+  :root[data-theme="light"]{
+    --ground:#f7f2ea; --card:#fbf7f1; --card-2:#f2e8da; --edge:#e6d9c6;
+    --ink:#433426; --ink-soft:#7b6350; --eyebrow:#a9865f; --accent:#b3714f;
+    --accent-soft:#c98b7a; --shadow:rgba(120,90,60,.15); --code-bg:#efe6d8; --code-ink:#5c4a38;
+  }
+  :root[data-theme="dark"]{
+    --ground:#1b1713; --card:#2a241f; --card-2:#221d18; --edge:#3d342b;
+    --ink:#eaddcb; --ink-soft:#c9b49d; --eyebrow:#caa578; --accent:#d59267;
+    --accent-soft:#e0a985; --shadow:rgba(0,0,0,.45); --code-bg:#211c18; --code-ink:#cdbca6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);
+    font-family:Georgia,'Iowan Old Style','Times New Roman',serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:660px;margin:0 auto;padding:3.2rem 1.2rem 4rem}
+  .masthead{text-align:center;margin-bottom:2.2rem}
+  .paw{font-size:1.6rem;color:var(--accent);opacity:.85}
+  h1{font-size:clamp(1.9rem,5vw,2.6rem);margin:.5rem 0 .3rem;font-weight:400;
+    letter-spacing:.01em;text-wrap:balance;color:var(--ink)}
+  .dedication{font-size:.95rem;color:var(--ink-soft);font-style:italic;margin:0}
+  .label{font-family:'Helvetica Neue',Arial,sans-serif;font-size:.72rem;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--eyebrow);
+    font-style:normal}
+
+  /* The note card — this is the widget itself */
+  .card{background:linear-gradient(180deg,var(--card),var(--card-2));
+    border:1px solid var(--edge);border-radius:20px;padding:2.1rem 1.8rem 1.7rem;
+    box-shadow:0 12px 34px var(--shadow);text-align:center;position:relative}
+  .card .eyebrow{margin-bottom:1rem}
+  .card .date{color:var(--ink-soft);text-transform:none;letter-spacing:.02em}
+  .note{font-size:1.28rem;line-height:1.72;margin:0 0 1.3rem;font-style:italic;
+    color:var(--ink);text-wrap:pretty;min-height:5.5em;
+    display:flex;align-items:center;justify-content:center}
+  .sign{color:var(--ink-soft);font-size:1.02rem}
+
+  /* Day scrubber */
+  .scrub{display:flex;align-items:center;justify-content:center;gap:.5rem;
+    margin:1.4rem 0 .4rem}
+  .scrub button{font:inherit;font-size:.95rem;background:var(--card);
+    color:var(--accent);border:1px solid var(--edge);border-radius:999px;
+    padding:.5rem 1.1rem;cursor:pointer;transition:transform .12s,background .2s}
+  .scrub button:hover{background:var(--card-2)}
+  .scrub button:active{transform:translateY(1px)}
+  .scrub button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .scrub .when{min-width:9.5rem;text-align:center;color:var(--ink-soft);
+    font-size:.92rem}
+  .hint{text-align:center;color:var(--ink-soft);font-size:.85rem;margin:.2rem 0 0;
+    font-style:italic}
+
+  .install{margin-top:3.2rem;border-top:1px solid var(--edge);padding-top:2rem}
+  .install h2{font-size:1.15rem;font-weight:400;color:var(--ink);margin:0 0 .3rem}
+  .install p{color:var(--ink-soft);font-size:.96rem;margin:.4rem 0}
+  .install ol{color:var(--ink-soft);font-size:.96rem;padding-left:1.2rem}
+  .install li{margin:.4rem 0}
+  code{background:var(--code-bg);color:var(--code-ink);padding:.12em .4em;
+    border-radius:5px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:.86em}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <div class="paw" aria-hidden="true">🐾</div>
+    <h1>A Daily Note to Autumn</h1>
+    <p class="dedication">Written by Jordan Polasek — one for every day, for the sweetest girl.</p>
+  </header>
+
+  <main class="card">
+    <div class="eyebrow label">A note to Autumn · <span class="date" id="date"></span></div>
+    <p class="note" id="note"></p>
+    <div class="sign">— Daddy misses you, sweet girl 🤎</div>
+  </main>
+
+  <div class="scrub" role="group" aria-label="Preview other days">
+    <button id="prev" aria-label="Previous day">◀</button>
+    <span class="when" id="when">Today</span>
+    <button id="next" aria-label="Next day">▶</button>
+  </div>
+  <p class="hint">Preview only — the live note changes on its own each day.</p>
+
+  <section class="install">
+    <h2>How it lives on autumnpolasek.com</h2>
+    <p>This is a self-updating widget — no server, no scheduled job, nothing that
+      can quietly break. The page itself chooses a different note every calendar
+      day and never repeats two days running.</p>
+    <ol>
+      <li>Open <code>memorial/daily-note-to-autumn.html</code> from the Pulse repo.</li>
+      <li>Paste the <code>&lt;div&gt;</code> + <code>&lt;style&gt;</code> + <code>&lt;script&gt;</code> block into the memorial page where you'd like the note to sit.</li>
+      <li>Re-upload the page to Cloudflare. That's the last time it needs a hand — it rotates by date from then on.</li>
+    </ol>
+    <p>Add or reword notes anytime by editing the <code>NOTES</code> list; the
+      rotation adjusts to the new count automatically.</p>
+  </section>
+</div>
+
+<script>
+  var NOTES = [
+    "Another morning without you, and the house is still too quiet where your tail used to thump against the floor. I miss you every single day.",
+    "I still catch myself listening for your paws on the hardwood. Some habits love doesn’t let go of. I love you, girl.",
+    "You made even the ordinary days feel like something. I’d give anything for one more ordinary day with you.",
+    "The spot by the window is still yours. It always will be. Miss you, sweet Autumn.",
+    "I hope wherever you are, the grass is soft, the sun is warm, and someone’s throwing the ball just the way you liked.",
+    "Every good thing I do today, I’m doing it a little bit for you too. You made me better just by being here.",
+    "I keep a picture of you close. On the hard days it’s the first thing that makes me smile. Thank you for that, even now.",
+    "You never needed words to tell me it was going to be okay. I could use that look of yours today, girl.",
+    "The goofy way you tilted your head — I’d trade a lot to see it one more time. Miss you more than I can say.",
+    "You were the best part of coming home. The door still feels a little heavier without you behind it.",
+    "I planted something in the yard where you loved to lie in the sun. A little life, growing in your spot. That’s for you.",
+    "Grief is just love with nowhere to go. So I’m sending it up to you today. Rest easy, sweet girl.",
+    "You taught me patience, loyalty, and how to be happy over the small stuff. I’m still learning from you.",
+    "Some nights I swear I feel you curl up at the foot of the bed. I hope that’s you saying hello.",
+    "There’s a kind of quiet that only your presence could fill. I’m sitting in it today and missing you fiercely.",
+    "You loved me on my worst days like they were my best. I hope you knew you were loved the same way.",
+    "The world lost a lot of joy the day it lost you. But I got to keep all the joy you gave me. Thank you, Autumn.",
+    "I’d walk that trail with you a thousand more times if I could — you leading, me laughing, both of us in no hurry.",
+    "You were only a dog to people who never met you. To me you were family, and family you’ll stay.",
+    "Every sunrise I get, I think of yours. You greeted each one like it was a gift. I’m trying to do the same, for you.",
+    "The house is clean of fur now and I hate it. I’d take the mess back in a heartbeat if it meant taking you back too.",
+    "You had a way of leaning your whole weight against me when I needed it most. I’m leaning on the memory of that today.",
+    "I hope there are puddles to splash in and squirrels that let you win once in a while. You earned that, girl.",
+    "Loving you was the easiest thing I’ve ever done. Missing you is the hardest. Both are worth it.",
+    "I still say goodnight to you. Old habits, good habits. Sleep well, my sweet Autumn.",
+    "You made a home out of wherever I was. I’m still learning how to make one without you in it.",
+    "Thank you for every tail wag, every warm sigh, every time you chose to be near me. It was everything.",
+    "There are days the missing sneaks up on me — a song, a smell, an empty leash by the door. Today’s one of those. I love you.",
+    "You never held a grudge, never stayed mad, never gave up on me. Be a little bit more like Autumn — that’s my goal today.",
+    "The ball’s still in the yard. I can’t bring myself to move it. It’s yours. It’s always yours.",
+    "I hope you’ve made friends up there, and that they know how lucky they are to run beside you.",
+    "You were with me through seasons of my life that no one else saw. You carried more of me than you’ll ever know. Thank you, girl.",
+    "Some love doesn’t end, it just changes address. Yours moved into my heart for good. Miss you, Autumn.",
+    "I’d give up a lot of tomorrows for one more of your yesterdays. But I’m grateful for every one I got.",
+    "You made being still feel like enough. I’m trying to remember that on the busy days. That one’s from you.",
+    "The vet, the drives, the waiting rooms — you were brave through all of it. Braver than me. I’m so proud of you.",
+    "I hope the last thing you felt was how deeply you were loved. Because you were. You are. You always will be.",
+    "Your name still lives in this house, in this yard, in me. Nothing’s taking that. Miss you, sweet girl.",
+    "You didn’t just fill a room, you warmed it. Everywhere feels a few degrees colder now. I love you.",
+    "I found one of your favorite toys today. Sat with it a while. Talked to you a little. I think you heard me.",
+    "If loyalty had a shape, it’d have four paws and a goofy grin and it’d look exactly like you.",
+    "The mornings are when I miss you most — that was our time. I’m keeping the ritual, even solo. For you.",
+    "You never asked for much. A walk, a meal, a hand on your head. I’d give it all again, tenfold, in a heartbeat.",
+    "Thank you for choosing me, girl. Out of all the people in all the world, you spent your whole life loving me.",
+    "There’s an Autumn-shaped space in every day that nothing else fits into. I’ve stopped trying to fill it. It’s yours.",
+    "I hope you’re running full-speed with your ears back and not a care in the world. That’s how I picture you. That’s my peace.",
+    "You were the good in a lot of my hard days. I hope I was even half the good in yours.",
+    "Rain on the window makes me think of you curled up safe inside with me. Safe and warm and mine. Miss you.",
+    "I still reach down to pet you sometimes before I remember. My hand knows what my head is still learning.",
+    "You gave me years of the purest company I’ve ever known. No conditions, no distance, just love. Thank you, Autumn.",
+    "Whatever heaven is, I hope it’s got a sunny porch and a screen door that’s always open for you.",
+    "I’m carrying you with me today — into every room, down every road. You’re not behind me, you’re beside me.",
+    "The quiet still surprises me. Then I remember, and I let myself miss you. It’s okay. Love’s supposed to leave a mark.",
+    "You were a very good girl. The best girl. I hope you heard me say it enough. I’ll keep saying it anyway.",
+    "One day I’ll see that goofy grin come bounding toward me again. Until then, I’ll hold the line, girl. Wait for me.",
+    "I’m grateful for the vet team who loved you gently at the end, and for every ordinary day we got before it. Miss you, Autumn.",
+    "You turned a house into our home and a man into someone worth your love. I’m still trying to live up to it.",
+    "Some days I talk to you out loud. Feels less crazy than pretending you’re not still listening. Hey, girl. I miss you.",
+    "The sun came up again today, sweet Autumn. I thought of you the moment it did. I always will.",
+    "There’s no bottom to how much I miss you, and no end to how grateful I am you were mine. Rest easy, my girl."
+  ];
+
+  function gcd(a, b){ while (b){ var t = b; b = a % b; a = t; } return a; }
+  function noteFor(dayNumber){
+    var n = NOTES.length;
+    var step = Math.floor(n * 0.618) || 1;
+    while (step > 1 && gcd(step, n) !== 1) step--;
+    return NOTES[((dayNumber * step) % n + n) % n];
+  }
+  function daysOf(date){
+    return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000);
+  }
+
+  var offset = 0;
+  var todayDays = daysOf(new Date());
+  var noteEl = document.getElementById('note');
+  var dateEl = document.getElementById('date');
+  var whenEl = document.getElementById('when');
+
+  function render(){
+    var d = new Date();
+    d.setDate(d.getDate() + offset);
+    dateEl.textContent = d.toLocaleDateString(undefined, {month:'long', day:'numeric', year:'numeric'});
+    noteEl.textContent = noteFor(todayDays + offset);
+    whenEl.textContent = offset === 0 ? 'Today'
+      : offset === 1 ? 'Tomorrow'
+      : offset === -1 ? 'Yesterday'
+      : (offset > 0 ? '+' + offset + ' days' : offset + ' days');
+  }
+  document.getElementById('prev').addEventListener('click', function(){ offset--; render(); });
+  document.getElementById('next').addEventListener('click', function(){ offset++; render(); });
+  render();
+</script>
