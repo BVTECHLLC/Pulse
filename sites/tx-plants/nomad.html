@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project NOMAD — Keep Your Garden &amp; Survival Knowledge Offline | Texas Roots</title>
+<meta name="description" content="Why I keep Wikipedia, survival and medical guides, maps, and a private AI on a local offline server at home — and how Project NOMAD lets anyone do it free. A resilience companion to the Texas Roots survival garden, by Jordan Polasek.">
+<meta name="author" content="Jordan Polasek">
+<link rel="canonical" href="https://tx-plants.com/nomad">
+<meta property="og:title" content="Project NOMAD — Knowledge That Never Goes Offline">
+<meta property="og:description" content="A seed bank and a knowledge bank are the same idea. How I keep my survival and gardening library working with no internet.">
+<meta property="og:type" content="article"><meta property="og:url" content="https://tx-plants.com/nomad">
+<meta property="og:image" content="https://tx-plants.com/assets/img/tunnel-night.jpg">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16.png">
+<link rel="apple-touch-icon" href="assets/favicon/apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
+<meta name="theme-color" content="#1B2B22">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,900;1,9..144,400;1,9..144,500&family=Spline+Sans:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+<style>
+.nm-hero{background:linear-gradient(135deg,#0F1813,#1B2B22);color:var(--paper);padding:96px 0 80px;position:relative;overflow:hidden}
+.nm-hero::before{content:"";position:absolute;inset:0;opacity:.06;background-image:radial-gradient(circle at 1px 1px,#7CB342 1px,transparent 0);background-size:26px 26px}
+.nm-hero .wrap{position:relative;z-index:2;max-width:62ch}
+.nm-hero .eyebrow{color:var(--gold)}
+.nm-hero h1{font-size:clamp(2.4rem,5.5vw,4rem);line-height:1.03;margin-bottom:20px}
+.nm-hero h1 em{font-style:italic;color:var(--sprout-bright);font-weight:500}
+.nm-hero .lede{color:rgba(243,238,226,.86);font-size:1.22rem;line-height:1.62;margin-bottom:30px}
+.nm-hero .btns{display:flex;gap:14px;flex-wrap:wrap}
+.nm-hero .btn-primary{background:var(--sprout-bright);color:#10211a}
+.nm-hero .btn-primary:hover{background:var(--paper)}
+.nm-hero .btn-ghost{color:var(--paper);border-color:rgba(243,238,226,.5)}
+.nm-hero .btn-ghost:hover{background:rgba(243,238,226,.1)}
+.nm-body{padding:80px 0}
+.nm-layout{display:grid;grid-template-columns:1fr 300px;gap:60px;align-items:start}
+.nm-prose h2{font-size:clamp(1.7rem,3vw,2.3rem);margin:46px 0 16px;line-height:1.12}
+.nm-prose h2:first-child{margin-top:0}
+.nm-prose h3{font-size:1.3rem;margin:30px 0 10px}
+.nm-prose p{font-size:1.1rem;color:var(--ink-soft);line-height:1.78;margin-bottom:20px}
+.nm-prose p strong{color:var(--ink)}
+.nm-prose a{color:var(--sprout);font-weight:600;text-decoration:none;border-bottom:1px solid var(--line)}
+.nm-prose a:hover{border-color:var(--sprout)}
+.nm-prose .lead{font-family:'Fraunces',serif;font-size:1.5rem;line-height:1.42;color:var(--ink);font-weight:500;margin-bottom:28px}
+.nm-feat{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:32px 0}
+.nm-feat .cell{background:var(--paper-card);padding:24px}
+.nm-feat .cell h4{font-size:1.15rem;margin-bottom:7px;display:flex;align-items:center;gap:9px}
+.nm-feat .cell .ic{width:24px;height:24px;color:var(--sprout);flex:none}
+.nm-feat .cell p{font-size:.97rem;margin:0;color:var(--ink-soft);line-height:1.6}
+.nm-quote{border-left:3px solid var(--sprout);background:var(--paper-warm);padding:22px 28px;margin:30px 0;font-family:'Fraunces',serif;font-size:1.35rem;font-style:italic;color:var(--ink);border-radius:0 6px 6px 0;line-height:1.45}
+.nm-steps{counter-reset:s;margin:30px 0}
+.nm-steps .st{display:grid;grid-template-columns:48px 1fr;gap:18px;padding:20px 0;border-bottom:1px solid var(--line)}
+.nm-steps .st .n{font-family:'Fraunces',serif;font-weight:900;font-size:1.9rem;color:var(--sprout);line-height:1}
+.nm-steps .st h4{font-size:1.2rem;margin-bottom:6px}
+.nm-steps .st p{margin:0;font-size:1rem}
+.nm-disc{background:var(--paper-warm);border:1px dashed var(--line);border-radius:6px;padding:18px 22px;margin:30px 0;font-size:.95rem;color:var(--ink-faint);line-height:1.6}
+.nm-side .card{background:var(--ink);color:var(--paper);border-radius:8px;padding:26px;position:sticky;top:90px}
+.nm-side .card h4{color:var(--gold);font-family:'Spline Sans Mono',monospace;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px}
+.nm-side .card p{color:rgba(243,238,226,.82);font-size:.96rem;line-height:1.6;margin-bottom:18px}
+.nm-side .card .btn{width:100%;justify-content:center;margin-bottom:10px}
+.nm-side .card .btn-light{background:var(--sprout-bright);color:#10211a}
+.nm-side .card .btn-light:hover{background:var(--paper)}
+.nm-side .card .ghost{display:block;text-align:center;color:var(--sprout-bright);font-size:.9rem;text-decoration:none;font-weight:600}
+.nm-side .related{background:var(--paper-warm);border:1px solid var(--line);border-radius:8px;padding:22px;margin-top:18px}
+.nm-side .related h4{font-family:'Spline Sans Mono',monospace;font-size:.72rem;letter-spacing:.07em;text-transform:uppercase;color:var(--clay);margin-bottom:12px}
+.nm-side .related a{display:block;color:var(--ink-soft);text-decoration:none;font-size:.94rem;padding:8px 0;border-bottom:1px solid var(--line)}
+.nm-side .related a:last-child{border-bottom:0}.nm-side .related a:hover{color:var(--sprout)}
+@media(max-width:900px){.nm-layout{grid-template-columns:1fr;gap:36px}.nm-feat{grid-template-columns:1fr}.nm-side .card{position:static}}
+</style>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Article", "headline": "Project NOMAD: Keep Your Garden & Survival Knowledge Offline", "description": "Why I keep a copy of Wikipedia, survival guides, medical references, maps, and a private AI on a local server at home \u2014 and how Project NOMAD lets anyone do it for free.", "author": {"@type": "Person", "name": "Jordan Polasek", "url": "https://jordanpolasek.com"}, "publisher": {"@type": "Organization", "name": "Texas Roots", "url": "https://tx-plants.com"}, "mainEntityOfPage": "https://tx-plants.com/nomad", "inLanguage": "en-US"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Texas Roots", "item": "https://tx-plants.com/"}, {"@type": "ListItem", "position": 2, "name": "Go Offline \u2014 Project NOMAD", "item": "https://tx-plants.com/nomad"}]}</script>
+</head>
+<body><header class="nav"><div class="wrap nav-inner">
+  <a href="./" class="brand"><svg viewBox="0 0 40 40" fill="none"><path d="M20 36V16" stroke="#5C8A3A" stroke-width="2.4" stroke-linecap="round"/><path d="M20 22C20 14 12 10 6 11c-1 7 5 14 14 11Z" fill="#5C8A3A" fill-opacity="0.85"/><path d="M20 18C20 11 27 7 33 9c1 6-4 12-13 9Z" fill="#1B2B22"/><circle cx="20" cy="36" r="2.4" fill="#C99A3B"/></svg><span class="name">Texas <b>Roots</b></span></a>
+  <nav class="nav-links" id="navLinks"><a href="start-here">Start Here</a><a href="database/">Plant Database</a><a href="almanac/">Almanac</a><a href="blog/">Blog</a><a href="weather">Weather</a><a href="shop">Shop</a><a href="community/">Community</a><a href="order" class="nav-cta">Order Now</a></nav>
+  <button class="burger" id="burger" aria-label="Menu"><span></span><span></span><span></span></button>
+</div></header><section class="nm-hero"><div class="wrap">
+<div class="eyebrow">A companion to the garden · written by Jordan Polasek</div>
+<h1>The internet goes down. <em>Your library shouldn't.</em></h1>
+<p class="lede">I built Texas Roots so the knowledge to feed yourself would be free and open to anyone. But a website only helps while you can reach it. So I keep a second copy of everything that matters — offline, at home, on hardware I own. Here's how, and how you can too.</p>
+<div class="btns">
+<a class="btn btn-primary" href="https://www.projectnomad.us" target="_blank" rel="noopener">Visit Project NOMAD →</a>
+<a class="btn btn-ghost" href="#how">How it works</a>
+</div>
+</div></section>
+<div class="wrap"><div class="nm-body"><div class="nm-layout">
+<article class="nm-prose">
+<p class="lead">A seed bank and a knowledge bank are the same idea. One stores the means to grow food; the other stores the means to know what to do with it. Both are only worth anything if they're there when you actually need them.</p>
+
+<p>Everything on this site — the <a href="database/">plant database</a>, the <a href="almanac/">almanac</a>, every how-to I've written — exists because I believe practical knowledge should be free and shared. But I'm also honest about a weakness in that plan: it all lives on the internet. A storm, an outage, a bad month, or just bad luck, and the exact moment you most need to know how to purify water, treat a wound, or get a survival garden in the ground is the moment you can't load a single page.</p>
+
+<p>That bothered me enough to do something about it. For a while now I've kept a small server running at the house that holds a copy of the references I'd never want to be without — and it keeps working whether or not the wider world does. The tool I landed on is <strong>Project NOMAD</strong>, a free, open-source project from <a href="https://crosstalksolutions.com" target="_blank" rel="noopener">Crosstalk Solutions</a>. I'm not affiliated with them and I don't earn anything by pointing you their way. I just think it's the right answer, and the right answer should be shared.</p>
+
+<h2 id="what">What Project NOMAD actually is</h2>
+<p>The name stands for <strong>Node for Offline Media, Archives, and Data</strong>. In plain terms: it's software you install on a regular computer that downloads the knowledge you choose while you're online, then keeps serving it up with no internet connection at all. Pull the plug and it doesn't notice. You browse it from your phone or laptop on your own home network like a private, offline internet.</p>
+
+<div class="nm-feat">
+<div class="cell"><h4><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5a2 2 0 012-2h6v16H6a2 2 0 00-2 2V5zM20 5a2 2 0 00-2-2h-6v16h6a2 2 0 012 2V5z" stroke-linejoin="round"/></svg>Offline knowledge</h4><p>The full Wikipedia, Project Gutenberg's library of books, medical references, and repair and survival guides — terabytes of it — stored locally and searchable.</p></div>
+<div class="cell"><h4><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4M9 12h.01M15 12h.01M9 16h6" stroke-linecap="round"/></svg>A private local AI</h4><p>An optional AI assistant that runs entirely on your own hardware. Nothing is sent to any cloud. Don't want it? Leave it out and everything else still works.</p></div>
+<div class="cell"><h4><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z" stroke-linejoin="round"/><path d="M9 4v14M15 6v14" stroke-linecap="round"/></svg>Offline maps</h4><p>Street-level maps of the whole world, or just your region, from OpenStreetMap — zoomable down to individual roads with no signal.</p></div>
+<div class="cell"><h4><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4L2 9l10 5 10-5-10-5z" stroke-linejoin="round"/><path d="M6 11v5c0 1 3 3 6 3s6-2 6-3v-5" stroke-linecap="round"/></svg>Education</h4><p>Khan Academy, full K–12 curriculum, and courses, so a family can keep learning anywhere, connected or not.</p></div>
+</div>
+
+<p>It's genuinely free and open source under the Apache 2.0 license. There are paid boxes out there that do a slice of this for a few hundred dollars and lock you to a tiny Raspberry Pi; NOMAD runs on whatever computer you point it at, which means it can run real AI on real hardware. I respect that they built it the open way.</p>
+
+<div class="nm-quote">"Knowledge that never goes offline" is a good motto for a survival garden, too. Save the seed, and save the manual.</div>
+
+<h2 id="why">Why a gardener should care</h2>
+<p>If you've spent any time on this site you already understand the mindset: grow open-pollinated heirlooms so you can <a href="almanac/how-to-clone-plants">save your own seed</a> and never depend on buying it again. Catch your own <a href="almanac/how-to-capture-rainwater">rainwater</a>. Build soil instead of buying it. Keep the <a href="almanac/how-to-grow-a-survival-garden">survival garden</a> ready before you need it. Every one of those is the same instinct — take responsibility for your own resilience instead of assuming the supply chain will always be there.</p>
+
+<p>Offline knowledge is the missing piece. The seeds in your freezer are worthless if you've forgotten how to start them and can't look it up. A medical emergency in a long outage is exactly when you'd want a real medical reference at hand. The most prepared homestead in the world still benefits from a library that can't be switched off. That's the gap NOMAD fills, and it's why I think it belongs in the same conversation as compost and canning.</p>
+
+<h2 id="how">How I set mine up</h2>
+<div class="nm-steps">
+<div class="st"><div class="n">1</div><div><h4>Find a computer to dedicate</h4><p>An old desktop works to start. If you want the local AI to be genuinely useful, they recommend something with a decent processor, 32&nbsp;GB of RAM, a capable GPU, and a 1&nbsp;TB SSD — but you can begin small and grow into it.</p></div></div>
+<div class="st"><div class="n">2</div><div><h4>Run the installer</h4><p>On Ubuntu or Debian Linux it's two commands and the installer handles the rest — Docker, dependencies, everything. Windows folks can run it through WSL2. It really is close to a 60-second setup.</p></div></div>
+<div class="st"><div class="n">3</div><div><h4>Download the content you want</h4><p>A setup wizard lets you pick your libraries — Wikipedia, medical, maps for your region, Khan Academy, and so on. Grab what matters to you while you've got a connection.</p></div></div>
+<div class="st"><div class="n">4</div><div><h4>Pull the plug and test it</h4><p>Disconnect from the internet and browse it anyway. That's the whole point: proving to yourself it works when it has to, before the day it has to.</p></div></div>
+</div>
+
+<p>The official site walks through every step far better than I can, with hardware guides, a benchmark leaderboard, and video tutorials. If this resonates, start there — and if you build one, I'd love to hear about it on the <a href="community/">community board</a>.</p>
+
+<p><a class="btn btn-primary" href="https://www.projectnomad.us" target="_blank" rel="noopener" style="margin-top:8px">Go to projectnomad.us →</a></p>
+
+<div class="nm-disc">A note on honesty, because it matters to me: Project NOMAD is built and maintained by Crosstalk Solutions, not by Texas Roots or by me. I'm sharing it because I use it and believe in it, not because of any arrangement — there isn't one. Always do your own homework before you rely on any tool for an emergency, and treat medical and safety references as a starting point, not a substitute for professional help when it's available.</div>
+</article>
+
+<aside class="nm-side">
+<div class="card">
+<h4>Get Project NOMAD</h4>
+<p>Free and open source. Run your own offline knowledge server on hardware you already own.</p>
+<a class="btn btn-light" href="https://www.projectnomad.us" target="_blank" rel="noopener">Visit projectnomad.us →</a>
+<a class="ghost" href="https://github.com/Crosstalk-Solutions/project-nomad" target="_blank" rel="noopener">See it on GitHub</a>
+</div>
+<div class="related">
+<h4>Build your resilience</h4>
+<a href="almanac/how-to-grow-a-survival-garden">Grow a survival garden →</a>
+<a href="almanac/how-to-clone-plants">Save &amp; clone your plants →</a>
+<a href="almanac/how-to-capture-rainwater">Capture rainwater →</a>
+<a href="almanac/food-preservation-basics">Preserve your harvest →</a>
+<a href="database/#survival">Browse survival crops →</a>
+</div>
+</aside>
+</div></div></div>
+<footer><div class="wrap">
+  <div class="foot-grid">
+    <div class="foot-brand"><a href="./" class="brand"><svg viewBox="0 0 40 40" fill="none"><path d="M20 36V16" stroke="#7CB342" stroke-width="2.4" stroke-linecap="round"/><path d="M20 22C20 14 12 10 6 11c-1 7 5 14 14 11Z" fill="#7CB342" fill-opacity="0.85"/><path d="M20 18C20 11 27 7 33 9c1 6-4 12-13 9Z" fill="#EAE2CF"/><circle cx="20" cy="36" r="2.4" fill="#C99A3B"/></svg><span class="name" style="color:#F3EEE2">Texas <b style="color:#7CB342">Roots</b></span></a><p>Heirloom seeds &amp; rooted cuttings, grown and mailed by hand from El Campo, Texas. A free knowledge base for growers everywhere. Founded &amp; built by Jordan Polasek.</p></div>
+    <div class="foot-col"><h4>Explore</h4><a href="database/">Plant database</a><a href="almanac/">All articles</a><a href="weather">Garden weather</a><a href="database/identify">Identify a plant</a></div>
+    <div class="foot-col"><h4>Texas Roots</h4><a href="shop">Shop</a><a href="community/">Community garden</a><a href="stand">The stand</a><a href="about">Our story</a></div>
+    <div class="foot-col"><h4>More</h4><a href="faq">FAQ</a><a href="nomad">Go offline</a><a href="https://jordanpolasek.com">JordanPolasek.com</a><a href="https://bvtech.org">BVTech.org</a><a href="https://autumnpolasek.com">In Remembrance of Autumn 🐾</a></div>
+  </div>
+  <div class="foot-scripture" style="text-align:center;color:rgba(243,238,226,.55);font-style:italic;padding:0 0 18px;font-size:.9rem">&ldquo;So neither he who plants nor he who waters is anything, but only God, who gives the growth.&rdquo; &mdash; 1 Corinthians 3:7</div><div class="foot-bottom"><span>© <span id="yr"></span> Texas Roots · El Campo, TX · tx-plants.com</span><span>Written &amp; built by <a href="https://jordanpolasek.com">Jordan Polasek</a></span></div>
+</div></footer>
+<script>document.getElementById('yr').textContent=new Date().getFullYear();const burger=document.getElementById('burger'),navLinks=document.getElementById('navLinks');burger.addEventListener('click',()=>navLinks.classList.toggle('open'));navLinks.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>navLinks.classList.remove('open')));const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}}),{threshold:.12});document.querySelectorAll('.reveal').forEach(el=>io.observe(el));</script>
+</body></html>

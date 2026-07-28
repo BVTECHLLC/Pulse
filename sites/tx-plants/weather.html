@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Garden Weather — Current Conditions &amp; 7-Day Forecast | Texas Roots</title>
+<meta name="description" content="A free, live weather tool for growers: current conditions and an accurate 7-day forecast, with frost and heat alerts that tell you when to plant, cover, and water. By Jordan Polasek, Texas Roots.">
+<meta name="author" content="Jordan Polasek">
+<link rel="canonical" href="https://tx-plants.com/weather">
+<meta property="og:title" content="Live Garden Weather — Texas Roots">
+<meta property="og:description" content="Current conditions and a 7-day forecast built for growers, with frost &amp; heat planting alerts. Free from Texas Roots.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://tx-plants.com/weather">
+<meta property="og:image" content="https://tx-plants.com/assets/img/tunnel-golden.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16.png">
+<link rel="apple-touch-icon" href="assets/favicon/apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
+<meta name="theme-color" content="#1B2B22">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,900;1,9..144,400;1,9..144,500&family=Spline+Sans:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebApplication","name":"Texas Roots Garden Weather","applicationCategory":"Utility","operatingSystem":"Web","url":"https://tx-plants.com/weather","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"A free live weather tool for gardeners: current conditions and a 7-day forecast with frost and heat planting alerts.","author":{"@type":"Person","name":"Jordan Polasek","url":"https://jordanpolasek.com"},"publisher":{"@type":"Organization","name":"Texas Roots","url":"https://tx-plants.com"}}
+</script>
+<style>
+:root{--sky1:#68a3c4;--sky2:#3f6f8f}
+.wx-hero{background:var(--ink);color:var(--paper);padding:60px 0 40px;position:relative;overflow:hidden}
+.wx-hero::after{content:"";position:absolute;inset:0;background:url(assets/img/tunnel-golden.jpg) center/cover;opacity:.12}
+.wx-hero .wrap{position:relative;z-index:2}
+.wx-hero .eyebrow{color:var(--gold)}
+.wx-hero h1{font-size:clamp(2.1rem,4.5vw,3.4rem);margin-bottom:12px;line-height:1.05}
+.wx-hero h1 em{color:var(--sprout-bright);font-style:italic}
+.wx-hero p{color:rgba(243,238,226,.85);font-size:1.1rem;max-width:60ch;line-height:1.6}
+.wx-locbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:22px}
+.wx-loc{display:flex;align-items:center;gap:9px;font-family:'Spline Sans Mono',monospace;font-size:.92rem;color:rgba(243,238,226,.9)}
+.wx-loc .pin{color:var(--gold)}
+.wx-btn{display:inline-flex;align-items:center;gap:8px;background:rgba(243,238,226,.12);border:1px solid rgba(243,238,226,.3);color:var(--paper);padding:9px 16px;border-radius:3px;font-family:'Spline Sans Mono',monospace;font-size:.82rem;letter-spacing:.03em;text-transform:uppercase;cursor:pointer;transition:all .2s}
+.wx-btn:hover{background:var(--sprout);border-color:var(--sprout)}
+.wx-search{display:flex;gap:8px;flex:1;min-width:220px;max-width:380px}
+.wx-search input{flex:1;padding:9px 14px;border:1px solid rgba(243,238,226,.3);border-radius:3px;background:rgba(243,238,226,.1);color:var(--paper);font-family:inherit;font-size:.92rem}
+.wx-search input::placeholder{color:rgba(243,238,226,.5)}
+.wx-search input:focus{outline:none;border-color:var(--sprout-bright);background:rgba(243,238,226,.16)}
+
+.wx-wrap{padding:40px 0 80px}
+.wx-loading,.wx-error{text-align:center;padding:80px 20px;color:var(--ink-faint)}
+.wx-error{display:none}
+.wx-spinner{width:44px;height:44px;border:3px solid var(--line);border-top-color:var(--sprout);border-radius:50%;margin:0 auto 18px;animation:wxspin 1s linear infinite}
+@keyframes wxspin{to{transform:rotate(360deg)}}
+.wx-content{display:none}
+
+/* current card */
+.wx-now{display:grid;grid-template-columns:1.1fr 1fr;gap:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:18px;box-shadow:6px 8px 0 var(--shadow)}
+.wx-now-main{background:linear-gradient(150deg,var(--sky1),var(--sky2));color:#fff;padding:34px 36px;position:relative;overflow:hidden;min-height:230px}
+.wx-now-main.night{background:linear-gradient(150deg,#2a3b54,#16202e)}
+.wx-now-main .label{font-family:'Spline Sans Mono',monospace;font-size:.74rem;letter-spacing:.1em;text-transform:uppercase;opacity:.85;margin-bottom:6px}
+.wx-now-main .temp{font-family:'Fraunces',serif;font-size:5rem;font-weight:600;line-height:1;letter-spacing:-.02em}
+.wx-now-main .temp sup{font-size:2rem;vertical-align:super;opacity:.8}
+.wx-now-main .cond{font-size:1.25rem;margin-top:6px;font-weight:500}
+.wx-now-main .feels{opacity:.85;margin-top:4px;font-size:.95rem}
+.wx-now-art{position:absolute;top:24px;right:28px;width:96px;height:96px}
+.wx-now-meta{background:var(--paper-card);padding:30px 32px;display:grid;grid-template-columns:1fr 1fr;gap:1px;align-self:stretch}
+.wx-metacell{padding:14px 6px}
+.wx-metacell .k{font-family:'Spline Sans Mono',monospace;font-size:.66rem;letter-spacing:.06em;text-transform:uppercase;color:var(--clay);margin-bottom:5px}
+.wx-metacell .v{font-size:1.5rem;font-family:'Fraunces',serif;color:var(--ink)}
+.wx-metacell .v small{font-size:.9rem;color:var(--ink-faint);font-family:'Spline Sans',sans-serif}
+
+/* garden alert */
+.wx-alert{border-radius:10px;padding:18px 22px;margin-bottom:24px;display:flex;gap:14px;align-items:flex-start;font-size:1rem;line-height:1.5}
+.wx-alert .ico{font-size:1.5rem;flex:none;line-height:1.2}
+.wx-alert.frost{background:rgba(104,163,196,.14);border:1px solid var(--sky1);color:var(--ink-soft)}
+.wx-alert.heat{background:rgba(181,85,47,.1);border:1px solid var(--clay);color:var(--ink-soft)}
+.wx-alert.good{background:rgba(124,179,66,.13);border:1px solid var(--sprout);color:var(--ink-soft)}
+.wx-alert.wet{background:rgba(90,107,114,.1);border:1px solid var(--slate,#5a6b72);color:var(--ink-soft)}
+.wx-alert b{color:var(--ink);font-family:'Fraunces',serif}
+.wx-alerts-stack{display:flex;flex-direction:column;gap:10px;margin-bottom:24px}
+
+/* 7-day */
+.wx-7-head{display:flex;align-items:center;justify-content:space-between;margin:10px 0 16px}
+.wx-7-head h2{font-size:1.5rem}
+.wx-7-head .note{font-family:'Spline Sans Mono',monospace;font-size:.74rem;color:var(--ink-faint)}
+.wx-7{display:grid;grid-template-columns:repeat(7,1fr);gap:12px}
+.wx-day{background:var(--paper-card);border:1px solid var(--line);border-radius:10px;padding:16px 10px;text-align:center;transition:transform .2s,box-shadow .2s}
+.wx-day:hover{transform:translateY(-4px);box-shadow:4px 6px 0 var(--shadow)}
+.wx-day.today{border-color:var(--sprout);border-width:2px}
+.wx-day .dow{font-family:'Spline Sans Mono',monospace;font-size:.74rem;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:2px}
+.wx-day .dom{font-size:.72rem;color:var(--ink-faint);margin-bottom:10px}
+.wx-day .ico{width:48px;height:48px;margin:0 auto 10px}
+.wx-day .hi{font-family:'Fraunces',serif;font-size:1.4rem;color:var(--ink);line-height:1}
+.wx-day .lo{font-size:.95rem;color:var(--ink-faint);margin-top:2px}
+.wx-day .pop{margin-top:8px;font-family:'Spline Sans Mono',monospace;font-size:.72rem;color:var(--sky2);display:flex;align-items:center;justify-content:center;gap:3px}
+.wx-day .pop.dry{color:var(--ink-faint);opacity:.5}
+.wx-day .frostflag{margin-top:6px;font-size:.66rem;font-family:'Spline Sans Mono',monospace;text-transform:uppercase;letter-spacing:.04em;padding:2px 6px;border-radius:10px;display:inline-block}
+.wx-day .frostflag.cold{background:rgba(104,163,196,.2);color:var(--sky2)}
+.wx-day .frostflag.hot{background:rgba(181,85,47,.15);color:var(--clay)}
+
+/* planting guide tie-in */
+.wx-guide{margin-top:46px;background:var(--paper-warm);border:1px solid var(--line);border-radius:12px;padding:32px 34px}
+.wx-guide h2{font-size:1.5rem;margin-bottom:8px}
+.wx-guide>p{color:var(--ink-soft);margin-bottom:20px;max-width:62ch}
+.wx-guide-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+.wx-gcard{background:var(--paper-card);border:1px solid var(--line);border-radius:8px;padding:18px 20px}
+.wx-gcard h4{font-size:1.05rem;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.wx-gcard p{font-size:.92rem;color:var(--ink-soft);line-height:1.55}
+.wx-guide-cta{margin-top:22px;display:flex;gap:12px;flex-wrap:wrap}
+
+.wx-foot-note{text-align:center;margin-top:30px;font-size:.86rem;color:var(--ink-faint)}
+.wx-foot-note a{color:var(--sprout)}
+@media(max-width:900px){.wx-now{grid-template-columns:1fr}.wx-7{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:560px){.wx-7{grid-template-columns:repeat(3,1fr)}.wx-now-main .temp{font-size:4rem}}
+</style>
+</head>
+<body>
+<header class="nav"><div class="wrap nav-inner">
+  <a href="./" class="brand"><svg viewBox="0 0 40 40" fill="none"><path d="M20 36V16" stroke="#5C8A3A" stroke-width="2.4" stroke-linecap="round"/><path d="M20 22C20 14 12 10 6 11c-1 7 5 14 14 11Z" fill="#5C8A3A" fill-opacity="0.85"/><path d="M20 18C20 11 27 7 33 9c1 6-4 12-13 9Z" fill="#1B2B22"/><circle cx="20" cy="36" r="2.4" fill="#C99A3B"/></svg><span class="name">Texas <b>Roots</b></span></a>
+  <nav class="nav-links" id="navLinks"><a href="start-here">Start Here</a><a href="database/">Plant Database</a><a href="almanac/">Almanac</a><a href="weather" class="active">Weather</a><a href="shop">Shop</a><a href="community/">Community</a><a href="nomad">Go Offline</a><a href="order" class="nav-cta">Order Now</a></nav>
+  <button class="burger" id="burger" aria-label="Menu"><span></span><span></span><span></span></button>
+</div></header>
+
+<section class="wx-hero"><div class="wrap">
+<div class="eyebrow">Free for growers</div>
+<h1>Live <em>garden weather</em></h1>
+<p>Current conditions and an accurate 7-day forecast — with the frost, heat, and rain alerts that actually tell a grower when to plant, when to cover, and when to wait.</p>
+<div class="wx-locbar">
+<div class="wx-loc"><span class="pin">📍</span><span id="wxLocName">El Campo, TX</span></div>
+<button class="wx-btn" id="wxGeo">Use my location</button>
+<div class="wx-search"><input type="search" id="wxCity" placeholder="Or type a city, US ZIP…" aria-label="Search location"><button class="wx-btn" id="wxGo">Go</button></div>
+</div>
+</div></section>
+
+<div class="wx-wrap"><div class="wrap">
+<div class="wx-loading" id="wxLoading"><div class="wx-spinner"></div><p>Reading the sky…</p></div>
+<div class="wx-error" id="wxError"><p>Couldn't load the forecast right now. <a href="#" id="wxRetry" style="color:var(--sprout)">Try again</a>.</p></div>
+
+<div class="wx-content" id="wxContent">
+  <div class="wx-now">
+    <div class="wx-now-main" id="wxNowMain">
+      <div class="label">Right now</div>
+      <div class="temp" id="wxTemp">—<sup>°F</sup></div>
+      <div class="cond" id="wxCond">—</div>
+      <div class="feels" id="wxFeels"></div>
+      <div class="wx-now-art" id="wxArt"></div>
+    </div>
+    <div class="wx-now-meta">
+      <div class="wx-metacell"><div class="k">Humidity</div><div class="v" id="wxHum">—</div></div>
+      <div class="wx-metacell"><div class="k">Wind</div><div class="v" id="wxWind">—</div></div>
+      <div class="wx-metacell"><div class="k">Today's high</div><div class="v" id="wxHi">—</div></div>
+      <div class="wx-metacell"><div class="k">Tonight's low</div><div class="v" id="wxLo">—</div></div>
+    </div>
+  </div>
+
+  <div class="wx-alerts-stack" id="wxAlerts"></div>
+
+  <div class="wx-7-head"><h2>The next 7 days</h2><span class="note" id="wxUpdated"></span></div>
+  <div class="wx-7" id="wx7"></div>
+
+  <div class="wx-guide">
+    <h2>What the week is telling you</h2>
+    <p>The forecast is the first thing I check before any decision in the greenhouse. Here's the quick read most growers go by:</p>
+    <div class="wx-guide-grid">
+      <div class="wx-gcard"><h4>❄️ Lows in the 30s</h4><p>Frost risk. Cover tender plants in the afternoon, water the soil first, and hold off transplanting. Great window to sow cool-season greens.</p></div>
+      <div class="wx-gcard"><h4>🔥 Highs past 95°F</h4><p>Heat stress. Switch to heat-lovers like okra and sweet potato, mulch heavily, and water at dawn so plants go into the day charged.</p></div>
+      <div class="wx-gcard"><h4>🌱 Lows above 55°F, mild highs</h4><p>Prime window. Transplant tomatoes and peppers, start most warm-season crops.</p></div>
+      <div class="wx-gcard"><h4>🌧️ A wet stretch</h4><p>Hold off sowing seed in beds — rot risk. Good time to set out established transplants instead.</p></div>
+    </div>
+    <div class="wx-guide-cta">
+      <a class="btn btn-primary" href="almanac/reading-the-weather-for-your-garden">Read: reading the weather for your garden →</a>
+      <a class="btn btn-ghost" href="database/">Browse the plant database</a>
+    </div>
+  </div>
+
+  <p class="wx-foot-note">Forecast data via Open-Meteo, refreshed every 15 minutes. Always cross-check official sources before acting on a freeze or storm. Tool built by <a href="https://jordanpolasek.com">Jordan Polasek</a> for Texas Roots.</p>
+</div>
+</div></div>
+
+<footer><div class="wrap">
+  <div class="foot-grid">
+    <div class="foot-brand"><a href="./" class="brand"><svg viewBox="0 0 40 40" fill="none"><path d="M20 36V16" stroke="#7CB342" stroke-width="2.4" stroke-linecap="round"/><path d="M20 22C20 14 12 10 6 11c-1 7 5 14 14 11Z" fill="#7CB342" fill-opacity="0.85"/><path d="M20 18C20 11 27 7 33 9c1 6-4 12-13 9Z" fill="#EAE2CF"/><circle cx="20" cy="36" r="2.4" fill="#C99A3B"/></svg><span class="name" style="color:#F3EEE2">Texas <b style="color:#7CB342">Roots</b></span></a><p>Heirloom seeds &amp; rooted cuttings, grown and mailed by hand from El Campo, Texas. A free plant database &amp; knowledge base for growers everywhere. Founded &amp; built by Jordan Polasek.</p></div>
+    <div class="foot-col"><h4>Explore</h4><a href="start-here">Start here</a><a href="database/">Plant database</a><a href="almanac/">The Almanac</a><a href="blog/">Blog</a><a href="weather">Garden weather</a><a href="database/identify">Identify a plant</a></div>
+    <div class="foot-col"><h4>Texas Roots</h4><a href="shop">Shop</a><a href="community/">Community garden</a><a href="stand">The stand</a><a href="about">Our story</a></div>
+    <div class="foot-col"><h4>More</h4><a href="faq">FAQ</a><a href="order">Place an order</a><a href="nomad">Go offline</a><a href="https://jordanpolasek.com">JordanPolasek.com</a><a href="https://bvtech.org">BVTech.org</a><a href="https://autumnpolasek.com">In Remembrance of Autumn 🐾</a></div>
+  </div>
+  <div class="foot-scripture" style="text-align:center;color:rgba(243,238,226,.55);font-style:italic;padding:0 0 18px;font-size:.9rem">&ldquo;So neither he who plants nor he who waters is anything, but only God, who gives the growth.&rdquo; &mdash; 1 Corinthians 3:7</div><div class="foot-bottom"><span>© <span id="yr"></span> Texas Roots · El Campo, TX · tx-plants.com</span><span>Written &amp; built by <a href="https://jordanpolasek.com">Jordan Polasek</a></span></div>
+</div></footer>
+
+<script>
+document.getElementById('yr').textContent=new Date().getFullYear();
+const burger=document.getElementById('burger'),navLinks=document.getElementById('navLinks');
+burger.addEventListener('click',()=>navLinks.classList.toggle('open'));
+navLinks.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>navLinks.classList.remove('open')));
+
+// ---- WMO weather code -> label + icon ----
+const WMO={
+ 0:["Clear sky","sun"],1:["Mainly clear","sun"],2:["Partly cloudy","partly"],3:["Overcast","cloud"],
+ 45:["Fog","fog"],48:["Rime fog","fog"],
+ 51:["Light drizzle","drizzle"],53:["Drizzle","drizzle"],55:["Heavy drizzle","drizzle"],
+ 56:["Freezing drizzle","sleet"],57:["Freezing drizzle","sleet"],
+ 61:["Light rain","rain"],63:["Rain","rain"],65:["Heavy rain","rain"],
+ 66:["Freezing rain","sleet"],67:["Freezing rain","sleet"],
+ 71:["Light snow","snow"],73:["Snow","snow"],75:["Heavy snow","snow"],77:["Snow grains","snow"],
+ 80:["Rain showers","rain"],81:["Rain showers","rain"],82:["Violent showers","rain"],
+ 85:["Snow showers","snow"],86:["Snow showers","snow"],
+ 95:["Thunderstorm","storm"],96:["Thunderstorm + hail","storm"],99:["Thunderstorm + hail","storm"]
+};
+function wmo(code){return WMO[code]||["—","cloud"];}
+
+// ---- SVG icon builder (animated, brand-tinted) ----
+function icon(type,big){
+ const s=big?96:48;const gold='#C99A3B',sky='#68a3c4',gray='#8a96a0',deep='#5a6b72',white='#EAE2CF';
+ const sun=`<circle cx="50" cy="50" r="20" fill="${gold}"><animate attributeName="r" values="20;21.5;20" dur="3s" repeatCount="indefinite"/></circle>`+
+   Array.from({length:8},(_, i)=>{const a=i*45*Math.PI/180,x1=50+Math.cos(a)*26,y1=50+Math.sin(a)*26,x2=50+Math.cos(a)*34,y2=50+Math.sin(a)*34;return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${gold}" stroke-width="3.5" stroke-linecap="round"/>`}).join('');
+ const cloud=(c=gray)=>`<g><ellipse cx="42" cy="58" rx="26" ry="17" fill="${c}"/><ellipse cx="62" cy="54" rx="20" ry="15" fill="${c}"/><ellipse cx="54" cy="64" rx="28" ry="13" fill="${c}"/></g>`;
+ const drops=(n,c=sky)=>Array.from({length:n},(_,i)=>{const x=34+i*16;return `<line x1="${x}" y1="70" x2="${x-4}" y2="84" stroke="${c}" stroke-width="3.5" stroke-linecap="round"><animate attributeName="opacity" values="0;1;0" dur="1.2s" begin="${i*0.3}s" repeatCount="indefinite"/></line>`}).join('');
+ const flakes=(n)=>Array.from({length:n},(_,i)=>{const x=34+i*16;return `<text x="${x-3}" y="82" font-size="14" fill="${white}">❄<animate attributeName="opacity" values="0.3;1;0.3" dur="2s" begin="${i*0.4}s" repeatCount="indefinite"/></text>`}).join('');
+ let inner='';
+ switch(type){
+  case 'sun':inner=sun;break;
+  case 'partly':inner=`<g>${sun.replace(/cx="50"/g,'cx="40"').replace(/cy="50"/g,'cy="42"').replace(/50\+/g,'40+').replace(/\*26/g,'*20').replace(/\*34/g,'*27')}</g>`+cloud();break;
+  case 'cloud':inner=cloud();break;
+  case 'fog':inner=cloud(gray)+`<g>${[68,76,84].map(y=>`<line x1="24" y1="${y}" x2="76" y2="${y}" stroke="${deep}" stroke-width="3" stroke-linecap="round" opacity="0.6"/>`).join('')}</g>`;break;
+  case 'drizzle':inner=cloud()+drops(3);break;
+  case 'rain':inner=cloud(deep)+drops(3);break;
+  case 'sleet':inner=cloud(deep)+drops(2)+flakes(1);break;
+  case 'snow':inner=cloud(gray)+flakes(3);break;
+  case 'storm':inner=cloud(deep)+`<polygon points="50,68 42,84 50,84 44,98 62,78 52,78 58,68" fill="${gold}"><animate attributeName="opacity" values="1;0.3;1" dur="1.5s" repeatCount="indefinite"/></polygon>`;break;
+  default:inner=cloud();
+ }
+ return `<svg viewBox="0 0 100 100" width="${s}" height="${s}" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+}
+
+const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const $=id=>document.getElementById(id);
+let current={lat:29.1966,lon:-96.2697,name:'El Campo, TX'};
+
+function show(state){
+ $('wxLoading').style.display=state==='loading'?'block':'none';
+ $('wxError').style.display=state==='error'?'block':'none';
+ $('wxContent').style.display=state==='content'?'block':'none';
+}
+
+async function load(lat,lon,name){
+ show('loading');
+ current={lat,lon,name:name||current.name};
+ // Primary: call Open-Meteo directly from the browser (free, no key, CORS-enabled,
+ // works on any host). Falls back to the /api/weather edge function if that ever fails.
+ try{
+  const d=await fetchDirect(lat,lon);
+  render(d,name); show('content'); return;
+ }catch(e){ /* fall through to backend */ }
+ try{
+  const r=await fetch(`/api/weather?lat=${lat}&lon=${lon}`);
+  if(!r.ok) throw new Error('bad');
+  const d=await r.json();
+  if(!d.ok) throw new Error('bad');
+  render(d,name); show('content'); return;
+ }catch(e){ show('error'); }
+}
+
+// Fetch + normalize Open-Meteo straight from the client.
+async function fetchDirect(lat,lon){
+ const p=new URLSearchParams({
+  latitude:lat, longitude:lon,
+  current:'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m',
+  daily:'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,sunrise,sunset',
+  temperature_unit:'fahrenheit', wind_speed_unit:'mph', precipitation_unit:'inch',
+  timezone:'auto', forecast_days:'7'
+ });
+ const r=await fetch(`https://api.open-meteo.com/v1/forecast?${p}`);
+ if(!r.ok) throw new Error('upstream');
+ const raw=await r.json();
+ const rnd=n=>(n==null||!isFinite(n))?null:Math.round(n);
+ const c=raw.current||{}, dy=raw.daily||{};
+ const days=(dy.time||[]).map((t,i)=>({
+  date:t, code:dy.weather_code?.[i],
+  hi:rnd(dy.temperature_2m_max?.[i]), lo:rnd(dy.temperature_2m_min?.[i]),
+  pop:dy.precipitation_probability_max?.[i]??null, precip:dy.precipitation_sum?.[i]??null,
+  wind:rnd(dy.wind_speed_10m_max?.[i]),
+  sunrise:dy.sunrise?.[i]||null, sunset:dy.sunset?.[i]||null
+ }));
+ return {
+  ok:true, lat, lon, timezone:raw.timezone||'auto', elevation:raw.elevation??null,
+  current:{
+   temp:rnd(c.temperature_2m), feels:rnd(c.apparent_temperature),
+   humidity:c.relative_humidity_2m??null, precip:c.precipitation??null,
+   code:c.weather_code, wind:rnd(c.wind_speed_10m), windDir:c.wind_direction_10m??null,
+   isDay:c.is_day===1, time:c.time||null
+  },
+  days, fetched:new Date().toISOString()
+ };
+}
+
+function render(d,name){
+ const c=d.current;
+ if(name) $('wxLocName').textContent=name;
+ const [label,ic]=wmo(c.code);
+ $('wxTemp').innerHTML=`${c.temp}<sup>°F</sup>`;
+ $('wxCond').textContent=label;
+ $('wxFeels').textContent=c.feels!=null?`Feels like ${c.feels}°`:'';
+ $('wxArt').innerHTML=icon(ic,true);
+ const main=$('wxNowMain');main.classList.toggle('night',!c.isDay);
+ $('wxHum').innerHTML=c.humidity!=null?`${c.humidity}<small>%</small>`:'—';
+ $('wxWind').innerHTML=c.wind!=null?`${c.wind}<small> mph</small>`:'—';
+ const t0=d.days[0]||{};
+ $('wxHi').innerHTML=t0.hi!=null?`${t0.hi}<small>°</small>`:'—';
+ $('wxLo').innerHTML=t0.lo!=null?`${t0.lo}<small>°</small>`:'—';
+
+ // 7-day strip
+ const wrap=$('wx7');wrap.innerHTML='';
+ d.days.forEach((day,i)=>{
+  const dt=new Date(day.date+'T12:00:00');
+  const [,dic]=wmo(day.code);
+  let flag='';
+  if(day.lo!=null&&day.lo<=38) flag=`<div class="frostflag cold">Frost ${day.lo}°</div>`;
+  else if(day.hi!=null&&day.hi>=95) flag=`<div class="frostflag hot">Heat ${day.hi}°</div>`;
+  const popDry=(day.pop==null||day.pop<20);
+  wrap.insertAdjacentHTML('beforeend',
+   `<div class="wx-day${i===0?' today':''}">
+     <div class="dow">${i===0?'Today':DOW[dt.getDay()]}</div>
+     <div class="dom">${dt.getMonth()+1}/${dt.getDate()}</div>
+     <div class="ico">${icon(dic,false)}</div>
+     <div class="hi">${day.hi!=null?day.hi+'°':'—'}</div>
+     <div class="lo">${day.lo!=null?day.lo+'°':''}</div>
+     <div class="pop${popDry?' dry':''}">💧 ${day.pop!=null?day.pop+'%':'0%'}</div>
+     ${flag}
+   </div>`);
+ });
+
+ // garden alerts (scan the week)
+ buildAlerts(d);
+ if(d.fetched){const t=new Date(d.fetched);$('wxUpdated').textContent='Updated '+t.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});}
+}
+
+function buildAlerts(d){
+ const stack=$('wxAlerts');stack.innerHTML='';
+ const lows=d.days.map(x=>x.lo).filter(x=>x!=null);
+ const highs=d.days.map(x=>x.hi).filter(x=>x!=null);
+ const minLow=Math.min(...lows), maxHigh=Math.max(...highs);
+ const wetDays=d.days.filter(x=>x.pop!=null&&x.pop>=60).length;
+ const alerts=[];
+ if(minLow<=32){
+  const day=d.days.find(x=>x.lo!=null&&x.lo<=32);
+  const dt=new Date(day.date+'T12:00:00');const when=(d.days.indexOf(day)===0)?'tonight':DOW[dt.getDay()];
+  alerts.push(['frost','❄️',`<b>Freeze warning.</b> A low of ${day.lo}° is coming ${when}. Cover tender plants in the afternoon, water the soil beforehand, and move pots to shelter. Hold off transplanting.`]);
+ } else if(minLow<=38){
+  alerts.push(['frost','🌡️',`<b>Frost watch.</b> Lows dip to ${minLow}° this week — borderline for tender crops. Keep frost cloth handy and a great window to sow cool-season greens.`]);
+ }
+ if(maxHigh>=95){
+  alerts.push(['heat','🔥',`<b>Heat stress ahead.</b> Highs reach ${maxHigh}° this week. Lean on heat-lovers like okra and sweet potato, mulch heavily, and water at dawn. Tomatoes may drop blossoms.`]);
+ }
+ if(wetDays>=2){
+  alerts.push(['wet','🌧️',`<b>Wet stretch.</b> Several high-rain days ahead — hold off sowing seed directly in beds (rot risk) and set out established transplants instead.`]);
+ }
+ if(alerts.length===0 && minLow>50 && maxHigh<92){
+  alerts.push(['good','🌱',`<b>Prime planting window.</b> Mild week ahead — lows around ${minLow}°, highs near ${maxHigh}°. Good time to transplant warm-season crops and start most things.`]);
+ }
+ if(alerts.length===0){
+  alerts.push(['good','✅',`<b>Steady week.</b> No frost or extreme heat in the 7-day. Plant to your normal season and keep an eye on the rain column.`]);
+ }
+ alerts.forEach(([cls,ico,msg])=>{
+  stack.insertAdjacentHTML('beforeend',`<div class="wx-alert ${cls}"><span class="ico">${ico}</span><div>${msg}</div></div>`);
+ });
+}
+
+// geolocation
+$('wxGeo').addEventListener('click',()=>{
+ if(!navigator.geolocation){alert('Location not supported on this device.');return;}
+ show('loading');
+ navigator.geolocation.getCurrentPosition(
+  p=>load(p.coords.latitude,p.coords.longitude,'Your location'),
+  ()=>load(current.lat,current.lon,current.name),
+  {timeout:8000}
+ );
+});
+
+// city / ZIP search via Open-Meteo geocoding
+async function geocode(q){
+ const isZip=/^\d{5}$/.test(q.trim());
+ const url=isZip
+   ?`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&country=US&count=1&language=en`
+   :`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=en`;
+ const r=await fetch(url);const d=await r.json();
+ if(d&&d.results&&d.results[0]){const g=d.results[0];
+  const nm=[g.name,g.admin1,g.country_code].filter(Boolean).join(', ');
+  return {lat:g.latitude,lon:g.longitude,name:nm};}
+ return null;
+}
+async function doSearch(){
+ const q=$('wxCity').value.trim();if(!q)return;
+ show('loading');
+ try{const g=await geocode(q);
+  if(g){load(g.lat,g.lon,g.name);}else{show('content');alert("Couldn't find that place. Try a bigger nearby city or a US ZIP.");}
+ }catch(e){show('error');}
+}
+$('wxGo').addEventListener('click',doSearch);
+$('wxCity').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch();});
+$('wxRetry').addEventListener('click',e=>{e.preventDefault();load(current.lat,current.lon,current.name);});
+
+// initial load — El Campo greenhouse
+load(current.lat,current.lon,current.name);
+</script>
+</body></html>

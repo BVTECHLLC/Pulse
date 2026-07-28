@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Community Garden Hub — Start, Share &amp; Connect | Texas Roots</title>
+<meta name="description" content="A free hub to start a community garden, share your plot, ask growers for help, and connect. Run by Jordan Polasek of Texas Roots in El Campo, TX.">
+<meta name="author" content="Jordan Polasek">
+<link rel="canonical" href="https://tx-plants.com/community/">
+<link rel="icon" href="../favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="../assets/favicon/favicon-16.png">
+<link rel="apple-touch-icon" href="../assets/favicon/apple-touch-icon.png">
+<link rel="manifest" href="../site.webmanifest">
+<meta name="theme-color" content="#1B2B22">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,900;1,9..144,400;1,9..144,500&family=Spline+Sans:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/styles.css">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","name":"Community Garden Hub","url":"https://tx-plants.com/community/","author":{"@type":"Person","name":"Jordan Polasek","url":"https://jordanpolasek.com"},"about":"Starting and connecting community gardens"}
+</script>
+<style>
+.comm-hero{background:var(--ink);color:var(--paper);padding:80px 0 70px;position:relative;overflow:hidden}
+.comm-hero::after{content:"";position:absolute;inset:0;background:url(../assets/img/kb/community.svg) right center/contain no-repeat;opacity:.2}
+.comm-hero .wrap{position:relative;z-index:2;max-width:64ch}
+.comm-hero .eyebrow{color:var(--gold)}
+.comm-hero h1{font-size:clamp(2.4rem,5vw,3.6rem);margin-bottom:16px}
+.comm-hero h1 em{font-style:italic;color:var(--sprout-bright);font-weight:500}
+.comm-hero p{color:rgba(243,238,226,.85);font-size:1.14rem}
+.start-band{background:var(--paper-warm);padding:54px 0;border-bottom:1px solid var(--line)}
+.start-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+.start-card{background:var(--paper-card);border:1px solid var(--line);border-radius:4px;padding:26px}
+.start-card .n{font-family:'Fraunces',serif;font-size:2rem;font-weight:900;color:var(--sprout);line-height:1;margin-bottom:10px}
+.start-card h3{font-size:1.2rem;margin-bottom:8px}
+.start-card p{font-size:.92rem;color:var(--ink-soft)}
+.start-card a{color:var(--clay);font-weight:600;text-decoration:none;font-size:.88rem}
+.board{padding:64px 0}
+.board-head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:18px;margin-bottom:10px}
+.board-head h2{font-size:2rem}
+.board-head p{color:var(--ink-soft)}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin:24px 0}
+.filters button{font-size:.84rem;font-weight:600;padding:7px 15px;border:1px solid var(--line);border-radius:30px;background:var(--paper-card);color:var(--ink-soft);cursor:pointer;transition:all .2s}
+.filters button.active,.filters button:hover{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.thread{background:var(--paper-card);border:1px solid var(--line);border-radius:4px;padding:22px 24px;margin-bottom:14px;transition:box-shadow .2s}
+.thread:hover{box-shadow:4px 6px 0 var(--shadow)}
+.thread-top{display:flex;justify-content:space-between;gap:16px;margin-bottom:8px;flex-wrap:wrap}
+.thread .tag{font-family:'Spline Sans Mono',monospace;font-size:.66rem;letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;border-radius:20px;color:#fff}
+.thread h3{font-size:1.22rem;margin-bottom:6px}
+.thread p{font-size:.96rem;color:var(--ink-soft);margin-bottom:12px}
+.thread-meta{display:flex;gap:14px;font-size:.82rem;color:var(--ink-faint);align-items:center}
+.thread-meta .who{display:flex;align-items:center;gap:7px}
+.thread-meta .av{width:26px;height:26px;border-radius:50%;background:var(--sprout);color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-size:.8rem}
+.thread .replies{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.reply{display:flex;gap:10px;padding:10px 0;font-size:.92rem;color:var(--ink-soft)}
+.reply .av{width:24px;height:24px;border-radius:50%;background:var(--gold);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.72rem;flex:none}
+.reply-form{display:flex;gap:8px;margin-top:10px}
+.reply-form input{flex:1;padding:9px 12px;border:1px solid var(--line);border-radius:3px;font-family:inherit;font-size:.9rem;background:var(--paper-warm)}
+.reply-form button{padding:9px 16px;background:var(--sprout);color:#fff;border:0;border-radius:3px;font-weight:600;cursor:pointer;font-size:.88rem}
+.newpost{position:sticky;top:90px;background:var(--paper-warm);border:1px solid var(--line);border-radius:4px;padding:24px}
+.newpost h3{font-size:1.2rem;margin-bottom:14px}
+.newpost label{display:block;font-size:.8rem;font-weight:600;color:var(--ink-soft);margin-bottom:5px;margin-top:12px}
+.newpost input,.newpost textarea,.newpost select{width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:3px;font-family:inherit;font-size:.92rem;background:var(--paper-card);color:var(--ink)}
+.newpost textarea{resize:vertical;min-height:80px}
+.newpost button.post{width:100%;margin-top:16px;padding:13px;background:var(--ink);color:var(--paper);border:0;border-radius:3px;font-weight:600;cursor:pointer;font-size:.98rem}
+.board-layout{display:grid;grid-template-columns:1fr 320px;gap:40px;align-items:start}
+#postMsg{font-size:.88rem;margin-top:10px;text-align:center;min-height:18px}
+@media(max-width:900px){.start-grid{grid-template-columns:1fr}.board-layout{grid-template-columns:1fr}.newpost{position:static}}
+</style>
+</head>
+<body>
+<header class="nav"><div class="wrap nav-inner">
+  <a href="../" class="brand"><svg viewBox="0 0 40 40" fill="none"><path d="M20 36V16" stroke="#5C8A3A" stroke-width="2.4" stroke-linecap="round"/><path d="M20 22C20 14 12 10 6 11c-1 7 5 14 14 11Z" fill="#5C8A3A" fill-opacity="0.85"/><path d="M20 18C20 11 27 7 33 9c1 6-4 12-13 9Z" fill="#1B2B22"/><circle cx="20" cy="36" r="2.4" fill="#C99A3B"/></svg><span class="name">Texas <b>Roots</b></span></a>
+  <nav class="nav-links" id="navLinks"><a href="../start-here">Start Here</a><a href="../database/">Plant Database</a><a href="../almanac/">Almanac</a><a href="../blog/">Blog</a><a href="../weather">Weather</a><a href="../shop">Shop</a><a href="../community/">Community</a><a href="../nomad">Go Offline</a><a href="../order" class="nav-cta">Order Now</a></nav>
+  <button class="burger" id="burger" aria-label="Menu"><span></span><span></span><span></span></button>
+</div></header>
+
+<section class="comm-hero"><div class="wrap">
+<div class="eyebrow">Free community hub</div>
+<h1>Plant <em>together.</em></h1>
+<p>A place to start a community garden, share what you're growing, ask other growers for help, and find people near you. Free and open — pull up a chair.</p>
+</div></section>
+
+<section class="start-band"><div class="wrap">
+<div class="sec-head" style="margin-bottom:30px"><div class="eyebrow">Start your own</div><h2 style="font-size:1.9rem">Thinking about a community garden?</h2></div>
+<div class="start-grid">
+<div class="start-card"><div class="n">1</div><h3>Read the playbook</h3><p>My full step-by-step guide to starting a community garden — land, people, money, and keeping it alive.</p><a href="../almanac/how-to-start-a-community-garden">Read the guide →</a></div>
+<div class="start-card"><div class="n">2</div><h3>Post your garden</h3><p>Share what you're starting or running below. Find neighbors, recruit volunteers, swap seeds and advice.</p><a href="#board">Post below →</a></div>
+<div class="start-card"><div class="n">3</div><h3>Connect &amp; grow</h3><p>Ask questions, answer others, and build the kind of local network that makes a garden last past year two.</p><a href="#board">Join the board →</a></div>
+</div>
+</div></section>
+
+<section class="board" id="board"><div class="wrap">
+<div class="board-layout">
+<div>
+<div class="board-head"><div><h2>The garden board</h2><p>Real posts from growers. Be kind, be useful.</p></div></div>
+<div class="filters" id="filters">
+<button class="active" data-f="all">All</button>
+<button data-f="starting">Starting a garden</button>
+<button data-f="help">Need help</button>
+<button data-f="swap">Seed/plant swap</button>
+<button data-f="showoff">Show &amp; tell</button>
+</div>
+<div id="threads"></div>
+</div>
+<aside>
+<div class="newpost">
+<h3>Post to the board</h3>
+<label for="pName">Your name</label><input id="pName" placeholder="Jane G." maxlength="40">
+<label for="pCat">Category</label>
+<select id="pCat"><option value="starting">Starting a garden</option><option value="help">Need help</option><option value="swap">Seed/plant swap</option><option value="showoff">Show &amp; tell</option></select>
+<label for="pTitle">Title</label><input id="pTitle" placeholder="Starting a plot in Wharton County" maxlength="90">
+<label for="pBody">Message</label><textarea id="pBody" placeholder="What are you working on or asking about?" maxlength="600"></textarea>
+<input type="text" id="pHP" style="position:absolute;left:-9999px" tabindex="-1" aria-hidden="true">
+<button class="post" id="postBtn">Post to board →</button>
+<div id="postMsg"></div>
+</div>
+</aside>
+</div>
+</div></section>
+
+<footer><div class="wrap">
+  <div class="foot-grid">
+    <div class="foot-brand"><a href="../" class="brand"><svg viewBox="0 0 40 40" fill="none"><path d="M20 36V16" stroke="#7CB342" stroke-width="2.4" stroke-linecap="round"/><path d="M20 22C20 14 12 10 6 11c-1 7 5 14 14 11Z" fill="#7CB342" fill-opacity="0.85"/><path d="M20 18C20 11 27 7 33 9c1 6-4 12-13 9Z" fill="#EAE2CF"/><circle cx="20" cy="36" r="2.4" fill="#C99A3B"/></svg><span class="name" style="color:#F3EEE2">Texas <b style="color:#7CB342">Roots</b></span></a><p>Heirloom seeds &amp; rooted cuttings, grown and mailed by hand from El Campo, Texas. A free knowledge base &amp; community for growers. Founded &amp; built by Jordan Polasek.</p></div>
+    <div class="foot-col"><h4>Almanac</h4><a href="../almanac/">All articles</a><a href="../almanac/how-to-start-a-community-garden">Start a garden</a><a href="../almanac/#growing">Growing</a></div>
+    <div class="foot-col"><h4>Texas Roots</h4><a href="../shop">Shop</a><a href="./">Community</a><a href="../stand">The stand</a><a href="../about">Our story</a></div>
+    <div class="foot-col"><h4>More</h4><a href="../faq">FAQ</a><a href="../order">Order</a><a href="../nomad">Go offline</a><a href="https://jordanpolasek.com">JordanPolasek.com</a><a href="https://bvtech.org">BVTech.org</a><a href="https://autumnpolasek.com">In Remembrance of Autumn 🐾</a></div>
+  </div>
+  <div class="foot-scripture" style="text-align:center;color:rgba(243,238,226,.55);font-style:italic;padding:0 0 18px;font-size:.9rem">&ldquo;So neither he who plants nor he who waters is anything, but only God, who gives the growth.&rdquo; &mdash; 1 Corinthians 3:7</div><div class="foot-bottom"><span>© <span id="yr"></span> Texas Roots · El Campo, TX · tx-plants.com</span><span>Built by <a href="https://jordanpolasek.com">Jordan Polasek</a></span></div>
+</div></footer>
+
+<script>
+document.getElementById('yr').textContent=new Date().getFullYear();
+const burger=document.getElementById('burger'),navLinks=document.getElementById('navLinks');
+burger.addEventListener('click',()=>navLinks.classList.toggle('open'));
+navLinks.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>navLinks.classList.remove('open')));
+
+const CATMAP={starting:{label:'Starting a garden',color:'#5C8A3A'},help:{label:'Need help',color:'#B5552F'},swap:{label:'Seed/plant swap',color:'#C99A3B'},showoff:{label:'Show & tell',color:'#7CB342'}};
+// Seed threads so the board is alive on first load. New posts persist to the backend if available, else live in-session.
+const SEED=[
+{id:'s1',name:'Maria T.',cat:'starting',title:'Starting a plot at our church in Wharton',body:'We have about a quarter acre behind the fellowship hall and a handful of families interested. Any advice on the first work day? Tools, layout, where to even begin?',ts:Date.now()-86400000*3,replies:[{name:'Jordan',body:'Congrats! Start with sun and water access before you build a single bed. Mark where the sun lands at noon and find your nearest spigot. Happy to help more — there\u2019s a full playbook linked up top.'},{name:'Dee',body:'We started one last year — a shared tool shed with a sign-out sheet saved us so many headaches.'}]},
+{id:'s2',name:'Carlos R.',cat:'help',title:'Clay soil is killing my tomatoes',body:'Gulf coast clay, water just sits. Tomatoes look yellow and sad. Raised beds the only fix or is there hope in-ground?',ts:Date.now()-86400000*1.2,replies:[{name:'Jordan',body:'Clay is tough but fixable. Short term: raised beds or cloth pots with good mix. Long term: pile on compost every season and it slowly opens up. There\u2019s a soil-testing guide in the Almanac that walks through it.'}]},
+{id:'s3',name:'Annie K.',cat:'swap',title:'Have okra & zinnia seed, want pepper varieties',body:'Saved a ton of clemson okra and cut-flower zinnia seed this year. Looking to swap for any interesting peppers, especially milder ones the kids will eat. Near Victoria.',ts:Date.now()-86400000*5,replies:[]},
+{id:'s4',name:'The Floyds',cat:'showoff',title:'First fall harvest from our shared plot!',body:'Six families, one vacant lot, and we just pulled the best collards any of us have grown. The kids did the planting. Thank you to everyone here who talked us into it.',ts:Date.now()-86400000*0.5,replies:[{name:'Jordan',body:'This is the whole point right here. Made my day.'}]},
+];
+let threads=[...SEED];
+let activeFilter='all';
+
+function timeAgo(ts){const d=(Date.now()-ts)/86400000;if(d<1)return'today';if(d<2)return'yesterday';return Math.floor(d)+' days ago';}
+function avatarLetter(n){return (n||'?').trim().charAt(0).toUpperCase();}
+
+function render(){
+  const wrap=document.getElementById('threads');
+  const list=threads.filter(t=>activeFilter==='all'||t.cat===activeFilter).sort((a,b)=>b.ts-a.ts);
+  wrap.innerHTML=list.map(t=>{
+    const c=CATMAP[t.cat]||CATMAP.starting;
+    const replies=(t.replies||[]).map(r=>`<div class="reply"><div class="av">${avatarLetter(r.name)}</div><div><b>${esc(r.name)}</b> · ${esc(r.body)}</div></div>`).join('');
+    return `<div class="thread">
+      <div class="thread-top"><span class="tag" style="background:${c.color}">${c.label}</span></div>
+      <h3>${esc(t.title)}</h3><p>${esc(t.body)}</p>
+      <div class="thread-meta"><span class="who"><span class="av">${avatarLetter(t.name)}</span>${esc(t.name)}</span> · <span>${timeAgo(t.ts)}</span> · <span>${(t.replies||[]).length} ${((t.replies||[]).length)===1?'reply':'replies'}</span></div>
+      <div class="replies">${replies}
+        <div class="reply-form"><input placeholder="Add a reply…" data-id="${t.id}" maxlength="300"><button data-id="${t.id}">Reply</button></div>
+      </div>
+    </div>`;
+  }).join('') || '<p style="color:var(--ink-faint);padding:30px 0">No posts in this category yet — be the first.</p>';
+  // wire replies
+  wrap.querySelectorAll('.reply-form button').forEach(b=>b.addEventListener('click',()=>{
+    const inp=b.previousElementSibling,txt=inp.value.trim();if(!txt)return;
+    const t=threads.find(x=>x.id===b.dataset.id);if(t){t.replies=t.replies||[];t.replies.push({name:'You',body:txt});saveThread(t);render();}
+  }));
+}
+function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+document.getElementById('filters').addEventListener('click',e=>{
+  if(e.target.tagName!=='BUTTON')return;
+  document.querySelectorAll('#filters button').forEach(b=>b.classList.remove('active'));
+  e.target.classList.add('active');activeFilter=e.target.dataset.f;render();
+});
+
+document.getElementById('postBtn').addEventListener('click',async()=>{
+  if(document.getElementById('pHP').value){return;} // honeypot
+  const name=document.getElementById('pName').value.trim()||'Anonymous';
+  const cat=document.getElementById('pCat').value;
+  const title=document.getElementById('pTitle').value.trim();
+  const body=document.getElementById('pBody').value.trim();
+  const msg=document.getElementById('postMsg');
+  if(!title||!body){msg.style.color='#B5552F';msg.textContent='Add a title and a message.';return;}
+  const post={id:'u'+Date.now(),name,cat,title,body,ts:Date.now(),replies:[]};
+  threads.unshift(post);render();
+  document.getElementById('pTitle').value='';document.getElementById('pBody').value='';
+  msg.style.color='#5C8A3A';msg.textContent='Posted! (Saving…)';
+  saveThread(post);
+  setTimeout(()=>msg.textContent='',2500);
+});
+
+// Persist to backend if the Pages Function is deployed; ALSO keep a local copy
+// so posts survive a refresh even when the KV backend isn't configured.
+const LS_KEY='txroots_community_v1';
+function localPosts(){try{return JSON.parse(localStorage.getItem(LS_KEY)||'[]');}catch(e){return [];}}
+function saveLocal(post){try{const a=localPosts();a.unshift(post);localStorage.setItem(LS_KEY,JSON.stringify(a.slice(0,200)));}catch(e){}}
+async function saveThread(post){
+  saveLocal(post);
+  try{await fetch('/api/community',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(post)});}catch(e){}
+}
+async function loadThreads(){
+  let backend=[];
+  try{
+    const r=await fetch('/api/community');
+    if(r.ok){const data=await r.json();if(Array.isArray(data))backend=data;}
+  }catch(e){}
+  // merge: backend + local + seeds, dedup by id (backend wins, then local, then seed)
+  const byId=new Map();
+  [...backend,...localPosts(),...SEED].forEach(p=>{if(p&&p.id&&!byId.has(p.id))byId.set(p.id,p);});
+  threads=[...byId.values()].sort((a,b)=>(b.ts||0)-(a.ts||0));
+  render();
+}
+loadThreads();
+</script>
+</body>
+</html>

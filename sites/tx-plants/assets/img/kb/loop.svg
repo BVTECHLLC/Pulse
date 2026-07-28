@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400" role="img"><rect width="800" height="400" fill="#EAE2CF"/><g stroke="#1B2B22" stroke-opacity="0.04" fill="none" stroke-width="1"><path d="M60 20c0 40-20 60-20 100s30 50 30 90"/><path d="M700 40c20 30 10 70-10 100s-40 60-20 110"/></g>
+<g stroke="#1B2B22" stroke-width="2" fill="none">
+<circle cx="400" cy="200" r="120" stroke-dasharray="6 8"/>
+</g>
+<g font-family="Georgia,serif" font-size="16" fill="#1B2B22" text-anchor="middle">
+<circle cx="400" cy="80" r="34" fill="#5C8A3A" fill-opacity="0.5" stroke="#1B2B22" stroke-width="2"/><text x="400" y="85">grow</text>
+<circle cx="520" cy="200" r="34" fill="#C99A3B" fill-opacity="0.5" stroke="#1B2B22" stroke-width="2"/><text x="520" y="205">eat</text>
+<circle cx="400" cy="320" r="34" fill="#B5552F" fill-opacity="0.5" stroke="#1B2B22" stroke-width="2"/><text x="400" y="325">compost</text>
+<circle cx="280" cy="200" r="34" fill="#7CB342" fill-opacity="0.5" stroke="#1B2B22" stroke-width="2"/><text x="280" y="205">save seed</text>
+</g></svg>

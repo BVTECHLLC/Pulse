@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Place an Order — Texas Roots | tx-plants.com</title>
+<meta name="description" content="Order heirloom seeds, rooted cuttings, or a starter box from Texas Roots in El Campo, TX. Jordan replies within a day with a total and payment link.">
+<meta name="author" content="Jordan Polasek">
+<link rel="canonical" href="https://tx-plants.com/order">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16.png">
+<link rel="apple-touch-icon" href="assets/favicon/apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
+<meta name="theme-color" content="#1B2B22">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,900;1,9..144,400;1,9..144,500&family=Spline+Sans:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+<style>
+.order-wrap{display:grid;grid-template-columns:1fr 1.1fr;min-height:calc(100vh - 68px)}
+.order-side{background:var(--ink);color:var(--paper);padding:64px 48px;position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:center}
+.order-side::after{content:"";position:absolute;inset:0;background:url(assets/img/greenhouse-bags.jpg) center/cover;opacity:.16}
+.order-side .inner{position:relative;z-index:2;max-width:34ch}
+.order-side .eyebrow{color:var(--gold)}
+.order-side h1{font-size:clamp(2.2rem,4vw,3.2rem);margin-bottom:18px}
+.order-side p{color:rgba(243,238,226,.82);font-size:1.08rem;margin-bottom:24px}
+.order-side .promise{border-top:1px solid rgba(243,238,226,.16);padding-top:22px;margin-top:8px}
+.order-side .promise .row{display:flex;gap:12px;padding:8px 0;font-size:.95rem;color:rgba(243,238,226,.85)}
+.order-side .promise .row b{color:var(--sprout-bright)}
+.order-form{padding:64px 48px;display:flex;flex-direction:column;justify-content:center;background:var(--paper)}
+.order-form .formwrap{max-width:520px;width:100%;margin:0 auto}
+.order-form h2{font-size:1.8rem;margin-bottom:8px}
+.order-form>.formwrap>p.sub{color:var(--ink-soft);margin-bottom:30px}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px}
+.field{display:flex;flex-direction:column}
+.field.full{grid-column:1/-1}
+.field label{font-size:.82rem;font-weight:600;margin-bottom:6px;color:var(--ink-soft)}
+.field input,.field textarea,.field select{padding:12px 14px;border:1.5px solid var(--line);border-radius:2px;font-family:inherit;font-size:.96rem;background:var(--paper-card);color:var(--ink);transition:border-color .2s}
+.field input:focus,.field textarea:focus,.field select:focus{outline:none;border-color:var(--sprout)}
+.field textarea{resize:vertical;min-height:100px}
+.order-form .btn-primary{width:100%;justify-content:center;margin-top:6px;font-size:1.05rem;padding:16px}
+#formMsg{margin-top:18px;font-size:.95rem;font-weight:600;min-height:24px}
+.honeypot{position:absolute;left:-9999px;opacity:0}
+@media(max-width:900px){.order-wrap{grid-template-columns:1fr}.order-side{padding:48px 28px}.order-form{padding:48px 28px}}
+</style>
+</head>
+<body>
+<header class="nav"><div class="wrap nav-inner">
+  <a href="./" class="brand"><svg viewBox="0 0 40 40" fill="none"><path d="M20 36V16" stroke="#5C8A3A" stroke-width="2.4" stroke-linecap="round"/><path d="M20 22C20 14 12 10 6 11c-1 7 5 14 14 11Z" fill="#5C8A3A" fill-opacity="0.85"/><path d="M20 18C20 11 27 7 33 9c1 6-4 12-13 9Z" fill="#1B2B22"/><circle cx="20" cy="36" r="2.4" fill="#C99A3B"/></svg><span class="name">Texas <b>Roots</b></span></a>
+  <nav class="nav-links" id="navLinks"><a href="start-here">Start Here</a><a href="database/">Plant Database</a><a href="almanac/">Almanac</a><a href="blog/">Blog</a><a href="weather">Weather</a><a href="shop">Shop</a><a href="community/">Community</a><a href="nomad">Go Offline</a><a href="order" class="nav-cta">Order Now</a></nav>
+  <button class="burger" id="burger" aria-label="Menu"><span></span><span></span><span></span></button>
+</div></header>
+
+<div class="order-wrap">
+  <div class="order-side">
+    <div class="inner">
+      <div class="eyebrow">Place an order</div>
+      <h1>Tell us what you'd like to grow.</h1>
+      <p>Send your order and Jordan will reply within a day with a total and a payment link. No account, no checkout maze — just a real person and real plants.</p>
+      <div class="promise">
+        <div class="row"><b>✓</b><span>Reply within one day</span></div>
+        <div class="row"><b>✓</b><span>Free grow guide in every package</span></div>
+        <div class="row"><b>✓</b><span>Free replacement if a cutting doesn't make it</span></div>
+        <div class="row"><b>✓</b><span>Packed the same day it ships</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="order-form">
+    <div class="formwrap reveal in">
+      <h2>Your order</h2>
+      <p class="sub">Everything's grown and shipped from El Campo, TX.</p>
+      <div class="frow">
+        <div class="field"><label for="fname">Your name</label><input id="fname" type="text" placeholder="Jane Gardener" autocomplete="name"></div>
+        <div class="field"><label for="femail">Email</label><input id="femail" type="email" placeholder="jane@email.com" autocomplete="email"></div>
+      </div>
+      <div class="frow">
+        <div class="field"><label for="fwhat">What would you like?</label>
+          <select id="fwhat">
+            <option value="">Choose…</option>
+            <option value="seeds">Heirloom seed packets</option>
+            <option value="cuttings">Rooted cuttings &amp; pups</option>
+            <option value="box">A starter box</option>
+            <option value="mix">A mix — help me pick</option>
+            <option value="local">Local El Campo pickup</option>
+          </select>
+        </div>
+        <div class="field"><label for="fcity">Ship-to city &amp; state</label><input id="fcity" type="text" placeholder="Austin, TX"></div>
+      </div>
+      <div class="field full" style="margin-bottom:18px"><label for="fmsg">Details</label><textarea id="fmsg" placeholder="Tell me what you're after — herbs, peppers, houseplants, a gift for someone…"></textarea></div>
+      <input class="honeypot" id="company" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <button class="btn btn-primary" id="submitBtn" type="button">Send my order →</button>
+      <div id="formMsg"></div>
+    </div>
+  </div>
+</div>
+
+<section style="background:var(--paper-warm);border-top:1px solid var(--line)">
+  <div class="wrap" style="padding:64px 28px">
+    <div class="eyebrow">How it works</div>
+    <h2 style="font-size:clamp(1.7rem,3vw,2.4rem);margin-bottom:8px;max-width:24ch">No carts, no accounts — just a real grower</h2>
+    <p style="color:var(--ink-soft);font-size:1.1rem;max-width:60ch;margin-bottom:36px;line-height:1.6">Texas Roots is one person and one greenhouse, so ordering is refreshingly human. Here's exactly what happens after you hit send.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:22px;margin-bottom:48px">
+      <div><div style="font-family:'Fraunces',serif;font-weight:900;font-size:2.4rem;color:var(--sprout);line-height:1">1</div><h3 style="font-size:1.15rem;margin:8px 0 6px">You tell me what you want</h3><p style="color:var(--ink-soft);font-size:.98rem;line-height:1.55;margin:0">Seeds, rooted cuttings, a starter box, or "help me pick." A rough idea is plenty — we'll sort the details together.</p></div>
+      <div><div style="font-family:'Fraunces',serif;font-weight:900;font-size:2.4rem;color:var(--sprout);line-height:1">2</div><h3 style="font-size:1.15rem;margin:8px 0 6px">I reply within a day</h3><p style="color:var(--ink-soft);font-size:.98rem;line-height:1.55;margin:0">You get a real email back from Jordan with what's available, a total, and a simple payment link. Questions welcome.</p></div>
+      <div><div style="font-family:'Fraunces',serif;font-weight:900;font-size:2.4rem;color:var(--sprout);line-height:1">3</div><h3 style="font-size:1.15rem;margin:8px 0 6px">It ships the same day</h3><p style="color:var(--ink-soft);font-size:.98rem;line-height:1.55;margin:0">Packed by hand with a free grow guide, mailed flat-rate from El Campo. Local? Pick up at the stand and skip shipping.</p></div>
+    </div>
+    <div class="eyebrow">What things run</div>
+    <h2 style="font-size:1.5rem;margin-bottom:8px">Rough pricing</h2>
+    <p style="color:var(--ink-soft);font-size:1rem;max-width:60ch;margin-bottom:20px;line-height:1.6">Every order is grown to fill, so exact totals come in your reply — but here's the ballpark so there are no surprises:</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden;max-width:760px">
+      <div style="background:var(--paper-card);padding:20px"><div style="font-family:'Spline Sans Mono',monospace;font-size:.7rem;letter-spacing:.05em;text-transform:uppercase;color:var(--clay);margin-bottom:6px">Seed packets</div><div style="font-family:'Fraunces',serif;font-size:1.4rem;color:var(--ink)">$3–4 each</div><p style="font-size:.9rem;color:var(--ink-soft);margin:6px 0 0">Open-pollinated heirlooms, hand-saved. Bundles discounted.</p></div>
+      <div style="background:var(--paper-card);padding:20px"><div style="font-family:'Spline Sans Mono',monospace;font-size:.7rem;letter-spacing:.05em;text-transform:uppercase;color:var(--clay);margin-bottom:6px">Rooted cuttings</div><div style="font-family:'Fraunces',serif;font-size:1.4rem;color:var(--ink)">$6–12 each</div><p style="font-size:.9rem;color:var(--ink-soft);margin:6px 0 0">Already rooted &amp; established. Free replacement if one fails.</p></div>
+      <div style="background:var(--paper-card);padding:20px"><div style="font-family:'Spline Sans Mono',monospace;font-size:.7rem;letter-spacing:.05em;text-transform:uppercase;color:var(--clay);margin-bottom:6px">Starter box</div><div style="font-family:'Fraunces',serif;font-size:1.4rem;color:var(--ink)">$25–45</div><p style="font-size:.9rem;color:var(--ink-soft);margin:6px 0 0">A curated little garden — seeds, a few starts, and a guide.</p></div>
+    </div>
+    <p style="color:var(--ink-faint);font-size:.9rem;margin-top:18px;max-width:60ch">Shipping is flat-rate by weight and shown in your reply before you pay. Local El Campo pickup is always free.</p>
+  </div>
+</section>
+
+<footer><div class="wrap">
+  <div class="foot-grid">
+    <div class="foot-brand"><a href="./" class="brand"><svg viewBox="0 0 40 40" fill="none"><path d="M20 36V16" stroke="#7CB342" stroke-width="2.4" stroke-linecap="round"/><path d="M20 22C20 14 12 10 6 11c-1 7 5 14 14 11Z" fill="#7CB342" fill-opacity="0.85"/><path d="M20 18C20 11 27 7 33 9c1 6-4 12-13 9Z" fill="#EAE2CF"/><circle cx="20" cy="36" r="2.4" fill="#C99A3B"/></svg><span class="name" style="color:#F3EEE2">Texas <b style="color:#7CB342">Roots</b></span></a><p>Heirloom seeds &amp; rooted cuttings, grown and mailed by hand from El Campo, Texas. Founded &amp; built by Jordan Polasek.</p></div>
+    <div class="foot-col"><h4>Shop</h4><a href="shop#seeds">Seed packets</a><a href="shop#cuttings">Rooted cuttings</a><a href="shop#boxes">Starter boxes</a><a href="stand">The El Campo stand</a></div>
+    <div class="foot-col"><h4>Learn</h4><a href="almanac/">The Almanac</a><a href="community/">Community garden</a><a href="grow">Grow guides</a><a href="faq">FAQ</a></div>
+    <div class="foot-col"><h4>More</h4><a href="order">Place an order</a><a href="nomad">Go offline</a><a href="https://jordanpolasek.com">JordanPolasek.com</a><a href="https://bvtech.org">BVTech.org</a><a href="https://autumnpolasek.com">In Remembrance of Autumn 🐾</a></div>
+  </div>
+  <div class="foot-scripture" style="text-align:center;color:rgba(243,238,226,.55);font-style:italic;padding:0 0 18px;font-size:.9rem">&ldquo;So neither he who plants nor he who waters is anything, but only God, who gives the growth.&rdquo; &mdash; 1 Corinthians 3:7</div><div class="foot-bottom"><span>© <span id="yr"></span> Texas Roots · El Campo, TX · tx-plants.com</span><span>Designed &amp; built by <a href="https://jordanpolasek.com">Jordan Polasek</a></span></div>
+</div></footer>
+<script>
+document.getElementById('yr').textContent=new Date().getFullYear();
+const burger=document.getElementById('burger'),navLinks=document.getElementById('navLinks');
+burger.addEventListener('click',()=>navLinks.classList.toggle('open'));
+navLinks.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>navLinks.classList.remove('open')));
+// pre-fill item from ?item= link
+const params=new URLSearchParams(location.search),want=params.get('item');
+if(want){const sel=document.getElementById('fwhat');if([...sel.options].some(o=>o.value===want))sel.value=want;}
+// submit
+const btn=document.getElementById('submitBtn'),msg=document.getElementById('formMsg');
+btn.addEventListener('click',async()=>{
+  const payload={
+    name:document.getElementById('fname').value.trim(),
+    email:document.getElementById('femail').value.trim(),
+    item:document.getElementById('fwhat').value,
+    city:document.getElementById('fcity').value.trim(),
+    details:document.getElementById('fmsg').value.trim(),
+    company:document.getElementById('company').value // honeypot
+  };
+  if(!payload.name||!payload.email||!payload.item){msg.style.color='#B5552F';msg.textContent='Please add your name, email, and what you\u2019d like.';return;}
+  btn.disabled=true;msg.style.color='#5C8A3A';msg.textContent='Sending\u2026';
+  try{
+    const r=await fetch('/api/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(r.ok){msg.style.color='#5C8A3A';msg.textContent='Got it \u2014 Jordan will email you within a day. \uD83C\uDF31';
+      ['fname','femail','fcity','fmsg'].forEach(id=>document.getElementById(id).value='');document.getElementById('fwhat').value='';}
+    else{throw new Error();}
+  }catch(e){
+    // Backend not reachable (or not configured) — fall back to a pre-filled email so
+    // the order NEVER just vanishes. Opens the visitor's mail app addressed to Jordan.
+    const labels={seeds:'Heirloom seed packets',cuttings:'Rooted cuttings & pups',box:'Starter box',mix:'Custom mix',local:'Local El Campo pickup'};
+    const subject=`Texas Roots order \u2014 ${labels[payload.item]||payload.item} (${payload.name})`;
+    const body=`Name: ${payload.name}\nEmail: ${payload.email}\nLooking for: ${labels[payload.item]||payload.item}\nCity/State: ${payload.city||'(not given)'}\n\nDetails:\n${payload.details||'(none)'}\n`;
+    const mailto=`mailto:jordan@tx-plants.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    msg.style.color='#5C8A3A';
+    msg.innerHTML='Opening your email app to send the order to Jordan\u2026 If nothing opens, email <b>jordan@tx-plants.com</b> directly.';
+    window.location.href=mailto;
+  }
+  btn.disabled=false;
+});
+</script>
+</body>
+</html>

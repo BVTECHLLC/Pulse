@@ -1,0 +1,74 @@
+============================================================
+  TEXAS ROOTS v7 — HOW TO DEPLOY (no terminal, no Wrangler)
+============================================================
+
+THE ONE RULE THAT MATTERS:
+  Upload the FILES, not a folder. The thing Cloudflare needs at the
+  root of your Pages project is index.html sitting right there at the
+  top — NOT inside a sub-folder.
+
+  v7's zip is already flat: when you unzip it you get index.html,
+  database/, assets/, functions/, etc. directly. Select ALL of those
+  and drag them in. If you accidentally drag a folder that CONTAINS
+  them, everything lands one level too deep and every page except the
+  homepage will 404 — that is exactly the bug you just had.
+
+------------------------------------------------------------
+STEP 1 — UNZIP
+------------------------------------------------------------
+Unzip tx-plants-site-v7.zip. You'll see, at the top level:
+  index.html, shop.html, weather.html, sitemap.xml, _redirects
+  and folders: database, almanac, assets, functions, community
+
+------------------------------------------------------------
+STEP 2 — CLOUDFLARE PAGES
+------------------------------------------------------------
+1. dash.cloudflare.com  ->  Workers & Pages
+2. Open your existing "tx-plants" project (don't make a new one).
+3. Go to:  Deployments  ->  Create deployment  (or "Upload assets").
+
+------------------------------------------------------------
+STEP 3 — DRAG THE FILES IN  (this is the important part)
+------------------------------------------------------------
+Open the unzipped folder. Select EVERYTHING inside it
+(Ctrl+A / Cmd+A), and drag that selection onto the upload box.
+You should see index.html in the list of files being uploaded at the
+TOP level — not nested under a folder name.
+
+Click "Deploy."  Wait for it to finish.
+
+------------------------------------------------------------
+STEP 4 — HARD REFRESH + PURGE CACHE
+------------------------------------------------------------
+A stale edge cache can keep serving the old 404s. After deploy:
+  1. In the dashboard:  your zone  ->  Caching  ->  Configuration
+     ->  Purge Everything.
+  2. In your browser: Ctrl+Shift+R (Cmd+Shift+R on Mac).
+
+Now test these URLs — ALL should load:
+  https://tx-plants.com/
+  https://tx-plants.com/weather
+  https://tx-plants.com/database/
+  https://tx-plants.com/database/agarita
+  https://tx-plants.com/shop
+Note: typing /weather.html will auto-redirect to /weather. That's
+normal Cloudflare behavior and is correct.
+
+------------------------------------------------------------
+COMMUNITY BOARD (optional, only if you want saved posts)
+------------------------------------------------------------
+  1. Workers & Pages  ->  KV  ->  Create a namespace  ->  name it COMMUNITY
+  2. tx-plants project  ->  Settings  ->  Bindings  ->  Add  ->  KV namespace
+     Variable name: COMMUNITY   ->   pick the COMMUNITY namespace  ->  Save
+  3. Deployments  ->  latest  ->  "..."  ->  Retry deployment
+The board works in-browser even without this; KV just makes posts persist.
+
+------------------------------------------------------------
+NO wrangler.toml, NO separate worker
+------------------------------------------------------------
+Pure drag-and-drop. The functions/ folder IS the backend; Pages turns
+it into edge functions automatically on upload. The weather tool and
+order form work the moment the site is live (weather pulls Open-Meteo
+client-side; the order form falls back to email if no backend).
+
+Questions? Just ask. — built by Jordan Polasek

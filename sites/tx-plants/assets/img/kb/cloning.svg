@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400" role="img"><rect width="800" height="400" fill="#EAE2CF"/><g stroke="#1B2B22" stroke-opacity="0.04" fill="none" stroke-width="1"><path d="M60 20c0 40-20 60-20 100s30 50 30 90"/><path d="M700 40c20 30 10 70-10 100s-40 60-20 110"/></g>
+<g>
+<path d="M250 200 Q230 180 250 140 Q270 120 250 90" fill="none" stroke="#5C8A3A" stroke-width="6" stroke-linecap="round"/>
+<path d="M250 140c-22-6-34-26-30-50 22 6 34 26 30 50Z" fill="#7CB342" stroke="#1B2B22" stroke-width="2"/>
+<path d="M250 110c20-6 32-24 28-46-20 6-30 24-28 46Z" fill="#5C8A3A" stroke="#1B2B22" stroke-width="2"/>
+<path d="M250 200c-6 14-4 30 0 44" stroke="#B5552F" stroke-width="3" fill="none"/>
+<path d="M250 200c8 12 10 28 6 42M250 205c-10 10-14 26-12 40" stroke="#B5552F" stroke-width="2" fill="none" opacity="0.8"/>
+<path d="M180 210 h140 l-14 90 a56 30 0 0 1 -112 0 Z" fill="#68a3c4" fill-opacity="0.35" stroke="#1B2B22" stroke-width="2"/>
+<ellipse cx="250" cy="210" rx="70" ry="14" fill="#68a3c4" fill-opacity="0.5" stroke="#1B2B22" stroke-width="2"/>
+<text x="470" y="160" font-family="Georgia,serif" font-size="26" fill="#1B2B22">Take · Dip · Root</text>
+<text x="470" y="195" font-family="monospace" font-size="14" fill="#5C8A3A">one plant becomes ten</text>
+<g stroke="#1B2B22" stroke-width="2" fill="none"><path d="M470 230 h220 M470 230 l-8-6 M470 230 l-8 6"/></g>
+</g></svg>

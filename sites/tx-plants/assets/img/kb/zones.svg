@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400" role="img"><rect width="800" height="400" fill="#EAE2CF"/><g stroke="#1B2B22" stroke-opacity="0.04" fill="none" stroke-width="1"><path d="M60 20c0 40-20 60-20 100s30 50 30 90"/><path d="M700 40c20 30 10 70-10 100s-40 60-20 110"/></g>
+<g stroke="#1B2B22" stroke-width="1.5">
+<path d="M200 80 h400 v60 h-400Z" fill="#68a3c4" fill-opacity="0.3"/>
+<path d="M200 140 h400 v60 h-400Z" fill="#7CB342" fill-opacity="0.35"/>
+<path d="M200 200 h400 v60 h-400Z" fill="#C99A3B" fill-opacity="0.35"/>
+<path d="M200 260 h400 v60 h-400Z" fill="#B5552F" fill-opacity="0.35"/>
+</g>
+<g font-family="monospace" font-size="13" fill="#1B2B22">
+<text x="214" y="116">Zone 8 — North TX</text>
+<text x="214" y="176">Zone 9 — Central/Coast (El Campo)</text>
+<text x="214" y="236">Zone 9b — South TX</text>
+<text x="214" y="296">Zone 10 — Rio Grande Valley</text></g></svg>

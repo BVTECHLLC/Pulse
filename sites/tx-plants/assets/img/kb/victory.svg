@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400" role="img"><rect width="800" height="400" fill="#EAE2CF"/><g stroke="#1B2B22" stroke-opacity="0.04" fill="none" stroke-width="1"><path d="M60 20c0 40-20 60-20 100s30 50 30 90"/><path d="M700 40c20 30 10 70-10 100s-40 60-20 110"/></g>
+<g stroke="#1B2B22" stroke-width="2">
+<rect x="120" y="200" width="160" height="90" rx="4" fill="#6b4f34"/>
+<rect x="320" y="200" width="160" height="90" rx="4" fill="#6b4f34"/>
+<rect x="520" y="200" width="160" height="90" rx="4" fill="#6b4f34"/>
+</g>
+<g fill="#5C8A3A">
+<path d="M150 200c0-20-8-28-4-44 12 6 14 28 4 44Z"/><path d="M180 200c0-16 8-24 4-40-10 6-12 26-4 40Z"/>
+<path d="M210 200c0-22-8-30-4-46 12 6 14 30 4 46Z"/><path d="M240 200c0-16 8-24 4-40-10 6-12 26-4 40Z"/>
+</g>
+<g fill="#7CB342">
+<circle cx="360" cy="195" r="14"/><circle cx="400" cy="190" r="16"/><circle cx="440" cy="196" r="13"/>
+</g>
+<g fill="#B5552F"><circle cx="560" cy="194" r="12"/><circle cx="600" cy="190" r="13"/><circle cx="640" cy="195" r="11"/></g>
+<text x="120" y="80" font-family="Georgia,serif" font-size="28" fill="#1B2B22">Grow what you eat.</text>
+<text x="120" y="115" font-family="monospace" font-size="15" fill="#5C8A3A">calories · greens · protein · medicine</text></svg>

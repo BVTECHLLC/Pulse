@@ -1,0 +1,84 @@
+Texas Roots - tx-plants.com
+Version: v8
+Released: 2026-07-28
+
+=================================================================
+WHAT v8 ADDS (built on the verified v7 base)
+=================================================================
+- FIELD NOTES BLOG (/blog/): a daily-post journal wired for the Pulse
+  auto-blogger - 3 launch posts (late-July planting, first-five
+  homestead perennials, reading land before you buy), listing cards
+  the publisher recognizes, and the link-normalizer deliberately
+  SKIPS blog/ so daily automation stays stable.
+- +14 NEW PLANT PAGES (301 total): pecan, texas-persimmon, maypop,
+  texas-redbud, wax-myrtle, mustang-grape, flameleaf-sumac,
+  sugar-hackberry, live-oak-acorn, lemon-beebalm,
+  maximilian-sunflower, winecup, bluebonnet, bay-laurel - all with
+  full grow/ID/edibility data in the standard schema.
+- SITE-WIDE FOOTER: sister-site links (BVTech.org, JordanPolasek.com,
+  In Remembrance of Autumn -> autumnpolasek.com) + 1 Corinthians 3:7,
+  on every page with a footer (344/345).
+- NAV: "Blog" added across the site + generator templates.
+- sitemap.xml: 345 URLs incl. blog; fixed sub-index double-slash in
+  the generator's loc().
+
+v8 AUDIT (same bar as v7): 345 pages scanned - 0 broken internal
+links, 0 head-hygiene misses, 345/345 sitemap URLs resolve.
+
+=================================================================
+WHY PAGES 404'd IN PRODUCTION (the real root cause)
+=================================================================
+The homepage (/) worked but /index.html, /weather.html, and
+/database/index.html all 404'd. The files were never missing — this
+is the classic signature of a PARTIAL or WRONG-LEVEL upload: only the
+content that resolves to "/" made it into the Pages project root, so
+everything else had nothing to serve.
+
+Two things made that worse and are now fixed:
+
+1. The zip used to contain a WRAPPER folder (tx-plants-site-v6.5/...).
+   If that folder itself got dragged into Cloudflare, every file landed
+   one directory too deep and only the root resolved. v7 ships the site
+   files at the TOP LEVEL of the zip — there is no wrapper folder to get
+   wrong.
+
+2. _redirects had a self-referential rule: /*.html -> /:splat.html 200.
+   A rule that maps a path to itself can resolve to a 404 on Pages. It
+   was unnecessary anyway — Pages already serves every .html file at its
+   clean URL and 308-redirects /page.html -> /page natively. Removed.
+
+=================================================================
+WHAT v7 FIXES / VERIFIES
+=================================================================
+- Deploy package: no wrapper folder. Drag the FILES (or the unzipped
+  folder's CONTENTS) to the Pages project root.
+- _redirects: removed the self-referential rule; kept only real 301
+  canonical redirects (/home -> /, /plants -> /database/, etc).
+- sitemap.xml: rebuilt from the actual files. Fixed 3 broken
+  double-slash URLs (/database//, /almanac//, /community//). 328 clean
+  URLs, all verified to resolve, with lastmod/changefreq/priority.
+- 404.html: added <meta name="robots" content="noindex">.
+
+=================================================================
+VERIFIED (automated audit against Cloudflare Pages serving rules)
+=================================================================
+- 329 HTML pages scanned: 0 broken internal links.
+- 328 sitemap URLs: 0 broken.
+- 0 missing referenced assets (css/js/img/icons).
+- All 3 edge functions (weather, order, community) parse clean.
+- site.webmanifest: valid JSON.
+- Every page: 1 <h1>, has <title>, meta description, canonical, viewport.
+- All 1,521 <img> tags have alt text.
+- All JSON-LD structured-data blocks valid.
+
+Carried from v5/v6/v6.5: 289 plant pages with species-accurate
+propagation + cultivation Grow Guides and HowTo schema; Start Here
+pillar page; Project NOMAD offline-knowledge hub; live garden weather
+tool; 25 almanac how-to guides.
+
+Stack: Cloudflare Pages, vanilla JS, no build framework. Static-first —
+the weather tool, order form, and community board all work with no
+backend config. The functions/ folder is the backend; Pages turns it
+into edge functions on upload.
+
+REBUILD from source: python3 generator/build_all.py

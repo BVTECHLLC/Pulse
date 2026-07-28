@@ -1,0 +1,13 @@
+# Texas Roots v7 — Cloudflare Pages redirects
+#
+# Cloudflare Pages natively serves every .html file at its clean URL and
+# 308-redirects /page.html -> /page automatically. We do NOT add a
+# /*.html -> /:splat.html rule: that maps a path to itself and can resolve
+# to a 404. The platform default is correct on its own.
+#
+# Only intentional canonical redirects live here:
+/home              /                 301
+/index.html        /                 301
+/plants            /database/        301
+/plant-database    /database/        301
+/almanac.html      /almanac/         301
