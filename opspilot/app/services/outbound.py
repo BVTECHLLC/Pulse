@@ -41,7 +41,10 @@ CAMPAIGN = "bvtech_acq"          # tags every send's CRM activity meta
 GAP_DAYS = 3                     # days between touches in a sequence
 # Statuses that must never receive cold outreach.
 SUPPRESSED_STATUS = {"customer", "client", "won", "closed", "disqualified",
-                     "unsubscribed", "bounced", "do_not_contact"}
+                     "unsubscribed", "bounced", "do_not_contact",
+                     # v1.58: a lead who REPLIED leaves the sequence instantly —
+                     # the conversation is human now, not automated.
+                     "replied"}
 
 # Warm-up ramp defaults (days -> daily ceiling). Gentle start protects a cold
 # domain; +15/day reaches an "aggressive" target inside ~2 weeks.
@@ -131,6 +134,7 @@ def get_config(db: Session) -> dict:
         "test_sent_on": raw.get("test_sent_on") or "",  # last self-test date (v1.56)
         "prospected_on": raw.get("prospected_on") or "",  # last auto-scrape date (v1.57)
         "prospect_cycle": int(raw.get("prospect_cycle") or 0),  # market×industry rotation
+        "replies_checked_at": raw.get("replies_checked_at") or "",  # inbox watermark (v1.58)
     }
 
 
@@ -329,9 +333,8 @@ def _text_to_html(text: str) -> str:
             + _h.escape(text) + "</div>")
 
 
-def resolve_send_fn(db: Session):
-    """(send_fn, detail). Prefers the M365 Graph mailbox, then SMTP; (None,
-    why) when no transport is configured. Never raises."""
+def _graph_and_mailbox(db: Session):
+    """(GraphClient, mailbox) from the m365_mailbox creds, or None."""
     conn = secure_config.get_platform(db, "m365_mailbox")
     cfg = dict((conn.config if conn else None) or {})
     tenant = secure_config.get_secret(cfg, "tenant_id") or cfg.get("tenant_id") or ""
@@ -339,7 +342,16 @@ def resolve_send_fn(db: Session):
     client_secret = secure_config.get_secret(cfg, "client_secret") or ""
     mailbox = (cfg.get("mailbox") or "").strip()
     if tenant and client_id and client_secret and mailbox:
-        graph = _GRAPH_FACTORY(str(tenant), str(client_id), str(client_secret))
+        return _GRAPH_FACTORY(str(tenant), str(client_id), str(client_secret)), mailbox
+    return None
+
+
+def resolve_send_fn(db: Session):
+    """(send_fn, detail). Prefers the M365 Graph mailbox, then SMTP; (None,
+    why) when no transport is configured. Never raises."""
+    gm = _graph_and_mailbox(db)
+    if gm:
+        graph, mailbox = gm
 
         def _send_graph(to: str, subject: str, body: str) -> None:
             graph.send_mail(mailbox, [to], subject, _text_to_html(body), html=True)
@@ -482,6 +494,12 @@ def tick(db: Session, now: datetime | None = None) -> dict:
     # branches so even the test-mode preview fills with real leads.
     try:
         _ensure_leads(db, cfg, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+    # v1.58 REPLY WATCHER: listen to the mailbox — hot leads flagged, STOP
+    # honored instantly, bounces retired. Every ~15 min, cheap watermark.
+    try:
+        _watch_replies(db, cfg, now)
     except Exception:  # noqa: BLE001
         db.rollback()
     if mode == "test" and not cfg["enabled"]:
@@ -684,3 +702,116 @@ def _ensure_leads(db: Session, cfg: dict, now: datetime) -> dict:
     return {"ran": True, "scraped": scraped.get("created", 0),
             "enriched": enriched.get("emails_found", 0),
             "pool": _untouched_pool(db)}
+
+
+# --------------------------------------------------------------------------- #
+# v1.58 REPLY WATCHER — the machine can talk; now it listens.
+#
+# Scans the sending mailbox's inbox (Mail.Read is granted on the mailbox app):
+#   * a campaign-touched lead REPLIES  -> status "replied", sequence stops
+#     instantly (SUPPRESSED_STATUS), 🔥 notification — a human takes over.
+#   * reply says STOP/unsubscribe      -> do_not_contact + "unsubscribed",
+#     honored automatically (CAN-SPAM requires it; we do it in minutes).
+#   * bounce (mailer-daemon) naming a lead -> "bounced", never emailed again —
+#     protects the domain's sender reputation.
+# Every inbound is logged to the lead's CRM timeline. Watermarked so each
+# message is processed once; runs at most every REPLY_SCAN_MINUTES.
+# --------------------------------------------------------------------------- #
+REPLY_SCAN_MINUTES = 15
+
+_STOP_RX = None
+
+
+def _is_stop(subject: str, preview: str) -> bool:
+    """Opt-out detection with a guard against eating hot leads: explicit forms
+    (unsubscribe / opt out / remove me / do not email...) match anywhere, but a
+    bare 'stop' only counts when the REPLY BODY leads with it — real opt-outs
+    are terse ('STOP', 'stop emailing me'); 'can't stop praising you' is not
+    an unsubscribe."""
+    import re as _re
+    global _STOP_RX
+    if _STOP_RX is None:
+        _STOP_RX = _re.compile(
+            r"\b(unsubscribe|opt[ -]?out|remove me|take me off"
+            r"|stop (?:email|send|contact)\w*"
+            r"|do not (?:email|contact)|don'?t (?:email|contact))\b", _re.I)
+    if _STOP_RX.search(f"{subject or ''} {preview or ''}"):
+        return True
+    return bool(_re.match(r"\s*stop\b", preview or "", _re.I))
+
+
+def _parse_iso(ts: str):
+    try:
+        return datetime.fromisoformat((ts or "").replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _watch_replies(db: Session, cfg: dict, now: datetime) -> dict:
+    last = cfg.get("replies_checked_at") or ""
+    last_dt = _parse_iso(last)
+    if last_dt and (now - last_dt).total_seconds() < REPLY_SCAN_MINUTES * 60:
+        return {"ran": False, "reason": "recently_checked"}
+    gm = _graph_and_mailbox(db)
+    if not gm:
+        return {"ran": False, "reason": "no_graph"}
+    graph, mailbox = gm
+    try:
+        msgs = graph.list_messages(mailbox, "inbox", top=25)
+    except Exception as e:  # noqa: BLE001
+        return {"ran": False, "reason": "scan_failed", "error": str(e)[:200]}
+    save_config(db, replies_checked_at=now.isoformat())
+    hot, stops, bounced = [], [], []
+    for m in msgs:
+        rec_dt = _parse_iso(m.get("received") or "")
+        if last_dt and rec_dt and rec_dt <= last_dt:
+            continue                     # already processed in an earlier scan
+        sender = ((m.get("from") or {}).get("address") or "").strip().lower()
+        text = f"{m.get('subject') or ''} {m.get('preview') or ''}"
+        if not sender:
+            continue
+        if sender.startswith(("mailer-daemon", "postmaster")) or "mailer-daemon" in sender:
+            # NDR: find which campaign lead bounced by their address in the text
+            tl = text.lower()
+            for c in (db.query(CrmContact)
+                      .filter(CrmContact.email.isnot(None)).all()):
+                if c.email and c.email.lower() in tl and _position(db, c.id) > 0:
+                    c.status = "bounced"
+                    bounced.append(c.company or c.name)
+                    crm.log_activity(db, c, "email", subject="(bounce)",
+                                     body=text[:500], direction="inbound",
+                                     meta={"campaign": CAMPAIGN, "kind": "bounce"},
+                                     commit=False)
+            continue
+        c = (db.query(CrmContact)
+             .filter(CrmContact.email.ilike(sender)).first())
+        if not c or _position(db, c.id) == 0:
+            continue                     # not a campaign-touched lead
+        if _is_stop(m.get("subject") or "", m.get("preview") or ""):
+            c.do_not_contact = True
+            c.status = "unsubscribed"
+            stops.append(c.company or c.name)
+            kind = "stop"
+        else:
+            c.status = "replied"
+            hot.append((c.name, c.company))
+            kind = "reply"
+        crm.log_activity(db, c, "email", subject=m.get("subject") or "(reply)",
+                         body=(m.get("preview") or "")[:500], direction="inbound",
+                         meta={"campaign": CAMPAIGN, "kind": kind}, commit=False)
+    if hot or stops or bounced:
+        db.commit()
+    for name, company in hot:
+        _notify(db, "info",
+                f"🔥 HOT LEAD: {name} ({company}) replied to the outreach — "
+                f"the sequence stopped itself; go close them in {mailbox}.")
+    if stops:
+        _notify(db, "info",
+                f"✋ Opt-out honored automatically for: {', '.join(stops[:5])}"
+                f"{' …' if len(stops) > 5 else ''} — marked do-not-contact.")
+    if bounced:
+        _notify(db, "info",
+                f"↩️ {len(bounced)} bounce(s) retired from the sequence: "
+                f"{', '.join(bounced[:5])}.")
+    return {"ran": True, "hot": len(hot), "stops": len(stops),
+            "bounced": len(bounced), "scanned": len(msgs)}

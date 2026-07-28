@@ -6063,6 +6063,52 @@ def main():
             finally:
                 _ob56._PLACES_FACTORY = _orig_pf56
                 _ob56._FETCH_PAGE = _orig_ff56
+            # 6) v1.58 REPLY WATCHER: hot lead flagged + sequence stopped, STOP
+            #    honored automatically, bounce retired, watermark holds.
+            from app.services import crm as _crm56
+            _lead_c = _CC56(name="Casey Boone", email="casey@leadco-c.com",
+                            company="LeadCo C", score=70, status="contacted")
+            _edb6.add(_lead_c)
+            _edb6.commit()
+            _crm56.log_activity(_edb6, _lead_c, "email", subject="t1", body="x",
+                                direction="outbound",
+                                meta={"campaign": "bvtech_acq", "step": 0})
+            _msgs56 = [
+                {"id": "m1", "subject": "re: quick question",
+                 "from": {"address": "pat@leadco-a.com"},
+                 "received": "2026-07-28T16:05:00Z", "preview": "STOP"},
+                {"id": "m2", "subject": "re: quick question",
+                 "from": {"address": "sam@leadco-b.com"},
+                 "received": "2026-07-28T16:06:00Z",
+                 "preview": "Interested - what would this cost us?"},
+                {"id": "m3", "subject": "Undeliverable",
+                 "from": {"address": "mailer-daemon@outlook.com"},
+                 "received": "2026-07-28T16:07:00Z",
+                 "preview": "delivery failed for casey@leadco-c.com"},
+                {"id": "m4", "subject": "hi",
+                 "from": {"address": "stranger@nowhere.example"},
+                 "received": "2026-07-28T16:08:00Z", "preview": "unrelated note"},
+            ]
+            _FakeGraph56.list_messages = (
+                lambda self, mb, folder="inbox", top=25, **k: _msgs56)
+            _rw = _ob56._watch_replies(_edb6, _ob56.get_config(_edb6),
+                                       _hour56.replace(hour=17))
+            assert _rw["ran"] is True and _rw["hot"] == 1 and _rw["stops"] == 1 \
+                and _rw["bounced"] == 1, _rw
+            _edb6.refresh(_lead_a); _edb6.refresh(_lead_b); _edb6.refresh(_lead_c)
+            assert _lead_a.do_not_contact is True and _lead_a.status == "unsubscribed"
+            assert _lead_b.status == "replied" and _lead_b.do_not_contact is False
+            assert _lead_c.status == "bounced"
+            # all three are OUT of the sequence from this moment on
+            _due56 = {c.id for c, _ in
+                      _ob56.select_due(_edb6, _hour56.replace(hour=17))}
+            assert not ({_lead_a.id, _lead_b.id, _lead_c.id} & _due56), _due56
+            assert _edb6.query(_N56).filter(
+                _N56.message.like("%HOT LEAD%")).count() >= 1
+            # watermark: an immediate rescan is skipped (runs every ~15 min)
+            _rw2 = _ob56._watch_replies(_edb6, _ob56.get_config(_edb6),
+                                        _hour56.replace(hour=17, minute=5))
+            assert _rw2["reason"] == "recently_checked", _rw2
         finally:
             _ob56._GRAPH_FACTORY = _orig_gf56
             for _k56 in ("PULSE_OUTBOUND", "PULSE_OUTBOUND_ADDRESS"):
@@ -6072,7 +6118,7 @@ def main():
               "(self-inbox plan+sample, leads untouched, once/day) + LIVE mode (business "
               "hours, DNC excluded, CAN-SPAM footer, CRM-logged, same-day idempotent) OK")
 
-    print("\n=== OpsPilot v1.57.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.58.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
