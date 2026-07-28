@@ -5835,9 +5835,9 @@ def main():
                  '<a href="/blog/c.html" class="intel-mini"><div class="intel-mini-date">Jul 25</div><h4>C</h4><p>z</p></a>'
                  '</div></div>'
                  '<div class="wall">'
-                 '<a href="/blog/a.html" class="blog-card">A</a>'
-                 '<a href="/blog/a.html" class="blog-card">A-dup</a>'
-                 '<a href="/blog/b.html" class="blog-card">B</a>'
+                 '<a href="/blog/a.html" class="blog-card"><h3>A</h3><p>body</p></a>'
+                 '<a href="/blog/a.html" class="blog-card"><h3>A dup</h3><p>body</p></a>'
+                 '<a href="/blog/b.html" class="blog-card"><h3>B</h3><p>body</p></a>'
                  '</div>')
         # stash
         _m_sh = re.search(r'<div class="intel-recent">.*?</a>\s*</div>', _home, re.S)
