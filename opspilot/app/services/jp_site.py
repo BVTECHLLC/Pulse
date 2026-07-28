@@ -1095,14 +1095,14 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
                 if _ch48:
                     listings["index.html"] = _nh48
                     repaired.append("index.html: featured -> newest news edition")
-        # v1.55.1: keep the homepage "intel-recent" trio (the 3 cards directly
-        # under the LIVE KEV ticker) pointed at the 3 NEWEST posts. This block
-        # has no intel-featured card, so _promote_featured never touched it and
-        # it froze on old posts. Source of truth: the /blog/ listing, which is
-        # already maintained newest-first — so no extra full-tree scan.
+        # v1.55.2: keep the homepage "This Week in Cybersecurity" trio (the cards
+        # under the LIVE KEV ticker) pointed at the 3 NEWEST posts — and REBUILD
+        # the block if the duplicate-sweeper stripped it (its intel-mini cards
+        # mirror the main grid by design, so the de-spam pass used to delete them
+        # and leave the section empty). Source: the /blog/ listing (newest-first).
         _home_ir = listings.get("index.html") or ""
         _blog_ls = listings.get("blog/index.html") or _fetch_file(cfg, "blog/index.html") or ""
-        if 'class="intel-recent"' in _home_ir and _blog_ls:
+        if '<div class="intel-grid">' in _home_ir and _blog_ls:
             _hrefs = re.findall(r'<a href="(/blog/[^"]+\.html)"[^>]*class="blog-card"',
                                 _blog_ls)[:3]
             _ir_cards = []
@@ -1119,11 +1119,18 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
             if len(_ir_cards) == 3:
                 _newrec = ('<div class="intel-recent">\n' + "\n".join(_ir_cards)
                            + "\n</div>")
-                _nhr, _nr = re.subn(r'<div class="intel-recent">.*?</a>\s*</div>',
-                                    _newrec, _home_ir, count=1, flags=re.S)
-                if _nr and _nhr != _home_ir:
+                if '<div class="intel-recent">' in _home_ir:      # replace in place
+                    _nhr = re.sub(r'<div class="intel-recent">.*?</a>\s*</div>',
+                                  lambda _m: _newrec, _home_ir, count=1, flags=re.S)
+                elif '<!-- Three recent cards -->' in _home_ir:   # rebuild after marker
+                    _nhr = _home_ir.replace('<!-- Three recent cards -->',
+                                            '<!-- Three recent cards -->\n' + _newrec, 1)
+                else:                                              # rebuild into grid
+                    _nhr = _home_ir.replace('<div class="intel-grid">',
+                                            '<div class="intel-grid">\n' + _newrec, 1)
+                if _nhr != _home_ir:
                     listings["index.html"] = _nhr
-                    repaired.append("index.html: refreshed intel-recent -> 3 newest posts")
+                    repaired.append("index.html: rebuilt/refreshed intel-recent -> 3 newest posts")
         for lp in list(listings):
             new_h, _n45 = _strip_empty_shells(listings[lp])
             if _n45:
@@ -1488,6 +1495,22 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
         removed, actions, purge_urls = [], [], []
         listings = {lp: _fetch_file(cfg, lp) for lp in meta.get("index_paths", ())}
         listings = {lp: h for lp, h in listings.items() if h is not None}
+        # v1.55.2 SHIELD: the homepage "This Week in Cybersecurity" trio (the
+        # intel-mini cards under the KEV ticker) POINT AT the same 3 newest posts
+        # the main archive wall shows — by design. The de-spam/dedupe passes below
+        # treat that as "the same card repeated down the page" and delete the whole
+        # intel-recent block, freezing the section. Stash it out of every listing
+        # before the sweep and stitch it back verbatim afterwards; the sync pass
+        # (rebuild-if-missing) owns keeping its contents current.
+        _shielded: dict = {}
+        for _lp_sh in list(listings):
+            _m_sh = re.search(r'<div class="intel-recent">.*?</a>\s*</div>',
+                              listings[_lp_sh], re.S)
+            if _m_sh:
+                _tok_sh = f"<!--PULSE_INTEL_SHIELD_{_lp_sh}-->"
+                _shielded[_lp_sh] = (_tok_sh, _m_sh.group(0))
+                listings[_lp_sh] = (listings[_lp_sh][:_m_sh.start()] + _tok_sh
+                                    + listings[_lp_sh][_m_sh.end():])
         for (_ch48, d), paths in sorted(by_day.items()):
             if len(paths) <= 1:
                 continue
@@ -1550,6 +1573,11 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
             if n:
                 listings[lp] = new_h
                 cards_deduped += n
+        # v1.55.2 SHIELD (restore): stitch the intel-recent trio back in exactly
+        # where it was, now that the dedupe/ghost/trim passes are done.
+        for _lp_sh, (_tok_sh, _blk_sh) in _shielded.items():
+            if _lp_sh in listings and _tok_sh in listings[_lp_sh]:
+                listings[_lp_sh] = listings[_lp_sh].replace(_tok_sh, _blk_sh, 1)
         if not removed and not cards_deduped and not ghost_cards:
             out = {"ok": True, "removed": [], "cards_deduped": 0,
                    "detail": "no same-day duplicates found"}

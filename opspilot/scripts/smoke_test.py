@@ -5823,7 +5823,39 @@ def main():
         assert _nn55 == 1 and "june-old" not in _nh55 and "/blog/new.html" in _nh55, _nh55
         print("homepage intel-recent trio: refreshes to newest posts (was frozen on June) OK")
 
-    print("\n=== OpsPilot v1.55.1 SMOKE TEST PASSED ===")
+        # ==== v1.55.2: sweeper SHIELD — the dedupe pass must NOT delete the trio ====
+        # The intel-mini cards point at the same 3 newest posts the main wall lists,
+        # so _dedupe_cards used to strip the whole intel-recent block. The shield
+        # stashes it to a comment token before the sweep and restores it verbatim.
+        _home = ('<div class="intel-grid">'
+                 '<a href="/blog/feat.html" class="intel-featured"><h3>Feat</h3></a>'
+                 '<div class="intel-recent">'
+                 '<a href="/blog/a.html" class="intel-mini"><div class="intel-mini-date">Jul 27</div><h4>A</h4><p>x</p></a>'
+                 '<a href="/blog/b.html" class="intel-mini"><div class="intel-mini-date">Jul 26</div><h4>B</h4><p>y</p></a>'
+                 '<a href="/blog/c.html" class="intel-mini"><div class="intel-mini-date">Jul 25</div><h4>C</h4><p>z</p></a>'
+                 '</div></div>'
+                 '<div class="wall">'
+                 '<a href="/blog/a.html" class="blog-card">A</a>'
+                 '<a href="/blog/a.html" class="blog-card">A-dup</a>'
+                 '<a href="/blog/b.html" class="blog-card">B</a>'
+                 '</div>')
+        # stash
+        _m_sh = re.search(r'<div class="intel-recent">.*?</a>\s*</div>', _home, re.S)
+        assert _m_sh, "shield could not locate intel-recent"
+        _tok = "<!--PULSE_INTEL_SHIELD_index.html-->"
+        _stashed = _home[:_m_sh.start()] + _tok + _home[_m_sh.end():]
+        assert "intel-mini" not in _stashed and _tok in _stashed
+        # run the real de-spam pass against the stashed HTML (mini cards are gone,
+        # so the trio can't be collateral-damaged) — the wall's dup IS removed.
+        _swept, _n_a = _jps._dedupe_cards(_stashed, "a")
+        assert _n_a == 1 and _swept.count('href="/blog/a.html"') == 1, (_n_a, _swept)
+        # restore
+        _restored = _swept.replace(_tok, _m_sh.group(0), 1)
+        assert _restored.count('class="intel-mini"') == 3, _restored
+        assert '/blog/a.html' in _restored and '/blog/b.html' in _restored
+        print("sweeper shield: intel-recent trio survives the dedupe sweep, wall dup removed OK")
+
+    print("\n=== OpsPilot v1.55.2 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
