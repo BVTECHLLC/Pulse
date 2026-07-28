@@ -5913,7 +5913,7 @@ def main():
                 pass
 
             def send_mail(self, mailbox, to, subject, body, **k):
-                _sent56.append((mailbox, tuple(to), subject, body))
+                _sent56.append((mailbox, tuple(to), subject, body, k))
 
         _orig_gf56 = _ob56._GRAPH_FACTORY
         _ob56._GRAPH_FACTORY = _FakeGraph56
@@ -6001,6 +6001,10 @@ def main():
             assert _tos56 == {"pat@leadco-a.com", "sam@leadco-b.com"}, _tos56
             assert all("STOP" in t[3] and "San Antonio, TX 78205" in t[3]
                        for t in _sent56[_n56_before:]), "compliance footer missing"
+            # v1.56.2: every Graph send is HTML (escaped, pre-wrap) so the org's
+            # Exchange signature rule renders instead of downgrading to text
+            assert all(t[4].get("html") is True and t[3].startswith("<div ")
+                       for t in _sent56[_n56_before:]), "sends must be HTML"
             _acts56 = (_edb6.query(_CA56)
                        .filter(_CA56.contact_id.in_(_ourids56)).all())
             assert len(_acts56) == 2 and all(
@@ -6018,7 +6022,7 @@ def main():
               "(self-inbox plan+sample, leads untouched, once/day) + LIVE mode (business "
               "hours, DNC excluded, CAN-SPAM footer, CRM-logged, same-day idempotent) OK")
 
-    print("\n=== OpsPilot v1.56.1 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.56.2 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -313,6 +313,20 @@ def _graph_factory(tenant: str, client_id: str, client_secret: str):
 _GRAPH_FACTORY = _graph_factory   # test seam
 
 
+def _text_to_html(text: str) -> str:
+    """v1.56.2: send HTML, not plain text. The org's Exchange rule appends a
+    rich HTML signature (photo, banner, socials) to every outbound email —
+    stapling that onto a PLAIN-TEXT body makes Outlook downgrade the whole
+    message to text, so recipients saw raw [https://...png] brackets instead of
+    the signature. Escaping the body and preserving its exact line structure
+    (pre-wrap) keeps our copy byte-identical while letting the appended
+    signature render the way it was designed."""
+    import html as _h
+    return ('<div style="font-family:\'Segoe UI\',Calibri,Arial,sans-serif;'
+            'font-size:15px;color:#222222;line-height:1.5;white-space:pre-wrap">'
+            + _h.escape(text) + "</div>")
+
+
 def resolve_send_fn(db: Session):
     """(send_fn, detail). Prefers the M365 Graph mailbox, then SMTP; (None,
     why) when no transport is configured. Never raises."""
@@ -326,7 +340,7 @@ def resolve_send_fn(db: Session):
         graph = _GRAPH_FACTORY(str(tenant), str(client_id), str(client_secret))
 
         def _send_graph(to: str, subject: str, body: str) -> None:
-            graph.send_mail(mailbox, [to], subject, body)
+            graph.send_mail(mailbox, [to], subject, _text_to_html(body), html=True)
 
         return _send_graph, f"M365 Graph as {mailbox}"
     from ..core.config import get_settings
