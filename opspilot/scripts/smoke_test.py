@@ -5885,7 +5885,7 @@ def main():
         print("tx-plants daily channel: opt-in (no-op until connected) + deterministic "
               "floor + sister-site/Scripture/remembrance interlinks + status row OK")
 
-    print("\n=== OpsPilot v1.55.3 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.55.4 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

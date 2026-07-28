@@ -617,7 +617,9 @@ def _run_jp(db: Session, now: datetime) -> tuple[bool, str]:
 _TXP_TOPICS = ("watering & drought-tolerance", "heat-loving vegetables", "starting a fall garden",
                "building soil on Texas clay/sand", "native & pollinator plants", "container & small-space growing",
                "preserving the harvest", "composting", "seed saving", "beginner homesteading skills",
+               "reading & choosing land (what a property tells you)", "planning a small acreage or half-acre homestead",
                "rainwater & water storage", "backyard herbs", "chickens & small livestock basics",
+               "perennial food plants & orchard starts", "wild & foraged Texas plants (safety first)",
                "storm & hurricane-season preparedness", "natural pest control")
 
 
