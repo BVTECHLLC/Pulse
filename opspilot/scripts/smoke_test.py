@@ -5864,9 +5864,18 @@ def main():
         from app.services import content_autopilot as _cap
         from app.services import jp_site as _jps3
         assert "txplants" in _cap.CHANNELS and _cap._RUNNERS.get("txplants"), _cap.CHANNELS
-        # SITES entry is opt-in: default_project None so it never auto-touches the live store
-        assert _jps3.SITES["txplants"]["default_project"] is None
+        # v1.55.6: the v8 site repo is the default project, but publishing still
+        # requires a resolvable GitLab token — a fresh install stays a no-op.
+        assert _jps3.SITES["txplants"]["default_project"] == "bvtechllc-group/tx-plants-site"
         assert _jps3.SITES["txplants"]["sweep"] is False
+        # daily channel is armed by the box env flag, never in CI/fresh installs
+        import os as _os55
+        assert not _cap._os_env_flag("PULSE_TXPLANTS_AUTOPOST")
+        _os55.environ["PULSE_TXPLANTS_AUTOPOST"] = "1"
+        try:
+            assert _cap._os_env_flag("PULSE_TXPLANTS_AUTOPOST")
+        finally:
+            _os55.environ.pop("PULSE_TXPLANTS_AUTOPOST", None)
         assert _jps3.SITES["txplants"]["site"] == "https://tx-plants.com"
         # runner is a clean no-op (returns False, guidance) when the repo isn't connected
         _edb5 = _ESL()
@@ -5890,7 +5899,7 @@ def main():
         print("tx-plants daily channel: opt-in (no-op until connected) + deterministic "
               "floor + sister-site/Scripture/remembrance interlinks + status row OK")
 
-    print("\n=== OpsPilot v1.55.5 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.55.6 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

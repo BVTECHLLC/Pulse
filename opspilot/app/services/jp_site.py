@@ -89,13 +89,14 @@ SITES = {
                     "site": "https://bvtech.org", "org": "BVTech LLC",
                     "author_url": "https://bvtech.org", "content_classes": None,
                     "index_paths": ("news/index.html", "blog/index.html", "index.html")},
-    # tx-plants.com — the plants/homesteading/survival blog. OPT-IN by design:
-    # default_project is None so configured() stays FALSE (a no-op that never
-    # touches the live store) until an operator sets the blog repo in Content
-    # Autopilot. Only the /blog/ listing is swept, never the store homepage, and
-    # sweep=False keeps the flood-guard away from a store-adjacent site entirely.
+    # tx-plants.com — the plants/homesteading/survival blog. The v8 site source
+    # lives at bvtechllc-group/tx-plants-site (pushed 2026-07-28) with a Pulse-
+    # compatible /blog/ Field Notes section, so that repo is the default. The
+    # site still can't be touched without a resolvable GitLab token, only the
+    # /blog/ listing is ever edited, and sweep=False keeps the flood-guard away
+    # from the store entirely.
     "txplants": {"provider": "txplants_site", "name": "TX-Plants.com Site",
-                 "default_project": None,
+                 "default_project": "bvtechllc-group/tx-plants-site",
                  "style": "blog-file", "file_dir": "blog",
                  "site": "https://tx-plants.com", "org": "TX-Plants",
                  "author_url": "https://tx-plants.com", "content_classes": None,

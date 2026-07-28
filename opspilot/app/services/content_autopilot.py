@@ -99,6 +99,11 @@ _TXP_SYSTEM = (
 )
 
 
+def _os_env_flag(name: str) -> bool:
+    import os
+    return str(os.environ.get(name, "")).strip().lower() in ("1", "true", "yes", "on")
+
+
 def _today(now: datetime) -> str:
     return now.date().isoformat()
 
@@ -132,10 +137,13 @@ def get_config(db: Session) -> dict:
         # nothing breaks — so the safe default is "publish every day".
         "enabled": bool(cfg.get("enabled", True)),
         "hour_utc": int(cfg.get("hour_utc") or POST_HOUR_UTC),
-        # tx-plants is OPT-IN: it defaults OFF so an unconnected blog never nags
-        # with a daily "not connected" failure. Connecting its repo (put_sites)
-        # flips it on. Every other channel is ON by default (hands-free).
-        "channels": {c: bool(chans.get(c, c != "txplants")) for c in CHANNELS},
+        # tx-plants defaults ON only where the box says so (PULSE_TXPLANTS_AUTOPOST=1
+        # in the Linode .env) — CI and fresh installs stay quiet, the production box
+        # posts daily hands-free. An explicit portal toggle always wins. Every other
+        # channel is ON by default (hands-free).
+        "channels": {c: bool(chans.get(c, True if c != "txplants"
+                                       else _os_env_flag("PULSE_TXPLANTS_AUTOPOST")))
+                     for c in CHANNELS},
         "last": cfg.get("last") or {},         # {channel: ISO date of last SUCCESS}
         "last_error": cfg.get("last_error") or {},
     }
