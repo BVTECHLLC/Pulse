@@ -5919,9 +5919,13 @@ def main():
         _ob56._GRAPH_FACTORY = _FakeGraph56
         _hour56 = _dt56.datetime(2026, 7, 28, 16, 0, 0, tzinfo=_dt56.timezone.utc)
         try:
-            # earlier smoke sections configured the mailbox in this shared DB —
-            # blank the platform so the no-transport path is genuinely exercised
-            _sc56.upsert_platform(_edb6, "m365_mailbox", "M365 Mailbox", "Email", {})
+            # earlier smoke sections configured the mailbox in this shared DB.
+            # upsert_platform MERGES (partial-update semantics), so blanking via
+            # {} is a no-op — DELETE the row so the no-transport path is real.
+            from app.models import IntegrationConnection as _IC56
+            (_edb6.query(_IC56).filter(_IC56.provider == "m365_mailbox")
+             .delete(synchronize_session=False))
+            _edb6.commit()
             # 1) no mailbox creds + no SMTP -> clean no-op even when armed live
             _os56.environ["PULSE_OUTBOUND"] = "live"
             _r56 = _ob56.tick(_edb6, _hour56)
