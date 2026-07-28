@@ -70,6 +70,7 @@ _SEQUENCE = [
         "subject": "quick question about {company}'s IT",
         "body": (
             "Hi {first},\n\n"
+            "{opener}"
             "I'm Jordan, founder of BVTech — a Texas MSP that's handled IT and "
             "cybersecurity for local small businesses since 2013.\n\n"
             "I work with a handful of teams around San Antonio, Houston, and "
@@ -87,10 +88,7 @@ _SEQUENCE = [
         "subject": "re: {company}'s IT — one thing worth checking",
         "body": (
             "Hi {first},\n\n"
-            "Following up with something useful either way: the single cheapest "
-            "security win for a small business is turning on multi-factor "
-            "authentication everywhere — email, banking, remote access. It stops "
-            "the vast majority of account takeovers and takes an afternoon.\n\n"
+            "{value_para}\n\n"
             "If you'd like, I'll do a free 15-minute review of where {company} "
             "stands and hand you the list whether or not we ever work together.\n\n"
             "— Jordan, BVTech LLC"
@@ -106,11 +104,21 @@ _SEQUENCE = [
             "If they're ever not — an outage, a scare, a provider who stopped "
             "answering — keep BVTech in your back pocket. We're local, we pick up "
             "the phone, and we've been doing this for Texas businesses since 2013.\n\n"
+            "And if a quick chat ever does make sense, grab any 15-minute slot "
+            "that suits you: bvtech.org/book\n\n"
             "Wishing you the best either way.\n\n"
             "— Jordan Polasek, BVTech LLC"
         ),
     },
 ]
+
+# Touch 2's default value paragraph — used whenever the personalized domain
+# snapshot (v1.59) has nothing concrete to report for this lead.
+_VALUE_DEFAULT = (
+    "Following up with something useful either way: the single cheapest "
+    "security win for a small business is turning on multi-factor "
+    "authentication everywhere — email, banking, remote access. It stops "
+    "the vast majority of account takeovers and takes an afternoon.")
 
 
 def sequence_length() -> int:
@@ -135,6 +143,7 @@ def get_config(db: Session) -> dict:
         "prospected_on": raw.get("prospected_on") or "",  # last auto-scrape date (v1.57)
         "prospect_cycle": int(raw.get("prospect_cycle") or 0),  # market×industry rotation
         "replies_checked_at": raw.get("replies_checked_at") or "",  # inbox watermark (v1.58)
+        "scorecard_on": raw.get("scorecard_on") or "",  # last Monday scorecard date (v1.59)
     }
 
 
@@ -218,10 +227,18 @@ def compliant_footer(sender: str, physical_address: str) -> str:
 
 
 def render(step_index: int, contact: CrmContact, sender: str,
-           physical_address: str) -> tuple[str, str]:
+           physical_address: str, *, opener: str = "",
+           value_para: str | None = None) -> tuple[str, str]:
+    """v1.59: touch 1 takes an optional personalized opening line; touch 2
+    takes an optional personalized value paragraph (the domain snapshot) —
+    both collapse cleanly to the evergreen defaults when absent."""
     step = _SEQUENCE[step_index]
     subject = campaigns.personalize(step["subject"], contact)
-    body = campaigns.personalize(step["body"], contact) + \
+    body = step["body"]
+    op = (opener or "").strip()
+    body = body.replace("{opener}", op + "\n\n" if op else "")
+    body = body.replace("{value_para}", (value_para or _VALUE_DEFAULT).strip())
+    body = campaigns.personalize(body, contact) + \
         compliant_footer(sender, physical_address)
     return subject, body
 
@@ -265,7 +282,19 @@ def run_daily(db: Session, send_fn, now: datetime | None = None, *,
     due = select_due(db, now, limit=remaining)
     sent, failed, errors, plan = 0, 0, [], []
     for contact, step in due:
-        subject, body = render(step, contact, cfg["sender"], cfg["physical_address"])
+        # v1.59 personalization — REAL sends only (dry-run previews must stay
+        # instant: no LLM calls, no DNS lookups from the status card).
+        opener, value = "", None
+        if not dry_run:
+            if step == 0:
+                opener = _opener_for(contact)
+            elif step == 1 and contact.website:
+                try:
+                    value = _domain_snapshot(contact.website)
+                except Exception:  # noqa: BLE001
+                    value = None
+        subject, body = render(step, contact, cfg["sender"], cfg["physical_address"],
+                               opener=opener, value_para=value)
         plan.append({"contact_id": contact.id, "email": contact.email,
                      "step": step, "subject": subject})
         if dry_run:
@@ -500,6 +529,11 @@ def tick(db: Session, now: datetime | None = None) -> dict:
     # honored instantly, bounces retired. Every ~15 min, cheap watermark.
     try:
         _watch_replies(db, cfg, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+    # v1.59 SCORECARD: Monday-morning numbers to the shop inbox, once.
+    try:
+        _weekly_scorecard(db, send_fn, cfg, now)
     except Exception:  # noqa: BLE001
         db.rollback()
     if mode == "test" and not cfg["enabled"]:
@@ -815,3 +849,143 @@ def _watch_replies(db: Session, cfg: dict, now: datetime) -> dict:
                 f"{', '.join(bounced[:5])}.")
     return {"ran": True, "hot": len(hot), "stops": len(stops),
             "bounced": len(bounced), "scanned": len(msgs)}
+
+
+# --------------------------------------------------------------------------- #
+# v1.59 CONVERSION LAYER — from "cold email that sends" to "cold email that
+# gets replies":
+#   * _opener_for      — one specific, warm first line written by the FREE LLM
+#     from the facts captured at scrape time (rating, reviews, vertical, metro).
+#     Hard-validated; collapses to the evergreen intro on any doubt.
+#   * _domain_snapshot — a REAL outside-only finding about the lead's own
+#     domain (public DNS: DMARC/SPF) for touch 2. Proof of competence instead
+#     of a claim of it. No finding -> the evergreen MFA tip.
+#   * _weekly_scorecard — Monday morning: sends / replies / opt-outs / bounces
+#     by vertical for the last 7 days, emailed to the shop inbox, so the
+#     rotation can be aimed at what actually bites.
+# --------------------------------------------------------------------------- #
+_OPENER_SYSTEM = (
+    "You write exactly ONE short opening sentence for a polite cold email from "
+    "Jordan, founder of BVTech (a Texas IT/MSP company), to a local business. "
+    "Use the facts given — be specific, warm, and professional. No flattery "
+    "overload, no exclamation marks, no links, no emoji, 25 words max, plain "
+    "text only, no surrounding quotes. Never mention El Campo.")
+
+
+def _opener_for(contact: CrmContact) -> str:
+    """LLM-personalized first line; '' (evergreen intro) on any doubt."""
+    try:
+        from . import ai
+        vertical = (contact.tags or ["local business"])[0]
+        facts = (f"Business: {contact.company or contact.name}; type: {vertical}; "
+                 f"metro: {contact.market or 'Texas'}; {contact.notes or 'no other facts'}")
+        line = (ai.complete(_OPENER_SYSTEM, facts, smart=False, max_tokens=70)
+                or "").strip().strip('"').strip()
+        if (15 <= len(line) <= 170 and "\n" not in line
+                and "http" not in line.lower() and "el campo" not in line.lower()
+                and not line.endswith(":")):
+            return line
+    except Exception:  # noqa: BLE001
+        pass
+    return ""
+
+
+def _doh_txt(name: str) -> list[str]:
+    """Public DNS-over-HTTPS TXT lookup (Cloudflare resolver)."""
+    import json as _json
+    import urllib.request
+    req = urllib.request.Request(
+        f"https://cloudflare-dns.com/dns-query?name={name}&type=TXT",
+        headers={"accept": "application/dns-json"})
+    with urllib.request.urlopen(req, timeout=8) as r:
+        d = _json.loads(r.read().decode())
+    return [(a.get("data") or "").strip('"') for a in (d.get("Answer") or [])]
+
+
+_DOH_TXT = _doh_txt                    # test seam
+
+
+def _domain_snapshot(website: str) -> str | None:
+    """One concrete, verifiable email-security finding about the lead's own
+    domain — passive public-DNS checks only. None when their setup looks fine."""
+    from urllib.parse import urlparse
+    site = website if website.startswith(("http://", "https://")) else "https://" + website
+    host = urlparse(site).netloc.removeprefix("www.")
+    if not host or "." not in host:
+        return None
+    dmarc = [t for t in _DOH_TXT(f"_dmarc.{host}") if "v=dmarc1" in t.lower()]
+    spf = [t for t in _DOH_TXT(host) if "v=spf1" in t.lower()]
+    if not dmarc:
+        finding = (f"{host} has no DMARC record — which means scammers can send "
+                   "email that looks exactly like it comes from your team, to "
+                   "your own clients and vendors, and nothing stops it")
+    elif "p=none" in dmarc[0].lower().replace(" ", ""):
+        finding = (f"{host}'s DMARC policy is set to 'none', so email that FAILS "
+                   "authentication still gets delivered as if it were yours")
+    elif not spf:
+        finding = (f"{host} has no SPF record, so receiving mail servers can't "
+                   "verify that your legitimate email is really from you")
+    else:
+        return None
+    return ("Following up with something I actually checked rather than a canned "
+            f"tip: I ran an outside-only look at your domain and found that "
+            f"{finding}. It's usually fixable in an afternoon — I'll show you "
+            "how at no charge, whether or not we ever work together.")
+
+
+def _weekly_scorecard(db: Session, send_fn, cfg: dict, now: datetime) -> dict:
+    """Monday: last-7-days outbound numbers by vertical, to the shop inbox."""
+    if now.weekday() != 0:
+        return {"ran": False, "reason": "not_monday"}
+    today = _today(now)
+    if cfg.get("scorecard_on") == today:
+        return {"ran": False, "reason": "already_sent"}
+    since = now - timedelta(days=7)
+    acts = (db.query(CrmActivity)
+            .filter(CrmActivity.type == "email", CrmActivity.created_at >= since).all())
+    camp = [a for a in acts if (a.meta or {}).get("campaign") == CAMPAIGN]
+    sends = [a for a in camp if a.direction == "outbound"]
+    inbound = [a for a in camp if a.direction == "inbound"]
+    replies = [a for a in inbound if (a.meta or {}).get("kind") == "reply"]
+    stops = [a for a in inbound if (a.meta or {}).get("kind") == "stop"]
+    bounces = [a for a in inbound if (a.meta or {}).get("kind") == "bounce"]
+    ids = {a.contact_id for a in camp}
+    verts: dict = {}
+    if ids:
+        for c in db.query(CrmContact).filter(CrmContact.id.in_(ids)).all():
+            verts[c.id] = (c.tags or ["(untagged)"])[0]
+    by_vert: dict = {}
+    for a in sends:
+        v = verts.get(a.contact_id, "(untagged)")
+        by_vert.setdefault(v, [0, 0])[0] += 1
+    for a in replies:
+        v = verts.get(a.contact_id, "(untagged)")
+        by_vert.setdefault(v, [0, 0])[1] += 1
+    rate = (100 * len(replies) / len(sends)) if sends else 0.0
+    lines = [f"  {v}:  {s} sent, {r} replies" for v, (s, r) in
+             sorted(by_vert.items(), key=lambda kv: -kv[1][1])]
+    body = (
+        "PULSE OUTBOUND — WEEKLY SCORECARD (last 7 days)\n"
+        "===============================================\n\n"
+        f"Touches sent:   {len(sends)}\n"
+        f"Replies:        {len(replies)}  ({rate:.1f}% reply rate)\n"
+        f"Opt-outs:       {len(stops)} (honored automatically)\n"
+        f"Bounces:        {len(bounces)} (retired automatically)\n\n"
+        "By vertical:\n" + ("\n".join(lines) or "  (no sends this week)") + "\n\n"
+        "Replies win deals — every 🔥 notification is a warm conversation "
+        "waiting in the inbox. Verticals with replies above are where the "
+        "rotation is biting; tell Pulse if you want to focus them."
+    )
+    from ..core.config import get_settings
+    inbox = get_settings().SUPPORT_EMAIL
+    try:
+        send_fn(inbox, f"[Pulse] Weekly outbound scorecard — {len(sends)} sent, "
+                       f"{len(replies)} replies", body)
+    except Exception as e:  # noqa: BLE001
+        return {"ran": False, "reason": "send_failed", "error": str(e)[:200]}
+    save_config(db, scorecard_on=today)
+    _notify(db, "info", f"📊 Weekly outbound scorecard sent to {inbox}: "
+                        f"{len(sends)} touches, {len(replies)} replies "
+                        f"({rate:.1f}%), {len(stops)} opt-outs, {len(bounces)} bounces.")
+    return {"ran": True, "sends": len(sends), "replies": len(replies),
+            "stops": len(stops), "bounces": len(bounces)}

@@ -143,13 +143,19 @@ def run(db: Session, client, market: str, industry_query: str, max_results: int 
             except ProspectingError:
                 details = {}
         score = score_prospect(place, details, meta["boost"])
+        # v1.59: keep the human-relevant facts — the outreach personalizer turns
+        # "Google rating 4.8 (212 reviews)" into a specific, warm first line.
+        rating = place.get("rating") or details.get("rating")
+        reviews = place.get("user_ratings_total")
+        facts = (f"Google rating {rating} ({reviews} reviews)"
+                 if rating and reviews else (f"Google rating {rating}" if rating else None))
         contact = CrmContact(
             name=name, company=name,
             phone=details.get("formatted_phone_number"),
             website=details.get("website"),
             address=details.get("formatted_address") or place.get("formatted_address"),
             source="scrape", status="new", score=score, market=market,
-            tags=[meta["industry"]], owner_user_id=user_id,
+            tags=[meta["industry"]], notes=facts, owner_user_id=user_id,
         )
         db.add(contact)
         created += 1

@@ -6109,6 +6109,58 @@ def main():
             _rw2 = _ob56._watch_replies(_edb6, _ob56.get_config(_edb6),
                                         _hour56.replace(hour=17, minute=5))
             assert _rw2["reason"] == "recently_checked", _rw2
+            # 7) v1.59 CONVERSION LAYER: personalized opener (validated, junk
+            #    rejected), domain-snapshot touch 2, booking link touch 3,
+            #    Monday scorecard (once, with real counts from this block).
+            from app.services import ai as _ai56
+            _lead_d = _CC56(name="Dana Ellis", email="dana@leadco-d.com",
+                            company="LeadCo D", score=88, status="new",
+                            market="austin", tags=["Law Firms"],
+                            notes="Google rating 4.8 (120 reviews)")
+            _edb6.add(_lead_d)
+            _edb6.commit()
+            _orig_ai56 = _ai56.complete
+            _ai56.complete = (lambda *a, **k: "Saw LeadCo D's 4.8-star rating "
+                              "across 120 reviews - clearly a tight operation.")
+            try:
+                _op56 = _ob56._opener_for(_lead_d)
+                assert _op56.startswith("Saw LeadCo D"), _op56
+                _ai56.complete = lambda *a, **k: "Click http://spam.example now"
+                assert _ob56._opener_for(_lead_d) == "", "junk opener must be rejected"
+            finally:
+                _ai56.complete = _orig_ai56
+            _b59 = _ob56.render(0, _lead_d, "s@bvtech.org", "BVTech LLC, TX",
+                                opener=_op56)[1]
+            assert "Saw LeadCo D" in _b59 and "{opener}" not in _b59
+            assert "Hi Dana,\n\nSaw LeadCo D" in _b59, _b59[:120]
+            assert "bvtech.org/book" in _ob56.render(2, _lead_d, "s", "a")[1]
+            _orig_doh56 = _ob56._DOH_TXT
+            _ob56._DOH_TXT = (lambda name: [] if name.startswith("_dmarc.")
+                              else ["v=spf1 -all"])
+            try:
+                _snap56 = _ob56._domain_snapshot("https://leadco-d.com")
+                assert _snap56 and "no DMARC record" in _snap56, _snap56
+                _b59b = _ob56.render(1, _lead_d, "s", "a", value_para=_snap56)[1]
+                assert "outside-only look" in _b59b and "multi-factor" not in _b59b
+                _b59c = _ob56.render(1, _lead_d, "s", "a")[1]
+                assert "multi-factor" in _b59c and "{value_para}" not in _b59c
+            finally:
+                _ob56._DOH_TXT = _orig_doh56
+            # Monday scorecard: 3 campaign sends (a, b, c) + 1 reply/1 stop/1 bounce
+            _fn59, _ = _ob56.resolve_send_fn(_edb6)
+            _monday59 = _dt56.datetime(2026, 8, 3, 15, 0, 0,
+                                       tzinfo=_dt56.timezone.utc)
+            _sc59 = _ob56._weekly_scorecard(_edb6, _fn59,
+                                            _ob56.get_config(_edb6), _monday59)
+            assert _sc59["ran"] is True and _sc59["sends"] == 3, _sc59
+            assert _sc59["replies"] == 1 and _sc59["stops"] == 1 \
+                and _sc59["bounces"] == 1, _sc59
+            assert "WEEKLY SCORECARD" in _sent56[-1][3]
+            _sc59b = _ob56._weekly_scorecard(_edb6, _fn59,
+                                             _ob56.get_config(_edb6), _monday59)
+            assert _sc59b["reason"] == "already_sent", _sc59b
+            assert _ob56._weekly_scorecard(_edb6, _fn59, _ob56.get_config(_edb6),
+                                           _hour56)["reason"] == "not_monday"
         finally:
             _ob56._GRAPH_FACTORY = _orig_gf56
             for _k56 in ("PULSE_OUTBOUND", "PULSE_OUTBOUND_ADDRESS"):
@@ -6118,7 +6170,7 @@ def main():
               "(self-inbox plan+sample, leads untouched, once/day) + LIVE mode (business "
               "hours, DNC excluded, CAN-SPAM footer, CRM-logged, same-day idempotent) OK")
 
-    print("\n=== OpsPilot v1.58.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.59.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
