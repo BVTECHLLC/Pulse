@@ -55,15 +55,18 @@ class SitesIn(BaseModel):
     token: str | None = None            # ONE token connects both sites
     jp_project: str | None = None
     bvtech_project: str | None = None
+    txplants_project: str | None = None  # opt-in: connects the tx-plants.com blog
     branch: str | None = None
 
 
 @router.put("/sites")
 def put_sites(body: SitesIn, db: Session = Depends(get_db),
               user: User = Depends(require_roles(Role.OWNER))):
-    """One-paste connect: a single GitLab token (api scope) lights up BOTH site
-    publishers. Projects default to the known repos; override if they move."""
-    if not any([body.token, body.jp_project, body.bvtech_project, body.branch]):
+    """One-paste connect: a single GitLab token (api scope) lights up the site
+    publishers. Projects default to the known repos; override if they move.
+    tx-plants is opt-in — it only starts daily posts once its repo is set here."""
+    if not any([body.token, body.jp_project, body.bvtech_project,
+                body.txplants_project, body.branch]):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Nothing to save.")
     if body.token:
         jp_site.save_shared_token(db, body.token)
@@ -72,10 +75,18 @@ def put_sites(body: SitesIn, db: Session = Depends(get_db),
     if body.bvtech_project or body.branch:
         jp_site.save_config(db, site="bvtech", project=body.bvtech_project,
                             branch=body.branch)
+    if body.txplants_project:
+        jp_site.save_config(db, site="txplants", project=body.txplants_project,
+                            branch=body.branch)
+        # opt-in channel defaults OFF; connecting the repo turns daily posting on.
+        if jp_site.configured(db, "txplants"):
+            content_autopilot.save_config(db, channels={"txplants": True})
     return {"jp": jp_site.get_config(db, "jp")["configured"],
             "bvtech": jp_site.get_config(db, "bvtech")["configured"],
+            "txplants": jp_site.get_config(db, "txplants")["configured"],
             "jp_project": jp_site.get_config(db, "jp")["project"],
-            "bvtech_project": jp_site.get_config(db, "bvtech")["project"]}
+            "bvtech_project": jp_site.get_config(db, "bvtech")["project"],
+            "txplants_project": jp_site.get_config(db, "txplants")["project"]}
 
 
 @router.post("/test-sites")

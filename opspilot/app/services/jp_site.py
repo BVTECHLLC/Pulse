@@ -89,6 +89,17 @@ SITES = {
                     "site": "https://bvtech.org", "org": "BVTech LLC",
                     "author_url": "https://bvtech.org", "content_classes": None,
                     "index_paths": ("news/index.html", "blog/index.html", "index.html")},
+    # tx-plants.com — the plants/homesteading/survival blog. OPT-IN by design:
+    # default_project is None so configured() stays FALSE (a no-op that never
+    # touches the live store) until an operator sets the blog repo in Content
+    # Autopilot. Only the /blog/ listing is swept, never the store homepage, and
+    # sweep=False keeps the flood-guard away from a store-adjacent site entirely.
+    "txplants": {"provider": "txplants_site", "name": "TX-Plants.com Site",
+                 "default_project": None,
+                 "style": "blog-file", "file_dir": "blog",
+                 "site": "https://tx-plants.com", "org": "TX-Plants",
+                 "author_url": "https://tx-plants.com", "content_classes": None,
+                 "index_paths": ("blog/index.html",), "sweep": False},
 }
 
 # Alias list matching the old cron's lib_env.sh — the token that already exists

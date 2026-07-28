@@ -2118,7 +2118,7 @@ def main():
             assert _cap20.get_config(_c20)["last"].get("jp")               # others done
             # Status endpoint powers the one-click card; staff-only.
             st20 = c.get("/api/content-autopilot/status").json()
-            assert {x["key"] for x in st20["channels"]} == {"bvtech", "jp", "linkedin", "gbp"}
+            assert {x["key"] for x in st20["channels"]} == {"bvtech", "jp", "txplants", "linkedin", "gbp"}
             assert all(x["setup_hint"] for x in st20["channels"])
             assert ca_c.get("/api/content-autopilot/status").status_code == 403
             # v1.21: both sites are GitLab static sites (NOT WordPress) — ONE
@@ -5855,7 +5855,37 @@ def main():
         assert '/blog/a.html' in _restored and '/blog/b.html' in _restored
         print("sweeper shield: intel-recent trio survives the dedupe sweep, wall dup removed OK")
 
-    print("\n=== OpsPilot v1.55.2 SMOKE TEST PASSED ===")
+        # ==== v1.55.3: tx-plants.com daily channel — opt-in, safe no-op until connected ====
+        from app.services import content_autopilot as _cap
+        from app.services import jp_site as _jps3
+        assert "txplants" in _cap.CHANNELS and _cap._RUNNERS.get("txplants"), _cap.CHANNELS
+        # SITES entry is opt-in: default_project None so it never auto-touches the live store
+        assert _jps3.SITES["txplants"]["default_project"] is None
+        assert _jps3.SITES["txplants"]["sweep"] is False
+        assert _jps3.SITES["txplants"]["site"] == "https://tx-plants.com"
+        # runner is a clean no-op (returns False, guidance) when the repo isn't connected
+        _edb5 = _ESL()
+        try:
+            _ok_tx, _msg_tx = _cap._run_txplants(_edb5, __import__("datetime").datetime(
+                2026, 7, 28, 14, 0, 0, tzinfo=__import__("datetime").timezone.utc))
+            assert _ok_tx is False and "not connected" in _msg_tx, (_ok_tx, _msg_tx)
+            # not-connected also means status shows it disconnected, never crashes
+            _st = _cap.status(_edb5)
+            _txrow = next(c for c in _st["channels"] if c["key"] == "txplants")
+            assert _txrow["connected"] is False and _txrow["name"] == "tx-plants.com blog"
+        finally:
+            _edb5.close()
+        # deterministic composer ships a real post carrying the sister-site interlinks
+        _txp = _cap._compose_txplants_deterministic(__import__("datetime").datetime(
+            2026, 7, 28, 14, 0, 0, tzinfo=__import__("datetime").timezone.utc))
+        for _must in ("<h2>", "bvtech.org", "jordanpolasek.com", "autumnpolasek.com",
+                      "In Remembrance of Autumn", "1 Corinthians 3:7"):
+            assert _must in _txp["html"], _must
+        assert "El Campo" not in _txp["html"]
+        print("tx-plants daily channel: opt-in (no-op until connected) + deterministic "
+              "floor + sister-site/Scripture/remembrance interlinks + status row OK")
+
+    print("\n=== OpsPilot v1.55.3 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

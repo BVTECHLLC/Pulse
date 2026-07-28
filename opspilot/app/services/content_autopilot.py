@@ -29,7 +29,7 @@ from .jp_site import biz_now   # Central-time dates (Texas), never UTC "future" 
 
 PROVIDER = "content_autopilot"
 POST_HOUR_UTC = 14        # ~9am Central — content lands before the business day
-CHANNELS = ("bvtech", "jp", "linkedin", "gbp")
+CHANNELS = ("bvtech", "jp", "txplants", "linkedin", "gbp")
 
 _METROS = ("Sugar Land", "Houston", "Austin", "San Antonio")
 
@@ -84,6 +84,19 @@ _GBP_SYSTEM = (
     "2-3 sentences, local flavor for the given metro, one clear CTA to bvtech.org. "
     "Never mention El Campo. Return the update text only."
 )
+_TXP_SYSTEM = (
+    "You write for tx-plants.com — a friendly Texas plants, gardening, homesteading "
+    "and self-reliance blog. Voice: warm, down-to-earth, practical for Texas Gulf-Coast "
+    "growers (hot summers, mild winters, clay/sandy soils). Give specific, doable advice: "
+    "seasonal timing, heat/drought-tolerant and native picks, growing food, preserving, "
+    "and simple homesteading/preparedness skills. No fear-mongering, no politics. "
+    "NEVER mention El Campo.\n"
+    "Reply in EXACTLY this delimited format (NOT JSON, no code fences):\n"
+    "TITLE: <the headline>\n"
+    "EXCERPT: <one-sentence summary, max 160 chars>\n"
+    "HTML:\n"
+    "<the article BODY as clean HTML: <p>, <h2>, <ul> — no <html>/<head>>"
+)
 
 
 def _today(now: datetime) -> str:
@@ -119,7 +132,10 @@ def get_config(db: Session) -> dict:
         # nothing breaks — so the safe default is "publish every day".
         "enabled": bool(cfg.get("enabled", True)),
         "hour_utc": int(cfg.get("hour_utc") or POST_HOUR_UTC),
-        "channels": {c: bool(chans.get(c, True)) for c in CHANNELS},
+        # tx-plants is OPT-IN: it defaults OFF so an unconnected blog never nags
+        # with a daily "not connected" failure. Connecting its repo (put_sites)
+        # flips it on. Every other channel is ON by default (hands-free).
+        "channels": {c: bool(chans.get(c, c != "txplants")) for c in CHANNELS},
         "last": cfg.get("last") or {},         # {channel: ISO date of last SUCCESS}
         "last_error": cfg.get("last_error") or {},
     }
@@ -348,6 +364,19 @@ _BV_CTA = ('<p>If any of this hits close to home, that’s exactly what we help 
 _JP_CTA = ('<p>That’s how I think about it, anyway. If you want a second set of '
            'eyes on your own setup, <a href="https://bvtech.org/contact/">reach '
            'out</a> — happy to talk it through.</p>')
+# tx-plants CTA doubles as the sister-site interlink block (SEO + the network the
+# owner asked to keep connected): reciprocal links, a short Scripture, and the
+# "In Remembrance of Autumn" link — carried on every auto-published post.
+_TXP_CTA = (
+    '<p>Happy growing, y’all. Got a Texas gardening or homesteading question? '
+    'Come back tomorrow — there’s a fresh post here every day.</p>'
+    '<hr>'
+    '<p><em>“So neither he who plants nor he who waters is anything, but only God, '
+    'who gives the growth.” — 1 Corinthians 3:7</em></p>'
+    '<p><strong>Around our little corner of the internet:</strong> '
+    '<a href="https://bvtech.org">BVTech.org</a> · '
+    '<a href="https://jordanpolasek.com">JordanPolasek.com</a> · '
+    '<a href="https://autumnpolasek.com">In Remembrance of Autumn 🐾</a></p>')
 
 _BV_EVERGREEN = [
     {"title": "The 3-2-1 Backup Rule, in Plain English",
@@ -441,6 +470,62 @@ _JP_EVERGREEN = [
 ]
 
 
+_TXP_EVERGREEN = [
+    {"title": "Watering Right in a Texas Summer (More Isn’t Better)",
+     "excerpt": "Deep and infrequent beats a daily sprinkle. How to water Gulf-Coast gardens so roots go down, not sideways.",
+     "intro": "Come July, the instinct is to water a little every day. That’s exactly backwards for most Texas gardens — it grows shallow, thirsty roots that fry the first day you miss. Here’s the rhythm that actually builds tough plants.",
+     "sections": [
+        {"h2": "Deep and infrequent wins", "body": "Water long enough to soak 6–8 inches down, then let the top inch dry before the next round. Deep roots reach cooler, wetter soil and shrug off a hot afternoon. A daily surface sprinkle trains roots to stay up top where they cook."},
+        {"h2": "Time it right", "body": ["Water early morning — less evaporation, leaves dry before night (fewer fungal problems).", "Mulch 2–3 inches deep to hold moisture and keep soil temps down.", "Check with a finger, not a calendar — clay holds water longer than sand."]},
+     ]},
+    {"title": "Heat-Tolerant Texas Vegetables That Actually Produce in Summer",
+     "excerpt": "When tomatoes quit in the heat, these keep going. The crops built for a Gulf-Coast July.",
+     "intro": "Most spring veggies sulk once nights stop dropping below 75°F. Instead of fighting it, plant what loves the heat. These are the workhorses that keep the garden feeding you through a Texas summer.",
+     "sections": [
+        {"h2": "The reliable summer producers", "body": ["Okra — thrives when everything else wilts.", "Southern peas (black-eyed, purple hull) — fix their own nitrogen, too.", "Sweet potatoes — heat-loving and storage-friendly.", "Malabar spinach and amaranth — leafy greens that don’t bolt in the heat.", "Peppers — slow in extreme heat but bounce back in early fall."]},
+        {"h2": "Set them up to win", "body": "Get them in with time to establish before the worst heat, mulch heavily, and keep water deep and steady. A little afternoon shade cloth (30–40%) during a brutal stretch can be the difference between limping and thriving."},
+     ]},
+    {"title": "Start a Fall Garden in the Texas Heat", "excerpt": "The secret second season: what to plant in late summer for a long, gentle Gulf-Coast fall harvest.",
+     "intro": "Texas gardeners get a gift most of the country doesn’t: a real fall growing season. The trick is starting it while it still feels like summer — sowing in the heat so plants mature into the mild, productive months ahead.",
+     "sections": [
+        {"h2": "Count backward from first frost", "body": "Our first frost is late — often November or later on the coast. Count the days-to-maturity back from there and you’ll see late summer is planting time, not the end of the season."},
+        {"h2": "What to put in now", "body": ["Tomatoes and peppers (transplants) for a fall flush.", "Bush beans and squash for quick returns.", "By early fall: broccoli, cabbage, greens, carrots, and lettuce as it cools."]},
+     ]},
+    {"title": "Building Real Garden Soil on Texas Clay", "excerpt": "Gumbo clay or blowing sand — the fix is the same, and it’s cheaper than you think: organic matter, over time.",
+     "intro": "Texas hands you either brick-hard clay or water-shedding sand, and both feel hopeless the first year. The good news: the same simple habit turns either one into dark, crumbly, living soil. It just takes a couple seasons of feeding it.",
+     "sections": [
+        {"h2": "Feed the soil, not just the plant", "body": "Compost, shredded leaves, and mulch are the whole game. Clay: organic matter opens it up so water and roots move through. Sand: it acts like a sponge that finally holds water and nutrients. Same amendment, opposite problems solved."},
+        {"h2": "Stop tilling, start topping", "body": "Lay 2–3 inches of compost and mulch on top and let the worms work it down. Tilling burns up organic matter and wrecks the soil life you’re trying to build. Patience beats a rototiller here every time."},
+     ]},
+    {"title": "Easy Ways to Preserve a Garden Glut", "excerpt": "When the okra and peppers won’t quit, don’t let them rot. Simple, no-fancy-gear ways to put up the harvest.",
+     "intro": "There’s a week every summer where the garden hands you more than you can eat in a month. Preserving it doesn’t require a pressure canner or a weekend. Here are the low-effort ways we keep the surplus from going to waste.",
+     "sections": [
+        {"h2": "Freeze first — it’s the easy button", "body": ["Peppers: chop and freeze raw on a tray, then bag — no blanching needed.", "Okra: slice, freeze on a tray, bag for future gumbo or roasting.", "Tomatoes: core and freeze whole; the skins slip right off when thawed for sauce."]},
+        {"h2": "Quick pickles and drying", "body": "A simple refrigerator pickle (vinegar, water, salt, garlic) keeps peppers and cukes crisp for weeks with zero canning. A cheap dehydrator or a low oven turns herbs and peppers into a pantry that lasts all winter."},
+     ]},
+    {"title": "Five Beginner Homestead Skills Worth Learning First", "excerpt": "Self-reliance isn’t all-or-nothing. The handful of small skills that pay off fastest — no acreage required.",
+     "intro": "You don’t need forty acres and a barn to be more self-reliant. Homesteading is really just a stack of small, learnable skills — and a few of them pay off immediately, even in a suburban backyard. Start here.",
+     "sections": [
+        {"h2": "The high-return starters", "body": ["Grow one thing you actually eat (herbs, peppers, greens) and keep it alive a whole season.", "Compost your kitchen scraps — free soil and less trash.", "Store water and know how you’d filter it in a pinch.", "Keep a two-week pantry of shelf-stable food you rotate through.", "Learn to save seeds from one easy crop (beans, okra) and close the loop."]},
+        {"h2": "Skills compound", "body": "Each one makes the next easier — compost feeds the garden, the garden feeds the pantry, saved seeds start next year for free. Pick one this month, get it working, then stack the next. Steady beats heroic."},
+     ]},
+    {"title": "A Simple Two-Week Pantry (and Why It’s Just Common Sense)", "excerpt": "Storms and outages happen on the Gulf Coast. A modest, rotating food-and-water buffer is peace of mind, not paranoia.",
+     "intro": "Living on the Texas coast means hurricane season, the odd hard freeze, and the occasional power outage. Keeping a couple weeks of food and water on hand isn’t doomsday prepping — it’s the same common sense that keeps a spare tire in the trunk.",
+     "sections": [
+        {"h2": "What two weeks looks like", "body": ["1 gallon of water per person per day (14 gallons each) plus a way to filter more.", "Shelf-stable calories you actually eat: rice, beans, canned meat/veg, peanut butter, oats.", "A manual can opener, a camp stove, and a little fuel.", "Meds, batteries, and a battery/crank radio."]},
+        {"h2": "Rotate, don’t stockpile-and-forget", "body": "Buy what your family already eats, use the oldest first, and replace as you go. A pantry you cook from stays fresh and never becomes a closet of expired mystery cans. Preparedness that blends into normal life is the kind that’s actually there when you need it."},
+     ]},
+]
+
+
+def _compose_txplants_deterministic(now: datetime) -> dict:
+    """Zero-token evergreen tx-plants post (rotates daily) — the floor that
+    publishes a real plants/homesteading article with no LLM available."""
+    topic = _TXP_EVERGREEN[now.toordinal() % len(_TXP_EVERGREEN)]
+    return _render_evergreen(topic, byline="TX-Plants", cta_html=_TXP_CTA,
+                             date_str=now.date().isoformat())
+
+
 def _compose_bvtech_deterministic(now: datetime) -> dict:
     """Zero-token evergreen bvtech blog post (rotates daily). The floor that
     publishes when no LLM is available."""
@@ -523,6 +608,49 @@ def _run_jp(db: Session, now: datetime) -> tuple[bool, str]:
     if not post:
         post = _compose_jp_deterministic(now)
     out = jp_site.publish(db, post)
+    if not out.get("ok"):
+        return False, out.get("error") or "publish failed"
+    note = _pub_note(out)
+    return True, (out.get("url") or post["title"]) + (f" | {note}" if note else "")
+
+
+_TXP_TOPICS = ("watering & drought-tolerance", "heat-loving vegetables", "starting a fall garden",
+               "building soil on Texas clay/sand", "native & pollinator plants", "container & small-space growing",
+               "preserving the harvest", "composting", "seed saving", "beginner homesteading skills",
+               "rainwater & water storage", "backyard herbs", "chickens & small livestock basics",
+               "storm & hurricane-season preparedness", "natural pest control")
+
+
+def _run_txplants(db: Session, now: datetime) -> tuple[bool, str]:
+    """Daily tx-plants.com post — plants, growing, homesteading, self-reliance.
+    OPT-IN: no-ops cleanly until the site's blog repo is connected (Content
+    Autopilot → tx-plants). LLM path uses the FREE model (Groq) first, then the
+    zero-token evergreen floor, so it ships daily regardless of any AI balance."""
+    from . import jp_site
+    if not jp_site.configured(db, "txplants"):
+        return False, ("tx-plants.com not connected - add its GitLab blog repo in "
+                       "Content Autopilot (set site=txplants project) to start daily posts")
+    topic = _TXP_TOPICS[now.toordinal() % len(_TXP_TOPICS)]
+    prompt = (f"Write today's tx-plants.com post about: {topic}. Make it specific and "
+              f"actionable for Texas Gulf-Coast growers. Today's editorial style: "
+              f"{day_angle(now)}. Date: {biz_now(now):%B %d, %Y}.")
+    post = None
+    try:
+        raw = ai.complete(_TXP_SYSTEM, prompt, smart=False, max_tokens=3500)
+        post = ai.parse_article(raw)
+        if not post:
+            raw = ai.complete(_TXP_SYSTEM, prompt + "\nIMPORTANT: use EXACTLY the "
+                              "TITLE:/EXCERPT:/HTML: format - nothing before TITLE:, "
+                              "no JSON, no code fences.", smart=False, max_tokens=3500)
+            post = ai.parse_article(raw)
+    except Exception:  # noqa: BLE001
+        post = None
+    if post:
+        # Always append the sister-site/Scripture/remembrance block to LLM posts too.
+        post["html"] = (post.get("html") or "") + "\n" + _TXP_CTA
+    else:
+        post = _compose_txplants_deterministic(now)
+    out = jp_site.publish(db, post, site="txplants")
     if not out.get("ok"):
         return False, out.get("error") or "publish failed"
     note = _pub_note(out)
@@ -638,7 +766,7 @@ def _run_gbp(db: Session, now: datetime) -> tuple[bool, str]:
     return True, "queued to Google Business (autopost engine delivers + retries)"
 
 
-_RUNNERS = {"bvtech": _run_bvtech, "jp": _run_jp,
+_RUNNERS = {"bvtech": _run_bvtech, "jp": _run_jp, "txplants": _run_txplants,
             "linkedin": _run_linkedin, "gbp": _run_gbp}
 
 
@@ -796,6 +924,7 @@ def status(db: Session) -> dict:
     connected = {
         "bvtech": jp_site.configured(db, "bvtech") or wordpress.configured(db),
         "jp": jp_site.configured(db, "jp"),
+        "txplants": jp_site.configured(db, "txplants"),
         "linkedin": bool(secure_config.get_secret(li_cfg, "access_token")
                          or db.query(OAuthToken).filter(OAuthToken.provider == "linkedin").count()),
         "gbp": bool(gbp_cfg.get("account_name") and gbp_cfg.get("location_name")),
@@ -803,6 +932,7 @@ def status(db: Session) -> dict:
     hints = {
         "bvtech": "Marketing → Content Autopilot: one GitLab token connects both sites",
         "jp": "Marketing → Content Autopilot: one GitLab token connects both sites",
+        "txplants": "Marketing → Content Autopilot: connect the tx-plants.com blog repo (site=txplants)",
         "linkedin": "Settings → One-click Connect → LinkedIn (Connect →)",
         "gbp": "Settings → Google Business Profile: connect + pick your location",
     }
@@ -810,6 +940,7 @@ def status(db: Session) -> dict:
             "ai_connected": ai.enabled(),
             "channels": [{"key": c,
                           "name": {"bvtech": "bvtech.org blog", "jp": "jordanpolasek.com",
+                                   "txplants": "tx-plants.com blog",
                                    "linkedin": "LinkedIn", "gbp": "Google Business"}[c],
                           "enabled": cfg["channels"].get(c, True),
                           "connected": connected[c],
