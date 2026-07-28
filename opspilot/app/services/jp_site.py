@@ -1095,6 +1095,35 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
                 if _ch48:
                     listings["index.html"] = _nh48
                     repaired.append("index.html: featured -> newest news edition")
+        # v1.55.1: keep the homepage "intel-recent" trio (the 3 cards directly
+        # under the LIVE KEV ticker) pointed at the 3 NEWEST posts. This block
+        # has no intel-featured card, so _promote_featured never touched it and
+        # it froze on old posts. Source of truth: the /blog/ listing, which is
+        # already maintained newest-first — so no extra full-tree scan.
+        _home_ir = listings.get("index.html") or ""
+        _blog_ls = listings.get("blog/index.html") or _fetch_file(cfg, "blog/index.html") or ""
+        if 'class="intel-recent"' in _home_ir and _blog_ls:
+            _hrefs = re.findall(r'<a href="(/blog/[^"]+\.html)"[^>]*class="blog-card"',
+                                _blog_ls)[:3]
+            _ir_cards = []
+            for _href in _hrefs:
+                _pg_ir = _fetch_file(cfg, _href.lstrip("/"))
+                if not _pg_ir:
+                    continue
+                _d_ir = _post_date_from_html(_pg_ir)
+                _t_ir, _ex_ir = _post_meta_from_html(_pg_ir)
+                _t_ir = re.sub(r"^BVTech News\s*[—-]+\s*", "", _t_ir).strip()
+                _lbl_ir = (f"{_MONTH_NAMES[_d_ir.month - 1]} {_d_ir.day}"
+                           if _d_ir else "Latest")
+                _ir_cards.append(_intel_mini_card(_href, _lbl_ir, _t_ir, _ex_ir))
+            if len(_ir_cards) == 3:
+                _newrec = ('<div class="intel-recent">\n' + "\n".join(_ir_cards)
+                           + "\n</div>")
+                _nhr, _nr = re.subn(r'<div class="intel-recent">.*?</a>\s*</div>',
+                                    _newrec, _home_ir, count=1, flags=re.S)
+                if _nr and _nhr != _home_ir:
+                    listings["index.html"] = _nhr
+                    repaired.append("index.html: refreshed intel-recent -> 3 newest posts")
         for lp in list(listings):
             new_h, _n45 = _strip_empty_shells(listings[lp])
             if _n45:
@@ -1142,6 +1171,16 @@ _MONTH_NAMES = ("January", "February", "March", "April", "May", "June", "July",
 # never consider (let alone delete) these.
 _PAGE_SLUGS = ("about", "contact", "certification", "service", "pricing", "portfolio",
                "resume", "privacy", "terms", "book", "review", "case-stud", "academy")
+
+
+def _intel_mini_card(url: str, date_lbl: str, title: str, excerpt: str) -> str:
+    """One card for the homepage 'intel-recent' trio (under the KEV ticker)."""
+    import html as _h
+    ex = excerpt[:190].rsplit(" ", 1)[0].rstrip(" ,;:-") + "…" if len(excerpt) > 190 else excerpt
+    return ('<a href="' + url + '" class="intel-mini">\n'
+            '<div class="intel-mini-date">' + _h.escape(date_lbl) + ' · latest</div>\n'
+            '<h4>' + _h.escape(title) + '</h4>\n'
+            '<p>' + _h.escape(ex) + '</p>\n</a>')
 
 
 def _promote_featured(home: str, *, url: str, title: str, date_lbl: str,

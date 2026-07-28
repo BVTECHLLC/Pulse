@@ -5803,7 +5803,27 @@ def main():
         print("cloudflare auto-purge: 4 zones registered + env-var (CLOUDFLARE_PURGE_TOKEN) "
               "fallback + best-effort no-token guard OK")
 
-    print("\n=== OpsPilot v1.55.0 SMOKE TEST PASSED ===")
+        # ==== v1.55.1: homepage "intel-recent" trio auto-refreshes to newest 3 ====
+        import re
+        from app.services import jp_site as _jps
+        _mini = _jps._intel_mini_card("/blog/new.html", "July 27",
+                                      "10 New KEV Entries", "CISA added ten new vulns this week.")
+        assert 'href="/blog/new.html"' in _mini and "July 27 · latest" in _mini \
+            and "<h4>10 New KEV Entries</h4>" in _mini, _mini
+        _frozen = ('<div class="intel-grid"><div class="intel-recent">'
+                   '<a href="/blog/june-old.html" class="intel-mini"><div class="intel-mini-date">'
+                   'June 20</div><h4>Old</h4><p>old</p></a>'
+                   '<a href="/blog/june-old2.html" class="intel-mini"><div class="intel-mini-date">'
+                   'June 20</div><h4>Old2</h4><p>old</p></a>'
+                   '<a href="/blog/june-old3.html" class="intel-mini"><div class="intel-mini-date">'
+                   'June 11</div><h4>Old3</h4><p>old</p></a></div></div>')
+        _nh55, _nn55 = re.subn(r'<div class="intel-recent">.*?</a>\s*</div>',
+                               '<div class="intel-recent">\n' + _mini + '\n</div>',
+                               _frozen, count=1, flags=re.S)
+        assert _nn55 == 1 and "june-old" not in _nh55 and "/blog/new.html" in _nh55, _nh55
+        print("homepage intel-recent trio: refreshes to newest posts (was frozen on June) OK")
+
+    print("\n=== OpsPilot v1.55.1 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
