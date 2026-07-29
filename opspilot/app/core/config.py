@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # --- Identity ---
     APP_NAME: str = "BVTech OpsPilot"
-    APP_VERSION: str = "1.65.0"
+    APP_VERSION: str = "1.66.0"
     ENV: str = "development"  # development | production
 
     # --- Security ---
@@ -128,6 +128,13 @@ class Settings(BaseSettings):
     # --- Rate limiting ---
     RATE_LIMIT_LOGIN_PER_MIN: int = 5
     RATE_LIMIT_SIGNUP_PER_MIN: int = 3
+    # --- Account lockout (brute-force / password-spray defense) ---
+    # After LOGIN_MAX_FAILS failed attempts on one email (or from one IP) within
+    # LOGIN_FAIL_WINDOW_MIN minutes, that email/IP is locked for LOGIN_LOCK_MIN
+    # minutes. Stops a slow, IP-rotating spray the per-request limiter can't.
+    LOGIN_MAX_FAILS: int = 8
+    LOGIN_FAIL_WINDOW_MIN: int = 15
+    LOGIN_LOCK_MIN: int = 15
 
     @property
     def email_enabled(self) -> bool:

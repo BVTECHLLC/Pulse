@@ -197,6 +197,39 @@ def main():
         print("session refresh: expiry -> /api/auth/refresh -> recover + retry + rotation "
               "+ no-cookie/garbage rejected OK")
 
+        # ==== v1.66.0: account lockout — brute-force / password-spray defense ====
+        from app.services import login_guard as _lg
+        from app.core.config import get_settings as _gs66
+        _mx = _gs66().LOGIN_MAX_FAILS
+        _lg.reset_all()
+        _spray = "spray-target@attacker-spray.com"
+        # below threshold: not locked; crossing it: locked for a cooldown
+        for _n in range(_mx - 1):
+            assert _lg.record_failure(_spray, "9.9.9.9") == 0, "locked too early"
+        assert _lg.locked_seconds(_spray, None) == 0, "must not lock before threshold"
+        _trip = _lg.record_failure(_spray, "8.8.8.8")   # different IP — email still locks
+        assert _trip > 0 and _lg.locked_seconds(_spray, None) > 0, "threshold must lock the email"
+        # a good sign-in clears it; unrelated emails are unaffected
+        assert _lg.locked_seconds("bystander@attacker-spray.com", None) == 0, "lock must be per-account"
+        _lg.clear(_spray)
+        assert _lg.locked_seconds(_spray, None) == 0, "clear() must unlock"
+        # end-to-end: a locked email is rejected at the endpoint with 429 (not the
+        # generic 401), even with the right shape of request. Neutralize the
+        # separate per-IP middleware limiter so we assert THIS control fired.
+        from app.main import _login_hits as _lh66
+        _lh66.clear()
+        for _n in range(_mx):
+            _lg.record_failure(_spray, "1.2.3.4")
+        _gc = TestClient(app)
+        _r66 = _gc.post("/api/auth/login", json={"email": _spray, "password": "whatever"})
+        assert _r66.status_code == 429, _r66.status_code
+        assert "locked" in _r66.json()["detail"].lower() and _r66.headers.get("retry-after"), _r66.json()
+        _lg.reset_all(); _lh66.clear()
+        # sanity: a real account still logs in fine after all that
+        assert c.get("/api/auth/me").status_code == 200
+        print(f"account lockout: per-email brute-force guard ({_mx} fails -> temp lock), "
+              "IP-rotation resistant, per-account scope, endpoint 429+Retry-After, self-clear OK")
+
         # a fresh high-priority ticket gets SLA due dates stamped on create
         stid = c.post("/api/tickets", json={"client_id":cid,"subject":"Server offline","priority":"high"}).json()["id"]
         st = c.get(f"/api/tickets/{stid}").json()
@@ -6385,7 +6418,7 @@ def main():
         print("box self-updater: script parses, CI gate decides green/red/pending "
               "correctly, ff-only + health-gated rollback present OK")
 
-    print("\n=== OpsPilot v1.65.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.66.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

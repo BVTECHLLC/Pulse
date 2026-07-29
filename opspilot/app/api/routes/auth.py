@@ -15,7 +15,7 @@ from ...core.security import (
     random_token, totp_provisioning_uri, verify_password, verify_totp,
 )
 from ...models import AuthSession, User
-from ...services import audit
+from ...services import audit, login_guard
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 _s = get_settings()
@@ -44,28 +44,59 @@ def _set_cookies(resp: Response, access: str, refresh: str) -> None:
     )
 
 
+def _fail(db: Session, email: str, ip: str, *, action: str, user_id: int | None = None) -> None:
+    """Record a failed attempt (audit + lockout counter) and 401. If the failure
+    trips the lockout, 429 with a Retry-After so the attacker is stalled and the
+    real owner learns their account is under attack."""
+    audit.record(db, action=action, actor_user_id=user_id, actor_email=email, ip=ip, success=False)
+    try:
+        locked = login_guard.record_failure(email, ip)
+    except Exception:  # noqa: BLE001 — a guard bug must never block real logins
+        locked = 0
+    if locked:
+        audit.record(db, action="login.locked", actor_user_id=user_id, actor_email=email,
+                     ip=ip, success=False, detail=f"locked {locked}s after repeated failures")
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
+                            "Too many failed attempts — this account is temporarily locked.",
+                            headers={"Retry-After": str(locked)})
+    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
+
+
 @router.post("/login")
 def login(body: LoginIn, request: Request, response: Response, db: Session = Depends(get_db)):
     ip = _client_ip(request)
-    user = db.query(User).filter(User.email == body.email.lower()).first()
+    email = body.email.lower()
+
+    # Brute-force / password-spray lockout: reject before doing any work (and
+    # before the expensive password hash) if this email or IP is cooling down.
+    try:
+        wait = login_guard.locked_seconds(email, ip)
+    except Exception:  # noqa: BLE001
+        wait = 0
+    if wait:
+        audit.record(db, action="login.lockout_hit", actor_email=email, ip=ip, success=False)
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
+                            "Too many failed attempts — this account is temporarily locked.",
+                            headers={"Retry-After": str(wait)})
+
+    user = db.query(User).filter(User.email == email).first()
 
     # Constant-ish failure path; never reveal which factor failed.
     if not user or not user.is_active or not verify_password(body.password, user.password_hash):
-        audit.record(db, action="login.fail", actor_email=body.email.lower(), ip=ip, success=False)
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
+        _fail(db, email, ip, action="login.fail")
 
     if user.mfa_enabled:
         if not body.mfa_code:
             # Signal the client to collect a code, without leaking validity.
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "MFA code required")
         if not verify_totp(user.mfa_secret or "", body.mfa_code):
-            audit.record(db, action="login.mfa_fail", actor_user_id=user.id,
-                         actor_email=user.email, ip=ip, success=False)
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid MFA code")
+            # A wrong MFA code counts toward lockout too — stops MFA brute-forcing.
+            _fail(db, email, ip, action="login.mfa_fail", user_id=user.id)
 
     if needs_rehash(user.password_hash):
         user.password_hash = hash_password(body.password)
 
+    login_guard.clear(email, ip)   # clean slate after a good sign-in
     issue_session(db, user, request, response, method="password")
     return {"ok": True, "role": user.role.value, "mfa_enabled": user.mfa_enabled}
 
