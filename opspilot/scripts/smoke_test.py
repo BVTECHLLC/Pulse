@@ -5610,8 +5610,8 @@ def main():
             assert c.post(f"/api/academy/labs/{_lid}/submit",
                           json={"flag": _flag}).json()["xp_gained"] == 0
         assert _got_first_flag and _got_l33t, "first_flag + l33t badges must fire"
-        # XP is difficulty-weighted: 5 Easy(100)+3 Med(175)+2 Hard(275) = 1575
-        assert _gained == 5*100 + 3*175 + 2*275, _gained
+        # XP is difficulty-weighted: 4 Easy(100)+4 Med(175)+2 Hard(275) = 1650
+        assert _gained == 4*100 + 4*175 + 2*275, _gained
         _rc2 = c.get("/api/academy/range").json()
         assert _rc2["solved"] == 10, _rc2
         _prof = c.get("/api/academy/me").json()
