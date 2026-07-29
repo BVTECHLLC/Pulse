@@ -5691,6 +5691,19 @@ def main():
             "ldap-injection": "FLAG{ldap_filters_need_escaping}",
             "xxe": "FLAG{xxe_reads_local_files}",
             "insecure-deser": "FLAG{never_deserialize_untrusted_data}",
+            # wave 5 — modern app-sec
+            "base58-decode": "FLAG{base58_has_no_zero_O_l_I}",
+            "unicode-homoglyph": "xn--vrtexdental-hkg.com",
+            "bola-api": "FLAG{bola_authorize_every_object}",
+            "verb-tampering": "FLAG{authorize_actions_not_verbs}",
+            "weak-otp": "FLAG{otp_needs_rate_limits_and_expiry}",
+            "prototype-pollution": "FLAG{freeze_prototypes_reject_proto_keys}",
+            "jwt-alg-confusion": "FLAG{pin_the_algorithm_server_side}",
+            "cache-poisoning": "FLAG{keys_and_headers_or_cache_poison}",
+            "crlf-injection": "FLAG{strip_crlf_from_header_values}",
+            "subdomain-takeover": "FLAG{promo.vertexdental.com}",
+            "graphql-batch": "FLAG{rate_limit_by_operation_not_request}",
+            "xss-stored": "FLAG{stored_xss_encode_on_output}",
         }
         # every lab must be covered so range_all is reachable
         assert set(_solutions) == set(_aca._LABS), \
@@ -6563,7 +6576,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.72.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.73.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

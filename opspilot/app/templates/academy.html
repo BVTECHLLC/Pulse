@@ -372,7 +372,10 @@ function probePlaceholder(id){return ({
   'exposed-env':'path=/.env','ssti':'name={{7*7}}','nosql-auth':'user=admin&pass[$ne]=x',
   'graphql-introspection':'query={__schema{queryType{fields{name}}}}','cors-misconfig':'origin=https://evil.attacker.com',
   'host-header':'host=evil.attacker.com','ldap-injection':'user=*)(uid=*',
-  'xxe':'xml=<!DOCTYPE r [<!ENTITY x SYSTEM \"file:///etc/passwd\">]><r>&x;</r>','insecure-deser':'data=__reduce__:os.system'
+  'xxe':'xml=<!DOCTYPE r [<!ENTITY x SYSTEM \"file:///etc/passwd\">]><r>&x;</r>','insecure-deser':'data=__reduce__:os.system',
+  'bola-api':'id=1002','verb-tampering':'method=PUT','weak-otp':'otp=0000','prototype-pollution':'data=__proto__[isAdmin]=true',
+  'jwt-alg-confusion':'alg=HS256&key=public','cache-poisoning':'xfh=evil.attacker.com','crlf-injection':'url=/home%0d%0aSet-Cookie:admin=1',
+  'graphql-batch':'ops=batch','xss-stored':'comment=<script>steal()</script>'
 }[id])||'param=value';}
 async function runProbe(id){
   const q=($('probe-q').value||'').trim().replace(/^\?/,'');

@@ -2009,6 +2009,223 @@ LABS = [
                    "turns data into code execution. Never deserialize untrusted input; use "
                    "safe formats (JSON) and sign/validate any serialized state you must trust.",
     },
+    # ------------------------------------------------------------------ #
+    # Wave 5 — modern app-sec: BOLA, prototype pollution, JWT alg-confusion,
+    # cache poisoning, CRLF, verb tampering, weak OTP, subdomain takeover.
+    # ------------------------------------------------------------------ #
+    {
+        "id": "base58-decode", "title": "No Zero, No Oh", "icon": "🪙",
+        "difficulty": "Easy", "category": "Crypto", "points": DIFF_XP["Easy"],
+        "brief": "Base58 is Base64 with the confusing characters removed (no 0, O, l, or "
+                 "I) — it's what Bitcoin addresses use. Decode this to text.",
+        "target": {"kind": "data",
+                   "base58": "F5yd29CuvxmpM9b8ST52y7ho8CEpwAsrazRRehs2k",
+                   "note": "Base58 alphabet drops 0/O/l/I to avoid look-alikes. Use any "
+                           "base58 decoder."},
+        "hints": ["It's Base58 (Bitcoin-style) — note there's no 0, O, l, or I.",
+                  "Decoding yields text that starts with FLAG{."],
+        "check": ("exact", "FLAG{base58_has_no_zero_O_l_I}"),
+        "teaches": "Base58 trades a little density for human-safe, copy-paste-proof "
+                   "strings — great for addresses and IDs. Still an encoding, not a secret.",
+    },
+    {
+        "id": "unicode-homoglyph", "title": "The Letter That Lies", "icon": "🅰️",
+        "difficulty": "Easy", "category": "OSINT", "points": DIFF_XP["Easy"],
+        "brief": "Attackers register domains with look-alike Unicode letters (a Cyrillic "
+                 "'а' instead of Latin 'a'). One link below is an impostor. Submit the "
+                 "impostor's REAL punycode host (starts with xn--).",
+        "target": {"kind": "data",
+                   "links": "Which login is the real vertexdental.com?\n"
+                            "  A) https://vertexdental.com            (all Latin)\n"
+                            "  B) https://vеrtexdental.com            (the 'e' is Cyrillic У+0435)\n\n"
+                            "  Punycode of the impostor (B): xn--vrtexdental-hkg.com",
+                   "note": "Homoglyph/IDN spoofing: different Unicode letters that LOOK "
+                           "identical. Browsers show the punycode (xn--) for mixed scripts. "
+                           "Submit the impostor's punycode host."},
+        "hints": ["The impostor is option B — its 'e' is a Cyrillic look-alike.",
+                  "Submit its punycode form: xn--vrtexdental-hkg.com"],
+        "check": ("exact", "xn--vrtexdental-hkg.com"),
+        "teaches": "Homoglyph (IDN) attacks fake trusted domains with look-alike Unicode. "
+                   "Check for the xn-- punycode, use a password manager (it won't autofill "
+                   "the fake), and enable mixed-script warnings.",
+    },
+    {
+        "id": "bola-api", "title": "Object on a Silver Platter", "icon": "🍽️",
+        "difficulty": "Medium", "category": "Web", "points": DIFF_XP["Medium"],
+        "brief": "A REST API returns any user's profile by id, never checking it's YOURS "
+                 "(Broken Object Level Authorization — the #1 API risk). You are user 1001. "
+                 "Read someone else's record.",
+        "target": {"kind": "probe",
+                   "instructions": "GET /api/users/{id}. You are 1001. Try another id.",
+                   "examples": ["?id=1001", "?id=1002", "?id=1000"]},
+        "hints": ["Change the id to a neighbor's — the API never checks ownership.",
+                  "User 1002's record holds the flag."],
+        "check": ("exact", "FLAG{bola_authorize_every_object}"),
+        "teaches": "BOLA/IDOR at the API layer is OWASP API risk #1: every endpoint must "
+                   "verify the caller owns (or may access) the object id — never trust the "
+                   "id alone. Use unguessable ids AND server-side authorization.",
+    },
+    {
+        "id": "verb-tampering", "title": "The Method Behind the Curtain", "icon": "🎭",
+        "difficulty": "Medium", "category": "Web", "points": DIFF_XP["Medium"],
+        "brief": "An admin action is 'protected' by blocking POST — but the server still "
+                 "honors other HTTP methods (and the X-HTTP-Method-Override header). Slip "
+                 "past the check.",
+        "target": {"kind": "probe",
+                   "instructions": "The /admin/delete action rejects method=POST. Try "
+                                   "another verb or an override.",
+                   "examples": ["?method=POST", "?method=PUT", "?method=DELETE"]},
+        "hints": ["The filter only blocks POST — try PUT or DELETE.",
+                  "Sending method=PUT (or DELETE) executes the action and reveals the flag."],
+        "check": ("exact", "FLAG{authorize_actions_not_verbs}"),
+        "teaches": "HTTP verb tampering bypasses controls that check the method instead of "
+                   "the user's permission. Authorize the ACTION regardless of verb, and "
+                   "reject unexpected methods/override headers.",
+    },
+    {
+        "id": "weak-otp", "title": "Guessable Second Factor", "icon": "🔢",
+        "difficulty": "Medium", "category": "Auth", "points": DIFF_XP["Medium"],
+        "brief": "This 'two-factor' uses a 4-digit code, never expires it, and never rate-"
+                 "limits guesses — so it's brute-forceable in seconds. Find the code.",
+        "target": {"kind": "probe",
+                   "instructions": "Submit a 4-digit otp. No lockout, no expiry — you can "
+                                   "try them all. (This lab accepts the known-weak default.)",
+                   "examples": ["?otp=1234", "?otp=0000", "?otp=1111"]},
+        "hints": ["No rate limit means every code is fair game — start with common ones.",
+                  "The weak default here is 0000."],
+        "check": ("exact", "FLAG{otp_needs_rate_limits_and_expiry}"),
+        "teaches": "An OTP is only as strong as its rate-limiting, length, and expiry. "
+                   "Short unlimited codes are brute-forced instantly. Enforce lockout, "
+                   "short validity, and enough digits (or use TOTP/WebAuthn).",
+    },
+    {
+        "id": "prototype-pollution", "title": "Poisoning the Blueprint", "icon": "🧬",
+        "difficulty": "Hard", "category": "Web", "points": DIFF_XP["Hard"],
+        "brief": "This JS app merges your JSON into an object without guarding special "
+                 "keys. Inject __proto__ to pollute EVERY object's prototype and turn "
+                 "yourself into an admin.",
+        "target": {"kind": "probe",
+                   "instructions": "Your JSON is merged into config. Try a normal key, "
+                                   "then a prototype-polluting key.",
+                   "examples": ["?data=theme:dark", "?data=__proto__[isAdmin]=true",
+                                "?data=constructor[prototype][isAdmin]=true"]},
+        "hints": ["Use the magic key __proto__ (or constructor.prototype) to set isAdmin.",
+                  "Sending __proto__[isAdmin]=true pollutes every object — and grants the flag."],
+        "check": ("exact", "FLAG{freeze_prototypes_reject_proto_keys}"),
+        "teaches": "Prototype pollution injects properties onto Object.prototype via keys "
+                   "like __proto__/constructor, affecting every object at once. Reject those "
+                   "keys, use Map or null-prototype objects, and freeze prototypes.",
+    },
+    {
+        "id": "jwt-alg-confusion", "title": "Signed With Its Own Key", "icon": "🗝️",
+        "difficulty": "Hard", "category": "Web", "points": DIFF_XP["Hard"],
+        "brief": "This API verifies RS256 tokens with a PUBLIC key — but naively accepts "
+                 "the alg the token claims. Switch alg to HS256 and sign with that public "
+                 "key (which you know), and the server 'verifies' your forgery.",
+        "target": {"kind": "probe",
+                   "instructions": "Present a token. The server trusts the header's alg. "
+                                   "Try RS256 (real), then the HS256 confusion attack.",
+                   "examples": ["?alg=RS256", "?alg=HS256&key=public", "?alg=none"]},
+        "hints": ["Change alg to HS256 and sign with the known public key (alg confusion).",
+                  "Send alg=HS256&key=public — the server keys HMAC with the public key and "
+                  "accepts your forged admin token."],
+        "check": ("exact", "FLAG{pin_the_algorithm_server_side}"),
+        "teaches": "Algorithm-confusion tricks a server that verifies with a public key into "
+                   "accepting an HS256 token signed with that same public key. Pin the "
+                   "expected algorithm server-side; never trust the token's alg header.",
+    },
+    {
+        "id": "cache-poisoning", "title": "Poison in the Cache", "icon": "☠️",
+        "difficulty": "Hard", "category": "Web", "points": DIFF_XP["Hard"],
+        "brief": "The CDN caches pages by URL, but the page reflects the X-Forwarded-Host "
+                 "header into a <script> src — which the cache then serves to EVERYONE. "
+                 "Poison it so the cached page loads your host.",
+        "target": {"kind": "probe",
+                   "instructions": "Set the forwarded host. Try the real host, then an "
+                                   "attacker host that gets baked into the cached response.",
+                   "examples": ["?xfh=cdn.vertexdental.com", "?xfh=evil.attacker.com"]},
+        "hints": ["Send an attacker X-Forwarded-Host — it's reflected into a cached script src.",
+                  "When an untrusted host is cached into the page, the flag is returned."],
+        "check": ("exact", "FLAG{keys_and_headers_or_cache_poison}"),
+        "teaches": "Web cache poisoning weaponizes unkeyed inputs (headers like "
+                   "X-Forwarded-Host) that influence a cached response served to all users. "
+                   "Never reflect untrusted headers; include them in the cache key or strip them.",
+    },
+    {
+        "id": "crlf-injection", "title": "New Line, New Header", "icon": "↵",
+        "difficulty": "Medium", "category": "Web", "points": DIFF_XP["Medium"],
+        "brief": "This redirect copies your input into a response header without stripping "
+                 "newlines. Inject CRLF (%0d%0a) to smuggle in your own header (or split "
+                 "the response).",
+        "target": {"kind": "probe",
+                   "instructions": "Your value goes into a Location header. Try plain text, "
+                                   "then a CRLF sequence with an injected header.",
+                   "examples": ["?url=/home", "?url=/home%0d%0aSet-Cookie:admin=1"]},
+        "hints": ["Insert %0d%0a (CR LF) then your own header, e.g. Set-Cookie.",
+                  "Injecting a header via %0d%0a returns the flag."],
+        "check": ("exact", "FLAG{strip_crlf_from_header_values}"),
+        "teaches": "CRLF injection into headers enables response splitting, header forgery, "
+                   "and cache poisoning. Strip/encode CR and LF from any user data placed in "
+                   "headers, and use framework APIs that do it for you.",
+    },
+    {
+        "id": "subdomain-takeover", "title": "The Dangling Pointer", "icon": "🎈",
+        "difficulty": "Hard", "category": "Recon", "points": DIFF_XP["Hard"],
+        "brief": "A DNS record still points to a cloud service the company stopped using — "
+                 "so anyone can claim that service and serve content on their subdomain. "
+                 "Find the takeover-able host and submit it.",
+        "target": {"kind": "data",
+                   "dns": "$ dig CNAME *.vertexdental.com\n"
+                          "  www.vertexdental.com     -> vertexdental.com. (A record, live)\n"
+                          "  shop.vertexdental.com    -> shops.myshopify.com. (200 OK, live)\n"
+                          "  promo.vertexdental.com   -> vertex-promo.herokuapp.com. "
+                          "(404: 'No such app' — DANGLING)\n"
+                          "  FLAG{promo.vertexdental.com}",
+                   "note": "A CNAME pointing to an unclaimed/removed service = subdomain "
+                           "takeover. The 404 'No such app' is the tell. Submit the "
+                           "vulnerable subdomain (the flag)."},
+        "hints": ["Look for a CNAME whose target returns 'no such app / not found'.",
+                  "promo.vertexdental.com dangles to a dead Heroku app."],
+        "check": ("exact", "FLAG{promo.vertexdental.com}"),
+        "teaches": "Subdomain takeover happens when DNS points to a deprovisioned service an "
+                   "attacker can re-register. Remove dangling DNS records promptly and audit "
+                   "CNAMEs to third-party services.",
+    },
+    {
+        "id": "graphql-batch", "title": "Ask a Thousand Times at Once", "icon": "🌊",
+        "difficulty": "Hard", "category": "Web", "points": DIFF_XP["Hard"],
+        "brief": "This GraphQL API rate-limits by REQUEST, but lets you batch many "
+                 "operations in one request — so you can brute-force a code with a single "
+                 "call. Batch enough login attempts to slip through.",
+        "target": {"kind": "probe",
+                   "instructions": "Send a query. Try one login, then a batched array of "
+                                   "many attempts in a single request.",
+                   "examples": ["?ops=1", "?ops=batch", "?ops=1000"]},
+        "hints": ["Batch many operations into one request to dodge per-request rate limits.",
+                  "Send ops=batch (or a large count) — the batched brute force wins the flag."],
+        "check": ("exact", "FLAG{rate_limit_by_operation_not_request}"),
+        "teaches": "GraphQL batching (and aliasing) lets attackers pack thousands of "
+                   "operations into one request, defeating per-request throttles. Limit "
+                   "query depth/complexity and rate-limit by operation, not by HTTP request.",
+    },
+    {
+        "id": "xss-stored", "title": "The Comment That Waits", "icon": "💬",
+        "difficulty": "Hard", "category": "Web", "points": DIFF_XP["Hard"],
+        "brief": "Unlike reflected XSS, a STORED payload is saved and runs for every future "
+                 "visitor. Post a comment that would execute in an admin's browser when "
+                 "they review it.",
+        "target": {"kind": "probe",
+                   "instructions": "Your comment is stored and later rendered on the admin "
+                                   "review page unescaped. Post plain text, then a payload.",
+                   "examples": ["?comment=nice+site", "?comment=<script>steal()</script>",
+                                "?comment=<img src=x onerror=steal()>"]},
+        "hints": ["Store a <script> or onerror= payload — it fires when the admin views it.",
+                  "The lab detects a stored executable payload and returns the flag."],
+        "check": ("exact", "FLAG{stored_xss_encode_on_output}"),
+        "teaches": "Stored (persistent) XSS is the most dangerous kind — one saved payload "
+                   "runs for every viewer, including admins. Encode on output everywhere, "
+                   "sanitize rich input, and set a strict CSP as defense in depth.",
+    },
 ]
 
 # --------------------------------------------------------------------------- #
@@ -2476,6 +2693,96 @@ def lab_probe(lab_id: str, params: dict) -> dict:
         if data:
             return resp(200, "Deserialized a plain object — no code gadget present.")
         return resp(400, "Provide ?data= (base64 that gets unpickled).")
+
+    if lab_id == "bola-api":
+        try:
+            uid = int(params.get("id") or 0)
+        except ValueError:
+            return resp(400, "id must be a number, e.g. ?id=1001")
+        if uid == 1001:
+            return resp(200, '{ "id":1001, "name":"you", "role":"user" }')
+        if uid == 1002:
+            return resp(200, '{ "id":1002, "name":"Dr. Vertex", "role":"admin", '
+                             '"note":"FLAG{bola_authorize_every_object}" }')
+        if 1000 <= uid <= 1005:
+            return resp(200, f'{{ "id":{uid}, "name":"another user" }}')
+        return resp(404, "No such user.")
+
+    if lab_id == "verb-tampering":
+        m = (params.get("method") or "").upper()
+        if m == "POST":
+            return resp(403, "Forbidden: POST is blocked for this action.")
+        if m in ("PUT", "DELETE", "PATCH"):
+            return resp(200, f"Action executed via {m} (the filter only blocked POST). "
+                             "FLAG{authorize_actions_not_verbs}")
+        if m:
+            return resp(400, f"Method {m} not understood — try PUT or DELETE.")
+        return resp(400, "Provide ?method= (the HTTP verb).")
+
+    if lab_id == "weak-otp":
+        otp = (params.get("otp") or "").strip()
+        if otp == "0000":
+            return resp(200, "2FA accepted (no rate limit, no expiry). "
+                             "FLAG{otp_needs_rate_limits_and_expiry}")
+        if otp.isdigit() and len(otp) <= 4:
+            return resp(401, "Wrong code — but there's no lockout, so keep going...")
+        return resp(400, "Provide a 4-digit ?otp=.")
+
+    if lab_id == "prototype-pollution":
+        data = (params.get("data") or "").lower().replace(" ", "")
+        if ("__proto__" in data or "constructor[prototype]" in data
+                or "constructor.prototype" in data) and ("isadmin" in data or "admin" in data):
+            return resp(200, "Prototype polluted — every object is now admin. "
+                             "FLAG{freeze_prototypes_reject_proto_keys}")
+        if data:
+            return resp(200, "Merged config (no dangerous keys present).")
+        return resp(400, "Provide ?data= (merged JSON).")
+
+    if lab_id == "jwt-alg-confusion":
+        alg = (params.get("alg") or "").lower()
+        key = (params.get("key") or "").lower()
+        if alg == "hs256" and "public" in key:
+            return resp(200, "Verified! You HMAC-signed with the public key and the server "
+                             "trusted alg=HS256. FLAG{pin_the_algorithm_server_side}")
+        if alg == "none":
+            return resp(401, "alg=none is rejected here — try the HS256 confusion instead.")
+        if alg == "rs256":
+            return resp(200, "Valid RS256 token (this is the intended, safe path).")
+        return resp(400, "Provide ?alg= (and ?key= for the confusion attack).")
+
+    if lab_id == "cache-poisoning":
+        xfh = (params.get("xfh") or "").strip().lower()
+        if xfh and not xfh.endswith("vertexdental.com"):
+            return resp(200, f"Cached response now loads <script src=//{xfh}/a.js> for "
+                             "every visitor! FLAG{keys_and_headers_or_cache_poison}")
+        if xfh:
+            return resp(200, f"X-Forwarded-Host {xfh} accepted (trusted own host).")
+        return resp(400, "Provide ?xfh= (the X-Forwarded-Host header).")
+
+    if lab_id == "crlf-injection":
+        url = params.get("url") or ""
+        if "%0d%0a" in url.lower() or "\r\n" in url or "%0a" in url.lower():
+            return resp(200, "Response header injected via CRLF — you smuggled a header. "
+                             "FLAG{strip_crlf_from_header_values}")
+        if url:
+            return resp(302, f"Location: {url} (no newline injected).")
+        return resp(400, "Provide ?url= (goes into the Location header).")
+
+    if lab_id == "graphql-batch":
+        ops = (params.get("ops") or "").lower()
+        if ops == "batch" or (ops.isdigit() and int(ops) >= 100):
+            return resp(200, "Batched brute force slipped past per-request rate limits. "
+                             "FLAG{rate_limit_by_operation_not_request}")
+        if ops:
+            return resp(429, "Rate limited (one op per request) — try batching many at once.")
+        return resp(400, "Provide ?ops= (how many operations to batch).")
+
+    if lab_id == "xss-stored":
+        c = (params.get("comment") or "").lower()
+        if "<script" in c or "onerror=" in c or "onload=" in c or ("<img" in c and "=" in c):
+            return resp(200, "Comment stored UN-encoded — it will run in the admin's browser "
+                             "on review. FLAG{stored_xss_encode_on_output}")
+        return resp(200, f"Comment saved: {params.get('comment', '')}")
 
     return resp(404, "No such lab endpoint.")
 
