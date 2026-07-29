@@ -1761,6 +1761,254 @@ LABS = [
                    "authenticated cross-origin reads. Use a strict origin allowlist and "
                    "never combine credentials with a wildcard/reflected origin.",
     },
+    # ------------------------------------------------------------------ #
+    # Wave 4 — the run to 50: more encodings/crypto, OSINT/recon, and
+    # classic web injection (Host header, LDAP, XXE, deserialization).
+    # ------------------------------------------------------------------ #
+    {
+        "id": "base32-decode", "title": "Five Bits at a Time", "icon": "🔤",
+        "difficulty": "Easy", "category": "Crypto", "points": DIFF_XP["Easy"],
+        "brief": "Base32 packs data into A-Z and 2-7 (five bits per character), so it's "
+                 "all uppercase and often ends in '='. Decode it.",
+        "target": {"kind": "data",
+                   "base32": "IZGECR33MJQXGZJTGJPXK43FONPWM2LWMVPWE2LUON6Q====",
+                   "note": "Base32 alphabet is A-Z,2-7. Any base32 decoder returns the text."},
+        "hints": ["It's base32, not base64 — note there are no lowercase letters.",
+                  "Decoding yields text starting with FLAG{."],
+        "check": ("exact", "FLAG{base32_uses_five_bits}"),
+        "teaches": "Base32 trades density for a case-insensitive, URL/DNS-safe alphabet — "
+                   "which is exactly why data-exfil-over-DNS uses it. Still just encoding.",
+    },
+    {
+        "id": "base85-decode", "title": "Denser Still", "icon": "🧬",
+        "difficulty": "Medium", "category": "Crypto", "points": DIFF_XP["Medium"],
+        "brief": "Base85 (b85) squeezes 4 bytes into 5 characters using a big symbol set. "
+                 "Decode this back to text.",
+        "target": {"kind": "data",
+                   "base85": "Mod9Rdtza8WjHloX>(s>Wo~n2a$j?FX>4qL",
+                   "note": "This is Base85 (RFC 1924 / b85), denser than base64. Use a b85 "
+                           "decoder."},
+        "hints": ["The odd punctuation is normal for base85's expanded alphabet.",
+                  "A Python one-liner: base64.b85decode(...). Result starts with FLAG{."],
+        "check": ("exact", "FLAG{base85_is_denser_still}"),
+        "teaches": "Base85 appears in PDFs, Git binary diffs, and Adobe formats. More "
+                   "efficient than base64 — and, still, not a shred of encryption.",
+    },
+    {
+        "id": "atbash", "title": "Through the Looking Glass", "icon": "🪞",
+        "difficulty": "Medium", "category": "Crypto", "points": DIFF_XP["Medium"],
+        "brief": "Atbash mirrors the alphabet: A<->Z, B<->Y, C<->X ... Decode this ancient "
+                 "cipher (it's its own inverse).",
+        "target": {"kind": "data",
+                   "cipher": "UOZT{zgyzhs_nriilih_gsv_zokszyvg}",
+                   "note": "Replace each letter with its mirror: A<->Z, B<->Y ... Apply the "
+                           "same mapping to decode."},
+        "hints": ["U is the mirror of F (U is 21st from start, F is 6th; 27-6=21).",
+                  "UOZT decodes to FLAG."],
+        "check": ("exact", "FLAG{atbash_mirrors_the_alphabet}"),
+        "teaches": "Atbash is a 3,000-year-old substitution cipher with a fixed key — zero "
+                   "security today, but a clean lesson in monoalphabetic substitution.",
+    },
+    {
+        "id": "url-encoding", "title": "Percent Signs Everywhere", "icon": "🔗",
+        "difficulty": "Easy", "category": "Crypto", "points": DIFF_XP["Easy"],
+        "brief": "URL/percent-encoding turns unsafe characters into %XX hex. Decode this "
+                 "back to readable text.",
+        "target": {"kind": "data",
+                   "encoded": "FLAG%7Bpercent_20_is_a_space%7D",
+                   "note": "%7B is '{', %7D is '}', %20 is a space. Each %XX is a hex byte."},
+        "hints": ["%7B = 0x7B = '{'. Decode each %XX to its character.",
+                  "The braces are %7B and %7D."],
+        "check": ("exact", "FLAG{percent_20_is_a_space}"),
+        "teaches": "Percent-encoding is how arbitrary bytes travel in URLs. Attackers use "
+                   "double-encoding (%252e) to slip past naive filters — always decode "
+                   "fully before validating.",
+    },
+    {
+        "id": "rail-fence", "title": "Zigzag", "icon": "🚧",
+        "difficulty": "Medium", "category": "Crypto", "points": DIFF_XP["Medium"],
+        "brief": "The Rail Fence is a transposition cipher: text is written in a zigzag "
+                 "across 3 rails, then read row by row. Reverse it (3 rails).",
+        "target": {"kind": "data",
+                   "cipher": "F{lnzaLGri_ec_izgAafeg}",
+                   "rails": 3,
+                   "note": "Write the ciphertext back into the 3-rail zigzag pattern and "
+                           "read down the columns to recover the original order."},
+        "hints": ["It's transposition — every original letter is present, just reordered.",
+                  "Rebuild the zigzag over 3 rails; the plaintext starts FLAG{rail..."],
+        "check": ("exact", "FLAG{rail_fence_zigzag}"),
+        "teaches": "Transposition ciphers scramble position, not symbols — so letter "
+                   "frequencies are unchanged, which is exactly how they're detected and "
+                   "broken. A puzzle, not protection.",
+    },
+    {
+        "id": "xor-repeating", "title": "The Key Repeats", "icon": "🔁",
+        "difficulty": "Hard", "category": "Crypto", "points": DIFF_XP["Hard"],
+        "brief": "This is repeating-key XOR (the byte-level Vigenere). The 3-letter key is "
+                 "CAT. XOR the hex back with the repeating key to read the flag.",
+        "target": {"kind": "data",
+                   "hex": "050d15043a2626313122353d2d260b28242d1c393b311e3d301e222a26312d2426261e"
+                          "322c330b213820263229",
+                   "key": "CAT",
+                   "note": "Decode the hex to bytes, then XOR byte i with key[i % 3] "
+                           "(C=0x43, A=0x41, T=0x54). XOR is reversible."},
+        "hints": ["XOR the first byte 0x05 with 'C' (0x43) -> 0x46 = 'F'.",
+                  "Cycle the key CAT across all bytes; the plaintext starts FLAG{."],
+        "check": ("exact", "FLAG{repeating_key_xor_is_vigenere_for_bytes}"),
+        "teaches": "Repeating-key XOR is real crypto's weak ancestor: once the key length "
+                   "is found (Hamming distance / Kasiski), each position is a single-byte "
+                   "XOR you brute-force. Never roll your own crypto.",
+    },
+    {
+        "id": "macro-deob", "title": "The Malicious Macro", "icon": "📎",
+        "difficulty": "Hard", "category": "Forensics", "points": DIFF_XP["Hard"],
+        "brief": "A phishing doc's VBA macro was extracted. It builds a payload from a "
+                 "base64 blob, then runs it. Deobfuscate the blob to reveal what it drops.",
+        "target": {"kind": "data",
+                   "vba": "Sub AutoOpen()\n"
+                          "  p = \"RkxBR3ttYWNyb3NfaGlkZV9pbl9iYXNlNjR9\"\n"
+                          "  Set o = CreateObject(\"WScript.Shell\")\n"
+                          "  o.Run Decode64(p), 0, False\n"
+                          "End Sub",
+                   "note": "AutoOpen runs the macro on document open. The base64 string is "
+                           "the real payload — decode it (do NOT run macros!)."},
+        "hints": ["The interesting part is the base64 string assigned to p.",
+                  "base64-decode it to see what the macro would execute."],
+        "check": ("exact", "FLAG{macros_hide_in_base64}"),
+        "teaches": "Office macro malware hides payloads in base64/obfuscation and fires on "
+                   "AutoOpen. Disable macros by policy, block macros from the internet, and "
+                   "analyze in a sandbox — never enable content on an unexpected doc.",
+    },
+    {
+        "id": "s3-open-bucket", "title": "The Bucket Left Open", "icon": "🪣",
+        "difficulty": "Easy", "category": "OSINT", "points": DIFF_XP["Easy"],
+        "brief": "A cloud storage bucket was set to public. Its directory listing is right "
+                 "here — read it and grab the flag from the exposed file.",
+        "target": {"kind": "data",
+                   "listing": "$ curl https://vertex-backups.s3.amazonaws.com/\n"
+                              "<ListBucketResult>\n"
+                              "  <Key>logo.png</Key>\n"
+                              "  <Key>db-backup-2026-07.sql</Key>\n"
+                              "  <Key>secrets/prod.txt</Key>  ->  FLAG{public_buckets_leak_everything}\n"
+                              "</ListBucketResult>",
+                   "note": "A public bucket lists (and serves) every object. The flag sits "
+                           "in the exposed secrets file."},
+        "hints": ["Public buckets let anyone list all keys — read the secrets/ file.",
+                  "The flag is next to secrets/prod.txt."],
+        "check": ("exact", "FLAG{public_buckets_leak_everything}"),
+        "teaches": "Misconfigured public buckets are a top cause of mass data leaks. "
+                   "Default to private, block public access at the account level, and audit "
+                   "bucket policies continuously.",
+    },
+    {
+        "id": "api-key-in-js", "title": "Secrets in the Source Bundle", "icon": "📦",
+        "difficulty": "Easy", "category": "Recon", "points": DIFF_XP["Easy"],
+        "brief": "Front-end JavaScript ships to every visitor — so any secret in it is "
+                 "public. This bundle hardcoded one. Find it.",
+        "target": {"kind": "data",
+                   "js": "// app.min.js (served to every browser)\n"
+                         "const API_BASE='https://api.vertexdental.com';\n"
+                         "const ADMIN_API_KEY='FLAG{secrets_dont_belong_in_frontend}';\n"
+                         "fetch(API_BASE+'/me',{headers:{'X-Key':ADMIN_API_KEY}});",
+                   "note": "Anything in client-side JS is readable via View Source / "
+                           "DevTools. Never ship secrets to the browser."},
+        "hints": ["Read the JS — the key is assigned to a constant.",
+                  "ADMIN_API_KEY holds the flag."],
+        "check": ("exact", "FLAG{secrets_dont_belong_in_frontend}"),
+        "teaches": "Client-side code is public by definition. Keep secrets server-side, "
+                   "use short-lived scoped tokens, and proxy privileged calls through your "
+                   "backend — never embed API keys in front-end bundles.",
+    },
+    {
+        "id": "sqlite-strings", "title": "Strings Never Lie", "icon": "🧵",
+        "difficulty": "Medium", "category": "Forensics", "points": DIFF_XP["Medium"],
+        "brief": "You recovered a leaked app database file. Running `strings` on it dumps "
+                 "readable text — including something that should have been hashed. Find it.",
+        "target": {"kind": "data",
+                   "strings": "$ strings app.db | grep -i flag\n"
+                              "SQLite format 3\n"
+                              "users\x00id\x00email\x00password\n"
+                              "admin@vertexdental.com\n"
+                              "reset_token=FLAG{plaintext_in_the_db}\n"
+                              "CREATE TABLE sessions(...)",
+                   "note": "`strings` extracts printable sequences from any binary. Secrets "
+                           "stored in cleartext show right up."},
+        "hints": ["Scan the strings output for a token or password stored in the clear.",
+                  "The reset_token value is the flag."],
+        "check": ("exact", "FLAG{plaintext_in_the_db}"),
+        "teaches": "A stolen database gives up everything stored in cleartext. Hash "
+                   "passwords (Argon2/bcrypt), encrypt sensitive columns, and keep tokens "
+                   "short-lived and single-use.",
+    },
+    {
+        "id": "host-header", "title": "Poisoning the Reset Link", "icon": "📨",
+        "difficulty": "Medium", "category": "Web", "points": DIFF_XP["Medium"],
+        "brief": "This password-reset builds its link from the incoming Host header. Change "
+                 "the host and the reset email points at YOUR server (token theft). Prove it.",
+        "target": {"kind": "probe",
+                   "instructions": "The reset link uses whatever host you send. Try the "
+                                   "real host, then an attacker host.",
+                   "examples": ["?host=portal.vertexdental.com", "?host=evil.attacker.com"]},
+        "hints": ["Send host=evil.attacker.com — the emailed reset link will use it.",
+                  "When the link points off-domain, the lab returns the flag."],
+        "check": ("exact", "FLAG{never_trust_the_host_header}"),
+        "teaches": "Host-header injection lets attackers poison password-reset links and "
+                   "cache keys. Build absolute URLs from a configured canonical host, and "
+                   "validate/allowlist the Host header at the edge.",
+    },
+    {
+        "id": "ldap-injection", "title": "Wildcards in the Directory", "icon": "📇",
+        "difficulty": "Medium", "category": "Web", "points": DIFF_XP["Medium"],
+        "brief": "This login builds an LDAP filter from your input. Special characters like "
+                 "* and )( let you rewrite the filter into 'match anything'. Bypass the login.",
+        "target": {"kind": "probe",
+                   "instructions": "Your user value goes straight into an LDAP filter. Try a "
+                                   "normal name, then an injection with * and )(.",
+                   "examples": ["?user=jdoe", "?user=*", "?user=*)(uid=*"]},
+        "hints": ["An unescaped * or a )(uid=*) turns the filter into a tautology.",
+                  "Send user=*)(uid=* to match every entry and bypass auth."],
+        "check": ("exact", "FLAG{ldap_filters_need_escaping}"),
+        "teaches": "LDAP injection abuses filter metacharacters ( * ( ) \\ | & ) the same "
+                   "way SQLi abuses quotes. Escape all input per RFC 4515 and use "
+                   "parameterized directory queries.",
+    },
+    {
+        "id": "xxe", "title": "The XML That Reads Files", "icon": "📄",
+        "difficulty": "Hard", "category": "Web", "points": DIFF_XP["Hard"],
+        "brief": "This XML upload parser resolves external entities. Define an entity that "
+                 "points at a local file and the parser will read it back to you (XXE).",
+        "target": {"kind": "probe",
+                   "instructions": "Send an xml value. Try a plain doc, then one declaring "
+                                   "an external entity pointing at a system file.",
+                   "examples": ["?xml=<note>hi</note>",
+                                "?xml=<!DOCTYPE r [<!ENTITY x SYSTEM \"file:///etc/passwd\">]><r>&x;</r>"]},
+        "hints": ["Declare a DOCTYPE with an ENTITY using SYSTEM \"file:///...\" and "
+                  "reference it in the body.", "Point the entity at file:///etc/passwd — "
+                  "the parser inlines the file and the flag with it."],
+        "check": ("exact", "FLAG{xxe_reads_local_files}"),
+        "teaches": "XML External Entity injection reads local files, performs SSRF, and can "
+                   "DoS the parser. Disable DTD/external-entity processing in your XML "
+                   "parser (secure defaults) — the fix is one configuration flag.",
+    },
+    {
+        "id": "insecure-deser", "title": "Trusting a Pickle", "icon": "🥒",
+        "difficulty": "Hard", "category": "Web", "points": DIFF_XP["Hard"],
+        "brief": "This app base64-decodes a cookie and deserializes it with pickle — which "
+                 "can execute code on load. Send a payload the app would 'unpickle' to win.",
+        "target": {"kind": "probe",
+                   "instructions": "The 'data' param is base64 that gets unpickled. Try "
+                                   "harmless data, then a payload marked as an object with a "
+                                   "__reduce__ / os.system gadget.",
+                   "examples": ["?data=normal", "?data=__reduce__:os.system",
+                                "?data=pickle:cos.system"]},
+        "hints": ["Deserializing attacker data runs its embedded gadget — signal an "
+                  "os.system/__reduce__ payload.", "Include 'os.system' or '__reduce__' in "
+                  "the data to trigger the (simulated) code execution and the flag."],
+        "check": ("exact", "FLAG{never_deserialize_untrusted_data}"),
+        "teaches": "Insecure deserialization (pickle, Java, PHP unserialize, YAML load) "
+                   "turns data into code execution. Never deserialize untrusted input; use "
+                   "safe formats (JSON) and sign/validate any serialized state you must trust.",
+    },
 ]
 
 # --------------------------------------------------------------------------- #
@@ -2187,6 +2435,47 @@ def lab_probe(lab_id: str, params: dict) -> dict:
                                  "{ \"note\": \"FLAG{cors_reflect_plus_credentials}\" }")
             return resp(200, f"Access-Control-Allow-Origin: {origin} (trusted own site)")
         return resp(400, "Provide ?origin= (an https URL).")
+
+    if lab_id == "host-header":
+        host = (params.get("host") or "").strip().lower()
+        if host and not host.endswith("vertexdental.com"):
+            return resp(200, f"Password reset link sent: https://{host}/reset?token=abc123\n"
+                             "The link uses YOUR host — a victim's token goes to you. "
+                             "FLAG{never_trust_the_host_header}")
+        if host:
+            return resp(200, f"Reset link: https://{host}/reset?token=abc123 (canonical host)")
+        return resp(400, "Provide ?host= (the request Host header).")
+
+    if lab_id == "ldap-injection":
+        user = params.get("user") or ""
+        if "*" in user or ")(" in user or "|(" in user:
+            return resp(200, "LDAP filter became (uid=*)(uid=*) — matches everyone. "
+                             "Bound as admin. FLAG{ldap_filters_need_escaping}")
+        if user:
+            return resp(401, f"No directory entry for uid={user}.")
+        return resp(400, "Provide ?user= (goes into an LDAP filter).")
+
+    if lab_id == "xxe":
+        xml = params.get("xml") or ""
+        low = xml.lower()
+        if "<!entity" in low and "system" in low and ("file://" in low or "/etc/passwd" in low):
+            return resp(200, "Parsed. Entity expanded to file contents:\n"
+                             "root:x:0:0:root:/root:/bin/bash\n# FLAG{xxe_reads_local_files}")
+        if "<!doctype" in low or "<!entity" in low:
+            return resp(200, "DTD seen — declare an external SYSTEM entity to file:///etc/passwd.")
+        if xml:
+            return resp(200, "<parsed>ok</parsed> (no external entities in this document)")
+        return resp(400, "Provide ?xml= to parse.")
+
+    if lab_id == "insecure-deser":
+        data = (params.get("data") or "").lower()
+        if "__reduce__" in data or "os.system" in data or "subprocess" in data \
+                or "cos\nsystem" in data or "pickle:c" in data:
+            return resp(200, "Unpickling executed the embedded gadget (simulated). "
+                             "FLAG{never_deserialize_untrusted_data}")
+        if data:
+            return resp(200, "Deserialized a plain object — no code gadget present.")
+        return resp(400, "Provide ?data= (base64 that gets unpickled).")
 
     return resp(404, "No such lab endpoint.")
 

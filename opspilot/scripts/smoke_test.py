@@ -5676,6 +5676,21 @@ def main():
             "nosql-auth": "FLAG{nosql_operators_are_injectable}",
             "graphql-introspection": "FLAG{introspection_maps_the_whole_api}",
             "cors-misconfig": "FLAG{cors_reflect_plus_credentials}",
+            # wave 4 — the run to 50
+            "base32-decode": "FLAG{base32_uses_five_bits}",
+            "base85-decode": "FLAG{base85_is_denser_still}",
+            "atbash": "FLAG{atbash_mirrors_the_alphabet}",
+            "url-encoding": "FLAG{percent_20_is_a_space}",
+            "rail-fence": "FLAG{rail_fence_zigzag}",
+            "xor-repeating": "FLAG{repeating_key_xor_is_vigenere_for_bytes}",
+            "macro-deob": "FLAG{macros_hide_in_base64}",
+            "s3-open-bucket": "FLAG{public_buckets_leak_everything}",
+            "api-key-in-js": "FLAG{secrets_dont_belong_in_frontend}",
+            "sqlite-strings": "FLAG{plaintext_in_the_db}",
+            "host-header": "FLAG{never_trust_the_host_header}",
+            "ldap-injection": "FLAG{ldap_filters_need_escaping}",
+            "xxe": "FLAG{xxe_reads_local_files}",
+            "insecure-deser": "FLAG{never_deserialize_untrusted_data}",
         }
         # every lab must be covered so range_all is reachable
         assert set(_solutions) == set(_aca._LABS), \
@@ -6470,7 +6485,7 @@ def main():
         print("box self-updater: script parses, CI gate decides green/red/pending "
               "correctly, ff-only + health-gated rollback present OK")
 
-    print("\n=== OpsPilot v1.68.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.69.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
