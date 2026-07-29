@@ -5559,6 +5559,68 @@ def main():
         print("cyber academy: page + no-answer-leak + grading + XP-once + streak/badges "
               "+ games + tenant-isolated leaderboard OK")
 
+        # ==== v1.63.0: Cyber Range — hands-on labs, probe emulator, flag grading ====
+        import base64 as _b64r, re as _rer
+        _rc = c.get("/api/academy/range").json()
+        assert _rc["total"] == 10 and _rc["solved"] == 0, _rc
+        # lab view must NOT expose the check/flag for derived labs
+        _lv = c.get("/api/academy/labs/sqli-login").json()
+        assert "check" not in _lv and _lv["difficulty"] == "Medium" and "target" in _lv
+        assert c.get("/api/academy/labs/nope").status_code == 404
+        # wrong flag rejected, no XP
+        _wrong = c.post("/api/academy/labs/recon-source/submit", json={"flag": "FLAG{no}"}).json()
+        assert _wrong["solved"] is False and "xp_gained" not in _wrong
+        # PROBE emulator: solve the interactive labs through the box's simulator
+        _pr = c.get("/api/academy/labs/sqli-login/probe",
+                    params={"user": "admin", "pass": "' OR '1'='1"}).json()
+        assert "Login OK" in _pr["body"], _pr
+        assert c.get("/api/academy/labs/sqli-login/probe",
+                     params={"user": "admin", "pass": "hunter2"}).json()["status"] == 401
+        _idor = c.get("/api/academy/labs/idor-invoice/probe", params={"id": "4020"}).json()
+        _idor_flag = _rer.search(r"FLAG\{[^}]+\}", _idor["body"]).group(0)
+        _pt = c.get("/api/academy/labs/path-traversal/probe",
+                    params={"file": "../../../../etc/passwd"}).json()
+        _pt_flag = _rer.search(r"FLAG\{[^}]+\}", _pt["body"]).group(0)
+        # path traversal WITHOUT the exploit must not leak
+        assert "FLAG" not in c.get("/api/academy/labs/path-traversal/probe",
+                                   params={"file": "welcome.txt"}).json()["body"]
+        # capture flags across all 10 labs -> difficulty-scaled XP, once each
+        _solutions = {
+            "recon-source": "FLAG{view_source_is_recon_101}",
+            "robots-recon": "FLAG{robots_txt_is_a_treasure_map}",
+            "cookie-tamper": _b64r.b64encode(b'{"user":"guest","role":"admin","admin":true}').decode(),
+            "idor-invoice": _idor_flag,
+            "sqli-login": "' OR '1'='1",
+            "jwt-none": (_b64r.urlsafe_b64encode(b'{"alg":"none","typ":"JWT"}').decode().rstrip("=")
+                         + "." + _b64r.urlsafe_b64encode(b'{"user":"guest","role":"admin"}').decode().rstrip("=") + "."),
+            "hash-crack": "password",
+            "base64-onion": "FLAG{encoding_is_not_encryption}",
+            "path-traversal": _pt_flag,
+            "email-forensics": "185.220.101.44",
+        }
+        _base_xp = c.get("/api/academy/me").json()["xp"]
+        _gained, _got_first_flag, _got_l33t = 0, False, False
+        for _lid, _flag in _solutions.items():
+            _sr = c.post(f"/api/academy/labs/{_lid}/submit", json={"flag": _flag}).json()
+            assert _sr["solved"] is True and _sr["xp_gained"] > 0, (_lid, _sr)
+            _gained += _sr["xp_gained"]
+            _got_first_flag |= any(b["id"] == "first_flag" for b in _sr["new_badges"])
+            _got_l33t |= any(b["id"] == "l33t" for b in _sr["new_badges"])
+            # re-submitting a solved lab awards no more XP
+            assert c.post(f"/api/academy/labs/{_lid}/submit",
+                          json={"flag": _flag}).json()["xp_gained"] == 0
+        assert _got_first_flag and _got_l33t, "first_flag + l33t badges must fire"
+        # XP is difficulty-weighted: 5 Easy(100)+3 Med(175)+2 Hard(275) = 1575
+        assert _gained == 5*100 + 3*175 + 2*275, _gained
+        _rc2 = c.get("/api/academy/range").json()
+        assert _rc2["solved"] == 10, _rc2
+        _prof = c.get("/api/academy/me").json()
+        assert _prof["xp"] == _base_xp + _gained
+        assert any(b["id"] == "range_all" for b in _prof["badges"]), "Range Master badge"
+        print("cyber range: 10 CTF labs (recon/web/auth/crypto/email) - probe emulator "
+              "solves IDOR/SQLi/traversal, difficulty-scaled XP (1575), XP-once, "
+              "first_flag/l33t/range_all badges, no flag leak in views OK")
+
         # ===================== v1.3: compliance + streak savers + AI questions ==========
         import datetime as _dt13
 
@@ -6297,7 +6359,7 @@ def main():
         print("box self-updater: script parses, CI gate decides green/red/pending "
               "correctly, ff-only + health-gated rollback present OK")
 
-    print("\n=== OpsPilot v1.62.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.63.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

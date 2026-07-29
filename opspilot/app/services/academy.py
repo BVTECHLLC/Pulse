@@ -43,6 +43,11 @@ BADGES = {
     "half_way":     {"icon": "⛰️", "name": "Halfway Up", "desc": "Complete half of all lessons"},
     "all_lessons":  {"icon": "🎓", "name": "Graduate", "desc": "Complete every lesson"},
     "xp_500":       {"icon": "⚡", "name": "Charged Up", "desc": "Earn 500 XP"},
+    # --- Cyber Range (hands-on labs) ---
+    "first_flag":   {"icon": "🚩", "name": "First Blood", "desc": "Capture your first flag in the Cyber Range"},
+    "range_5":      {"icon": "🎯", "name": "Range Regular", "desc": "Solve 5 Cyber Range labs"},
+    "range_all":    {"icon": "🏴‍☠️", "name": "Range Master", "desc": "Capture every flag in the Cyber Range"},
+    "l33t":         {"icon": "💀", "name": "l33t", "desc": "Solve a Hard-difficulty lab"},
 }
 
 MODULES = [
@@ -629,11 +634,208 @@ GAMES = [
 ]
 
 # --------------------------------------------------------------------------- #
+# CYBER RANGE — hands-on, "hack-this-site"-style labs. Each lab emulates a
+# vulnerable behavior on the box (via a SAFE, hardcoded probe simulator — never
+# real code execution or a real backend) and is graded by a server-side flag
+# check the client never sees. Difficulty sets the XP. This lives inside the
+# Academy so labs share the same XP / streak / badge / leaderboard system.
+# --------------------------------------------------------------------------- #
+import base64 as _b64
+import hashlib as _hashlib
+
+DIFF_XP = {"Easy": 100, "Medium": 175, "Hard": 275}
+
+LABS = [
+    {
+        "id": "recon-source", "title": "Hidden in Plain Sight", "icon": "🔍",
+        "difficulty": "Easy", "category": "Recon", "points": DIFF_XP["Easy"],
+        "brief": "Developers leave secrets in the last place they think anyone looks: "
+                 "the page source. Read the HTML below and capture the flag.",
+        "target": {"kind": "source", "html":
+                   "<div class=\"login\">\n"
+                   "  <h1>Vertex Dental Portal</h1>\n"
+                   "  <!-- TODO: remove debug flag before launch — FLAG{view_source_is_recon_101} -->\n"
+                   "  <form action=\"/auth\" method=\"post\">\n"
+                   "    <input name=\"user\" placeholder=\"username\">\n"
+                   "    <input name=\"pass\" type=\"password\">\n"
+                   "  </form>\n</div>"},
+        "hints": ["HTML comments start with <!-- and end with -->.",
+                  "The flag format is FLAG{...}. Copy exactly what's inside a comment."],
+        "check": ("exact", "FLAG{view_source_is_recon_101}"),
+        "teaches": "Attackers read your source before anything else. Never ship "
+                   "credentials, keys, or debug flags in client-side code or comments.",
+    },
+    {
+        "id": "robots-recon", "title": "What robots.txt Reveals", "icon": "🤖",
+        "difficulty": "Easy", "category": "Recon", "points": DIFF_XP["Easy"],
+        "brief": "robots.txt tells search engines what to skip — and tells attackers "
+                 "exactly where the interesting stuff is. Probe the site's robots.txt, "
+                 "follow what it's hiding, and grab the flag.",
+        "target": {"kind": "probe",
+                   "instructions": "GET the paths below. Start with /robots.txt.",
+                   "examples": ["/robots.txt", "/<the disallowed path>"]},
+        "hints": ["Probe path=/robots.txt first.",
+                  "It Disallows a folder. Probe that exact path next."],
+        "check": ("exact", "FLAG{robots_txt_is_a_treasure_map}"),
+        "teaches": "robots.txt is public. Never use it to 'hide' admin or backup "
+                   "paths — it advertises them. Protect with auth, not obscurity.",
+    },
+    {
+        "id": "cookie-tamper", "title": "Cookie Monster", "icon": "🍪",
+        "difficulty": "Easy", "category": "Web", "points": DIFF_XP["Easy"],
+        "brief": "This app decides who's an admin using a cookie it trusts blindly. "
+                 "Your session cookie is a base64 JSON blob. Decode it, promote "
+                 "yourself to admin, and submit the forged cookie value.",
+        "target": {"kind": "data",
+                   "cookie": _b64.b64encode(b'{"user":"guest","role":"user","admin":false}').decode(),
+                   "note": "Submit a new base64 value that makes you admin."},
+        "hints": ["base64-decode the cookie to see the JSON.",
+                  "Set admin to true (and/or role to admin), then base64-encode it "
+                  "again and submit that string."],
+        "check": ("cookie_admin", ""),
+        "teaches": "Never trust client-side state for authorization. Sign your "
+                   "session tokens server-side (or store the session server-side) so "
+                   "a tampered cookie is rejected, not obeyed.",
+    },
+    {
+        "id": "idor-invoice", "title": "The Invoice Next Door", "icon": "🔢",
+        "difficulty": "Medium", "category": "Web", "points": DIFF_XP["Medium"],
+        "brief": "You're viewing YOUR invoice at id=4021. The app never checks that "
+                 "an invoice actually belongs to you (an IDOR bug). Probe nearby ids "
+                 "until you find the one holding the flag.",
+        "target": {"kind": "probe",
+                   "instructions": "Probe id=4021 (yours), then try neighboring ids.",
+                   "examples": ["?id=4021", "?id=4020", "?id=4019"]},
+        "hints": ["Change the id parameter. Try the ones just below 4021.",
+                  "One nearby invoice belongs to another customer and shows the flag."],
+        "check": ("exact", "FLAG{idor_means_check_the_owner}"),
+        "teaches": "Insecure Direct Object Reference: always verify the logged-in "
+                   "user OWNS the record they request. Sequential IDs make this trivial "
+                   "to exploit — authorize every object access on the server.",
+    },
+    {
+        "id": "sqli-login", "title": "The Login That Trusts Too Much", "icon": "💉",
+        "difficulty": "Medium", "category": "Web", "points": DIFF_XP["Medium"],
+        "brief": "This login builds its SQL by gluing your input straight into the "
+                 "query. Log in as admin WITHOUT knowing the password by making the "
+                 "WHERE clause always true. Probe the login with your payload.",
+        "target": {"kind": "probe",
+                   "instructions": "Probe with user=admin and a password payload. "
+                                   "The backend runs: SELECT * FROM users WHERE "
+                                   "user='<user>' AND pass='<pass>'",
+                   "examples": ["?user=admin&pass=hunter2 (fails)",
+                                "?user=admin&pass=<your injection>"]},
+        "hints": ["Close the quote and add an always-true condition.",
+                  "Classic tautology: ' OR '1'='1  — or comment out the rest with --."],
+        "check": ("sqli", ""),
+        "teaches": "SQL injection. The fix is never 'filter bad words' — it's "
+                   "PARAMETERIZED QUERIES (bound parameters), so user input can never "
+                   "change the query's structure.",
+    },
+    {
+        "id": "jwt-none", "title": "The Token That Signs Itself", "icon": "🎫",
+        "difficulty": "Hard", "category": "Auth", "points": DIFF_XP["Hard"],
+        "brief": "Here's your JWT — role 'user', signed HS256. This server foolishly "
+                 "accepts the 'none' algorithm (unsigned tokens). Forge a token with "
+                 "alg=none and role=admin and submit it.",
+        "target": {"kind": "data",
+                   "jwt": (_b64.urlsafe_b64encode(b'{"alg":"HS256","typ":"JWT"}').decode().rstrip("=")
+                           + "." + _b64.urlsafe_b64encode(b'{"user":"guest","role":"user"}').decode().rstrip("=")
+                           + ".c2lnbmF0dXJl"),
+                   "note": "A JWT is three base64url parts joined by dots: header.payload.signature"},
+        "hints": ["Base64url-decode the header and payload (the first two parts).",
+                  "Make a new header {\"alg\":\"none\",\"typ\":\"JWT\"} and payload with "
+                  "\"role\":\"admin\". Base64url-encode each, join with dots. With alg "
+                  "'none' the signature is empty — end the token with a trailing dot."],
+        "check": ("jwt_none", ""),
+        "teaches": "The JWT 'alg:none' / algorithm-confusion attack. Always pin the "
+                   "expected algorithm server-side and REJECT 'none'. A token's own "
+                   "header must never be allowed to choose how it's verified.",
+    },
+    {
+        "id": "hash-crack", "title": "Crack the Hash", "icon": "🔓",
+        "difficulty": "Medium", "category": "Crypto", "points": DIFF_XP["Medium"],
+        "brief": "A breach dump leaked this MD5 password hash. MD5 is fast and "
+                 "unsalted — a gift to crackers. Recover the plaintext password and "
+                 "submit it.\n\nMD5: 5f4dcc3b5aa765d61d8327deb882cf99",
+        "target": {"kind": "data", "hash": "5f4dcc3b5aa765d61d8327deb882cf99",
+                   "note": "It's one of the most common passwords ever leaked. "
+                           "A wordlist cracks it in milliseconds."},
+        "hints": ["It's a 5-letter dictionary word — the #1 password in every breach list.",
+                  "Try hashing 'password' with MD5. Submit the plaintext, not the hash."],
+        "check": ("md5", "5f4dcc3b5aa765d61d8327deb882cf99"),
+        "teaches": "Never store passwords as fast/unsalted hashes. Use a slow, salted "
+                   "algorithm (bcrypt, scrypt, Argon2) so a stolen database can't be "
+                   "reversed with a wordlist.",
+    },
+    {
+        "id": "base64-onion", "title": "Layers of Obfuscation", "icon": "🧅",
+        "difficulty": "Easy", "category": "Crypto", "points": DIFF_XP["Easy"],
+        "brief": "Malware hides its payload under layers of encoding. This blob is "
+                 "base64 wrapped around ROT13. Peel both layers to reveal the flag.\n\n"
+                 + _b64.b64encode("SYNT{rapbqvat_vf_abg_rapelcgvba}".encode()).decode(),
+        "target": {"kind": "data",
+                   "blob": _b64.b64encode("SYNT{rapbqvat_vf_abg_rapelcgvba}".encode()).decode(),
+                   "note": "Step 1: base64-decode. Step 2: ROT13 the result."},
+        "hints": ["base64-decode the blob first — you'll get scrambled-looking text.",
+                  "That text is ROT13. Rotate letters 13 places (SYNT -> FLAG)."],
+        "check": ("exact", "FLAG{encoding_is_not_encryption}"),
+        "teaches": "Encoding (base64, ROT13, hex) is NOT encryption — it hides nothing "
+                   "from anyone. Real confidentiality needs actual cryptography with keys.",
+    },
+    {
+        "id": "path-traversal", "title": "Escape the Folder", "icon": "📂",
+        "difficulty": "Hard", "category": "Web", "points": DIFF_XP["Hard"],
+        "brief": "This file viewer serves docs from /var/www/files/ and pastes your "
+                 "filename straight into the path. Break OUT of that folder to read a "
+                 "system file the app never meant to expose. Probe with a filename.",
+        "target": {"kind": "probe",
+                   "instructions": "Probe file=welcome.txt (works). Then try to reach "
+                                   "the system password file outside the web root.",
+                   "examples": ["?file=welcome.txt", "?file=../../../../etc/passwd"]},
+        "hints": ["Use ../ to climb directories out of /var/www/files/.",
+                  "The classic target is etc/passwd — climb enough levels with ../ "
+                  "to reach it. The flag is planted in that file."],
+        "check": ("exact", "FLAG{never_trust_a_filename_from_a_user}"),
+        "teaches": "Path/Directory Traversal. Never build file paths from user input. "
+                   "Resolve to a canonical path and confirm it stays inside the allowed "
+                   "directory; reject any '..' sequences.",
+    },
+    {
+        "id": "email-forensics", "title": "Read the Headers", "icon": "🕵️",
+        "difficulty": "Medium", "category": "Email", "points": DIFF_XP["Medium"],
+        "brief": "A 'CEO' email asked accounting to wire funds. The body looks fine — "
+                 "but email headers don't lie. Inspect the raw headers and submit the "
+                 "IP address the message ACTUALLY originated from (the one that failed "
+                 "SPF).",
+        "target": {"kind": "data", "headers":
+                   "Delivered-To: ap@vertexdental.com\n"
+                   "Received: from mail.vertexdental.com (10.0.0.5)\n"
+                   "Received: from unknown (HELO cheap-vps.ru) (185.220.101.44)\n"
+                   "        by mx.vertexdental.com; Tue, 29 Jul 2026 01:12:04\n"
+                   "Authentication-Results: mx.vertexdental.com;\n"
+                   "        spf=fail (sender IP is 185.220.101.44) smtp.mailfrom=ceo@vertexdental.com;\n"
+                   "        dkim=none; dmarc=fail\n"
+                   "From: \"Jordan CEO\" <ceo@vertexdental.com>\n"
+                   "Subject: Urgent wire needed before noon"},
+        "hints": ["Read the Received: lines from the BOTTOM up — the earliest hop is "
+                  "the true origin.", "The Authentication-Results line names the IP that "
+                  "failed SPF. Submit just that IP address."],
+        "check": ("exact", "185.220.101.44"),
+        "teaches": "Email headers reveal the true path. spf=fail + dkim=none + "
+                   "dmarc=fail on a 'CEO wire' request is textbook business email "
+                   "compromise. This is why DMARC enforcement matters.",
+    },
+]
+
+# --------------------------------------------------------------------------- #
 # Lookups
 # --------------------------------------------------------------------------- #
 _LESSONS = {l["id"]: l for m in MODULES for l in m["lessons"]}
 _GAMES = {g["id"]: g for g in GAMES}
+_LABS = {b["id"]: b for b in LABS}
 TOTAL_LESSONS = len(_LESSONS)
+TOTAL_LABS = len(_LABS)
 
 
 def _utcnow() -> datetime:
@@ -675,7 +877,8 @@ def _touch_streak(prof: AcademyProfile, today: date) -> None:
 
 
 def _award(db: Session, user: User, prof: AcademyProfile, item_id: str,
-           kind: str, score: int | None, max_score: int | None) -> tuple[int, list[str]]:
+           kind: str, score: int | None, max_score: int | None,
+           xp_override: int | None = None) -> tuple[int, list[str]]:
     """Record a completion; award XP only the first time. Returns (xp_gained,
     newly earned badge ids)."""
     now = _utcnow()
@@ -684,7 +887,9 @@ def _award(db: Session, user: User, prof: AcademyProfile, item_id: str,
                          AcademyCompletion.item_id == item_id).first())
     xp = 0
     if first:
-        if kind == "lesson":
+        if xp_override is not None:
+            xp = xp_override
+        elif kind == "lesson":
             xp = LESSON_XP + (PERFECT_BONUS if score is not None and score == max_score else 0)
         else:
             xp = GAME_XP
@@ -706,10 +911,19 @@ def _award(db: Session, user: User, prof: AcademyProfile, item_id: str,
                             AcademyCompletion.kind == "lesson")} | (
                         {item_id} if kind == "lesson" else set())
     done_lessons &= set(_LESSONS)
+    done_labs = {c.item_id for c in db.query(AcademyCompletion)
+                 .filter(AcademyCompletion.user_id == user.id,
+                         AcademyCompletion.kind == "lab")} | (
+                     {item_id} if kind == "lab" else set())
+    done_labs &= set(_LABS)
     earn("first_steps", kind == "lesson")
     earn("quiz_perfect", kind == "lesson" and score is not None and score == max_score)
     earn("phish_master", item_id == "phish-or-legit" and score is not None and score == max_score)
     earn("lab_rat", item_id == "password-lab")
+    earn("first_flag", kind == "lab")
+    earn("range_5", len(done_labs) >= 5)
+    earn("range_all", len(done_labs) >= TOTAL_LABS)
+    earn("l33t", kind == "lab" and _LABS.get(item_id, {}).get("difficulty") == "Hard")
     earn("streak_3", (prof.streak_days or 0) >= 3)
     earn("streak_7", (prof.streak_days or 0) >= 7)
     earn("half_way", len(done_lessons) * 2 >= TOTAL_LESSONS)
@@ -762,7 +976,8 @@ def catalog_view(db: Session, user: User) -> dict:
                       "blurb": g["blurb"], "kind": g["kind"], "xp": GAME_XP,
                       "completed": bool(c), "score": c.score if c else None,
                       "rounds": len(g["items"]) or None})
-    return {"modules": mods, "games": games, "total_lessons": TOTAL_LESSONS}
+    return {"modules": mods, "games": games, "total_lessons": TOTAL_LESSONS,
+            "range": range_view(db, user)}
 
 
 def lesson_view(db: Session, lesson_id: str) -> dict | None:
@@ -834,6 +1049,156 @@ def grade_game(db: Session, user: User, game_id: str, answers: list) -> dict | N
     return {"score": None, "total": None, "results": [],
             "xp_gained": xp, "profile": profile_view(db, user),
             "new_badges": [{**BADGES[b], "id": b} for b in new_badges]}
+
+
+# --------------------------------------------------------------------------- #
+# Cyber Range — views, the SAFE emulator (probe), flag checkers, grading.
+# --------------------------------------------------------------------------- #
+def range_view(db: Session, user: User) -> dict:
+    """Catalog of labs with per-user solved state, grouped-friendly + summary."""
+    solved = {c.item_id for c in db.query(AcademyCompletion)
+              .filter(AcademyCompletion.user_id == user.id,
+                      AcademyCompletion.kind == "lab")}
+    labs = [{"id": b["id"], "title": b["title"], "icon": b["icon"],
+             "difficulty": b["difficulty"], "category": b["category"],
+             "points": b["points"], "solved": b["id"] in solved}
+            for b in LABS]
+    return {"labs": labs, "total": TOTAL_LABS,
+            "solved": len([b for b in labs if b["solved"]])}
+
+
+def lab_view(db: Session, user: User, lab_id: str) -> dict | None:
+    """A single lab WITHOUT the flag or checker — everything needed to attempt it."""
+    b = _LABS.get(lab_id)
+    if not b:
+        return None
+    solved = bool(db.query(AcademyCompletion)
+                  .filter(AcademyCompletion.user_id == user.id,
+                          AcademyCompletion.item_id == lab_id,
+                          AcademyCompletion.kind == "lab").first())
+    return {"id": b["id"], "title": b["title"], "icon": b["icon"],
+            "difficulty": b["difficulty"], "category": b["category"],
+            "points": b["points"], "brief": b["brief"], "target": b["target"],
+            "hints": b["hints"], "teaches": b["teaches"], "solved": solved}
+
+
+def lab_probe(lab_id: str, params: dict) -> dict:
+    """The SAFE emulator: hardcoded simulators of each vulnerable behavior. No
+    real backend, no code execution, no filesystem — just deterministic canned
+    responses that teach the technique. Returns {status, body} like an HTTP hit."""
+    b = _LABS.get(lab_id)
+    if not b or b["target"].get("kind") != "probe":
+        return {"status": 404, "body": "No such lab endpoint."}
+
+    def resp(status, body):
+        return {"status": status, "body": body}
+
+    if lab_id == "robots-recon":
+        path = (params.get("path") or "").strip()
+        if path in ("/robots.txt", "robots.txt"):
+            return resp(200, "User-agent: *\nDisallow: /internal-backups-7f3/\n"
+                             "Disallow: /admin\nSitemap: /sitemap.xml")
+        if path.strip("/") == "internal-backups-7f3":
+            return resp(200, "Index of /internal-backups-7f3/\n"
+                             "  db_dump_2026.sql\n  NOTES.txt  -> FLAG{robots_txt_is_a_treasure_map}")
+        return resp(404, "404 Not Found. (Try /robots.txt first.)")
+
+    if lab_id == "idor-invoice":
+        try:
+            iid = int(params.get("id") or 0)
+        except ValueError:
+            return resp(400, "id must be a number, e.g. ?id=4021")
+        if iid == 4021:
+            return resp(200, "Invoice #4021 — YOUR account (Acme Co) — Balance $0.00")
+        if iid == 4020:
+            return resp(200, "Invoice #4020 — Vertex Dental — memo: FLAG{idor_means_check_the_owner}")
+        if 4000 <= iid <= 4030:
+            return resp(200, f"Invoice #{iid} — [another customer] — no memo")
+        return resp(404, "Invoice not found.")
+
+    if lab_id == "sqli-login":
+        user_in = (params.get("user") or "")
+        pass_in = (params.get("pass") or "")
+        if _sqli_bypasses(pass_in) or _sqli_bypasses(user_in):
+            return resp(200, "Login OK — welcome, admin. FLAG{sql_injection_needs_parameterized_queries}")
+        return resp(401, "Invalid username or password.")
+
+    if lab_id == "path-traversal":
+        f = (params.get("file") or "").replace("\\", "/")
+        base = f.split("/")[-1]
+        if f in ("welcome.txt", "welcome.txt".lstrip("/")) and "/" not in f:
+            return resp(200, "Welcome to Vertex Dental's document portal.")
+        if "../" in f and base == "passwd":
+            return resp(200, "root:x:0:0:root:/root:/bin/bash\n"
+                             "www-data:x:33:33:/var/www:/usr/sbin/nologin\n"
+                             "# FLAG{never_trust_a_filename_from_a_user}")
+        if "../" in f:
+            return resp(404, "File not found (you escaped the folder — now aim for etc/passwd).")
+        return resp(200, f"[contents of files/{base}]")
+
+    return resp(404, "No such lab endpoint.")
+
+
+def _sqli_bypasses(s: str) -> bool:
+    """Detect a classic authentication-bypass tautology in a login field. This
+    only PATTERN-MATCHES a teaching payload; no SQL is ever built or run."""
+    t = (s or "").lower().replace(" ", "")
+    if "'or'1'='1" in t or '"or"1"="1' in t:
+        return True
+    if "or1=1" in t and ("--" in t or "'" in t or '"' in t or "#" in t):
+        return True
+    return False
+
+
+def _check_flag(b: dict, submission: str) -> bool:
+    """Server-side flag verification. The client never receives the answer."""
+    kind, expected = b["check"]
+    s = (submission or "").strip()
+    if kind == "exact":
+        return s == expected
+    if kind == "md5":
+        return _hashlib.md5(s.encode("utf-8", "ignore")).hexdigest() == expected
+    if kind == "cookie_admin":
+        try:
+            raw = _b64.b64decode(s + "=" * (-len(s) % 4)).decode("utf-8", "ignore")
+            data = json.loads(raw)
+        except Exception:  # noqa: BLE001
+            return False
+        return (data.get("admin") is True
+                or str(data.get("role", "")).lower() == "admin")
+    if kind == "jwt_none":
+        parts = s.split(".")
+        if len(parts) < 2:
+            return False
+        try:
+            def _dec(p):
+                return json.loads(_b64.urlsafe_b64decode(p + "=" * (-len(p) % 4)))
+            header, payload = _dec(parts[0]), _dec(parts[1])
+        except Exception:  # noqa: BLE001
+            return False
+        alg = str(header.get("alg", "")).lower()
+        sig = parts[2] if len(parts) > 2 else ""
+        return alg == "none" and str(payload.get("role", "")).lower() == "admin" and not sig
+    if kind == "sqli":
+        return _sqli_bypasses(s)
+    return False
+
+
+def grade_lab(db: Session, user: User, lab_id: str, submission: str) -> dict | None:
+    """Check a flag submission; award difficulty-scaled XP the first time solved."""
+    b = _LABS.get(lab_id)
+    if not b:
+        return None
+    if not _check_flag(b, submission):
+        return {"solved": False,
+                "message": "Not quite — that's not the flag. Check the hints and try again."}
+    prof = get_profile(db, user)
+    xp, new_badges = _award(db, user, prof, lab_id, "lab", None, None,
+                            xp_override=b["points"])
+    return {"solved": True, "xp_gained": xp,
+            "message": ("🚩 Flag captured!" if xp else "Already solved — nice work."),
+            "teaches": b["teaches"], "profile": profile_view(db, user),
+            "new_badges": [{**BADGES[bd], "id": bd} for bd in new_badges]}
 
 
 def leaderboard(db: Session, user: User, *, staff: bool) -> list[dict]:

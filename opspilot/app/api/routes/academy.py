@@ -7,7 +7,7 @@ grading is server-side only.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -71,6 +71,46 @@ def submit_game(game_id: str, body: GameAnswersIn, db: Session = Depends(get_db)
     out = academy.grade_game(db, user, game_id, body.answers)
     if not out:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Game not found")
+    return out
+
+
+@router.get("/range")
+def range_catalog(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """The Cyber Range: hands-on CTF-style labs, with per-user solved state."""
+    out = academy.range_view(db, user)
+    out["profile"] = academy.profile_view(db, user)
+    return out
+
+
+@router.get("/labs/{lab_id}")
+def lab(lab_id: str, db: Session = Depends(get_db),
+        user: User = Depends(current_user)):
+    b = academy.lab_view(db, user, lab_id)
+    if not b:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Lab not found")
+    return b
+
+
+@router.get("/labs/{lab_id}/probe")
+def lab_probe(lab_id: str, request: Request,
+              user: User = Depends(current_user)):
+    """The lab's SAFE emulated endpoint — hardcoded simulators only. Query params
+    are the learner's 'attack' input (id=, file=, user=, pass=, path=)."""
+    if lab_id not in academy._LABS:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Lab not found")
+    return academy.lab_probe(lab_id, dict(request.query_params))
+
+
+class FlagIn(BaseModel):
+    flag: str = ""
+
+
+@router.post("/labs/{lab_id}/submit")
+def submit_lab(lab_id: str, body: FlagIn, db: Session = Depends(get_db),
+               user: User = Depends(current_user)):
+    out = academy.grade_lab(db, user, lab_id, body.flag)
+    if out is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Lab not found")
     return out
 
 

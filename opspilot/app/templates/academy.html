@@ -183,11 +183,37 @@ font-size:14px;cursor:pointer;flex:none}
     <div class="badges" id="m-badges"></div>
     <div style="margin-top:16px"><a class="btn ghost" id="back-portal" href="/portal" style="text-decoration:none">← Back to portal</a></div>
   </div>
+
+  <!-- ===== CYBER RANGE (hands-on labs) ===== -->
+  <div id="v-range" class="hidden">
+    <h1 style="margin-bottom:4px">🎯 Cyber Range</h1>
+    <p class="mut" style="margin:0 0 12px">Hands-on, capture-the-flag labs. Exploit a safe emulated target, find the flag, learn the fix. <b id="range-count">0/0 solved</b></p>
+    <div id="range-labs"></div>
+  </div>
+
+  <!-- ===== SINGLE LAB ===== -->
+  <div id="v-labplay" class="hidden">
+    <div class="topbar"><button class="back" onclick="go('range')">← Range</button><h2 id="lab-ttl" style="margin:0"></h2></div>
+    <div class="card"><span class="pill" id="lab-diff"></span> <span class="mut" id="lab-cat"></span>
+      <p id="lab-brief" style="white-space:pre-wrap;margin:10px 0 0"></p></div>
+    <div class="card" id="lab-target"></div>
+    <div class="card">
+      <b>🎯 Submit the flag</b>
+      <div class="row" style="margin-top:8px">
+        <input type="text" id="lab-flag" placeholder="FLAG{...} or the required value" autocomplete="off" autocapitalize="off" spellcheck="false" style="flex:1">
+        <button class="btn" style="width:auto;padding:0 18px" onclick="submitFlag()">Capture →</button>
+      </div>
+      <div id="lab-msg" style="margin-top:10px"></div>
+    </div>
+    <details class="card" style="cursor:pointer"><summary><b>💡 Stuck? Reveal hints</b></summary>
+      <ul id="lab-hints" style="margin:8px 0 0 18px"></ul></details>
+  </div>
 </div>
 
 <nav>
   <a href="#learn" id="n-learn" class="on"><span class="i">📚</span>Learn</a>
   <a href="#play" id="n-play"><span class="i">🎮</span>Play</a>
+  <a href="#range" id="n-range"><span class="i">🎯</span>Range</a>
   <a href="#ranks" id="n-ranks"><span class="i">🏆</span>Ranks</a>
   <a href="#me" id="n-me"><span class="i">👤</span>Me</a>
 </nav>
@@ -207,9 +233,9 @@ function confetti(){const em=['🎉','✨','⭐','💜','🔥'];for(let i=0;i<26
   s.style.animationDuration=(1.4+Math.random()*1.6)+'s';s.style.animationDelay=(Math.random()*.4)+'s';
   document.body.appendChild(s);setTimeout(()=>s.remove(),3400)}}
 
-const VIEWS=['learn','lesson','play','phish','lab','ranks','me'];
+const VIEWS=['learn','lesson','play','phish','lab','range','labplay','ranks','me'];
 function show(v){VIEWS.forEach(x=>$('v-'+x).classList.toggle('hidden',x!==v));
-  ['learn','play','ranks','me'].forEach(x=>$('n-'+x).classList.toggle('on',x===v||(v==='lesson'&&x==='learn')||((v==='phish'||v==='lab')&&x==='play')));
+  ['learn','play','range','ranks','me'].forEach(x=>$('n-'+x).classList.toggle('on',x===v||(v==='lesson'&&x==='learn')||((v==='phish'||v==='lab')&&x==='play')||(v==='labplay'&&x==='range')));
   window.scrollTo(0,0)}
 function go(v){location.hash=v}
 window.addEventListener('hashchange',()=>route());
@@ -217,8 +243,9 @@ function route(){const h=(location.hash||'#learn').slice(1);
   if(h==='ranks'){loadBoard();show('ranks')}
   else if(h==='me'){renderMe();show('me')}
   else if(h==='play'){show('play')}
+  else if(h==='range'){loadRange();show('range')}
   else if(h==='learn'){show('learn')}
-  // lesson/game views are pushed programmatically; hash fallbacks land on learn/play
+  // lesson/game/lab views are pushed programmatically; hash fallbacks land safely
   else show('learn')}
 
 function applyProfile(p){PROF=p;
@@ -285,6 +312,75 @@ async function nextQ(){QI++;
     `<div class="row"><button class="btn ghost half" onclick="openLesson('${LESSON.id}')">Retake</button>
      <button class="btn half" onclick="reload_home()">Continue →</button></div>`}
 async function reload_home(){await load();go('learn');show('learn')}
+
+/* ---------- cyber range ---------- */
+let LAB=null;
+const DIFFCOLOR={Easy:'#26C485',Medium:'#F5BE58',Hard:'#EB6F24'};
+async function loadRange(){
+  const r=await getJ('/api/academy/range');
+  $('range-count').textContent=r.solved+'/'+r.total+' solved';
+  $('range-labs').innerHTML=r.labs.map(l=>`<div class="lesson" onclick="openLab('${l.id}')">
+    <span class="ico">${l.icon}</span>
+    <span class="t"><b>${esc(l.title)}</b><span class="mut">${esc(l.category)} · <b style="color:${DIFFCOLOR[l.difficulty]||'#888'}">${l.difficulty}</b> · +${l.points} XP</span></span>
+    ${l.solved?'<span class="done">🚩 Solved</span>':'<span class="mut">›</span>'}
+  </div>`).join('');
+}
+async function openLab(id){
+  LAB=await getJ('/api/academy/labs/'+id);
+  $('lab-ttl').textContent=LAB.icon+' '+LAB.title;
+  $('lab-diff').textContent=LAB.difficulty;
+  $('lab-diff').style.background=(DIFFCOLOR[LAB.difficulty]||'#888')+'33';
+  $('lab-diff').style.color=DIFFCOLOR[LAB.difficulty]||'#888';
+  $('lab-cat').textContent=LAB.category+' · +'+LAB.points+' XP'+(LAB.solved?' · 🚩 already solved':'');
+  $('lab-brief').textContent=LAB.brief;
+  $('lab-flag').value='';$('lab-msg').innerHTML='';
+  $('lab-hints').innerHTML=LAB.hints.map(h=>`<li class="mut" style="margin:4px 0">${esc(h)}</li>`).join('');
+  renderTarget(LAB);
+  show('labplay');
+}
+function renderTarget(l){
+  const t=l.target,box=$('lab-target');
+  if(t.kind==='source'){
+    box.innerHTML=`<b>📄 Page source</b><pre style="overflow:auto;background:#0b1220;color:#cfe3ff;padding:12px;border-radius:8px;margin-top:8px;white-space:pre-wrap">${esc(t.html)}</pre>`;
+  } else if(t.kind==='data'){
+    const rows=Object.keys(t).filter(k=>k!=='kind'&&k!=='note').map(k=>`<div style="margin:6px 0"><span class="mut">${esc(k)}:</span> <code style="word-break:break-all">${esc(t[k])}</code></div>`).join('');
+    box.innerHTML=`<b>🧾 Evidence</b>${rows}${t.note?`<div class="explain" style="margin-top:8px">${esc(t.note)}</div>`:''}`;
+  } else if(t.kind==='probe'){
+    box.innerHTML=`<b>🖥️ Live target — probe it</b>
+      <div class="explain" style="margin:6px 0 8px">${esc(t.instructions||'')}</div>
+      ${(t.examples||[]).map(e=>`<div class="mut" style="font-family:monospace;font-size:12px">${esc(e)}</div>`).join('')}
+      <div class="row" style="margin-top:10px">
+        <input type="text" id="probe-q" placeholder="${esc(probePlaceholder(l.id))}" style="flex:1;font-family:monospace">
+        <button class="btn" style="width:auto;padding:0 16px" onclick="runProbe('${l.id}')">Send ▶</button>
+      </div>
+      <pre id="probe-out" style="overflow:auto;background:#0b1220;color:#8ef5b8;padding:12px;border-radius:8px;margin-top:10px;min-height:40px;white-space:pre-wrap">— responses appear here —</pre>`;
+  } else { box.innerHTML=''; }
+}
+function probePlaceholder(id){return ({
+  'robots-recon':'path=/robots.txt','idor-invoice':'id=4021',
+  'sqli-login':"user=admin&pass=' OR '1'='1",'path-traversal':'file=welcome.txt'
+}[id])||'param=value';}
+async function runProbe(id){
+  const q=($('probe-q').value||'').trim().replace(/^\?/,'');
+  const r=await getJ('/api/academy/labs/'+id+'/probe?'+q);
+  $('probe-out').textContent='['+r.status+']\n'+r.body;
+}
+async function submitFlag(){
+  const flag=($('lab-flag').value||'').trim();
+  if(!flag){toast('Enter the flag first');return;}
+  const res=await postJ('/api/academy/labs/'+LAB.id+'/submit',{flag:flag});
+  if(res.solved){
+    if(res.xp_gained>0){confetti();toast('🚩 Flag captured! +'+res.xp_gained+' XP');}
+    else toast('Already solved ✓');
+    if(res.profile)applyProfile(res.profile);
+    (res.new_badges||[]).forEach((b,i)=>setTimeout(()=>toast(`${b.icon} Badge earned: ${b.name}!`),900*(i+1)));
+    $('lab-msg').innerHTML=`<div class="card" style="background:#0f2a1e;border-color:#26C485"><b style="color:#26C485">🚩 ${esc(res.message)}</b>
+      <div class="explain" style="margin-top:8px"><b>Why it matters:</b> ${esc(res.teaches||'')}</div>
+      <button class="btn" style="margin-top:10px" onclick="loadRange().then(()=>go('range'))">Next lab →</button></div>`;
+  } else {
+    $('lab-msg').innerHTML=`<div class="mut" style="color:#EB6F24">✗ ${esc(res.message||'Not the flag — check the hints.')}</div>`;
+  }
+}
 
 /* ---------- games ---------- */
 async function openGame(id,kind){
