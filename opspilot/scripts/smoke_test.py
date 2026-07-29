@@ -3914,6 +3914,7 @@ def main():
               "SSRF guard (private/loopback/link-local/reserved refused) + 20/min rate limit OK")
 
         # ==== v1.62.0: tool lead capture -> inbound CRM lead + auto-followup ====
+        from app.core.db import SessionLocal as _ESL   # this block runs before the later _ESL import
         from app.models import CrmContact as _CC62, CrmActivity as _CA62, Notification as _N62
         _LH = {"origin": "https://bvtech.org", "cf-connecting-ip": "203.0.113.62"}
         # bad email rejected, nothing created
