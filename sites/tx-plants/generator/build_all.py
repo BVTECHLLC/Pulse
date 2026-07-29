@@ -18,7 +18,7 @@ def run(script):
 
 # 1) generate everything
 print("Generating pages...")
-for s in ("build.py","build_plants.py","build_nomad.py","build_start_here.py","build_sitemap.py"):
+for s in ("build.py","build_plants.py","build_nomad.py","build_vault.py","build_start_here.py","build_sitemap.py"):
     run(s)
 
 # 2) make every internal link extension-less (href + absolute tx-plants.com URLs)

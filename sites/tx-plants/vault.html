@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Offline Knowledge Vault — Free Databases, Audiobooks &amp; Learning | Texas Roots</title>
+<meta name="description" content="A curated directory of the world&#x27;s biggest FREE offline knowledge: all of Wikipedia, Project Gutenberg, the Survivor Library, medical and repair guides, free audiobooks (LibriVox), and free courses — plus how to build your own offline knowledge server. A companion to Project NOMAD, by Jordan Polasek.">
+<meta name="author" content="Jordan Polasek">
+<link rel="canonical" href="https://tx-plants.com/vault">
+<meta property="og:title" content="The Offline Knowledge Vault — Free & Offline Forever">
+<meta property="og:description" content="All of Wikipedia, 70,000 free books, the Survivor Library, free audiobooks and courses — and how to keep them with no internet.">
+<meta property="og:type" content="website"><meta property="og:url" content="https://tx-plants.com/vault">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16.png">
+<link rel="apple-touch-icon" href="assets/favicon/apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
+<meta name="theme-color" content="#1B2B22">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,900;1,9..144,400;1,9..144,500&family=Spline+Sans:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+<style>
+.vlt-hero{background:linear-gradient(135deg,#0F1813,#1B2B22);color:var(--paper);padding:88px 0 66px;position:relative;overflow:hidden}
+.vlt-hero::before{content:"";position:absolute;inset:0;opacity:.06;background-image:radial-gradient(circle at 1px 1px,#7CB342 1px,transparent 0);background-size:26px 26px}
+.vlt-hero .wrap{position:relative;z-index:2;max-width:64ch}
+.vlt-hero .eyebrow{color:var(--gold)}
+.vlt-hero h1{font-size:clamp(2.3rem,5.4vw,3.9rem);line-height:1.04;margin-bottom:18px}
+.vlt-hero h1 em{font-style:italic;color:var(--sprout-bright);font-weight:500}
+.vlt-hero .lede{color:rgba(243,238,226,.86);font-size:1.2rem;line-height:1.6;margin-bottom:26px}
+.vlt-hero .jump{display:flex;gap:10px;flex-wrap:wrap}
+.vlt-hero .jump a{color:var(--paper);border:1px solid rgba(243,238,226,.4);border-radius:999px;padding:8px 16px;text-decoration:none;font-size:.92rem;font-weight:600}
+.vlt-hero .jump a:hover{background:rgba(243,238,226,.12)}
+.vlt-body{padding:64px 0}
+.vlt-sec{margin:0 0 58px;scroll-margin-top:84px}
+.vlt-sec .kicker{font-family:'Spline Sans Mono',monospace;font-size:.74rem;letter-spacing:.1em;text-transform:uppercase;color:var(--clay)}
+.vlt-sec h2{font-size:clamp(1.7rem,3vw,2.4rem);margin:6px 0 8px;line-height:1.1}
+.vlt-sec .intro{font-size:1.12rem;color:var(--ink-soft);line-height:1.7;max-width:70ch;margin-bottom:8px}
+.vault-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(288px,1fr));gap:16px;margin:26px 0}
+.vault-card{background:var(--paper-card);border:1px solid var(--line);border-radius:11px;padding:20px 20px 16px;display:flex;flex-direction:column;transition:transform .18s ease,box-shadow .18s ease,border-color .18s}
+.vault-card:hover{transform:translateY(-3px);box-shadow:0 12px 30px rgba(16,33,26,.1);border-color:var(--sprout)}
+.vault-card h4{font-size:1.12rem;margin:0 0 8px;line-height:1.25;color:var(--ink)}
+.vault-card p{font-size:.96rem;color:var(--ink-soft);line-height:1.6;margin:0 0 14px;flex:1}
+.vault-card .srcs{display:flex;flex-wrap:wrap;gap:8px}
+.vault-card .src{font-size:.83rem;font-weight:600;color:var(--sprout);text-decoration:none;background:var(--paper-warm);border:1px solid var(--line);border-radius:7px;padding:5px 10px}
+.vault-card .src:hover{border-color:var(--sprout);background:#fff}
+.vlt-build{background:var(--ink);color:var(--paper);border-radius:14px;padding:40px 36px;margin:12px 0 8px}
+.vlt-build h3{color:var(--sprout-bright);font-size:1.5rem;margin:0 0 6px}
+.vlt-build p.sub{color:rgba(243,238,226,.8);font-size:1.05rem;line-height:1.6;margin:0 0 26px;max-width:66ch}
+.vlt-steps{counter-reset:s;display:grid;gap:2px}
+.vlt-steps .st{display:grid;grid-template-columns:46px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid rgba(243,238,226,.14)}
+.vlt-steps .st:last-child{border-bottom:0}
+.vlt-steps .st .n{font-family:'Fraunces',serif;font-weight:900;font-size:1.7rem;color:var(--gold);line-height:1}
+.vlt-steps .st h4{font-size:1.14rem;margin:0 0 4px;color:var(--paper)}
+.vlt-steps .st p{margin:0;font-size:.98rem;color:rgba(243,238,226,.82);line-height:1.6}
+.vlt-steps .st a{color:var(--sprout-bright);text-decoration:none;font-weight:600}
+.vlt-disc{background:var(--paper-warm);border:1px dashed var(--line);border-radius:8px;padding:18px 22px;margin:34px 0 0;font-size:.94rem;color:var(--ink-faint);line-height:1.62}
+.vlt-cta{text-align:center;padding:8px 0 0}
+.vlt-cta a{color:var(--sprout);font-weight:700;text-decoration:none;border-bottom:2px solid var(--line)}
+@media(max-width:640px){.vlt-build{padding:30px 22px}}
+</style>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "CollectionPage", "name": "The Offline Knowledge Vault", "description": "A curated directory of the world's biggest FREE offline knowledge: all of Wikipedia, Project Gutenberg, the Survivor Library, medical and repair guides, free audiobooks (LibriVox), and free courses \u2014 plus how to build your own offline knowledge server. A companion to Project NOMAD, by Jordan Polasek.", "author": {"@type": "Person", "name": "Jordan Polasek", "url": "https://jordanpolasek.com"}, "publisher": {"@type": "Organization", "name": "Texas Roots", "url": "https://tx-plants.com"}, "mainEntityOfPage": "https://tx-plants.com/vault", "inLanguage": "en-US"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Texas Roots", "item": "https://tx-plants.com/"}, {"@type": "ListItem", "position": 2, "name": "Offline Knowledge Vault", "item": "https://tx-plants.com/vault"}]}</script>
+</head>
+<body><header class="nav"><div class="wrap nav-inner">
+  <a href="./" class="brand"><svg viewBox="0 0 40 40" fill="none"><path d="M20 36V16" stroke="#5C8A3A" stroke-width="2.4" stroke-linecap="round"/><path d="M20 22C20 14 12 10 6 11c-1 7 5 14 14 11Z" fill="#5C8A3A" fill-opacity="0.85"/><path d="M20 18C20 11 27 7 33 9c1 6-4 12-13 9Z" fill="#1B2B22"/><circle cx="20" cy="36" r="2.4" fill="#C99A3B"/></svg><span class="name">Texas <b>Roots</b></span></a>
+  <nav class="nav-links" id="navLinks"><a href="start-here">Start Here</a><a href="database/">Plant Database</a><a href="almanac/">Almanac</a><a href="blog/">Blog</a><a href="weather">Weather</a><a href="shop">Shop</a><a href="community/">Community</a><a href="order" class="nav-cta">Order Now</a></nav>
+  <button class="burger" id="burger" aria-label="Menu"><span></span><span></span><span></span></button>
+</div></header><section class="vlt-hero"><div class="wrap">
+<div class="eyebrow">A companion to Project NOMAD · curated by Jordan Polasek</div>
+<h1>The world's knowledge, <em>kept free — and kept offline.</em></h1>
+<p class="lede">A seed bank and a knowledge bank are the same idea: gather what matters while it's easy, so you have it when it isn't. Here is the actual shelf — the biggest free databases to download, the best free audiobooks and courses, and exactly how to keep it all working with no internet at all.</p>
+<div class="jump">
+  <a href="#databases">📚 Offline databases</a>
+  <a href="#build">🛠 Build your own</a>
+  <a href="#audio">🎧 Free audiobooks</a>
+  <a href="#learn">🎓 Free learning</a>
+</div>
+</div></section>
+
+<div class="vlt-body"><div class="wrap">
+
+<section class="vlt-sec" id="databases">
+  <div class="kicker">The big offline databases</div>
+  <h2>Download the world's libraries</h2>
+  <p class="intro">These are the giants — millions of articles, books, guides, and maps you can hold on a drive at home. The tool that opens most of them is <strong>Kiwix</strong>; the rest download straight to a phone or laptop. Grab Wikipedia first; add the others as space allows.</p>
+  <div class="vault-grid"><div class="vault-card reveal">
+      <h4>Kiwix — the reader that runs it all</h4>
+      <p>The free, open-source app that opens giant &#x27;.zim&#x27; knowledge files offline on phone, computer, or a Raspberry Pi. Start here: Kiwix is the shelf; the .zim files below are the books.</p>
+      <div class="srcs"><a class="src" href="https://kiwix.org" target=_blank rel=noopener>kiwix.org ↗</a> <a class="src" href="https://library.kiwix.org" target=_blank rel=noopener>Browse the ZIM library ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>All of Wikipedia (offline)</h4>
+      <p>The entire English Wikipedia — millions of articles, with or without images — in one file you can read with the power off. ~90 GB with images, far less without. The single most valuable thing to keep.</p>
+      <div class="srcs"><a class="src" href="https://library.kiwix.org/#lang=eng&amp;category=wikipedia" target=_blank rel=noopener>Wikipedia ZIM (via Kiwix) ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>Project Gutenberg — 70,000+ free books</h4>
+      <p>Every out-of-copyright classic ever digitized — literature, science, history, how-to. A whole public library in a couple of gigabytes.</p>
+      <div class="srcs"><a class="src" href="https://www.gutenberg.org" target=_blank rel=noopener>gutenberg.org ↗</a> <a class="src" href="https://library.kiwix.org/#category=gutenberg" target=_blank rel=noopener>Gutenberg ZIM ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>The Survivor Library</h4>
+      <p>Scans of pre-1950s manuals on how the world worked before the grid: blacksmithing, medicine, farming, machining, chemistry — the knowledge to rebuild from scratch.</p>
+      <div class="srcs"><a class="src" href="https://www.survivorlibrary.com" target=_blank rel=noopener>survivorlibrary.com ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>Where There Is No Doctor / Dentist (Hesperian)</h4>
+      <p>The world&#x27;s most-used village health guides — diagnosis and treatment when no clinic is reachable. Free PDFs, translated into dozens of languages. Keep these.</p>
+      <div class="srcs"><a class="src" href="https://hesperian.org/books-and-resources/" target=_blank rel=noopener>Hesperian Health Guides ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>Medicine &amp; health (WHO + more)</h4>
+      <p>WHO clinical guidance, the Wikipedia Medicine collection, and first-aid references — a real medical shelf for when the internet (and maybe the doctor) is gone.</p>
+      <div class="srcs"><a class="src" href="https://library.kiwix.org/#category=wikipedia&amp;lang=eng" target=_blank rel=noopener>WikiMed Medical Encyclopedia ↗</a> <a class="src" href="https://www.who.int/publications" target=_blank rel=noopener>WHO publications ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>iFixit — repair everything</h4>
+      <p>Step-by-step teardown and repair guides for phones, appliances, cars, and machines. Fixing beats replacing when nothing ships to you anymore.</p>
+      <div class="srcs"><a class="src" href="https://www.ifixit.com/Guide" target=_blank rel=noopener>ifixit.com ↗</a> <a class="src" href="https://library.kiwix.org/#category=ifixit" target=_blank rel=noopener>iFixit ZIM ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>Stack Overflow &amp; Stack Exchange (offline)</h4>
+      <p>Millions of real questions-and-answers on programming, electronics, gardening, cooking, survival, and more — the collective troubleshooting of the internet, downloadable.</p>
+      <div class="srcs"><a class="src" href="https://library.kiwix.org/#category=stack_exchange" target=_blank rel=noopener>Stack Exchange ZIMs ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>Khan Academy (offline)</h4>
+      <p>Full courses — math from counting to calculus, science, history — video and practice, offline. A school in a box for kids or yourself.</p>
+      <div class="srcs"><a class="src" href="https://www.khanacademy.org" target=_blank rel=noopener>khanacademy.org ↗</a> <a class="src" href="https://library.kiwix.org/#category=other&amp;q=khan" target=_blank rel=noopener>Khan ZIM ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>WikiHow + Wikibooks + Wikivoyage</h4>
+      <p>How to do almost anything (wikiHow), free open textbooks (Wikibooks), and offline travel/terrain guides for every region (Wikivoyage).</p>
+      <div class="srcs"><a class="src" href="https://library.kiwix.org/#q=wikihow" target=_blank rel=noopener>wikiHow ZIM ↗</a> <a class="src" href="https://www.wikibooks.org" target=_blank rel=noopener>Wikibooks ↗</a> <a class="src" href="https://www.wikivoyage.org" target=_blank rel=noopener>Wikivoyage ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>Appropriate Technology Library (CD3WD)</h4>
+      <p>Thousands of low-tech, low-cost how-to documents — clean water, food storage, building, energy, small-farm tools — designed for the developing world and off-grid life.</p>
+      <div class="srcs"><a class="src" href="https://www.google.com/search?q=cd3wd+appropriate+technology+library+download" target=_blank rel=noopener>Search &#x27;CD3WD&#x27; / Appropriate Tech ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>Offline maps (whole world)</h4>
+      <p>The entire planet&#x27;s roads, trails, and terrain from OpenStreetMap — free, and it works with no signal. Organic Maps and OsmAnd download regions to your phone.</p>
+      <div class="srcs"><a class="src" href="https://organicmaps.app" target=_blank rel=noopener>Organic Maps ↗</a> <a class="src" href="https://osmand.net" target=_blank rel=noopener>OsmAnd ↗</a> <a class="src" href="https://www.openstreetmap.org" target=_blank rel=noopener>OpenStreetMap ↗</a></div>
+    </div></div>
+</section>
+
+<section class="vlt-sec" id="build">
+  <div class="vlt-build">
+    <h3>🛠 Build your own offline knowledge server</h3>
+    <p class="sub">You don't need to be technical, and you don't need much. Any of these gets you a private library that works in a blackout, off-grid, or anywhere with no signal.</p>
+    <div class="vlt-steps">
+      <div class="st"><div class="n">1</div><div><h4>Pick the hardware you already have</h4><p>An old laptop, a mini-PC, or a <strong>Raspberry Pi</strong> ($35–80). Add a big external SSD (a 2–4 TB drive holds Wikipedia, Gutenberg, maps, and more with room to spare).</p></div></div>
+      <div class="st"><div class="n">2</div><div><h4>Install a reader/server</h4><p>Easiest: <a href="https://kiwix.org" target="_blank" rel="noopener">Kiwix</a> on your phone or computer for reading .zim files. To share a whole library over your home Wi-Fi, use <strong>Kiwix-serve</strong>, <a href="https://internet-in-a-box.org" target="_blank" rel="noopener">Internet-in-a-Box (IIAB)</a>, or turnkey <a href="https://www.projectnomad.us" target="_blank" rel="noopener">Project NOMAD</a>.</p></div></div>
+      <div class="st"><div class="n">3</div><div><h4>Download what matters</h4><p>From the <a href="https://library.kiwix.org" target="_blank" rel="noopener">Kiwix library</a>: Wikipedia, Gutenberg, medical, iFixit, Khan, Stack Exchange. Add offline maps with <a href="https://organicmaps.app" target="_blank" rel="noopener">Organic Maps</a> or <a href="https://osmand.net" target="_blank" rel="noopener">OsmAnd</a>, and audiobooks from <a href="https://librivox.org" target="_blank" rel="noopener">LibriVox</a>.</p></div></div>
+      <div class="st"><div class="n">4</div><div><h4>Test it with the power off</h4><p>Turn off your internet and open the library. If it works unplugged, it'll work when you need it. Refresh the downloads once or twice a year.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="vlt-sec" id="audio">
+  <div class="kicker">Free audiobooks — separate from the databases</div>
+  <h2>Thousands of books, read aloud, free</h2>
+  <p class="intro">Every one of these is legal and free. Download the MP3s and they're yours to keep offline — for long drives, chores, kids at bedtime, or a night with no screen.</p>
+  <div class="vault-grid"><div class="vault-card reveal">
+      <h4>LibriVox — free public-domain audiobooks</h4>
+      <p>Thousands of complete audiobooks read by volunteers — every classic, free forever, downloadable as MP3s to keep offline. The heart of free listening.</p>
+      <div class="srcs"><a class="src" href="https://librivox.org" target=_blank rel=noopener>librivox.org ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>Loyal Books</h4>
+      <p>A friendlier front-end to the public-domain audiobook and ebook world — browse by genre, stream or download, no account needed.</p>
+      <div class="srcs"><a class="src" href="http://www.loyalbooks.com" target=_blank rel=noopener>loyalbooks.com ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>Open Culture — the free-media hub</h4>
+      <p>Curated lists of 1,000+ free audiobooks, 1,000+ free online courses, and free movies and textbooks — the internet&#x27;s best index of legally-free learning media.</p>
+      <div class="srcs"><a class="src" href="https://www.openculture.com/freeaudiobooks" target=_blank rel=noopener>Free Audiobooks list ↗</a> <a class="src" href="https://www.openculture.com/freeonlinecourses" target=_blank rel=noopener>Free Courses ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>Lit2Go (USF)</h4>
+      <p>Free audiobooks and poems with matching text and reading levels — excellent for kids, language learners, and read-alongs.</p>
+      <div class="srcs"><a class="src" href="https://etc.usf.edu/lit2go/" target=_blank rel=noopener>etc.usf.edu/lit2go ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>Internet Archive — audio &amp; radio</h4>
+      <p>Millions of hours: audiobooks, old-time radio, live music, lectures, and speeches. A near-bottomless, free, downloadable audio library.</p>
+      <div class="srcs"><a class="src" href="https://archive.org/details/audio" target=_blank rel=noopener>archive.org/audio ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>Storynory (for kids)</h4>
+      <p>Free audio stories for children — original tales, fairy tales, and classics, read aloud. Great for the little ones with or without a screen.</p>
+      <div class="srcs"><a class="src" href="https://www.storynory.com" target=_blank rel=noopener>storynory.com ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>LearnOutLoud</h4>
+      <p>A big directory of free audiobooks, lectures, and educational audio and video across every subject.</p>
+      <div class="srcs"><a class="src" href="https://www.learnoutloud.com/Free-Audio-Video" target=_blank rel=noopener>learnoutloud.com/Free-Audio-Video ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>Librophile</h4>
+      <p>Search and stream free public-domain and Creative-Commons audiobooks and ebooks in one clean interface.</p>
+      <div class="srcs"><a class="src" href="https://www.librophile.com" target=_blank rel=noopener>librophile.com ↗</a></div>
+    </div></div>
+</section>
+
+<section class="vlt-sec" id="learn">
+  <div class="kicker">Free learning &amp; reference</div>
+  <h2>Teach yourself anything, for nothing</h2>
+  <p class="intro">Real textbooks, real university courses, and reference libraries — free to use now and, in most cases, free to download and keep. Pair these with the offline server above and you have a school that never closes.</p>
+  <div class="vault-grid"><div class="vault-card reveal">
+      <h4>Internet Archive &amp; Open Library</h4>
+      <p>The digital library of everything: books to borrow, archived websites, software, film, and audio. Open Library alone lends millions of books free.</p>
+      <div class="srcs"><a class="src" href="https://archive.org" target=_blank rel=noopener>archive.org ↗</a> <a class="src" href="https://openlibrary.org" target=_blank rel=noopener>openlibrary.org ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>OpenStax — free, real textbooks</h4>
+      <p>Peer-reviewed, university-level textbooks (math, science, business, humanities) — free PDFs you can download and keep. Genuinely good, not filler.</p>
+      <div class="srcs"><a class="src" href="https://openstax.org" target=_blank rel=noopener>openstax.org ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>MIT OpenCourseWare</h4>
+      <p>Actual MIT course materials — lecture notes, problem sets, many with video — free and downloadable across nearly every subject MIT teaches.</p>
+      <div class="srcs"><a class="src" href="https://ocw.mit.edu" target=_blank rel=noopener>ocw.mit.edu ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>Standard Ebooks</h4>
+      <p>Beautifully typeset, carefully proofread public-domain books — the classics done right, free, in every format.</p>
+      <div class="srcs"><a class="src" href="https://standardebooks.org" target=_blank rel=noopener>standardebooks.org ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>Wikiversity &amp; Wikibooks</h4>
+      <p>Community-built free courses and open textbooks on everything from languages to engineering — editable, downloadable, offline-friendly.</p>
+      <div class="srcs"><a class="src" href="https://www.wikiversity.org" target=_blank rel=noopener>wikiversity.org ↗</a> <a class="src" href="https://www.wikibooks.org" target=_blank rel=noopener>wikibooks.org ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>DevDocs &amp; MDN (for the makers)</h4>
+      <p>Every programming language and web-platform reference in one fast, installable, offline-capable app — for anyone who builds or fixes technology.</p>
+      <div class="srcs"><a class="src" href="https://devdocs.io" target=_blank rel=noopener>devdocs.io ↗</a> <a class="src" href="https://developer.mozilla.org" target=_blank rel=noopener>MDN Web Docs ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>Public-domain field manuals &amp; guides</h4>
+      <p>U.S. government survival, first-aid, and field manuals are public domain — free to download and keep. Verify against modern guidance, but the fundamentals endure.</p>
+      <div class="srcs"><a class="src" href="https://archive.org/search?query=army+field+manual+survival" target=_blank rel=noopener>Archive.org military manuals ↗</a></div>
+    </div><div class="vault-card reveal">
+      <h4>Permaculture &amp; seed-saving (ties to the garden)</h4>
+      <p>Free guides on growing, saving seed, and closing the loop — the knowledge behind the Texas Roots survival garden itself.</p>
+      <div class="srcs"><a class="src" href="almanac/how-to-grow-a-survival-garden" >Grow a survival garden ↗</a> <a class="src" href="almanac/how-to-clone-plants" >Save &amp; clone your plants ↗</a> <a class="src" href="database/#survival" >Browse survival crops ↗</a></div>
+    </div></div>
+</section>
+
+<div class="vlt-disc">A note on honesty: I don't run or profit from any tool listed here — I share what I actually use and trust. Always confirm licenses before redistributing, keep more than one copy of anything you can't replace, and treat medical and survival references as a starting point, not a replacement for a professional when one is reachable.</div>
+
+<div class="vlt-cta"><p>Want the story behind why I keep all this offline? Read <a href="nomad">Project NOMAD →</a> · Or start with a <a href="almanac/how-to-grow-a-survival-garden">survival garden →</a></p></div>
+
+</div></div>
+<footer><div class="wrap">
+  <div class="foot-grid">
+    <div class="foot-brand"><a href="./" class="brand"><svg viewBox="0 0 40 40" fill="none"><path d="M20 36V16" stroke="#7CB342" stroke-width="2.4" stroke-linecap="round"/><path d="M20 22C20 14 12 10 6 11c-1 7 5 14 14 11Z" fill="#7CB342" fill-opacity="0.85"/><path d="M20 18C20 11 27 7 33 9c1 6-4 12-13 9Z" fill="#EAE2CF"/><circle cx="20" cy="36" r="2.4" fill="#C99A3B"/></svg><span class="name" style="color:#F3EEE2">Texas <b style="color:#7CB342">Roots</b></span></a><p>Heirloom seeds &amp; rooted cuttings, grown and mailed by hand from El Campo, Texas. A free knowledge base for growers everywhere. Founded &amp; built by Jordan Polasek.</p></div>
+    <div class="foot-col"><h4>Explore</h4><a href="database/">Plant database</a><a href="almanac/">All articles</a><a href="weather">Garden weather</a><a href="database/identify">Identify a plant</a></div>
+    <div class="foot-col"><h4>Texas Roots</h4><a href="shop">Shop</a><a href="community/">Community garden</a><a href="stand">The stand</a><a href="about">Our story</a></div>
+    <div class="foot-col"><h4>More</h4><a href="faq">FAQ</a><a href="nomad">Go offline</a><a href="vault">Knowledge Vault</a><a href="https://jordanpolasek.com">JordanPolasek.com</a><a href="https://bvtech.org">BVTech.org</a><a href="https://autumnpolasek.com">In Remembrance of Autumn 🐾</a></div>
+  </div>
+  <div class="foot-scripture" style="text-align:center;color:rgba(243,238,226,.55);font-style:italic;padding:0 0 18px;font-size:.9rem">&ldquo;So neither he who plants nor he who waters is anything, but only God, who gives the growth.&rdquo; &mdash; 1 Corinthians 3:7</div><div class="foot-bottom"><span>© <span id="yr"></span> Texas Roots · El Campo, TX · tx-plants.com</span><span>Written &amp; built by <a href="https://jordanpolasek.com">Jordan Polasek</a></span></div>
+</div></footer>
+<script>document.getElementById('yr').textContent=new Date().getFullYear();const burger=document.getElementById('burger'),navLinks=document.getElementById('navLinks');burger.addEventListener('click',()=>navLinks.classList.toggle('open'));navLinks.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>navLinks.classList.remove('open')));const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}}),{threshold:.12});document.querySelectorAll('.reveal').forEach(el=>io.observe(el));</script>
+</body></html>

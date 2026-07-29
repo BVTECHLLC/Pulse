@@ -9,7 +9,7 @@ TODAY = datetime.date.today().isoformat()
 
 def priority(path):
     if path == "index.html": return "1.0"
-    if path in ("shop.html","database/index.html","weather.html","almanac/index.html","nomad.html","start-here.html"): return "0.9"
+    if path in ("shop.html","database/index.html","weather.html","almanac/index.html","nomad.html","vault.html","start-here.html"): return "0.9"
     if path in ("database/identify.html",): return "0.8"
     if path.startswith("almanac/") and path != "almanac/index.html": return "0.8"
     if path.startswith("blog/"): return "0.8"

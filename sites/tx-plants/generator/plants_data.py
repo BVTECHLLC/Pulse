@@ -13,6 +13,11 @@ try:
     PLANTS_TABLE = list(PLANTS_TABLE) + list(NEW_PLANTS)
 except ImportError:
     pass
+try:
+    from more_plants import MORE_PLANTS
+    PLANTS_TABLE = list(PLANTS_TABLE) + list(MORE_PLANTS)
+except ImportError:
+    pass
 
 # field positions in each table row
 (F_SLUG, F_COMMON, F_LATIN, F_FAMILY, F_CAT, F_TAGS, F_SUN, F_WATER, F_SOIL,
