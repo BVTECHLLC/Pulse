@@ -27,8 +27,12 @@ MANIFEST = _BASE / "manifest.json"
 
 VISIBILITIES = ("internal", "client")
 
-# Category display order for the grouped view.
-_CAT_ORDER = ["LGL", "SEC", "OPS", "POL", "IRP", "RUN", "INT", "000"]
+# Category display order for the grouped view. v1.60 adds the Library Forge
+# sets: NIST 800-171 (CMP), CSF 2.0 (CSF), standards (STD), vertical packs
+# (VRT), Texas legal (TXL), checklists (CHK), extended SOPs, awareness (TRN),
+# forms (FRM), and service descriptions (SVC).
+_CAT_ORDER = ["000", "LGL", "TXL", "SEC", "CMP", "CSF", "STD", "VRT", "POL",
+              "IRP", "CHK", "OPS", "SOP", "RUN", "TRN", "FRM", "SVC", "INT"]
 
 
 def load_manifest() -> list[dict]:

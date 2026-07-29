@@ -6170,7 +6170,54 @@ def main():
               "(self-inbox plan+sample, leads untouched, once/day) + LIVE mode (business "
               "hours, DNC excluded, CAN-SPAM footer, CRM-logged, same-day idempotent) OK")
 
-    print("\n=== OpsPilot v1.59.0 SMOKE TEST PASSED ===")
+        # ==== v1.60.0: Library Forge — 193-document MSP suite, verified ====
+        import json as _json60
+        from pathlib import Path as _P60
+        from app.services import library as _lib60
+        _items60 = _lib60.load_manifest()
+        assert len(_items60) >= 190, f"library shrank: {len(_items60)}"
+        _ids60 = [i["doc_id"] for i in _items60]
+        assert len(_ids60) == len(set(_ids60)), "duplicate doc_ids in manifest"
+        # every manifest entry's file exists, is a real PDF, and is non-trivial
+        _missing60 = [i["doc_id"] for i in _items60
+                      if not (_lib60.FILES_DIR / i["filename"]).is_file()]
+        assert not _missing60, f"manifest entries missing files: {_missing60[:5]}"
+        for _probe60 in ("BVT-CMP-101", "BVT-VRT-181", "BVT-TXL-210",
+                         "BVT-TRN-250", "BVT-SVC-290", "BVT-CAT-999",
+                         "BVT-CHK-220", "BVT-STD-246", "BVT-LGL-001"):
+            _row60 = next(i for i in _items60 if i["doc_id"] == _probe60)
+            _hdr60 = (_lib60.FILES_DIR / _row60["filename"]).read_bytes()[:5]
+            assert _hdr60 == b"%PDF-", f"{_probe60} is not a PDF"
+        # the forge sets are present with sane sizes
+        _bycat60 = {}
+        for i in _items60:
+            _bycat60.setdefault(i["category"], []).append(i)
+        for _cat60, _min60 in (("CMP", 30), ("CSF", 9), ("VRT", 10), ("TXL", 6),
+                               ("CHK", 18), ("STD", 8), ("TRN", 12), ("FRM", 10),
+                               ("SOP", 10), ("SVC", 8)):
+            assert len(_bycat60.get(_cat60, [])) >= _min60, \
+                f"{_cat60}: {len(_bycat60.get(_cat60, []))}"
+        # client-shareable set includes the sales weapons; internals stay internal
+        _vis60 = {i["doc_id"]: i["visibility"] for i in _items60}
+        assert _vis60["BVT-VRT-181"] == "client" and _vis60["BVT-TRN-250"] == "client"
+        assert _vis60["BVT-CMP-101"] == "internal" and _vis60["BVT-FRM-264"] == "internal"
+        # DB seeding picks the new docs up (fresh-session check; idempotent)
+        _edb7 = _ESL()
+        try:
+            _lib60.seed(_edb7)
+            from app.models import LibraryDoc as _LD60
+            assert _edb7.query(_LD60).count() >= 190
+            assert _lib60.seed(_edb7) == 0, "second seed must add nothing"
+        finally:
+            _edb7.close()
+        # new categories are ordered in the grouped view
+        for _c60 in ("CMP", "CSF", "VRT", "TXL", "STD", "TRN", "FRM", "SVC"):
+            assert _c60 in _lib60._CAT_ORDER
+        print(f"library forge: {len(_items60)}-doc suite - manifest/file integrity, "
+              "PDF headers, category minimums, visibility split, idempotent DB "
+              "seed, grouped ordering OK")
+
+    print("\n=== OpsPilot v1.60.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -629,6 +629,1113 @@
    "visibility": "client",
    "filename": "BVT-SEC-023_Security_Awareness_Training_Agreement.pdf",
    "size": 3681
+  },
+  {
+   "doc_id": "BVT-CMP-101",
+   "title": "NIST 800-171 Policy - 3.1 Access Control",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-101_NIST_800-171_31_Access_Control_Policy.pdf",
+   "size": 4434
+  },
+  {
+   "doc_id": "BVT-CMP-141",
+   "title": "800-171 Self-Assessment Checklist - 3.1 Access Control",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-141_NIST_800-171_31_Access_Control_Assessment_Checklist.pdf",
+   "size": 3849
+  },
+  {
+   "doc_id": "BVT-CMP-102",
+   "title": "NIST 800-171 Policy - 3.2 Awareness & Training",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-102_NIST_800-171_32_Awareness_and_Training_Policy.pdf",
+   "size": 3935
+  },
+  {
+   "doc_id": "BVT-CMP-142",
+   "title": "800-171 Self-Assessment Checklist - 3.2 Awareness & Training",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-142_NIST_800-171_32_Awareness_and_Training_Assessment_Checklist.pdf",
+   "size": 2733
+  },
+  {
+   "doc_id": "BVT-CMP-103",
+   "title": "NIST 800-171 Policy - 3.3 Audit & Accountability",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-103_NIST_800-171_33_Audit_and_Accountability_Policy.pdf",
+   "size": 4021
+  },
+  {
+   "doc_id": "BVT-CMP-143",
+   "title": "800-171 Self-Assessment Checklist - 3.3 Audit & Accountability",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-143_NIST_800-171_33_Audit_and_Accountability_Assessment_Checklist.pdf",
+   "size": 2810
+  },
+  {
+   "doc_id": "BVT-CMP-104",
+   "title": "NIST 800-171 Policy - 3.4 Configuration Management",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-104_NIST_800-171_34_Configuration_Management_Policy.pdf",
+   "size": 4055
+  },
+  {
+   "doc_id": "BVT-CMP-144",
+   "title": "800-171 Self-Assessment Checklist - 3.4 Configuration Management",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-144_NIST_800-171_34_Configuration_Management_Assessment_Checklist.pdf",
+   "size": 2815
+  },
+  {
+   "doc_id": "BVT-CMP-105",
+   "title": "NIST 800-171 Policy - 3.5 Identification & Authentication",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-105_NIST_800-171_35_Identification_and_Authentication_Policy.pdf",
+   "size": 4132
+  },
+  {
+   "doc_id": "BVT-CMP-145",
+   "title": "800-171 Self-Assessment Checklist - 3.5 Identification & Authentication",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-145_NIST_800-171_35_Identification_and_Authentication_Assessment_Checklist.pdf",
+   "size": 2892
+  },
+  {
+   "doc_id": "BVT-CMP-106",
+   "title": "NIST 800-171 Policy - 3.6 Incident Response",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-106_NIST_800-171_36_Incident_Response_Policy.pdf",
+   "size": 3898
+  },
+  {
+   "doc_id": "BVT-CMP-146",
+   "title": "800-171 Self-Assessment Checklist - 3.6 Incident Response",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-146_NIST_800-171_36_Incident_Response_Assessment_Checklist.pdf",
+   "size": 2665
+  },
+  {
+   "doc_id": "BVT-CMP-107",
+   "title": "NIST 800-171 Policy - 3.7 Maintenance",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-107_NIST_800-171_37_Maintenance_Policy.pdf",
+   "size": 3857
+  },
+  {
+   "doc_id": "BVT-CMP-147",
+   "title": "800-171 Self-Assessment Checklist - 3.7 Maintenance",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-147_NIST_800-171_37_Maintenance_Assessment_Checklist.pdf",
+   "size": 2655
+  },
+  {
+   "doc_id": "BVT-CMP-108",
+   "title": "NIST 800-171 Policy - 3.8 Media Protection",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-108_NIST_800-171_38_Media_Protection_Policy.pdf",
+   "size": 3987
+  },
+  {
+   "doc_id": "BVT-CMP-148",
+   "title": "800-171 Self-Assessment Checklist - 3.8 Media Protection",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-148_NIST_800-171_38_Media_Protection_Assessment_Checklist.pdf",
+   "size": 2762
+  },
+  {
+   "doc_id": "BVT-CMP-109",
+   "title": "NIST 800-171 Policy - 3.9 Personnel Security",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-109_NIST_800-171_39_Personnel_Security_Policy.pdf",
+   "size": 3813
+  },
+  {
+   "doc_id": "BVT-CMP-149",
+   "title": "800-171 Self-Assessment Checklist - 3.9 Personnel Security",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-149_NIST_800-171_39_Personnel_Security_Assessment_Checklist.pdf",
+   "size": 2591
+  },
+  {
+   "doc_id": "BVT-CMP-110",
+   "title": "NIST 800-171 Policy - 3.10 Physical Protection",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-110_NIST_800-171_310_Physical_Protection_Policy.pdf",
+   "size": 3885
+  },
+  {
+   "doc_id": "BVT-CMP-150",
+   "title": "800-171 Self-Assessment Checklist - 3.10 Physical Protection",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-150_NIST_800-171_310_Physical_Protection_Assessment_Checklist.pdf",
+   "size": 2691
+  },
+  {
+   "doc_id": "BVT-CMP-111",
+   "title": "NIST 800-171 Policy - 3.11 Risk Assessment",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-111_NIST_800-171_311_Risk_Assessment_Policy.pdf",
+   "size": 3855
+  },
+  {
+   "doc_id": "BVT-CMP-151",
+   "title": "800-171 Self-Assessment Checklist - 3.11 Risk Assessment",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-151_NIST_800-171_311_Risk_Assessment_Assessment_Checklist.pdf",
+   "size": 2586
+  },
+  {
+   "doc_id": "BVT-CMP-112",
+   "title": "NIST 800-171 Policy - 3.12 Security Assessment",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-112_NIST_800-171_312_Security_Assessment_Policy.pdf",
+   "size": 3869
+  },
+  {
+   "doc_id": "BVT-CMP-152",
+   "title": "800-171 Self-Assessment Checklist - 3.12 Security Assessment",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-152_NIST_800-171_312_Security_Assessment_Assessment_Checklist.pdf",
+   "size": 2626
+  },
+  {
+   "doc_id": "BVT-CMP-113",
+   "title": "NIST 800-171 Policy - 3.13 System & Communications Protection",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-113_NIST_800-171_313_System_and_Communications_Protection_Policy.pdf",
+   "size": 4144
+  },
+  {
+   "doc_id": "BVT-CMP-153",
+   "title": "800-171 Self-Assessment Checklist - 3.13 System & Communications Protection",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-153_NIST_800-171_313_System_and_Communications_Protection_Assessment_Checklist.pdf",
+   "size": 2891
+  },
+  {
+   "doc_id": "BVT-CMP-114",
+   "title": "NIST 800-171 Policy - 3.14 System & Information Integrity",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-114_NIST_800-171_314_System_and_Information_Integrity_Policy.pdf",
+   "size": 4019
+  },
+  {
+   "doc_id": "BVT-CMP-154",
+   "title": "800-171 Self-Assessment Checklist - 3.14 System & Information Integrity",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-154_NIST_800-171_314_System_and_Information_Integrity_Assessment_Checklist.pdf",
+   "size": 2752
+  },
+  {
+   "doc_id": "BVT-CMP-130",
+   "title": "System Security Plan (SSP) Template",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-130_System_Security_Plan_Template.pdf",
+   "size": 4357
+  },
+  {
+   "doc_id": "BVT-CMP-131",
+   "title": "Plan of Action & Milestones (POA&M) Template",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-131_Plan_of_Action_and_Milestones_Template.pdf",
+   "size": 3460
+  },
+  {
+   "doc_id": "BVT-CMP-132",
+   "title": "NIST 800-171 Annual Self-Assessment Workbook",
+   "category": "CMP",
+   "category_label": "NIST 800-171 Compliance",
+   "visibility": "internal",
+   "filename": "BVT-CMP-132_Annual_Self_Assessment_Workbook.pdf",
+   "size": 3656
+  },
+  {
+   "doc_id": "BVT-CSF-160",
+   "title": "Cybersecurity Program Charter (NIST CSF 2.0)",
+   "category": "CSF",
+   "category_label": "NIST CSF 2.0 Program",
+   "visibility": "internal",
+   "filename": "BVT-CSF-160_CSF_2.0_Program_Charter.pdf",
+   "size": 2776
+  },
+  {
+   "doc_id": "BVT-CSF-161",
+   "title": "CSF 2.0 Function Profile - GV Govern",
+   "category": "CSF",
+   "category_label": "NIST CSF 2.0 Program",
+   "visibility": "internal",
+   "filename": "BVT-CSF-161_CSF_2.0_Function_Profile_GV_Govern.pdf",
+   "size": 2865
+  },
+  {
+   "doc_id": "BVT-CSF-162",
+   "title": "CSF 2.0 Function Profile - ID Identify",
+   "category": "CSF",
+   "category_label": "NIST CSF 2.0 Program",
+   "visibility": "internal",
+   "filename": "BVT-CSF-162_CSF_2.0_Function_Profile_ID_Identify.pdf",
+   "size": 2564
+  },
+  {
+   "doc_id": "BVT-CSF-163",
+   "title": "CSF 2.0 Function Profile - PR Protect",
+   "category": "CSF",
+   "category_label": "NIST CSF 2.0 Program",
+   "visibility": "internal",
+   "filename": "BVT-CSF-163_CSF_2.0_Function_Profile_PR_Protect.pdf",
+   "size": 2749
+  },
+  {
+   "doc_id": "BVT-CSF-164",
+   "title": "CSF 2.0 Function Profile - DE Detect",
+   "category": "CSF",
+   "category_label": "NIST CSF 2.0 Program",
+   "visibility": "internal",
+   "filename": "BVT-CSF-164_CSF_2.0_Function_Profile_DE_Detect.pdf",
+   "size": 2459
+  },
+  {
+   "doc_id": "BVT-CSF-165",
+   "title": "CSF 2.0 Function Profile - RS Respond",
+   "category": "CSF",
+   "category_label": "NIST CSF 2.0 Program",
+   "visibility": "internal",
+   "filename": "BVT-CSF-165_CSF_2.0_Function_Profile_RS_Respond.pdf",
+   "size": 2619
+  },
+  {
+   "doc_id": "BVT-CSF-166",
+   "title": "CSF 2.0 Function Profile - RC Recover",
+   "category": "CSF",
+   "category_label": "NIST CSF 2.0 Program",
+   "visibility": "internal",
+   "filename": "BVT-CSF-166_CSF_2.0_Function_Profile_RC_Recover.pdf",
+   "size": 2425
+  },
+  {
+   "doc_id": "BVT-CSF-167",
+   "title": "CSF 2.0 Current-vs-Target Profile Worksheet",
+   "category": "CSF",
+   "category_label": "NIST CSF 2.0 Program",
+   "visibility": "internal",
+   "filename": "BVT-CSF-167_CSF_2.0_Current_vs_Target_Profile_Worksheet.pdf",
+   "size": 2523
+  },
+  {
+   "doc_id": "BVT-CSF-168",
+   "title": "BVTech Services-to-CSF Mapping",
+   "category": "CSF",
+   "category_label": "NIST CSF 2.0 Program",
+   "visibility": "client",
+   "filename": "BVT-CSF-168_CSF_2.0_Services_Mapping.pdf",
+   "size": 2789
+  },
+  {
+   "doc_id": "BVT-VRT-181",
+   "title": "Written Information Security Plan (WISP) - CPA & Tax Preparer Edition",
+   "category": "VRT",
+   "category_label": "Vertical Compliance Packs",
+   "visibility": "client",
+   "filename": "BVT-VRT-181_CPA_Tax_Preparer_WISP_IRS_4557.pdf",
+   "size": 5114
+  },
+  {
+   "doc_id": "BVT-VRT-182",
+   "title": "CPA Firm Annual Security Checklist (IRS 4557 aligned)",
+   "category": "VRT",
+   "category_label": "Vertical Compliance Packs",
+   "visibility": "client",
+   "filename": "BVT-VRT-182_CPA_Firm_Security_Checklist.pdf",
+   "size": 2644
+  },
+  {
+   "doc_id": "BVT-VRT-183",
+   "title": "Written Information Security Plan (WISP) - Financial Advisory Edition",
+   "category": "VRT",
+   "category_label": "Vertical Compliance Packs",
+   "visibility": "client",
+   "filename": "BVT-VRT-183_Financial_Advisor_WISP_FTC_Safeguards.pdf",
+   "size": 5071
+  },
+  {
+   "doc_id": "BVT-VRT-184",
+   "title": "Law Firm Information Security & Client Confidentiality Program",
+   "category": "VRT",
+   "category_label": "Vertical Compliance Packs",
+   "visibility": "client",
+   "filename": "BVT-VRT-184_Law_Firm_Client_Confidentiality_Security_Program.pdf",
+   "size": 4282
+  },
+  {
+   "doc_id": "BVT-VRT-185",
+   "title": "HIPAA Security Rule Compliance Program - Dental & Medical Practices",
+   "category": "VRT",
+   "category_label": "Vertical Compliance Packs",
+   "visibility": "client",
+   "filename": "BVT-VRT-185_HIPAA_Security_Rule_Compliance_Program_Dental_Medical.pdf",
+   "size": 4264
+  },
+  {
+   "doc_id": "BVT-VRT-186",
+   "title": "HIPAA Security Risk Assessment (SRA) Worksheet",
+   "category": "VRT",
+   "category_label": "Vertical Compliance Packs",
+   "visibility": "client",
+   "filename": "BVT-VRT-186_HIPAA_Security_Risk_Assessment_Worksheet.pdf",
+   "size": 3680
+  },
+  {
+   "doc_id": "BVT-VRT-187",
+   "title": "One-Page Security Brief - Law Firms",
+   "category": "VRT",
+   "category_label": "Vertical Compliance Packs",
+   "visibility": "client",
+   "filename": "BVT-VRT-187_Security_Brief_Law_Firms.pdf",
+   "size": 2527
+  },
+  {
+   "doc_id": "BVT-VRT-188",
+   "title": "One-Page Security Brief - CPA & Tax Firms",
+   "category": "VRT",
+   "category_label": "Vertical Compliance Packs",
+   "visibility": "client",
+   "filename": "BVT-VRT-188_Security_Brief_CPA_Tax_Firms.pdf",
+   "size": 2521
+  },
+  {
+   "doc_id": "BVT-VRT-189",
+   "title": "One-Page Security Brief - Dental & Medical Practices",
+   "category": "VRT",
+   "category_label": "Vertical Compliance Packs",
+   "visibility": "client",
+   "filename": "BVT-VRT-189_Security_Brief_Dental_Medical.pdf",
+   "size": 2524
+  },
+  {
+   "doc_id": "BVT-VRT-190",
+   "title": "One-Page Security Brief - Financial Advisors & Insurance",
+   "category": "VRT",
+   "category_label": "Vertical Compliance Packs",
+   "visibility": "client",
+   "filename": "BVT-VRT-190_Security_Brief_Financial_Advisors.pdf",
+   "size": 2551
+  },
+  {
+   "doc_id": "BVT-TXL-208",
+   "title": "Texas Data Breach Notification Procedure (Bus. & Com. Code Sec. 521.053)",
+   "category": "TXL",
+   "category_label": "Texas Legal & Regulatory",
+   "visibility": "internal",
+   "filename": "BVT-TXL-208_Texas_Breach_Notification_Procedure_521.053.pdf",
+   "size": 4036
+  },
+  {
+   "doc_id": "BVT-TXL-209",
+   "title": "Texas Data Privacy & Security Act (TDPSA) Readiness Guide",
+   "category": "TXL",
+   "category_label": "Texas Legal & Regulatory",
+   "visibility": "client",
+   "filename": "BVT-TXL-209_Texas_Data_Privacy_Security_Act_Readiness.pdf",
+   "size": 2987
+  },
+  {
+   "doc_id": "BVT-TXL-210",
+   "title": "Texas Law Contract Rider (attach to any BVTech agreement)",
+   "category": "TXL",
+   "category_label": "Texas Legal & Regulatory",
+   "visibility": "internal",
+   "filename": "BVT-TXL-210_Texas_Contract_Rider.pdf",
+   "size": 4174
+  },
+  {
+   "doc_id": "BVT-TXL-211",
+   "title": "Electronic Signature & Records Policy (UETA / E-SIGN)",
+   "category": "TXL",
+   "category_label": "Texas Legal & Regulatory",
+   "visibility": "internal",
+   "filename": "BVT-TXL-211_Electronic_Signature_Records_Policy_UETA.pdf",
+   "size": 2658
+  },
+  {
+   "doc_id": "BVT-TXL-212",
+   "title": "Records Retention & Destruction Schedule",
+   "category": "TXL",
+   "category_label": "Texas Legal & Regulatory",
+   "visibility": "internal",
+   "filename": "BVT-TXL-212_Records_Retention_Destruction_Schedule.pdf",
+   "size": 2799
+  },
+  {
+   "doc_id": "BVT-TXL-213",
+   "title": "Texas Small-Business Compliance Snapshot (client-shareable)",
+   "category": "TXL",
+   "category_label": "Texas Legal & Regulatory",
+   "visibility": "client",
+   "filename": "BVT-TXL-213_Texas_Client_Compliance_Snapshot.pdf",
+   "size": 2750
+  },
+  {
+   "doc_id": "BVT-CHK-220",
+   "title": "New-Client Security Audit",
+   "category": "CHK",
+   "category_label": "Audit & Assessment Checklists",
+   "visibility": "internal",
+   "filename": "BVT-CHK-220_New_Client_Security_Audit.pdf",
+   "size": 2828
+  },
+  {
+   "doc_id": "BVT-CHK-221",
+   "title": "Microsoft 365 Hardening Checklist",
+   "category": "CHK",
+   "category_label": "Audit & Assessment Checklists",
+   "visibility": "internal",
+   "filename": "BVT-CHK-221_Microsoft_365_Hardening.pdf",
+   "size": 2648
+  },
+  {
+   "doc_id": "BVT-CHK-222",
+   "title": "Firewall & Network Review Checklist",
+   "category": "CHK",
+   "category_label": "Audit & Assessment Checklists",
+   "visibility": "internal",
+   "filename": "BVT-CHK-222_Firewall_Network_Review.pdf",
+   "size": 2566
+  },
+  {
+   "doc_id": "BVT-CHK-223",
+   "title": "Backup Verification & Restore-Test Checklist",
+   "category": "CHK",
+   "category_label": "Audit & Assessment Checklists",
+   "visibility": "internal",
+   "filename": "BVT-CHK-223_Backup_Verification.pdf",
+   "size": 2506
+  },
+  {
+   "doc_id": "BVT-CHK-224",
+   "title": "Active Directory / Entra Review Checklist",
+   "category": "CHK",
+   "category_label": "Audit & Assessment Checklists",
+   "visibility": "internal",
+   "filename": "BVT-CHK-224_Active_Directory_Review.pdf",
+   "size": 2491
+  },
+  {
+   "doc_id": "BVT-CHK-225",
+   "title": "Employee Offboarding (IT) Checklist",
+   "category": "CHK",
+   "category_label": "Audit & Assessment Checklists",
+   "visibility": "internal",
+   "filename": "BVT-CHK-225_Employee_Offboarding_IT.pdf",
+   "size": 2586
+  },
+  {
+   "doc_id": "BVT-CHK-226",
+   "title": "Employee Onboarding (IT) Checklist",
+   "category": "CHK",
+   "category_label": "Audit & Assessment Checklists",
+   "visibility": "internal",
+   "filename": "BVT-CHK-226_Employee_Onboarding_IT.pdf",
+   "size": 2453
+  },
+  {
+   "doc_id": "BVT-CHK-227",
+   "title": "Patch Compliance Audit Checklist",
+   "category": "CHK",
+   "category_label": "Audit & Assessment Checklists",
+   "visibility": "internal",
+   "filename": "BVT-CHK-227_Patch_Compliance_Audit.pdf",
+   "size": 2461
+  },
+  {
+   "doc_id": "BVT-CHK-228",
+   "title": "Email Security Audit Checklist",
+   "category": "CHK",
+   "category_label": "Audit & Assessment Checklists",
+   "visibility": "internal",
+   "filename": "BVT-CHK-228_Email_Security_Audit.pdf",
+   "size": 2509
+  },
+  {
+   "doc_id": "BVT-CHK-229",
+   "title": "Endpoint Hardening Checklist",
+   "category": "CHK",
+   "category_label": "Audit & Assessment Checklists",
+   "visibility": "internal",
+   "filename": "BVT-CHK-229_Endpoint_Hardening.pdf",
+   "size": 2496
+  },
+  {
+   "doc_id": "BVT-CHK-230",
+   "title": "Network Documentation Standard Checklist",
+   "category": "CHK",
+   "category_label": "Audit & Assessment Checklists",
+   "visibility": "internal",
+   "filename": "BVT-CHK-230_Network_Documentation.pdf",
+   "size": 2456
+  },
+  {
+   "doc_id": "BVT-CHK-231",
+   "title": "Physical Security Walkthrough Checklist",
+   "category": "CHK",
+   "category_label": "Audit & Assessment Checklists",
+   "visibility": "internal",
+   "filename": "BVT-CHK-231_Physical_Security_Walkthrough.pdf",
+   "size": 2464
+  },
+  {
+   "doc_id": "BVT-CHK-232",
+   "title": "Wi-Fi Security Audit Checklist",
+   "category": "CHK",
+   "category_label": "Audit & Assessment Checklists",
+   "visibility": "internal",
+   "filename": "BVT-CHK-232_WiFi_Security_Audit.pdf",
+   "size": 2450
+  },
+  {
+   "doc_id": "BVT-CHK-233",
+   "title": "MFA Rollout Checklist",
+   "category": "CHK",
+   "category_label": "Audit & Assessment Checklists",
+   "visibility": "internal",
+   "filename": "BVT-CHK-233_MFA_Rollout.pdf",
+   "size": 2481
+  },
+  {
+   "doc_id": "BVT-CHK-234",
+   "title": "Server Decommission Checklist",
+   "category": "CHK",
+   "category_label": "Audit & Assessment Checklists",
+   "visibility": "internal",
+   "filename": "BVT-CHK-234_Server_Decommission.pdf",
+   "size": 2433
+  },
+  {
+   "doc_id": "BVT-CHK-235",
+   "title": "Vendor Security Review Checklist",
+   "category": "CHK",
+   "category_label": "Audit & Assessment Checklists",
+   "visibility": "internal",
+   "filename": "BVT-CHK-235_Vendor_Security_Review.pdf",
+   "size": 2451
+  },
+  {
+   "doc_id": "BVT-CHK-236",
+   "title": "Incident Readiness Drill Checklist",
+   "category": "CHK",
+   "category_label": "Audit & Assessment Checklists",
+   "visibility": "internal",
+   "filename": "BVT-CHK-236_Incident_Readiness_Drill.pdf",
+   "size": 2473
+  },
+  {
+   "doc_id": "BVT-CHK-237",
+   "title": "Annual Policy Review Checklist",
+   "category": "CHK",
+   "category_label": "Audit & Assessment Checklists",
+   "visibility": "internal",
+   "filename": "BVT-CHK-237_Annual_Policy_Review.pdf",
+   "size": 2456
+  },
+  {
+   "doc_id": "BVT-STD-240",
+   "title": "AI Acceptable Use Standard",
+   "category": "STD",
+   "category_label": "Security Standards",
+   "visibility": "internal",
+   "filename": "BVT-STD-240_AI_Acceptable_Use_Standard.pdf",
+   "size": 2596
+  },
+  {
+   "doc_id": "BVT-STD-241",
+   "title": "Encryption Standard",
+   "category": "STD",
+   "category_label": "Security Standards",
+   "visibility": "internal",
+   "filename": "BVT-STD-241_Encryption_Standard.pdf",
+   "size": 2571
+  },
+  {
+   "doc_id": "BVT-STD-242",
+   "title": "Logging & Monitoring Standard",
+   "category": "STD",
+   "category_label": "Security Standards",
+   "visibility": "internal",
+   "filename": "BVT-STD-242_Logging_Monitoring_Standard.pdf",
+   "size": 2517
+  },
+  {
+   "doc_id": "BVT-STD-243",
+   "title": "Password & Authentication Standard",
+   "category": "STD",
+   "category_label": "Security Standards",
+   "visibility": "internal",
+   "filename": "BVT-STD-243_Password_Authentication_Standard.pdf",
+   "size": 2648
+  },
+  {
+   "doc_id": "BVT-STD-244",
+   "title": "Secure Configuration Baseline Standard",
+   "category": "STD",
+   "category_label": "Security Standards",
+   "visibility": "internal",
+   "filename": "BVT-STD-244_Secure_Configuration_Baseline.pdf",
+   "size": 2558
+  },
+  {
+   "doc_id": "BVT-STD-245",
+   "title": "Data Classification & Handling Standard",
+   "category": "STD",
+   "category_label": "Security Standards",
+   "visibility": "internal",
+   "filename": "BVT-STD-245_Data_Classification_Standard.pdf",
+   "size": 2545
+  },
+  {
+   "doc_id": "BVT-STD-246",
+   "title": "Email Authentication Standard (SPF/DKIM/DMARC)",
+   "category": "STD",
+   "category_label": "Security Standards",
+   "visibility": "internal",
+   "filename": "BVT-STD-246_Email_Authentication_Standard.pdf",
+   "size": 2559
+  },
+  {
+   "doc_id": "BVT-STD-247",
+   "title": "Remote Access Standard",
+   "category": "STD",
+   "category_label": "Security Standards",
+   "visibility": "internal",
+   "filename": "BVT-STD-247_Remote_Access_Standard.pdf",
+   "size": 2601
+  },
+  {
+   "doc_id": "BVT-TRN-250",
+   "title": "Security Awareness - Spotting Phishing",
+   "category": "TRN",
+   "category_label": "Security Awareness One-Pagers",
+   "visibility": "client",
+   "filename": "BVT-TRN-250_Awareness_Phishing.pdf",
+   "size": 2513
+  },
+  {
+   "doc_id": "BVT-TRN-251",
+   "title": "Security Awareness - Passwords & MFA",
+   "category": "TRN",
+   "category_label": "Security Awareness One-Pagers",
+   "visibility": "client",
+   "filename": "BVT-TRN-251_Awareness_Passwords_MFA.pdf",
+   "size": 2438
+  },
+  {
+   "doc_id": "BVT-TRN-252",
+   "title": "Security Awareness - Ransomware Basics",
+   "category": "TRN",
+   "category_label": "Security Awareness One-Pagers",
+   "visibility": "client",
+   "filename": "BVT-TRN-252_Awareness_Ransomware.pdf",
+   "size": 2518
+  },
+  {
+   "doc_id": "BVT-TRN-253",
+   "title": "Security Awareness - Business Email Compromise & Wire Fraud",
+   "category": "TRN",
+   "category_label": "Security Awareness One-Pagers",
+   "visibility": "client",
+   "filename": "BVT-TRN-253_Awareness_BEC_Wire_Fraud.pdf",
+   "size": 2546
+  },
+  {
+   "doc_id": "BVT-TRN-254",
+   "title": "Security Awareness - Social Engineering Beyond Email",
+   "category": "TRN",
+   "category_label": "Security Awareness One-Pagers",
+   "visibility": "client",
+   "filename": "BVT-TRN-254_Awareness_Social_Engineering.pdf",
+   "size": 2479
+  },
+  {
+   "doc_id": "BVT-TRN-255",
+   "title": "Security Awareness - Safe Browsing & Downloads",
+   "category": "TRN",
+   "category_label": "Security Awareness One-Pagers",
+   "visibility": "client",
+   "filename": "BVT-TRN-255_Awareness_Safe_Browsing.pdf",
+   "size": 2512
+  },
+  {
+   "doc_id": "BVT-TRN-256",
+   "title": "Security Awareness - Mobile Device Security",
+   "category": "TRN",
+   "category_label": "Security Awareness One-Pagers",
+   "visibility": "client",
+   "filename": "BVT-TRN-256_Awareness_Mobile_Devices.pdf",
+   "size": 2439
+  },
+  {
+   "doc_id": "BVT-TRN-257",
+   "title": "Security Awareness - Travel Security",
+   "category": "TRN",
+   "category_label": "Security Awareness One-Pagers",
+   "visibility": "client",
+   "filename": "BVT-TRN-257_Awareness_Travel_Security.pdf",
+   "size": 2452
+  },
+  {
+   "doc_id": "BVT-TRN-258",
+   "title": "Security Awareness - Remote Work Security",
+   "category": "TRN",
+   "category_label": "Security Awareness One-Pagers",
+   "visibility": "client",
+   "filename": "BVT-TRN-258_Awareness_Remote_Work.pdf",
+   "size": 2484
+  },
+  {
+   "doc_id": "BVT-TRN-259",
+   "title": "Security Awareness - Handling Sensitive Data",
+   "category": "TRN",
+   "category_label": "Security Awareness One-Pagers",
+   "visibility": "client",
+   "filename": "BVT-TRN-259_Awareness_Data_Handling.pdf",
+   "size": 2490
+  },
+  {
+   "doc_id": "BVT-TRN-260",
+   "title": "Security Awareness - Physical Security Habits",
+   "category": "TRN",
+   "category_label": "Security Awareness One-Pagers",
+   "visibility": "client",
+   "filename": "BVT-TRN-260_Awareness_Physical_Security.pdf",
+   "size": 2460
+  },
+  {
+   "doc_id": "BVT-TRN-261",
+   "title": "Security Awareness - Reporting Security Incidents",
+   "category": "TRN",
+   "category_label": "Security Awareness One-Pagers",
+   "visibility": "client",
+   "filename": "BVT-TRN-261_Awareness_Incident_Reporting.pdf",
+   "size": 2477
+  },
+  {
+   "doc_id": "BVT-FRM-262",
+   "title": "Visitor Log",
+   "category": "FRM",
+   "category_label": "Operational Forms",
+   "visibility": "internal",
+   "filename": "BVT-FRM-262_Visitor_Log.pdf",
+   "size": 2221
+  },
+  {
+   "doc_id": "BVT-FRM-263",
+   "title": "Certificate of Media Destruction",
+   "category": "FRM",
+   "category_label": "Operational Forms",
+   "visibility": "internal",
+   "filename": "BVT-FRM-263_Media_Destruction_Certificate.pdf",
+   "size": 2267
+  },
+  {
+   "doc_id": "BVT-FRM-264",
+   "title": "Security Incident Report Form",
+   "category": "FRM",
+   "category_label": "Operational Forms",
+   "visibility": "internal",
+   "filename": "BVT-FRM-264_Incident_Report_Form.pdf",
+   "size": 2364
+  },
+  {
+   "doc_id": "BVT-FRM-265",
+   "title": "Change Request Form",
+   "category": "FRM",
+   "category_label": "Operational Forms",
+   "visibility": "internal",
+   "filename": "BVT-FRM-265_Change_Request_Form.pdf",
+   "size": 2280
+  },
+  {
+   "doc_id": "BVT-FRM-266",
+   "title": "Access Request Form",
+   "category": "FRM",
+   "category_label": "Operational Forms",
+   "visibility": "internal",
+   "filename": "BVT-FRM-266_Access_Request_Form.pdf",
+   "size": 2280
+  },
+  {
+   "doc_id": "BVT-FRM-267",
+   "title": "Policy Exception Request Form",
+   "category": "FRM",
+   "category_label": "Operational Forms",
+   "visibility": "internal",
+   "filename": "BVT-FRM-267_Policy_Exception_Request.pdf",
+   "size": 2307
+  },
+  {
+   "doc_id": "BVT-FRM-268",
+   "title": "Equipment Custody Form",
+   "category": "FRM",
+   "category_label": "Operational Forms",
+   "visibility": "internal",
+   "filename": "BVT-FRM-268_Equipment_Custody_Form.pdf",
+   "size": 2261
+  },
+  {
+   "doc_id": "BVT-FRM-269",
+   "title": "Vendor Security Intake Form",
+   "category": "FRM",
+   "category_label": "Operational Forms",
+   "visibility": "internal",
+   "filename": "BVT-FRM-269_Vendor_Intake_Form.pdf",
+   "size": 2334
+  },
+  {
+   "doc_id": "BVT-FRM-270",
+   "title": "BYOD Acknowledgment & Agreement",
+   "category": "FRM",
+   "category_label": "Operational Forms",
+   "visibility": "internal",
+   "filename": "BVT-FRM-270_BYOD_Agreement_Form.pdf",
+   "size": 2293
+  },
+  {
+   "doc_id": "BVT-FRM-271",
+   "title": "Termination Access-Removal Record",
+   "category": "FRM",
+   "category_label": "Operational Forms",
+   "visibility": "internal",
+   "filename": "BVT-FRM-271_Termination_Access_Form.pdf",
+   "size": 2324
+  },
+  {
+   "doc_id": "BVT-SOP-280",
+   "title": "Runbook - New Workstation Deployment",
+   "category": "SOP",
+   "category_label": "Runbooks & SOPs (Extended)",
+   "visibility": "internal",
+   "filename": "BVT-SOP-280_New_Workstation_Deployment.pdf",
+   "size": 2568
+  },
+  {
+   "doc_id": "BVT-SOP-281",
+   "title": "Runbook - Microsoft 365 Tenant Onboarding",
+   "category": "SOP",
+   "category_label": "Runbooks & SOPs (Extended)",
+   "visibility": "internal",
+   "filename": "BVT-SOP-281_M365_Tenant_Onboarding.pdf",
+   "size": 2549
+  },
+  {
+   "doc_id": "BVT-SOP-282",
+   "title": "Runbook - Backup Restore Test (Quarterly)",
+   "category": "SOP",
+   "category_label": "Runbooks & SOPs (Extended)",
+   "visibility": "internal",
+   "filename": "BVT-SOP-282_Backup_Restore_Test.pdf",
+   "size": 2487
+  },
+  {
+   "doc_id": "BVT-SOP-283",
+   "title": "Runbook - Reported Phishing Triage",
+   "category": "SOP",
+   "category_label": "Runbooks & SOPs (Extended)",
+   "visibility": "internal",
+   "filename": "BVT-SOP-283_Phishing_Triage.pdf",
+   "size": 2519
+  },
+  {
+   "doc_id": "BVT-SOP-284",
+   "title": "Runbook - VPN User Setup",
+   "category": "SOP",
+   "category_label": "Runbooks & SOPs (Extended)",
+   "visibility": "internal",
+   "filename": "BVT-SOP-284_VPN_User_Setup.pdf",
+   "size": 2454
+  },
+  {
+   "doc_id": "BVT-SOP-285",
+   "title": "Runbook - Printer / MFP Deployment",
+   "category": "SOP",
+   "category_label": "Runbooks & SOPs (Extended)",
+   "visibility": "internal",
+   "filename": "BVT-SOP-285_Printer_Deployment.pdf",
+   "size": 2479
+  },
+  {
+   "doc_id": "BVT-SOP-286",
+   "title": "Runbook - Email Migration (to M365)",
+   "category": "SOP",
+   "category_label": "Runbooks & SOPs (Extended)",
+   "visibility": "internal",
+   "filename": "BVT-SOP-286_Email_Migration.pdf",
+   "size": 2506
+  },
+  {
+   "doc_id": "BVT-SOP-287",
+   "title": "Runbook - Workstation Refresh Cycle",
+   "category": "SOP",
+   "category_label": "Runbooks & SOPs (Extended)",
+   "visibility": "internal",
+   "filename": "BVT-SOP-287_Workstation_Refresh_Cycle.pdf",
+   "size": 2447
+  },
+  {
+   "doc_id": "BVT-SOP-288",
+   "title": "Runbook - NAS / Shared Storage Deployment",
+   "category": "SOP",
+   "category_label": "Runbooks & SOPs (Extended)",
+   "visibility": "internal",
+   "filename": "BVT-SOP-288_NAS_Storage_Deployment.pdf",
+   "size": 2530
+  },
+  {
+   "doc_id": "BVT-SOP-289",
+   "title": "Runbook - UPS & Power Protection Maintenance",
+   "category": "SOP",
+   "category_label": "Runbooks & SOPs (Extended)",
+   "visibility": "internal",
+   "filename": "BVT-SOP-289_Power_UPS_Maintenance.pdf",
+   "size": 2413
+  },
+  {
+   "doc_id": "BVT-SVC-290",
+   "title": "Service Description - Managed IT Services",
+   "category": "SVC",
+   "category_label": "Client Service Descriptions",
+   "visibility": "client",
+   "filename": "BVT-SVC-290_Service_Managed_IT.pdf",
+   "size": 2539
+  },
+  {
+   "doc_id": "BVT-SVC-291",
+   "title": "Service Description - Managed Security (MSSP)",
+   "category": "SVC",
+   "category_label": "Client Service Descriptions",
+   "visibility": "client",
+   "filename": "BVT-SVC-291_Service_Managed_Security.pdf",
+   "size": 2563
+  },
+  {
+   "doc_id": "BVT-SVC-292",
+   "title": "Service Description - Backup & Disaster Recovery",
+   "category": "SVC",
+   "category_label": "Client Service Descriptions",
+   "visibility": "client",
+   "filename": "BVT-SVC-292_Service_Backup_DR.pdf",
+   "size": 2485
+  },
+  {
+   "doc_id": "BVT-SVC-293",
+   "title": "Service Description - Microsoft 365 Management",
+   "category": "SVC",
+   "category_label": "Client Service Descriptions",
+   "visibility": "client",
+   "filename": "BVT-SVC-293_Service_M365_Management.pdf",
+   "size": 2490
+  },
+  {
+   "doc_id": "BVT-SVC-294",
+   "title": "Service Description - Compliance & vCISO Advisory",
+   "category": "SVC",
+   "category_label": "Client Service Descriptions",
+   "visibility": "client",
+   "filename": "BVT-SVC-294_Service_Compliance_vCISO.pdf",
+   "size": 2515
+  },
+  {
+   "doc_id": "BVT-SVC-295",
+   "title": "Service Description - Network & Infrastructure Services",
+   "category": "SVC",
+   "category_label": "Client Service Descriptions",
+   "visibility": "client",
+   "filename": "BVT-SVC-295_Service_Network_Infrastructure.pdf",
+   "size": 2477
+  },
+  {
+   "doc_id": "BVT-SVC-296",
+   "title": "Service Description - Projects & Migrations",
+   "category": "SVC",
+   "category_label": "Client Service Descriptions",
+   "visibility": "client",
+   "filename": "BVT-SVC-296_Service_Projects_Migrations.pdf",
+   "size": 2470
+  },
+  {
+   "doc_id": "BVT-SVC-297",
+   "title": "Service Description - BVTech Cyber Academy",
+   "category": "SVC",
+   "category_label": "Client Service Descriptions",
+   "visibility": "client",
+   "filename": "BVT-SVC-297_Service_Cyber_Academy.pdf",
+   "size": 2535
+  },
+  {
+   "doc_id": "BVT-CAT-999",
+   "title": "Complete Library Catalog (193 documents)",
+   "category": "000",
+   "category_label": "Library Index",
+   "visibility": "client",
+   "filename": "BVT-CAT-999_Complete_Library_Catalog.pdf",
+   "size": 17918
   }
  ]
 }
