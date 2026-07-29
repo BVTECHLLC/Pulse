@@ -56,7 +56,10 @@ async def security_headers(request: Request, call_next):
         "font-src 'self' https://fonts.gstatic.com; "
         # blob: lets the Content Studio preview its generated page in an iframe
         # (the blob is created by our own page; the framed doc has no extra rights).
-        "script-src 'self' 'unsafe-inline'; frame-src 'self' blob:; frame-ancestors 'none'"
+        # worker-src blob: powers the Code Dojo sandbox — the learner's own code runs
+        # in a terminable Web Worker (their browser, their risk), never on our server.
+        "script-src 'self' 'unsafe-inline'; worker-src 'self' blob:; "
+        "frame-src 'self' blob:; frame-ancestors 'none'"
     )
     if _s.is_prod:
         resp.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"

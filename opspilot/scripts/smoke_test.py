@@ -5704,6 +5704,8 @@ def main():
             "subdomain-takeover": "FLAG{promo.vertexdental.com}",
             "graphql-batch": "FLAG{rate_limit_by_operation_not_request}",
             "xss-stored": "FLAG{stored_xss_encode_on_output}",
+            # arcade: hack the game you're given (client-trusted score)
+            "hack-the-clicker": "FLAG{never_trust_the_client_score}",
         }
         # every lab must be covered so range_all is reachable
         assert set(_solutions) == set(_aca._LABS), \
@@ -5735,6 +5737,78 @@ def main():
               f"defense) - safe probe emulators (XSS/SSRF/cmdi/IDOR/SQLi/git), a write-a-"
               f"regex-WAF coding lab, difficulty-scaled XP ({_expect_xp}), XP-once, "
               "first_flag/l33t/range_all badges, no flag leak in views/benign probes OK")
+        # the hack-the-clicker arcade lab: game-kind probe, client-trusted score
+        assert "FLAG" not in c.get("/api/academy/labs/hack-the-clicker/probe",
+                                   params={"score": "42"}).json()["body"], "clicker benign leak"
+        assert "FLAG" in c.get("/api/academy/labs/hack-the-clicker/probe",
+                               params={"score": "1000000"}).json()["body"], "clicker must reward the hack"
+        assert any(b["id"] == "game_hacker" for b in c.get("/api/academy/me").json()["badges"]), "game_hacker"
+
+        # ==== v1.74.0: Code Dojo — server-verified, write-real-code challenges ====
+        from app.services import dojo as _dojo
+        import re as _redj
+        # reference implementations that mirror each challenge (simulate the browser
+        # running the learner's JS) — used ONLY to produce correct outputs to submit.
+        def _dref(cid, x):
+            if cid == "reverse-string": return x[::-1]
+            if cid == "sanitize-script": return _redj.sub(r"(?is)<script.*?</script>", "", x)
+            if cid == "strong-password":
+                return (len(x) >= 12 and any(ch.islower() for ch in x) and any(ch.isupper() for ch in x)
+                        and any(ch.isdigit() for ch in x) and any(not ch.isalnum() for ch in x))
+            if cid == "mask-card":
+                d = [ch for ch in x if ch.isdigit()]; keep = len(d) - 4; seen = 0; o = []
+                for ch in x:
+                    if ch.isdigit():
+                        seen += 1; o.append("*" if seen <= keep else ch)
+                    else: o.append(ch)
+                return "".join(o)
+            if cid == "rot13-decode":
+                r = []
+                for ch in x:
+                    if "a" <= ch <= "z": r.append(chr((ord(ch) - 97 + 13) % 26 + 97))
+                    elif "A" <= ch <= "Z": r.append(chr((ord(ch) - 65 + 13) % 26 + 65))
+                    else: r.append(ch)
+                return "".join(r)
+            if cid == "redact-emails":
+                return _redj.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "[REDACTED]", x)
+            if cid == "detect-sqli":
+                pat = _redj.compile(r"('\s*or|--|\bunion\s+select\b|;\s*drop\b|'\s*=\s*')", _redj.I)
+                return [bool(pat.search(i)) for i in x]
+            if cid == "luhn-check":
+                d = [int(ch) for ch in x if ch.isdigit()]; t = 0
+                for i, v in enumerate(reversed(d)):
+                    if i % 2 == 1:
+                        v *= 2
+                        if v > 9: v -= 9
+                    t += v
+                return len(d) > 0 and t % 10 == 0
+            raise KeyError(cid)
+        _dcat = c.get("/api/academy/dojo").json()
+        assert _dcat["total"] == _dojo.TOTAL_CHALLENGES >= 8 and _dcat["solved"] == 0, _dcat
+        _dxp0 = c.get("/api/academy/me").json()["xp"]
+        _dgain = 0
+        for _ch in _dcat["challenges"]:
+            _cid = _ch["id"]
+            _cv = c.get(f"/api/academy/dojo/{_cid}").json()
+            assert "tests" not in _cv and _cv.get("teaches") is None, "dojo answers leaked!"
+            _outs = [_dref(_cid, i) for i in _cv["test_inputs"]]
+            _sr = c.post(f"/api/academy/dojo/{_cid}/submit", json={"outputs": _outs}).json()
+            assert _sr["solved"] and _sr["xp_gained"] > 0, (_cid, _sr)
+            _dgain += _sr["xp_gained"]
+            # re-submitting awards no more XP
+            assert c.post(f"/api/academy/dojo/{_cid}/submit",
+                          json={"outputs": _outs}).json()["xp_gained"] == 0
+        # wrong outputs never solve (and never leak the answer)
+        _bad = c.post("/api/academy/dojo/reverse-string/submit",
+                      json={"outputs": ["nope"] * 6}).json()
+        assert _bad["solved"] is False and "passed" in _bad, _bad
+        _dprof = c.get("/api/academy/me").json()
+        assert _dprof["xp"] == _dxp0 + _dgain
+        assert any(b["id"] == "code_ninja" for b in _dprof["badges"]), "Code Ninja badge"
+        assert any(b["id"] == "dojo_master" for b in _dprof["badges"]), "Dojo Master badge"
+        print(f"code dojo: {_dojo.TOTAL_CHALLENGES} write-real-code challenges, server-graded "
+              "on hidden tests (no answer leak), wrong-output rejection, XP-once, "
+              "code_ninja/dojo_master badges OK")
 
         # ==== v1.64.0: vCISO scorecard PDF — the board-ready QBR deliverable ====
         from app.services import vcio as _vcio64
@@ -6576,7 +6650,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.73.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.74.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

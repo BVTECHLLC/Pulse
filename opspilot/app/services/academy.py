@@ -48,6 +48,10 @@ BADGES = {
     "range_5":      {"icon": "🎯", "name": "Range Regular", "desc": "Solve 5 Cyber Range labs"},
     "range_all":    {"icon": "🏴‍☠️", "name": "Range Master", "desc": "Capture every flag in the Cyber Range"},
     "l33t":         {"icon": "💀", "name": "l33t", "desc": "Solve a Hard-difficulty lab"},
+    # --- Code Dojo (write-real-code challenges) + arcade ---
+    "code_ninja":   {"icon": "🥷", "name": "Code Ninja", "desc": "Pass a Code Dojo challenge with your own code"},
+    "dojo_master":  {"icon": "🐉", "name": "Dojo Master", "desc": "Clear every Code Dojo challenge"},
+    "game_hacker":  {"icon": "🎮", "name": "Game Hacker", "desc": "Beat a game by hacking it, not playing it"},
 }
 
 MODULES = [
@@ -2226,6 +2230,25 @@ LABS = [
                    "runs for every viewer, including admins. Encode on output everywhere, "
                    "sanitize rich input, and set a strict CSP as defense in depth.",
     },
+    {
+        "id": "hack-the-clicker", "title": "Beat the Game You're Given", "icon": "🎮",
+        "difficulty": "Medium", "category": "Web", "points": DIFF_XP["Medium"],
+        "brief": "Here's a real little clicker game — but the server trusts whatever score "
+                 "your browser reports. Nobody can click to 1,000,000. Don't play fair: open "
+                 "DevTools, tamper the score (edit the variable or call the submit function "
+                 "directly), and report an impossible score to capture the flag.",
+        "target": {"kind": "game", "goal": 1000000,
+                   "instructions": "Play a bit, then HACK it: in the browser console set "
+                                   "score=9999999 (or call submitScore(9999999)). The lab's "
+                                   "'submit score' sends whatever number it holds.",
+                   "examples": ["?score=42", "?score=1000000", "?score=9999999"]},
+        "hints": ["The score lives in a JS variable the server never verifies. Change it.",
+                  "Open the console and run submitScore(9999999) — or send ?score=1000000."],
+        "check": ("exact", "FLAG{never_trust_the_client_score}"),
+        "teaches": "Never trust client-reported state (scores, prices, totals, roles). The "
+                   "browser is fully attacker-controlled. Validate and compute authoritative "
+                   "values on the server; treat anything from the client as a claim, not a fact.",
+    },
 ]
 
 # --------------------------------------------------------------------------- #
@@ -2329,6 +2352,18 @@ def _award(db: Session, user: User, prof: AcademyProfile, item_id: str,
     earn("half_way", len(done_lessons) * 2 >= TOTAL_LESSONS)
     earn("all_lessons", len(done_lessons) >= TOTAL_LESSONS)
     earn("xp_500", (prof.xp or 0) >= 500)
+    # Code Dojo + arcade badges
+    done_dojo = {c.item_id for c in db.query(AcademyCompletion)
+                 .filter(AcademyCompletion.user_id == user.id,
+                         AcademyCompletion.kind == "dojo")} | (
+                     {item_id} if kind == "dojo" else set())
+    try:
+        from . import dojo as _dojo
+        earn("dojo_master", len(done_dojo & set(_dojo._CHALLENGES)) >= _dojo.TOTAL_CHALLENGES)
+    except Exception:  # noqa: BLE001
+        pass
+    earn("code_ninja", kind == "dojo")
+    earn("game_hacker", item_id == "hack-the-clicker")
 
     prof.badges = json.dumps(sorted(have))
     db.commit()
@@ -2376,8 +2411,9 @@ def catalog_view(db: Session, user: User) -> dict:
                       "blurb": g["blurb"], "kind": g["kind"], "xp": GAME_XP,
                       "completed": bool(c), "score": c.score if c else None,
                       "rounds": len(g["items"]) or None})
+    from . import dojo as _dojo
     return {"modules": mods, "games": games, "total_lessons": TOTAL_LESSONS,
-            "range": range_view(db, user)}
+            "range": range_view(db, user), "dojo": _dojo.dojo_view(db, user)}
 
 
 def lesson_view(db: Session, lesson_id: str) -> dict | None:
@@ -2487,7 +2523,7 @@ def lab_probe(lab_id: str, params: dict) -> dict:
     real backend, no code execution, no filesystem — just deterministic canned
     responses that teach the technique. Returns {status, body} like an HTTP hit."""
     b = _LABS.get(lab_id)
-    if not b or b["target"].get("kind") != "probe":
+    if not b or b["target"].get("kind") not in ("probe", "game"):
         return {"status": 404, "body": "No such lab endpoint."}
 
     def resp(status, body):
@@ -2783,6 +2819,18 @@ def lab_probe(lab_id: str, params: dict) -> dict:
             return resp(200, "Comment stored UN-encoded — it will run in the admin's browser "
                              "on review. FLAG{stored_xss_encode_on_output}")
         return resp(200, f"Comment saved: {params.get('comment', '')}")
+
+    if lab_id == "hack-the-clicker":
+        try:
+            score = int(float(params.get("score") or 0))
+        except (ValueError, TypeError):
+            return resp(400, "score must be a number, e.g. ?score=1000000")
+        goal = _LABS["hack-the-clicker"]["target"]["goal"]
+        if score >= goal:
+            return resp(200, f"Score {score:,} accepted — the server never checked if that "
+                             "was possible! FLAG{never_trust_the_client_score}")
+        return resp(200, f"Score {score:,} recorded. (Reach {goal:,} — clicking won't get "
+                         "you there. Hack it.)")
 
     return resp(404, "No such lab endpoint.")
 

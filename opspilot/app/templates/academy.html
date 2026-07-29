@@ -208,12 +208,39 @@ font-size:14px;cursor:pointer;flex:none}
     <details class="card" style="cursor:pointer"><summary><b>💡 Stuck? Reveal hints</b></summary>
       <ul id="lab-hints" style="margin:8px 0 0 18px"></ul></details>
   </div>
+
+  <!-- ============ CODE DOJO (list) ============ -->
+  <div id="v-dojo" class="hidden">
+    <h1 style="margin-bottom:4px">🥷 Code Dojo</h1>
+    <p class="mut" style="margin:0 0 12px">Write <b>real code</b> in your browser. It runs against hidden tests and the <b>server</b> grades your output — no cheating, no fluff. Learn to code <i>and</i> to defend. <b id="dojo-count">0/0 solved</b></p>
+    <div id="dojo-list"></div>
+  </div>
+
+  <!-- ===== SINGLE CHALLENGE (code editor) ===== -->
+  <div id="v-code" class="hidden">
+    <div class="topbar"><button class="back" onclick="go('dojo')">← Dojo</button><h2 id="cd-ttl" style="margin:0"></h2></div>
+    <div class="card"><span class="pill" id="cd-diff"></span> <span class="mut" id="cd-cat"></span>
+      <p id="cd-prompt" style="margin:10px 0 0"></p>
+      <div id="cd-ex" style="margin-top:10px"></div></div>
+    <div class="card">
+      <b>✍️ Your solution (JavaScript)</b>
+      <textarea id="cd-code" spellcheck="false" autocapitalize="off" autocomplete="off"
+        style="width:100%;min-height:200px;background:#0b1130;border:1px solid var(--line);border-radius:12px;padding:12px;color:#8ef5b8;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13.5px;line-height:1.5;margin-top:8px"></textarea>
+      <div class="row" style="margin-top:10px;gap:8px">
+        <button class="btn" style="width:auto;padding:0 18px" onclick="runCode()">▶ Run tests</button>
+        <button class="back" onclick="resetCode()">↺ Reset</button>
+      </div>
+      <div id="cd-out" style="margin-top:10px"></div>
+    </div>
+    <div id="cd-msg"></div>
+  </div>
 </div>
 
 <nav>
   <a href="#learn" id="n-learn" class="on"><span class="i">📚</span>Learn</a>
   <a href="#play" id="n-play"><span class="i">🎮</span>Play</a>
   <a href="#range" id="n-range"><span class="i">🎯</span>Range</a>
+  <a href="#dojo" id="n-dojo"><span class="i">🥷</span>Dojo</a>
   <a href="#ranks" id="n-ranks"><span class="i">🏆</span>Ranks</a>
   <a href="#me" id="n-me"><span class="i">👤</span>Me</a>
 </nav>
@@ -233,9 +260,9 @@ function confetti(){const em=['🎉','✨','⭐','💜','🔥'];for(let i=0;i<26
   s.style.animationDuration=(1.4+Math.random()*1.6)+'s';s.style.animationDelay=(Math.random()*.4)+'s';
   document.body.appendChild(s);setTimeout(()=>s.remove(),3400)}}
 
-const VIEWS=['learn','lesson','play','phish','lab','range','labplay','ranks','me'];
+const VIEWS=['learn','lesson','play','phish','lab','range','labplay','dojo','code','ranks','me'];
 function show(v){VIEWS.forEach(x=>$('v-'+x).classList.toggle('hidden',x!==v));
-  ['learn','play','range','ranks','me'].forEach(x=>$('n-'+x).classList.toggle('on',x===v||(v==='lesson'&&x==='learn')||((v==='phish'||v==='lab')&&x==='play')||(v==='labplay'&&x==='range')));
+  ['learn','play','range','dojo','ranks','me'].forEach(x=>$('n-'+x).classList.toggle('on',x===v||(v==='lesson'&&x==='learn')||((v==='phish'||v==='lab')&&x==='play')||(v==='labplay'&&x==='range')||(v==='code'&&x==='dojo')));
   window.scrollTo(0,0)}
 function go(v){location.hash=v}
 window.addEventListener('hashchange',()=>route());
@@ -244,8 +271,9 @@ function route(){const h=(location.hash||'#learn').slice(1);
   else if(h==='me'){renderMe();show('me')}
   else if(h==='play'){show('play')}
   else if(h==='range'){loadRange();show('range')}
+  else if(h==='dojo'){loadDojo();show('dojo')}
   else if(h==='learn'){show('learn')}
-  // lesson/game/lab views are pushed programmatically; hash fallbacks land safely
+  // lesson/game/lab/code views are pushed programmatically; hash fallbacks land safely
   else show('learn')}
 
 function applyProfile(p){PROF=p;
@@ -361,6 +389,22 @@ function renderTarget(l){
       ${set('✅ Your regex MUST match these (attacks):', t.attacks, '#EB6F24')}
       ${set('🚫 Your regex must NOT match these (real users):', t.benign, '#26C485')}
       <div class="mut" style="margin-top:8px;font-size:12px">Type your regex in the flag box below and submit — it's tested live (case-insensitive).</div>`;
+  } else if(t.kind==='game'){
+    // A real, playable clicker whose score the SERVER blindly trusts. The learner
+    // must HACK it (console/DevTools) to submit an impossible score. `score` and
+    // `submitScore` are deliberately global so the console can reach them.
+    box.innerHTML=`<b>🎮 The Clicker (goal: ${(t.goal||1000000).toLocaleString()})</b>
+      <div class="explain" style="margin:6px 0 10px">${esc(t.instructions||'')}</div>
+      <div style="text-align:center;padding:6px 0">
+        <div style="font-size:34px;font-weight:800;color:#8ef5b8" id="gm-score">0</div>
+        <div class="mut" style="font-size:11px;margin-bottom:10px">SCORE</div>
+        <button class="btn" style="width:auto;padding:0 26px;font-size:18px" onclick="window.score++;gmRender()">👆 Click (+1)</button>
+        <div style="margin-top:12px"><button class="back" onclick="submitScore(window.score)">📡 Submit my score</button></div>
+      </div>
+      <pre id="probe-out" style="overflow:auto;background:#0b1220;color:#8ef5b8;padding:12px;border-radius:8px;margin-top:6px;min-height:40px;white-space:pre-wrap">— open DevTools console: set score=9999999, then Submit (or run submitScore(9999999)) —</pre>`;
+    window.score=0;
+    window.gmRender=()=>{const e=$('gm-score');if(e)e.textContent=Number(window.score).toLocaleString()};
+    window.submitScore=(s)=>runProbe(l.id, 'score='+encodeURIComponent(s==null?window.score:s));
   } else { box.innerHTML=''; }
 }
 function probePlaceholder(id){return ({
@@ -377,10 +421,11 @@ function probePlaceholder(id){return ({
   'jwt-alg-confusion':'alg=HS256&key=public','cache-poisoning':'xfh=evil.attacker.com','crlf-injection':'url=/home%0d%0aSet-Cookie:admin=1',
   'graphql-batch':'ops=batch','xss-stored':'comment=<script>steal()</script>'
 }[id])||'param=value';}
-async function runProbe(id){
-  const q=($('probe-q').value||'').trim().replace(/^\?/,'');
+async function runProbe(id, override){
+  const q=(override!=null?override:(($('probe-q')||{}).value||'')).trim().replace(/^\?/,'');
   const r=await getJ('/api/academy/labs/'+id+'/probe?'+q);
-  $('probe-out').textContent='['+r.status+']\n'+r.body;
+  const out=$('probe-out'); if(out)out.textContent='['+r.status+']\n'+r.body;
+  return r;
 }
 async function submitFlag(){
   const flag=($('lab-flag').value||'').trim();
@@ -397,6 +442,81 @@ async function submitFlag(){
   } else {
     $('lab-msg').innerHTML=`<div class="mut" style="color:#EB6F24">✗ ${esc(res.message||'Not the flag — check the hints.')}</div>`;
   }
+}
+
+/* ---------- Code Dojo ---------- */
+let CD=null;
+const DCOLOR={Easy:'#26C485',Medium:'#C4923B',Hard:'#EB6F24'};
+async function loadDojo(){
+  const d=await getJ('/api/academy/dojo'); if(d.profile)applyProfile(d.profile);
+  $('dojo-count').textContent=d.solved+'/'+d.total+' solved';
+  $('dojo-list').innerHTML=(d.challenges||[]).map(c=>
+    `<div class="lesson" onclick="openChallenge('${c.id}')" style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:20px">${c.solved?'✅':'🥷'}</span>
+      <div style="flex:1"><b>${esc(c.title)}</b>
+        <div class="mut" style="font-size:12px">${esc(c.category)} · <span style="color:${DCOLOR[c.difficulty]}">${c.difficulty}</span> · ${c.points} XP</div></div>
+      <span class="mut">›</span></div>`).join('');
+}
+async function openChallenge(id){
+  CD=await getJ('/api/academy/dojo/'+id);
+  $('cd-ttl').textContent=CD.title;
+  $('cd-diff').textContent=CD.difficulty; $('cd-diff').style.color=DCOLOR[CD.difficulty];
+  $('cd-cat').textContent=CD.category+' · '+CD.points+' XP';
+  $('cd-prompt').textContent=CD.prompt;
+  $('cd-ex').innerHTML='<b style="font-size:13px">Examples</b>'+(CD.examples||[]).map(e=>
+    `<div style="font-family:monospace;font-size:12px;margin-top:4px">solve(${jstr(e.in)}) → ${jstr(e.out)}</div>`).join('');
+  $('cd-code').value=CD.signature||'function solve(x){\n  \n}';
+  $('cd-out').innerHTML=''; $('cd-msg').innerHTML='';
+  show('code');
+}
+function resetCode(){ if(CD){$('cd-code').value=CD.signature; $('cd-out').innerHTML=''; $('cd-msg').innerHTML='';} }
+function jstr(v){return JSON.stringify(v);}
+// Run the learner's code in a sandboxed Web Worker against public examples (for
+// instant feedback) AND the hidden inputs (to produce outputs the server grades).
+function runInWorker(code, inputs, cb){
+  const src=`self.onmessage=function(e){
+    try{
+      var solve=(function(){ var solve; eval(e.data.code); return typeof solve==='function'?solve:null; })();
+      if(!solve){self.postMessage({error:'Define a function named solve(...)'});return;}
+      var out=e.data.inputs.map(function(i){return solve(i);});
+      self.postMessage({out:out});
+    }catch(err){ self.postMessage({error:String(err&&err.message||err)}); }
+  }`;
+  let done=false;
+  const w=new Worker(URL.createObjectURL(new Blob([src],{type:'application/javascript'})));
+  const kill=setTimeout(()=>{if(!done){done=true;w.terminate();cb({error:'Timed out (infinite loop?) — worker stopped.'});}},2500);
+  w.onmessage=(e)=>{if(done)return;done=true;clearTimeout(kill);w.terminate();cb(e.data);};
+  w.onerror=(e)=>{if(done)return;done=true;clearTimeout(kill);w.terminate();cb({error:String(e.message||'error')});};
+  w.postMessage({code:code, inputs:inputs});
+}
+function runCode(){
+  if(!CD)return;
+  const code=$('cd-code').value;
+  const out=$('cd-out'); out.innerHTML='<span class="mut">Running…</span>';
+  // first: public examples for visible feedback
+  runInWorker(code, CD.examples.map(e=>e.in), (r1)=>{
+    if(r1.error){out.innerHTML=`<div style="color:#EB6F24;font-family:monospace;font-size:12px">⚠ ${esc(r1.error)}</div>`;return;}
+    const rows=CD.examples.map((e,i)=>{
+      const got=r1.out[i], ok=JSON.stringify(got)===JSON.stringify(e.out);
+      return `<div style="font-family:monospace;font-size:12px;color:${ok?'#26C485':'#EB6F24'}">${ok?'✓':'✗'} solve(${jstr(e.in)}) → ${jstr(got)}${ok?'':' (want '+jstr(e.out)+')'}</div>`;
+    }).join('');
+    out.innerHTML=`<b style="font-size:13px">Sample tests</b>${rows}<div class="mut" style="font-size:12px;margin-top:6px">Now grading against hidden tests…</div>`;
+    // then: hidden inputs -> submit outputs for server grading
+    runInWorker(code, CD.test_inputs, async (r2)=>{
+      if(r2.error){out.innerHTML+=`<div style="color:#EB6F24;font-family:monospace;font-size:12px">⚠ ${esc(r2.error)}</div>`;return;}
+      const res=await postJ('/api/academy/dojo/'+CD.id+'/submit',{outputs:r2.out});
+      if(res.solved){
+        if(res.xp_gained>0){confetti();toast('🥷 Solved! +'+res.xp_gained+' XP');}else toast('Already solved ✓');
+        if(res.profile)applyProfile(res.profile);
+        (res.new_badges||[]).forEach((b,i)=>setTimeout(()=>toast(`${b.icon} Badge earned: ${b.name}!`),900*(i+1)));
+        $('cd-msg').innerHTML=`<div class="card" style="background:#0f2a1e;border-color:#26C485"><b style="color:#26C485">✅ ${esc(res.message)}</b>
+          <div class="explain" style="margin-top:8px"><b>Why it matters:</b> ${esc(res.teaches||'')}</div>
+          <button class="btn" style="margin-top:10px" onclick="loadDojo().then(()=>go('dojo'))">Next challenge →</button></div>`;
+      } else {
+        $('cd-msg').innerHTML=`<div class="mut" style="color:#EB6F24">${esc(res.message||('Passed '+res.passed+'/'+res.total))}</div>`;
+      }
+    });
+  });
 }
 
 /* ---------- games ---------- */

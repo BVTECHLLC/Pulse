@@ -150,6 +150,41 @@ def team(db: Session = Depends(get_db), user: User = Depends(current_user)):
     return out
 
 
+@router.get("/dojo")
+def dojo_catalog(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Code Dojo: write-real-code challenges, graded server-side on hidden tests."""
+    from ...services import dojo
+    out = dojo.dojo_view(db, user)
+    out["profile"] = academy.profile_view(db, user)
+    return out
+
+
+@router.get("/dojo/{challenge_id}")
+def dojo_challenge(challenge_id: str, db: Session = Depends(get_db),
+                   user: User = Depends(current_user)):
+    from ...services import dojo
+    c = dojo.challenge_view(db, user, challenge_id)
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Challenge not found")
+    return c
+
+
+class OutputsIn(BaseModel):
+    outputs: list = []
+
+
+@router.post("/dojo/{challenge_id}/submit")
+def dojo_submit(challenge_id: str, body: OutputsIn, db: Session = Depends(get_db),
+                user: User = Depends(current_user)):
+    """Grade the outputs the browser produced by running the learner's code on
+    the hidden inputs. Expected answers never leave the server."""
+    from ...services import dojo
+    out = dojo.grade(db, user, challenge_id, body.outputs)
+    if out is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Challenge not found")
+    return out
+
+
 @router.get("/leaderboard")
 def board(db: Session = Depends(get_db), user: User = Depends(current_user)):
     return {"leaderboard": academy.leaderboard(db, user, staff=is_staff(user))}
