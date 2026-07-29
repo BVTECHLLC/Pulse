@@ -5747,6 +5747,31 @@ def main():
         print("vCISO scorecard: branded QBR PDF from live telemetry - grade curve, "
               "roadmap-by-horizon, empty-roadmap path, tenant isolation OK")
 
+        # ==== v1.70.0: client onboarding wizard — computed, self-verifying ====
+        _ob = c.get(f"/api/onboarding/{cid}").json()
+        assert _ob["steps_total"] == 7 and _ob["required_total"] == 5, _ob
+        assert 0 <= _ob["percent"] <= 100 and "next_step" in _ob
+        # cid (Smoke Co) enrolled a device + checked in early in the suite, so the
+        # agent + telemetry steps are computed-done from real data (not faked).
+        _by = {s["key"]: s for s in _ob["steps"]}
+        assert _by["agent"]["done"] and _by["telemetry"]["done"], _by["agent"]
+        # every step exposes a real CTA the UI can link to
+        assert all(s["cta_href"] and s["cta_label"] for s in _ob["steps"])
+        # brand-new client starts at 0% and its first required step is the profile
+        _fresh = c.post("/api/clients", json={"name": "Onboarding Fresh Co"}).json()["id"]
+        _fw = c.get(f"/api/onboarding/{_fresh}").json()
+        assert _fw["percent"] == 0 and _fw["complete"] is False
+        assert _fw["next_step"]["key"] == "profile", _fw["next_step"]
+        # staff overview lists clients least-done-first
+        _ov = c.get("/api/onboarding").json()["clients"]
+        assert any(r["client_id"] == cid for r in _ov) and _ov[0]["percent"] <= _ov[-1]["percent"]
+        # tenant isolation: a client user sees only their own onboarding
+        assert lc.get(f"/api/onboarding/{cid}").status_code in (403, 404)
+        assert lc.get(f"/api/onboarding/{cid2b}").status_code == 200
+        assert all(r["client_id"] == cid2b for r in lc.get("/api/onboarding").json()["clients"])
+        print("onboarding wizard: 7-step computed checklist (agent/telemetry done from "
+              "real data), 0% fresh client, least-done-first overview, tenant-isolated OK")
+
         # ===================== v1.3: compliance + streak savers + AI questions ==========
         import datetime as _dt13
 
@@ -6485,7 +6510,7 @@ def main():
         print("box self-updater: script parses, CI gate decides green/red/pending "
               "correctly, ff-only + health-gated rollback present OK")
 
-    print("\n=== OpsPilot v1.69.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.70.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -2979,7 +2979,8 @@ async function loadSiteHealth(){
     const al=r.alerts||{};
     const abadge=al.critical?`<span class="badge bad">${al.critical} crit</span>`:(al.total?`<span class="badge warn">${al.total}</span>`:'<span class="muted">0</span>');
     const worst=r.worst?`<a onclick="tab('devices');setTimeout(()=>openDevice360(${r.worst.id}),300)" style="cursor:pointer">${esc(r.worst.hostname)} (${r.worst.health})</a>`:'—';
-    return `<tr><td><b><a onclick="openVcio(${r.client_id},'${esc((r.client||'').replace(/'/g,''))}')" style="cursor:pointer" title="AI vCIO review">${esc(r.client)}</a></b></td><td>${r.devices}</td>
+    return `<tr><td><b><a onclick="openVcio(${r.client_id},'${esc((r.client||'').replace(/'/g,''))}')" style="cursor:pointer" title="AI vCIO review">${esc(r.client)}</a></b>
+     <a onclick="openOnboarding(${r.client_id},'${esc((r.client||'').replace(/'/g,''))}')" style="cursor:pointer;margin-left:6px;font-size:11px" class="muted" title="Onboarding checklist">🚀 setup</a></td><td>${r.devices}</td>
      <td>${r.online}/${r.devices}</td>
      <td><span class="badge ${hc}">${r.avg_health??'—'}</span></td>
      <td>${abadge}</td><td>${r.patches_pending?`<span style="color:var(--warn)">${r.patches_pending}</span>`:'0'}</td>
@@ -4462,6 +4463,35 @@ async function testRmmCfg(){
   const msg=document.getElementById('set-rmm-msg');msg.textContent='testing…';
   const r=await post('/api/rmm/test');const j=await r.json().catch(()=>({}));
   msg.textContent=r.ok?`Connected ✓ (${(j.dashboard||{}).total_agents??'?'} agents)`:(j.detail||'Test failed');
+}
+
+// ===================== Client Onboarding Wizard =====================
+async function openOnboarding(cid, cname){
+  const w=await api(`/api/onboarding/${cid}`);
+  if(!w||w.detail){alert((w&&w.detail)||'Could not load onboarding');return;}
+  const col=w.complete?'#26C485':(w.percent>=50?'#C4923B':'#EB6F24');
+  const rows=(w.steps||[]).map(s=>{
+    const ic=s.done?'✅':(s.optional?'⚪':'⬜');
+    const badge=s.optional&&!s.done?'<span class="muted" style="font-size:10px"> (recommended)</span>':'';
+    const det=s.detail?`<span class="muted" style="font-size:11px"> — ${esc(s.detail)}</span>`:'';
+    const cta=s.done?'':`<a href="${esc(s.cta_href)}" class="btn sm ghost" style="text-decoration:none;float:right">${esc(s.cta_label)} →</a>`;
+    return `<div style="padding:9px 0;border-bottom:1px solid var(--line)">${cta}
+      <div><b>${ic} ${esc(s.title)}</b>${badge}${det}</div>
+      <div class="muted" style="font-size:12px;margin-top:2px">${esc(s.desc)}</div></div>`;}).join('');
+  const html=`<div onclick="if(event.target===this)this.remove()" style="position:fixed;inset:0;z-index:300;background:rgba(4,8,20,.6);display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px;overflow:auto">
+    <div class="card" style="max-width:640px;width:100%">
+      <div class="flex" style="justify-content:space-between"><h3 style="margin:0">🚀 Onboarding — ${esc(cname)}</h3>
+        <button class="btn sm ghost" onclick="this.closest('div[style*=fixed]').remove()">Close</button></div>
+      <div style="display:flex;align-items:center;gap:14px;margin:12px 0">
+        <div style="font-size:30px;font-weight:800;color:${col}">${w.percent}%</div>
+        <div style="flex:1">
+          <div style="height:8px;background:var(--line);border-radius:6px;overflow:hidden"><div style="height:100%;width:${w.percent}%;background:${col}"></div></div>
+          <div class="muted" style="font-size:12px;margin-top:4px">${w.required_done}/${w.required_total} required steps done${w.complete?' — fully onboarded 🎉':(w.next_step?` · next: ${esc(w.next_step.title)}`:'')}</div>
+        </div>
+      </div>
+      ${rows}
+    </div></div>`;
+  const d=document.createElement('div'); d.innerHTML=html; document.body.appendChild(d.firstElementChild);
 }
 
 // ===================== AI vCIO Review =====================
