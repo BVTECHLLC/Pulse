@@ -3913,6 +3913,60 @@ def main():
         print("v1.48.0: public-tools API — whoami echo + CORS pinned to bvtech.org + "
               "SSRF guard (private/loopback/link-local/reserved refused) + 20/min rate limit OK")
 
+        # ==== v1.62.0: tool lead capture -> inbound CRM lead + auto-followup ====
+        from app.models import CrmContact as _CC62, CrmActivity as _CA62, Notification as _N62
+        _LH = {"origin": "https://bvtech.org", "cf-connecting-ip": "203.0.113.62"}
+        # bad email rejected, nothing created
+        assert c.post("/api/public-tools/lead", json={"email": "nope", "tool": "SSL Checker"},
+                      headers=_LH).json()["ok"] is False
+        # a real submission creates a scored inbound lead tagged with the tool
+        _lr = c.post("/api/public-tools/lead", headers=_LH, json={
+            "email": "owner@lonestarcpa.com", "company": "Lone Star CPA",
+            "tool": "Security Scoreboard", "result": "Grade D - no DMARC, MFA gaps"}).json()
+        assert _lr["ok"] is True and "way" in _lr["message"].lower(), _lr
+        _sess62 = _ESL()
+        try:
+            _lead62 = _sess62.query(_CC62).filter(
+                _CC62.email == "owner@lonestarcpa.com").first()
+            assert _lead62 and _lead62.source == "tool" and _lead62.status == "new"
+            assert (_lead62.score or 0) >= 72 and "Website Tool Lead" in (_lead62.tags or [])
+            assert "Security Scoreboard" in (_lead62.tags or [])
+            assert _sess62.query(_CA62).filter(
+                _CA62.contact_id == _lead62.id, _CA62.type == "tool").count() == 1
+            assert _sess62.query(_N62).filter(
+                _N62.message.like("%inbound lead from the Security Scoreboard%")).count() >= 1
+            # the outbound engine will pick this up (emailable, new, not DNC)
+            import datetime as _dt62
+            from app.services import outbound as _ob62
+            _due62 = {c2.id for c2, _ in _ob62.select_due(
+                _sess62, _dt62.datetime(2026, 8, 4, 16, tzinfo=_dt62.timezone.utc))}
+            assert _lead62.id in _due62, "tool lead must enter the outbound sequence"
+            # a returning CUSTOMER using a tool is NOT re-solicited
+            _cust62 = _CC62(name="Existing Client", email="cfo@currentclient.com",
+                            company="Current Client", status="customer",
+                            do_not_contact=False)
+            _sess62.add(_cust62); _sess62.commit()
+        finally:
+            _sess62.close()
+        c.post("/api/public-tools/lead", headers=_LH, json={
+            "email": "cfo@currentclient.com", "tool": "Password Breach Checker"})
+        _sess62b = _ESL()
+        try:
+            _cust62b = _sess62b.query(_CC62).filter(
+                _CC62.email == "cfo@currentclient.com").first()
+            assert _cust62b.status == "customer", "customers must not be re-solicited"
+        finally:
+            _sess62b.close()
+        # lead rate limit: 6th submission from one IP in the window is refused
+        _last62 = None
+        for _i62 in range(7):
+            _last62 = c.post("/api/public-tools/lead", headers={
+                "origin": "https://bvtech.org", "cf-connecting-ip": "203.0.113.63"},
+                json={"email": f"burst{_i62}@example.org", "tool": "x"}).json()
+        assert _last62["ok"] is False and "Too many" in _last62["error"], _last62
+        print("v1.62.0: tool lead capture — inbound CRM lead (scored, tagged) + staff "
+              "notification + enters outbound sequence + customers exempt + rate-limited OK")
+
         # ==== v1.49.0: zero-token deterministic KEV briefing ====
         from app.services import content_autopilot as _ca49
         _kev49 = [
@@ -6242,7 +6296,7 @@ def main():
         print("box self-updater: script parses, CI gate decides green/red/pending "
               "correctly, ff-only + health-gated rollback present OK")
 
-    print("\n=== OpsPilot v1.61.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.62.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

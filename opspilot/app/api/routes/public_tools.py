@@ -203,3 +203,143 @@ def headers_check(host: str, request: Request, resp: Response):
             "score": score, "out_of": len(checks),
             "grade": "A" if score >= 6 else "B" if score == 5 else
             "C" if score == 4 else "D" if score >= 2 else "F"}
+
+
+# --------------------------------------------------------------------------- #
+# v1.62 LEAD CAPTURE — turn free-tool traffic into pipeline.
+#
+# The 24 tools on bvtech.org draw real local businesses running real checks
+# (SSL expiry, breached passwords, the Security Scoreboard). Until now every
+# one of them left anonymously. This optional endpoint - "email me my full
+# report" - lands the visitor in the CRM as an INBOUND lead (higher intent
+# than any cold scrape), tagged with the tool they used and what it found, so
+# the outbound engine follows up automatically. DB work is lazy-imported so
+# the rest of this module stays database-free by design.
+# --------------------------------------------------------------------------- #
+import json as _json_lc
+from urllib import request as _urlreq_lc
+
+_EMAIL_RE = re.compile(r"[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}", re.I)
+_LEAD_RATE: dict = {}
+_LEAD_MAX = 5             # lead submissions / 10 min / ip (anti-abuse)
+
+
+def _lead_limited(request: Request) -> bool:
+    ip = (request.headers.get("cf-connecting-ip")
+          or (request.client.host if request.client else "?"))
+    now = time.time()
+    win = _LEAD_RATE.get(ip)
+    if not win or now - win[0] > 600:
+        _LEAD_RATE[ip] = [now, 1]
+        if len(_LEAD_RATE) > 10000:
+            _LEAD_RATE.clear()
+        return False
+    win[1] += 1
+    return win[1] > _LEAD_MAX
+
+
+@router.post("/lead")
+async def capture_lead(request: Request, resp: Response):
+    """Public lead intake from the free tools. Body: {email, name?, company?,
+    tool, result?, consent?}. Creates/updates a CRM inbound lead and notifies
+    staff. Best-effort + safe: never leaks whether an email already existed."""
+    _cors(request, resp)
+    if _lead_limited(request):
+        return {"ok": False, "error": "Too many submissions - try again in a few minutes."}
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    email = str(body.get("email") or "").strip().lower()[:255]
+    if not _EMAIL_RE.fullmatch(email):
+        return {"ok": False, "error": "Please enter a valid email address."}
+    name = str(body.get("name") or "").strip()[:200] or None
+    company = str(body.get("company") or "").strip()[:200] or None
+    tool = str(body.get("tool") or "free tool").strip()[:80]
+    result = str(body.get("result") or "").strip()[:400] or None
+    ip = (request.headers.get("cf-connecting-ip")
+          or (request.client.host if request.client else "?"))
+
+    from ...core.db import SessionLocal
+    from ...models import CrmContact, Notification
+    from ...services import crm, outbound
+    db = SessionLocal()
+    try:
+        existing = (db.query(CrmContact)
+                    .filter(CrmContact.email.ilike(email)).first())
+        note = f"Used the {tool} at bvtech.org" + (f" - result: {result}" if result else "")
+        is_new = existing is None
+        if existing is None:
+            contact = CrmContact(
+                name=name or email.split("@")[0], email=email, company=company,
+                source="tool", status="new", score=72, market=None,
+                tags=["Website Tool Lead", tool], notes=note)
+            db.add(contact)
+            db.flush()
+        else:
+            contact = existing
+            # a customer or opted-out person using a tool is NOT re-solicited
+            if not contact.do_not_contact and (contact.status or "") not in (
+                    "customer", "client", "won"):
+                contact.status = "new"
+                contact.score = max(contact.score or 0, 72)
+                tags = list(contact.tags or [])
+                for t in ("Website Tool Lead", tool):
+                    if t not in tags:
+                        tags.append(t)
+                contact.tags = tags
+                if company and not contact.company:
+                    contact.company = company
+        crm.log_activity(db, contact, "tool", subject=f"Tool: {tool}",
+                         body=(note + f" (ip {ip})")[:1000], direction="inbound",
+                         meta={"campaign": "inbound_tool", "tool": tool}, commit=False)
+        try:
+            db.add(Notification(
+                client_id=None, target_user_id=None, kind="content",
+                severity="info",
+                message=(f"🌐 New inbound lead from the {tool}: {email}"
+                         + (f" ({company})" if company else "")
+                         + (f" - {result}" if result else "")
+                         + (". Already in CRM - re-engaged." if not is_new else "."))[:1000]))
+        except Exception:  # noqa: BLE001
+            pass
+        db.commit()
+
+        # Optional instant auto-reply through the M365 mailbox, if configured.
+        # Never cold-pitch an existing customer or an opted-out contact - they
+        # get logged and the team is notified, but no automated solicitation.
+        _solicit = (not contact.do_not_contact
+                    and (contact.status or "new") not in ("customer", "client", "won"))
+        sent = False
+        try:
+            send_fn, _ = outbound.resolve_send_fn(db)
+            if send_fn is not None and _solicit:
+                first = (name or "there").split(" ")[0]
+                subject = f"Your {tool} results from BVTech"
+                greet = (f"Hi {first},\n\n"
+                         f"Thanks for using the {tool} on bvtech.org"
+                         + (f" - here's what it flagged: {result}.\n\n" if result else ".\n\n")
+                         + "I'm Jordan, founder of BVTech, a Texas MSP that's kept local "
+                         "businesses secure and running since 2013. If you'd like, I'll do a "
+                         "free 15-minute review of where you stand and hand you the full "
+                         "findings - no pitch, and you keep the list either way.\n\n"
+                         "Grab any slot that suits you: bvtech.org/book\n\n"
+                         "- Jordan Polasek, BVTech LLC")
+                send_fn(email, subject, greet)
+                sent = True
+                # Count this as sequence touch 1 so the outbound engine continues
+                # at the value-add follow-up instead of re-sending the intro.
+                crm.log_activity(db, contact, "email", subject=subject,
+                                 body=greet[:1000], direction="outbound",
+                                 meta={"campaign": "bvtech_acq", "step": 0,
+                                       "via": "tool_autoreply"}, commit=True)
+        except Exception:  # noqa: BLE001
+            sent = False
+        return {"ok": True, "emailed": sent,
+                "message": "Thanks - your results are on the way, and a BVTech "
+                           "specialist will follow up shortly."}
+    except Exception as e:  # noqa: BLE001
+        db.rollback()
+        return {"ok": False, "error": "Something went wrong saving that - please try again."}
+    finally:
+        db.close()
