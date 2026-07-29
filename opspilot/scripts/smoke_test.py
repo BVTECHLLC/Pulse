@@ -5618,8 +5618,32 @@ def main():
         assert _prof["xp"] == _base_xp + _gained
         assert any(b["id"] == "range_all" for b in _prof["badges"]), "Range Master badge"
         print("cyber range: 10 CTF labs (recon/web/auth/crypto/email) - probe emulator "
-              "solves IDOR/SQLi/traversal, difficulty-scaled XP (1575), XP-once, "
+              "solves IDOR/SQLi/traversal, difficulty-scaled XP (1650), XP-once, "
               "first_flag/l33t/range_all badges, no flag leak in views OK")
+
+        # ==== v1.64.0: vCISO scorecard PDF — the board-ready QBR deliverable ====
+        from app.services import vcio as _vcio64
+        # grade mapping is monotonic and bucketed
+        assert _vcio64.maturity_grade(95)[0] == "A" and _vcio64.maturity_grade(30)[0] == "F"
+        assert _vcio64.maturity_grade(72)[0] == "C" and _vcio64.maturity_grade(60)[0] == "D"
+        # renders a valid PDF from live build_review output over an authorized client
+        _pdfresp = c.get(f"/api/vcio/{cid}/scorecard.pdf")
+        assert _pdfresp.status_code == 200, _pdfresp.status_code
+        assert _pdfresp.headers["content-type"] == "application/pdf", _pdfresp.headers
+        assert "attachment" in _pdfresp.headers.get("content-disposition", "")
+        _pdfb = _pdfresp.content
+        assert _pdfb[:5] == b"%PDF-" and len(_pdfb) > 1500, len(_pdfb)
+        # renders directly from a synthetic review, incl. empty-roadmap edge case
+        _rev64 = {"client": "Edge Co", "generated_at": "2026-07-29T00:00:00+00:00",
+                  "maturity_index": 91, "counts": {"total": 0, "critical": 0, "high": 0},
+                  "budget_total": 0, "roadmap": {"immediate": [], "quarter": [], "year": []},
+                  "highlights": {"posture_grade": "A", "patch_compliance": 98,
+                                 "open_tickets": 1, "mrr": 5000.0}}
+        assert _vcio64.scorecard_pdf(_rev64)[:5] == b"%PDF-"
+        # a client user cannot pull another tenant's scorecard
+        assert lc.get(f"/api/vcio/{cid}/scorecard.pdf").status_code in (403, 404)
+        print("vCISO scorecard: branded QBR PDF from live telemetry - grade curve, "
+              "roadmap-by-horizon, empty-roadmap path, tenant isolation OK")
 
         # ===================== v1.3: compliance + streak savers + AI questions ==========
         import datetime as _dt13
@@ -6359,7 +6383,7 @@ def main():
         print("box self-updater: script parses, CI gate decides green/red/pending "
               "correctly, ff-only + health-gated rollback present OK")
 
-    print("\n=== OpsPilot v1.63.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.64.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

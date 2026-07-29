@@ -4496,6 +4496,7 @@ async function openVcio(cid, cname){
       <div class="muted" style="font-size:12px;margin-bottom:6px">${rv.counts.total} recommendation(s) · ${rv.counts.critical} critical · ${rv.counts.high} high</div>
       ${road||'<div class="muted">✅ No priority actions — this client is in great shape.</div>'}
       <div style="margin-top:12px"><button class="btn sm" onclick="vcioNarrate(${cid},'${esc((cname||'').replace(/'/g,''))}',this)">✨ Write executive summary</button>
+        <a class="btn sm ghost" href="/api/vcio/${cid}/scorecard.pdf" target="_blank" rel="noopener" style="margin-left:6px;text-decoration:none">⬇︎ Download PDF (QBR)</a>
         <span id="vcio-narr" style="display:block;white-space:pre-wrap;margin-top:8px;font-size:13px"></span></div>
     </div></div>`;
   const d=document.createElement('div'); d.innerHTML=html; document.body.appendChild(d.firstElementChild);

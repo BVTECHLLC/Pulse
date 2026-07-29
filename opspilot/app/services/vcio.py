@@ -219,3 +219,185 @@ def build_review(db: Session, client: Client, now: datetime | None = None, *,
         except Exception:  # noqa: BLE001
             pass
     return review
+
+
+# --------------------------------------------------------------------------- #
+# Board-ready PDF scorecard (the QBR deliverable)
+# --------------------------------------------------------------------------- #
+_HORIZON_LABEL = {"immediate": "Do Now (0-30 days)",
+                  "quarter": "This Quarter (30-90 days)",
+                  "year": "This Year (planning)"}
+_PRIORITY_LABEL = {"critical": "CRITICAL", "high": "HIGH", "medium": "MEDIUM", "low": "LOW"}
+
+
+def maturity_grade(idx: int) -> tuple[str, str]:
+    """Letter grade + one-line standing for a 0-100 maturity index."""
+    if idx >= 90:
+        return "A", "Excellent — a mature, well-defended IT environment."
+    if idx >= 80:
+        return "B", "Strong — solid posture with a few areas to tighten."
+    if idx >= 70:
+        return "C", "Fair — functional, but real gaps are raising business risk."
+    if idx >= 55:
+        return "D", "At risk — several priorities need attention this quarter."
+    return "F", "Critical — immediate remediation is strongly advised."
+
+
+def _fmt_money(v) -> str:
+    try:
+        return f"${float(v):,.0f}"
+    except (TypeError, ValueError):
+        return "-"
+
+
+def scorecard_pdf(review: dict) -> bytes:
+    """Render build_review() output into a branded, client-ready PDF (bytes)."""
+    from .branded_pdf import (BrandedPDF, to_bytes, latin, NAVY, ACCENT, GOLD,
+                              INK, SOFT, LINE, PAPER_TINT, GOOD, WARN, BAD)
+
+    idx = int(review.get("maturity_index") or 0)
+    grade, standing = maturity_grade(idx)
+    hi = review.get("highlights") or {}
+    gen = (review.get("generated_at") or "")[:10]
+
+    pdf = BrandedPDF(doc_id="VCIO-QBR", title="Technology Business Review",
+                     classification=f"Confidential - Prepared for {review.get('client', 'Client')}")
+    pdf.add_page()
+    pdf.brand_band("Virtual CIO  -  Technology Business Review")
+
+    # ---- title block ----
+    pdf.set_xy(18, 44)
+    pdf.set_font("helvetica", "", 9)
+    pdf.set_text_color(*ACCENT)
+    pdf.cell(0, 5, latin("TECHNOLOGY BUSINESS REVIEW"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("helvetica", "B", 20)
+    pdf.set_text_color(*NAVY)
+    pdf.multi_cell(0, 8.5, latin(review.get("client", "Client")), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("helvetica", "", 9.5)
+    pdf.set_text_color(*SOFT)
+    pdf.cell(0, 5, latin(f"Prepared by BVTech LLC (vCIO)   -   Review date {gen}"),
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    # ---- maturity hero: score card + grade + bar ----
+    y0 = pdf.get_y()
+    band = GOOD if idx >= 80 else (WARN if idx >= 60 else BAD)
+    # left: big score tile
+    pdf.set_fill_color(*NAVY)
+    pdf.rect(18, y0, 46, 30, style="F")
+    pdf.set_xy(18, y0 + 3.5)
+    pdf.set_font("helvetica", "B", 30)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(46, 14, latin(str(idx)), align="C")
+    pdf.set_xy(18, y0 + 18.5)
+    pdf.set_font("helvetica", "", 8)
+    pdf.set_text_color(*GOLD)
+    pdf.cell(46, 5, latin("MATURITY INDEX / 100"), align="C")
+    pdf.set_xy(18, y0 + 23)
+    pdf.set_font("helvetica", "B", 11)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(46, 6, latin(f"Grade {grade}"), align="C")
+    # right: standing + score bar
+    pdf.set_xy(70, y0 + 1)
+    pdf.set_font("helvetica", "B", 11)
+    pdf.set_text_color(*NAVY)
+    pdf.multi_cell(pdf.w - 18 - 70, 5.6, latin(standing), new_x="LMARGIN", new_y="NEXT")
+    bar_x, bar_y, bar_w = 70, y0 + 16, pdf.w - 18 - 70
+    pdf.set_fill_color(*LINE)
+    pdf.rect(bar_x, bar_y, bar_w, 5.5, style="F")
+    pdf.set_fill_color(*band)
+    pdf.rect(bar_x, bar_y, bar_w * max(0.02, min(1.0, idx / 100.0)), 5.5, style="F")
+    pdf.set_xy(70, bar_y + 7)
+    pdf.set_font("helvetica", "", 8)
+    pdf.set_text_color(*SOFT)
+    c = review.get("counts") or {}
+    pdf.cell(0, 4, latin(f"{c.get('critical', 0)} critical  -  {c.get('high', 0)} high-priority  "
+                         f"-  {c.get('total', 0)} total recommendations"),
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.set_y(y0 + 34)
+
+    # ---- highlight metric cards ----
+    cards = [("Security Grade", hi.get("posture_grade") or "-"),
+             ("Patch Compliance", (f"{hi.get('patch_compliance')}%"
+                                   if hi.get("patch_compliance") is not None else "-")),
+             ("Open Tickets", (str(hi.get("open_tickets"))
+                               if hi.get("open_tickets") is not None else "-")),
+             ("Monthly Revenue", _fmt_money(hi.get("mrr")))]
+    gap, cw = 4, (pdf.w - 36 - 3 * 4) / 4
+    cy = pdf.get_y()
+    x = 18
+    for label, val in cards:
+        pdf.set_fill_color(*PAPER_TINT)
+        pdf.set_draw_color(*LINE)
+        pdf.rect(x, cy, cw, 20, style="DF")
+        pdf.set_xy(x, cy + 3)
+        pdf.set_font("helvetica", "B", 15)
+        pdf.set_text_color(*NAVY)
+        pdf.cell(cw, 8, latin(str(val)), align="C")
+        pdf.set_xy(x, cy + 12.5)
+        pdf.set_font("helvetica", "", 7.5)
+        pdf.set_text_color(*SOFT)
+        pdf.cell(cw, 4, latin(label.upper()), align="C")
+        x += cw + gap
+    pdf.set_y(cy + 26)
+
+    # ---- executive summary ----
+    pdf.h1("Executive Summary")
+    narrative = review.get("narrative")
+    if narrative:
+        for para in str(narrative).split("\n"):
+            if para.strip():
+                pdf.para(para.strip())
+    else:
+        total = (review.get("counts") or {}).get("total", 0)
+        crit = (review.get("counts") or {}).get("critical", 0)
+        pdf.para(
+            f"{review.get('client', 'The organization')} currently scores {idx}/100 on our "
+            f"technology maturity index (grade {grade}). {standing} This review identifies "
+            f"{total} prioritized recommendation(s)"
+            + (f", including {crit} rated critical," if crit else "")
+            + " sequenced below by urgency. Each item ties a specific technology gap to the "
+            "business risk it creates and the investment required to close it.")
+
+    # ---- roadmap by horizon ----
+    roadmap = review.get("roadmap") or {}
+    any_rec = False
+    for hz in ("immediate", "quarter", "year"):
+        items = roadmap.get(hz) or []
+        if not items:
+            continue
+        any_rec = True
+        pdf.h1(_HORIZON_LABEL.get(hz, hz.title()))
+        rows = []
+        for r in items:
+            rows.append([
+                _PRIORITY_LABEL.get(r.get("priority"), (r.get("priority") or "").upper()),
+                r.get("area") or "",
+                f"{r.get('title', '')}. {r.get('detail', '')}".strip(),
+                _fmt_money(r.get("budget")) if r.get("budget") else "-",
+            ])
+        pdf.table_grid(["Priority", "Area", "Recommendation", "Budget"],
+                       [22, 24, pdf.w - 36 - 22 - 24 - 26, 26], rows)
+    if not any_rec:
+        pdf.h1("Roadmap")
+        pdf.para("No open priorities at this time — the environment is meeting our operational "
+                 "and security benchmarks. We will continue proactive monitoring and revisit at "
+                 "the next review.")
+
+    # ---- investment summary ----
+    pdf.h1("Investment Summary")
+    bt = review.get("budget_total") or 0
+    if bt:
+        pdf.para(f"Estimated planned capital for the recommendations above (primarily hardware "
+                 f"lifecycle): {_fmt_money(bt)}. Operational and security remediations are "
+                 f"delivered under your existing managed-services agreement at no additional cost.")
+    else:
+        pdf.para("The recommendations above are delivered under your existing managed-services "
+                 "agreement — no additional capital is required at this time.")
+    pdf.bullets([
+        "This review is generated from live telemetry across your fleet, security posture, "
+        "patching, service tickets, and contract data.",
+        "Priorities are recomputed every review cycle so progress is measurable quarter over quarter.",
+        "Questions or want to walk through the roadmap? Reach your BVTech vCIO at help@bvtech.org.",
+    ])
+    return to_bytes(pdf)

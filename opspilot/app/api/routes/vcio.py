@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from ...core.db import get_db
@@ -26,3 +26,18 @@ def review(client_id: int, narrative: bool = False, db: Session = Depends(get_db
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Client not found")
     assert_client_access(user, client_id)
     return vcio.build_review(db, client, datetime.now(timezone.utc), with_narrative=narrative)
+
+
+@router.get("/{client_id}/scorecard.pdf")
+def scorecard(client_id: int, narrative: bool = True, db: Session = Depends(get_db),
+              user: User = Depends(current_user)):
+    """The board-ready QBR deliverable: a branded PDF technology business review."""
+    client = db.get(Client, client_id)
+    if not client:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Client not found")
+    assert_client_access(user, client_id)
+    review = vcio.build_review(db, client, datetime.now(timezone.utc), with_narrative=narrative)
+    pdf = vcio.scorecard_pdf(review)
+    fname = f"vCIO-Review-{client.name.replace(' ', '_')}.pdf"
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"'})
