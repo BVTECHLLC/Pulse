@@ -1537,6 +1537,230 @@ LABS = [
                    "the real fix for SQLi is parameterized queries, not regex filtering — "
                    "but writing a WAF rule teaches you exactly how attacks are shaped.",
     },
+    # ------------------------------------------------------------------ #
+    # Wave 3 — more crypto/encoding, OSINT, and modern web (SSTI/NoSQL/
+    # GraphQL/CORS/.env). Still safe emulators + server-side flag checks.
+    # ------------------------------------------------------------------ #
+    {
+        "id": "binary-decode", "title": "Ones and Zeros", "icon": "🔢",
+        "difficulty": "Easy", "category": "Crypto", "points": DIFF_XP["Easy"],
+        "brief": "Eight bits make a byte, and a byte is a character. Decode this binary "
+                 "back into text.",
+        "target": {"kind": "data",
+                   "binary": "01000110 01001100 01000001 01000111 01111011 01100010 "
+                             "01101001 01101110 01100001 01110010 01111001 01011111 "
+                             "01101001 01110011 01011111 01101010 01110101 01110011 "
+                             "01110100 01011111 01100010 01100001 01110011 01100101 "
+                             "01011111 01110100 01110111 01101111 01111101",
+                   "note": "Each 8-bit group is one ASCII character. 01000110 = 70 = 'F'."},
+        "hints": ["Convert each 8-bit group to a decimal number, then to its ASCII letter.",
+                  "The first byte 01000110 is 'F' — the flag starts with FLAG{."],
+        "check": ("exact", "FLAG{binary_is_just_base_two}"),
+        "teaches": "Binary is just base-2 text encoding — not a secret. Everything a "
+                   "computer stores is bits; representation is not protection.",
+    },
+    {
+        "id": "hex-decode", "title": "Base Sixteen", "icon": "🔠",
+        "difficulty": "Easy", "category": "Crypto", "points": DIFF_XP["Easy"],
+        "brief": "Two hex digits make one byte. Decode this hex string into text.",
+        "target": {"kind": "data",
+                   "hex": "464c41477b6865785f69735f626173655f7369787465656e7d",
+                   "note": "Pairs of hex digits map to bytes: 46 = 'F', 4c = 'L' ..."},
+        "hints": ["Split into pairs and convert each from base-16 to a character.",
+                  "46 4c 41 47 spells FLAG."],
+        "check": ("exact", "FLAG{hex_is_base_sixteen}"),
+        "teaches": "Hex is a compact way to show bytes (0-255 as two digits). Common in "
+                   "dumps, hashes, and colors — a display format, never encryption.",
+    },
+    {
+        "id": "morse-code", "title": "Dots and Dashes", "icon": "📻",
+        "difficulty": "Easy", "category": "Crypto", "points": DIFF_XP["Easy"],
+        "brief": "The oldest digital code. Translate the Morse below to letters and submit "
+                 "the hidden word (that's the flag).",
+        "target": {"kind": "data",
+                   "morse": "-.-. .- .--. - ..- .-. . - .... . -.. .- ... ....",
+                   "note": "Space separates letters. Use a Morse chart: -.-. = C, .- = A ..."},
+        "hints": ["Decode letter by letter with a Morse table.",
+                  "It's a single all-caps phrase telling you what you just did."],
+        "check": ("exact", "CAPTURETHEDASH"),
+        "teaches": "Morse is a variable-length encoding of the alphabet into on/off "
+                   "signals — the ancestor of all digital comms. Encoding, not cipher.",
+    },
+    {
+        "id": "rot47", "title": "The Bigger Wheel", "icon": "🎯",
+        "difficulty": "Medium", "category": "Crypto", "points": DIFF_XP["Medium"],
+        "brief": "ROT13's cousin. ROT47 rotates all 94 printable ASCII characters (not "
+                 "just letters) by 47. Rotate it back to read the flag.",
+        "target": {"kind": "data",
+                   "cipher": "u{pvLC@Ecf0D9:7ED0?:?6EJ7@FCN",
+                   "note": "Rotate each printable char (ASCII 33-126) by 47; like ROT13, "
+                           "applying it again decodes it. Punctuation moves too this time."},
+        "hints": ["ROT47 is self-inverse — apply ROT47 again.",
+                  "The result starts with FLAG{ once you rotate correctly."],
+        "check": ("exact", "FLAG{rot47_shifts_ninetyfour}"),
+        "teaches": "ROT47 extends the Caesar idea to punctuation and digits, which is why "
+                   "the ciphertext looks 'weirder' — but it's still a fixed-shift toy.",
+    },
+    {
+        "id": "vigenere", "title": "The Keyed Cipher", "icon": "🗝️",
+        "difficulty": "Medium", "category": "Crypto", "points": DIFF_XP["Medium"],
+        "brief": "Vigenère shifts each letter by a repeating keyword instead of a constant. "
+                 "The key is KEY. Decrypt the message.",
+        "target": {"kind": "data",
+                   "cipher": "PPYQ{zgqilovc_binoerc_xfo_oci}",
+                   "key": "KEY",
+                   "note": "Each letter was shifted by the matching key letter (K=+10, E=+4, "
+                           "Y=+24), repeating. Subtract the key to decrypt; non-letters "
+                           "pass through."},
+        "hints": ["Reverse the shift: for each letter subtract K/E/Y (10/4/24) in turn.",
+                  "P shifted back by K(10) = F. The flag emerges as FLAG{..."],
+        "check": ("exact", "FLAG{vigenere_repeats_the_key}"),
+        "teaches": "Vigenère resisted attack for centuries but falls to frequency analysis "
+                   "once the key length is found (Kasiski). Short reused keys = breakable.",
+    },
+    {
+        "id": "jwt-decode", "title": "The Token Talks", "icon": "🎟️",
+        "difficulty": "Medium", "category": "Forensics", "points": DIFF_XP["Medium"],
+        "brief": "A JWT is three base64url parts joined by dots. The payload is NOT "
+                 "encrypted — anyone can read it. Decode the payload and find the flag.",
+        "target": {"kind": "data",
+                   "jwt": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzdmMtYWNjb3Vu"
+                          "dCIsInJvbGUiOiJzZXJ2aWNlIiwibm90ZSI6IkZMQUd7and0X3BheWxvYWRf"
+                          "aXNfb25seV9iYXNlNjR1cmx9In0.c2lnbmF0dXJlX2hlcmU",
+                   "note": "Split on '.', take the MIDDLE part, base64url-decode it to JSON. "
+                           "The flag is in a claim."},
+        "hints": ["The payload is the second segment (between the two dots).",
+                  "base64url-decode it — you'll get JSON with a 'note' claim holding the flag."],
+        "check": ("exact", "FLAG{jwt_payload_is_only_base64url}"),
+        "teaches": "JWT payloads are signed, not encrypted — never put secrets in them. "
+                   "Anyone holding the token reads every claim. Signature stops tampering, "
+                   "not reading.",
+    },
+    {
+        "id": "google-dork", "title": "Search Like an Attacker", "icon": "🔎",
+        "difficulty": "Easy", "category": "OSINT", "points": DIFF_XP["Easy"],
+        "brief": "Attackers find exposed files with search operators ('dorks'). These "
+                 "results came from  filetype:env  \"DB_PASSWORD\"  — read them for the flag.",
+        "target": {"kind": "data",
+                   "results": "Google  filetype:env DB_PASSWORD site:vertexdental.com\n\n"
+                              "1. https://vertexdental.com/old/.env\n"
+                              "   DB_HOST=10.0.0.5  DB_USER=root\n"
+                              "   DB_PASSWORD=FLAG{dorks_find_what_you_forgot_to_hide}\n\n"
+                              "2. https://vertexdental.com/backup/config.env  (403 Forbidden)",
+                   "note": "Search engines index anything reachable — including files you "
+                           "never meant to publish. The flag is a leaked DB_PASSWORD."},
+        "hints": ["Read result #1 — the .env file's contents are right there.",
+                  "The flag is the DB_PASSWORD value."],
+        "check": ("exact", "FLAG{dorks_find_what_you_forgot_to_hide}"),
+        "teaches": "Google dorking surfaces exposed configs, backups, and credentials that "
+                   "were 'hidden' only by obscurity. Don't publish secrets; use robots + "
+                   "access control + secret scanning, and rotate anything indexed.",
+    },
+    {
+        "id": "cert-transparency", "title": "Every Cert Is Public", "icon": "📑",
+        "difficulty": "Easy", "category": "OSINT", "points": DIFF_XP["Easy"],
+        "brief": "Every TLS certificate is logged publicly (crt.sh). That reveals subdomains "
+                 "you thought were private. Read the log and find the forgotten one.",
+        "target": {"kind": "data",
+                   "crtsh": "crt.sh?q=vertexdental.com\n\n"
+                            "  www.vertexdental.com\n"
+                            "  mail.vertexdental.com\n"
+                            "  vpn.vertexdental.com\n"
+                            "  staging-admin.vertexdental.com   <- banner: FLAG{ct_logs_reveal_subdomains}\n"
+                            "  autodiscover.vertexdental.com",
+                   "note": "Certificate Transparency logs every issued cert. A 'hidden' "
+                           "staging host shows up the moment it gets HTTPS."},
+        "hints": ["Scan the subdomain list for one that shouldn't be internet-facing.",
+                  "staging-admin exposes the flag in its banner."],
+        "check": ("exact", "FLAG{ct_logs_reveal_subdomains}"),
+        "teaches": "You cannot hide a subdomain that has a public TLS cert — CT logs list "
+                   "them all. Assume every hostname is discoverable; secure staging like prod.",
+    },
+    {
+        "id": "exposed-env", "title": "The Dotfile Nobody Blocked", "icon": "🗂️",
+        "difficulty": "Medium", "category": "Recon", "points": DIFF_XP["Medium"],
+        "brief": "Apps read secrets from a .env file — which should NEVER be web-served. "
+                 "This one is. Probe for it and read the flag.",
+        "target": {"kind": "probe",
+                   "instructions": "Try fetching common sensitive files by path.",
+                   "examples": ["?path=/index.html", "?path=/.env", "?path=/config.php.bak"]},
+        "hints": ["Request /.env directly — many deploys forget to block dotfiles.",
+                  "The flag is stored as an APP_SECRET inside the .env."],
+        "check": ("exact", "FLAG{never_ship_dot_env}"),
+        "teaches": "A web-served .env leaks database creds, API keys, and app secrets in "
+                   "one request. Block dotfiles at the web server, keep .env out of web "
+                   "roots, and never commit it to git.",
+    },
+    {
+        "id": "ssti", "title": "The Template Does Math", "icon": "🧮",
+        "difficulty": "Hard", "category": "Web", "points": DIFF_XP["Hard"],
+        "brief": "This 'hello, {name}' page runs your input through its template engine. If "
+                 "{{7*7}} comes back as 49, the engine is EVALUATING your input (SSTI). "
+                 "Prove it and read the flag.",
+        "target": {"kind": "probe",
+                   "instructions": "Your name value is rendered by the server's template "
+                                   "engine. Try plain text, then a template expression.",
+                   "examples": ["?name=Jordan", "?name={{7*7}}", "?name={{config}}"]},
+        "hints": ["Send name={{7*7}} — if it returns 49, the template is executing input.",
+                  "Once you confirm evaluation, the lab hands you the flag."],
+        "check": ("exact", "FLAG{template_injection_runs_code}"),
+        "teaches": "Server-Side Template Injection lets attacker input reach the template "
+                   "engine and run code (RCE in many engines). Never render user input as a "
+                   "template; pass it as data to a pre-compiled template.",
+    },
+    {
+        "id": "nosql-auth", "title": "Not Equal to Secure", "icon": "🍃",
+        "difficulty": "Medium", "category": "Web", "points": DIFF_XP["Medium"],
+        "brief": "This login builds a MongoDB query from your JSON input. Operators like "
+                 "$ne ('not equal') turn the password check into 'any password'. Bypass it.",
+        "target": {"kind": "probe",
+                   "instructions": "The login accepts user and pass. Instead of a real "
+                                   "password, inject a query operator.",
+                   "examples": ["?user=admin&pass=hunter2",
+                                "?user=admin&pass[$ne]=x", "?user[$ne]=&pass[$ne]="]},
+        "hints": ["Send pass[$ne]=x — 'password not equal to x' matches the real password.",
+                  "The lab detects the operator injection and logs you in with the flag."],
+        "check": ("exact", "FLAG{nosql_operators_are_injectable}"),
+        "teaches": "NoSQL injection abuses query operators ($ne, $gt, $regex) smuggled via "
+                   "untyped input. Validate/cast types, reject objects where strings are "
+                   "expected, and use an ODM that separates data from query structure.",
+    },
+    {
+        "id": "graphql-introspection", "title": "Ask the API About Itself", "icon": "📡",
+        "difficulty": "Hard", "category": "Web", "points": DIFF_XP["Hard"],
+        "brief": "GraphQL can describe its own schema via introspection — often left on in "
+                 "production, exposing hidden queries. Introspect this endpoint and call the "
+                 "field you find.",
+        "target": {"kind": "probe",
+                   "instructions": "Send a query. Try introspection (__schema) to list "
+                                   "types/fields, then call the hidden one.",
+                   "examples": ["?query={me{name}}", "?query={__schema{queryType{fields{name}}}}",
+                                "?query={secretFlag}"]},
+        "hints": ["Introspect with {__schema...} — you'll see a field named secretFlag.",
+                  "Then query {secretFlag} to retrieve it."],
+        "check": ("exact", "FLAG{introspection_maps_the_whole_api}"),
+        "teaches": "Left-on GraphQL introspection hands attackers a full map of your API, "
+                   "including admin/debug fields. Disable introspection in production and "
+                   "authorize every field resolver.",
+    },
+    {
+        "id": "cors-misconfig", "title": "Trusting the Wrong Origin", "icon": "🌐",
+        "difficulty": "Medium", "category": "Web", "points": DIFF_XP["Medium"],
+        "brief": "This API reflects any Origin into Access-Control-Allow-Origin AND allows "
+                 "credentials — so an attacker's site can read a logged-in victim's data. "
+                 "Send a malicious Origin and see the flag it reflects.",
+        "target": {"kind": "probe",
+                   "instructions": "Set the origin you're 'requesting from'. Try your own "
+                                   "site, then an attacker domain.",
+                   "examples": ["?origin=https://vertexdental.com",
+                                "?origin=https://evil.attacker.com"]},
+        "hints": ["Use an external attacker origin — the server echoes it back as allowed.",
+                  "When it reflects an untrusted origin WITH credentials, it leaks the flag."],
+        "check": ("exact", "FLAG{cors_reflect_plus_credentials}"),
+        "teaches": "Reflecting arbitrary Origins with Allow-Credentials lets any site make "
+                   "authenticated cross-origin reads. Use a strict origin allowlist and "
+                   "never combine credentials with a wildcard/reflected origin.",
+    },
 ]
 
 # --------------------------------------------------------------------------- #
@@ -1909,6 +2133,60 @@ def lab_probe(lab_id: str, params: dict) -> dict:
         if host:
             return resp(200, f"PING {host} ... 64 bytes, 0% packet loss")
         return resp(400, "Provide ?host= to ping.")
+
+    if lab_id == "exposed-env":
+        path = (params.get("path") or "").strip().lower().lstrip("/")
+        if path == ".env":
+            return resp(200, "APP_ENV=production\nDB_PASSWORD=hunter2\n"
+                             "APP_SECRET=FLAG{never_ship_dot_env}")
+        if path in ("index.html", ""):
+            return resp(200, "<html>Vertex Dental</html>")
+        return resp(404, "Not found. Try a sensitive dotfile like ?path=/.env")
+
+    if lab_id == "ssti":
+        name = params.get("name") or ""
+        if "{{" in name and "}}" in name:
+            inner = name[name.find("{{") + 2:name.find("}}")].strip().replace(" ", "")
+            if inner == "7*7":
+                return resp(200, "Hello, 49  <-- the engine EVALUATED your input! "
+                                 "FLAG{template_injection_runs_code}")
+            if inner in ("config", "self", "7*'7'"):
+                return resp(200, "Hello, <Config {...}>  (engine is evaluating — try {{7*7}})")
+            return resp(200, f"Hello, [rendered:{inner}]  (it evaluated — now prove it with 7*7)")
+        return resp(200, f"Hello, {name}")
+
+    if lab_id == "nosql-auth":
+        # operator injection arrives as pass[$ne]=x -> param key "pass[$ne]"
+        keys = " ".join(params.keys()).lower()
+        if "$ne" in keys or "$gt" in keys or "$regex" in keys:
+            return resp(200, "Authentication bypassed via query operator! Welcome admin. "
+                             "FLAG{nosql_operators_are_injectable}")
+        if params.get("user") and params.get("pass"):
+            return resp(401, "Invalid username or password.")
+        return resp(400, "Provide user and pass (try a $ne operator on pass).")
+
+    if lab_id == "graphql-introspection":
+        q = (params.get("query") or "").replace(" ", "").lower()
+        if "__schema" in q:
+            return resp(200, "{ queryType: { fields: [ {name:'me'}, {name:'secretFlag'} ] } }\n"
+                             "(introspection ON — a hidden field 'secretFlag' exists. Query it.)")
+        if "secretflag" in q:
+            return resp(200, "{ \"data\": { \"secretFlag\": "
+                             "\"FLAG{introspection_maps_the_whole_api}\" } }")
+        if "me" in q:
+            return resp(200, "{ \"data\": { \"me\": { \"name\": \"guest\" } } }")
+        return resp(400, "Send a ?query={...}. Introspection is a good start.")
+
+    if lab_id == "cors-misconfig":
+        origin = (params.get("origin") or "").strip()
+        if origin.lower().startswith(("http://", "https://")):
+            trusted = origin.lower().rstrip("/").endswith("vertexdental.com")
+            if not trusted:
+                return resp(200, f"Access-Control-Allow-Origin: {origin}\n"
+                                 "Access-Control-Allow-Credentials: true\n"
+                                 "{ \"note\": \"FLAG{cors_reflect_plus_credentials}\" }")
+            return resp(200, f"Access-Control-Allow-Origin: {origin} (trusted own site)")
+        return resp(400, "Provide ?origin= (an https URL).")
 
     return resp(404, "No such lab endpoint.")
 

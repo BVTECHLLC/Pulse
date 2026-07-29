@@ -368,7 +368,9 @@ function probePlaceholder(id){return ({
   'sqli-login':"user=admin&pass=' OR '1'='1",'path-traversal':'file=welcome.txt',
   'git-exposed':'path=/.git/config','open-redirect':'next=https://evil.example',
   'xss-reflected':'q=<script>alert(1)</script>','mass-assignment':'name=Jordan&role=admin',
-  'ssrf-metadata':'url=http://169.254.169.254/latest/meta-data/','cmd-injection':'host=8.8.8.8; cat flag.txt'
+  'ssrf-metadata':'url=http://169.254.169.254/latest/meta-data/','cmd-injection':'host=8.8.8.8; cat flag.txt',
+  'exposed-env':'path=/.env','ssti':'name={{7*7}}','nosql-auth':'user=admin&pass[$ne]=x',
+  'graphql-introspection':'query={__schema{queryType{fields{name}}}}','cors-misconfig':'origin=https://evil.attacker.com'
 }[id])||'param=value';}
 async function runProbe(id){
   const q=($('probe-q').value||'').trim().replace(/^\?/,'');

@@ -5630,6 +5630,10 @@ def main():
                                    params={"host": "8.8.8.8"}).json()["body"], "cmdi benign leak"
         assert "FLAG" not in c.get("/api/academy/labs/ssrf-metadata/probe",
                                    params={"url": "https://example.com"}).json()["body"], "ssrf benign leak"
+        assert "FLAG" not in c.get("/api/academy/labs/ssti/probe",
+                                   params={"name": "Jordan"}).json()["body"], "ssti benign leak"
+        assert "49" in c.get("/api/academy/labs/ssti/probe",
+                             params={"name": "{{7*7}}"}).json()["body"], "ssti must evaluate"
         # capture flags across EVERY lab -> difficulty-scaled XP, once each
         _solutions = {
             "recon-source": "FLAG{view_source_is_recon_101}",
@@ -5658,6 +5662,20 @@ def main():
             "cmd-injection": "FLAG{never_pass_user_input_to_a_shell}",
             # interactive coding lab: submit a working WAF regex, not a flag
             "regex-waf": r"'\s*(or|and|union|;|--)|union\s+select|drop\s+table",
+            # wave 3 — encoding/crypto, OSINT, modern web
+            "binary-decode": "FLAG{binary_is_just_base_two}",
+            "hex-decode": "FLAG{hex_is_base_sixteen}",
+            "morse-code": "CAPTURETHEDASH",
+            "rot47": "FLAG{rot47_shifts_ninetyfour}",
+            "vigenere": "FLAG{vigenere_repeats_the_key}",
+            "jwt-decode": "FLAG{jwt_payload_is_only_base64url}",
+            "google-dork": "FLAG{dorks_find_what_you_forgot_to_hide}",
+            "cert-transparency": "FLAG{ct_logs_reveal_subdomains}",
+            "exposed-env": "FLAG{never_ship_dot_env}",
+            "ssti": "FLAG{template_injection_runs_code}",
+            "nosql-auth": "FLAG{nosql_operators_are_injectable}",
+            "graphql-introspection": "FLAG{introspection_maps_the_whole_api}",
+            "cors-misconfig": "FLAG{cors_reflect_plus_credentials}",
         }
         # every lab must be covered so range_all is reachable
         assert set(_solutions) == set(_aca._LABS), \
@@ -6452,7 +6470,7 @@ def main():
         print("box self-updater: script parses, CI gate decides green/red/pending "
               "correctly, ff-only + health-gated rollback present OK")
 
-    print("\n=== OpsPilot v1.67.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.68.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
