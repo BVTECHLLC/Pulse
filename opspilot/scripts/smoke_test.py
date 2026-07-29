@@ -5497,7 +5497,9 @@ def main():
         assert _anon2.get("/api/academy/catalog").status_code in (401, 403)
 
         cat = c.get("/api/academy/catalog").json()
-        assert cat["total_lessons"] >= 10 and cat["modules"] and cat["games"], "catalog thin"
+        assert cat["total_lessons"] >= 20 and cat["modules"] and cat["games"], "catalog thin"
+        _lmods = {m["id"] for m in cat["modules"]}
+        assert {"cloud-identity", "compliance-privacy"} <= _lmods, "new lesson modules missing"
         assert cat["profile"]["xp"] == 0 and cat["profile"]["streak_days"] == 0
 
         first = cat["modules"][0]["lessons"][0]["id"]
@@ -6383,7 +6385,7 @@ def main():
         print("box self-updater: script parses, CI gate decides green/red/pending "
               "correctly, ff-only + health-gated rollback present OK")
 
-    print("\n=== OpsPilot v1.64.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.65.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

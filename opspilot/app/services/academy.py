@@ -575,6 +575,461 @@ scam pipelines ("pig butchering"). Block, delete, don't be lonely-polite.</p>
             },
         ],
     },
+    {
+        "id": "cloud-identity", "title": "Cloud & Identity", "icon": "☁️",
+        "blurb": "Your data doesn't live in a server closet anymore — it lives in Microsoft 365, Google, and a dozen SaaS apps. The keys to all of it are your identity. Learn to guard it.",
+        "lessons": [
+            {
+                "id": "m365-security", "title": "Locking Down Microsoft 365 & Google Workspace", "minutes": 6, "icon": "🗄️",
+                "body": """
+<p>For most small businesses, <b>Microsoft 365 (or Google Workspace) IS the company</b> —
+email, files, calendars, Teams/Meet, the works. Break into that one account and an
+attacker has everything. The good news: a handful of settings stop the vast majority of
+account takeovers.</p>
+<h4>What attackers do once they're in your mailbox</h4>
+<ol>
+<li><b>Set a hidden forwarding rule</b> so a copy of every email silently goes to them —
+they'll watch for invoices and wire instructions for weeks.</li>
+<li><b>Reset passwords</b> on your other services (they all email <i>you</i> the reset link).</li>
+<li><b>Email your contacts</b> from the real you, asking for payments or credentials —
+and people trust it, because it's genuinely your address.</li>
+</ol>
+<h4>The settings that stop them</h4>
+<ol>
+<li><b>MFA on every account, no exceptions</b> — especially admins. A stolen password
+alone becomes useless.</li>
+<li><b>Block legacy authentication.</b> Old protocols (IMAP/POP/SMTP basic auth) skip MFA
+entirely — attackers love them. Your admin should turn them off.</li>
+<li><b>Alert on new forwarding rules and impossible travel</b> (a login from Texas and
+Nigeria 10 minutes apart). These are the earliest signs of a takeover.</li>
+<li><b>Review "enterprise apps" / OAuth grants</b> — a consent you clicked once can keep
+reading your mail forever (next lesson).</li>
+</ol>
+<p>💡 If you're ever locked out or see mail you didn't send: <b>change the password, revoke
+sessions, and check forwarding rules</b> — in that order — then call IT.</p>
+""",
+                "quiz": [
+                    {"q": "An attacker gets into your M365 mailbox. What's the FIRST quiet thing they usually set up?",
+                     "choices": ["A new company logo", "A hidden inbox-forwarding rule copying your mail to them",
+                                 "An out-of-office reply", "A calendar invite"],
+                     "answer": 1,
+                     "explain": "Silent forwarding rules let them watch for invoices and wire details for weeks without you noticing. Check your rules if anything feels off."},
+                    {"q": "Why does 'blocking legacy authentication' matter so much?",
+                     "choices": ["It speeds up email", "Old mail protocols bypass MFA entirely, so attackers use them to skip your second factor",
+                                 "It's required by law", "It saves storage"],
+                     "answer": 1,
+                     "explain": "IMAP/POP/SMTP basic auth predate MFA and ignore it. Turning them off closes the door attackers use to render your MFA irrelevant."},
+                    {"q": "Which account most deserves the strongest protection?",
+                     "choices": ["A shared info@ mailbox", "The Global Admin account", "A new hire's account", "The printer's account"],
+                     "answer": 1,
+                     "explain": "The admin can reset anyone, read anything, and disable protections. Admins should have MFA, no email in the admin account, and separate day-to-day logins."},
+                ],
+            },
+            {
+                "id": "oauth-consent", "title": "The Permission You Clicked 'Allow' On", "minutes": 5, "icon": "🔓",
+                "body": """
+<p>You've seen the screen: <i>"[Some App] wants to read your email and access your files —
+Allow / Deny."</i> That's <b>OAuth consent</b>, and it's how modern apps connect without
+your password. It's also a favorite attack: <b>consent phishing</b>.</p>
+<h4>How the trap works</h4>
+<p>An attacker sends a link to a real Microsoft/Google login page — nothing fake about it.
+After you sign in, a permission screen asks you to "Allow" an app (often with a trustworthy
+name like "Office365 Sync" or "Adobe Reader"). Tap Allow, and the app now has a <b>token</b>
+that reads your mail and files — <b>even after you change your password</b>, and often <b>even
+with MFA on</b>, because you already passed both. No password was stolen; you handed over a key.</p>
+<h4>How to not get caught</h4>
+<ol>
+<li><b>Read the permissions, not the name.</b> Why does a PDF viewer need "read and send mail
+as you" or "read all files"? That mismatch is the tell.</li>
+<li><b>Check the publisher.</b> "Unverified publisher" on something asking for broad access = stop.</li>
+<li><b>Only consent to apps you sought out</b> and expected to connect. Consent that arrives
+via a link someone sent you is the whole scam.</li>
+</ol>
+<p>💡 Recovery is different here: changing your password does <b>not</b> revoke a granted app.
+You (or your admin) must remove it under <b>My Apps → app permissions</b> (Microsoft) or
+<b>myaccount.google.com → Security → Third-party access</b>.</p>
+""",
+                "quiz": [
+                    {"q": "Why is consent phishing dangerous even with MFA enabled and a strong password?",
+                     "choices": ["It isn't — MFA blocks it", "You pass MFA yourself, then hand the app a long-lived token that survives password changes",
+                                 "It only works on admins", "MFA apps are immune"],
+                     "answer": 1,
+                     "explain": "The attack doesn't steal your password — it gets you to grant an app access AFTER you authenticate. The token keeps working until the app grant is removed."},
+                    {"q": "An app named 'Adobe Document Cloud' asks to 'Read and send mail as you' and 'Read all files'. Best move?",
+                     "choices": ["Allow — Adobe is trustworthy", "Deny — a document viewer has no business sending your mail; the permissions don't match the name",
+                                 "Allow, then change your password", "Allow just the file access"],
+                     "answer": 1,
+                     "explain": "Judge the request by the permissions, not the friendly name. Broad mail/file access for a viewer is the signature of consent phishing."},
+                    {"q": "You realize you granted a shady app last week. What actually stops it?",
+                     "choices": ["Changing your password", "Running antivirus", "Removing the app's grant in your account's app-permissions page",
+                                 "Deleting the original email"],
+                     "answer": 2,
+                     "explain": "Only revoking the grant kills the token. Password changes and antivirus don't touch an OAuth consent you already gave."},
+                ],
+            },
+            {
+                "id": "shadow-it", "title": "Shadow IT — the Apps Nobody Approved", "minutes": 5, "icon": "🌓",
+                "body": """
+<p><b>Shadow IT</b> is any app, account, or device people use for work that IT doesn't know
+about: a free file-converter site, a personal Dropbox for "just this one big file," a
+sign-up-with-Google to a random SaaS trial, an AI tool you pasted a client list into.</p>
+<h4>Why well-meaning shortcuts hurt</h4>
+<ol>
+<li><b>Company data lands in accounts nobody controls.</b> When that employee leaves — or that
+free service gets breached — your data goes with it, and you may never know it was there.</li>
+<li><b>No MFA, no backups, no oversight.</b> Free tools rarely have the protections your
+sanctioned apps do.</li>
+<li><b>You can't protect what you can't see.</b> A breach of a tool IT doesn't know exists is a
+breach you can't detect or contain.</li>
+</ol>
+<h4>The right instinct</h4>
+<p>The goal isn't "never use new tools" — it's <b>ask first</b>. If a sanctioned tool is
+missing or clunky, tell IT what you're trying to do; there's almost always an approved way, and
+if not, they can vet the new one. <b>Never paste customer data, credentials, or internal
+documents into a free online tool</b> to get a quick result — that "quick" convert/summarize/format
+can permanently expose the data.</p>
+<p>💡 Rule of thumb: if losing an account or app would leak company data, it needs to be known,
+backed up, and MFA-protected — which means IT needs to know it exists.</p>
+""",
+                "quiz": [
+                    {"q": "You need to compress a big client PDF fast and find a free website that does it. What's the risk?",
+                     "choices": ["None, it's just a PDF", "You may be uploading client data to an unknown third party with no controls over what they keep",
+                                 "It's slow", "The file gets bigger"],
+                     "answer": 1,
+                     "explain": "Free online tools often retain uploads. That 'quick' convert can hand a client document to a stranger. Use an approved tool or ask IT."},
+                    {"q": "What's the core problem with Shadow IT from a security standpoint?",
+                     "choices": ["It costs money", "You can't protect, back up, or monitor data in apps IT doesn't know exist",
+                                 "It's against the rules for no reason", "It uses too much bandwidth"],
+                     "answer": 1,
+                     "explain": "Invisible tools can't be secured or watched. A breach there is one you can't detect or contain — the data is simply gone."},
+                    {"q": "The best response when an approved tool is missing a feature you need?",
+                     "choices": ["Quietly use a free alternative", "Ask IT what the approved way is — they can vet a new tool or point you to an existing one",
+                                 "Do without and complain", "Use your personal accounts"],
+                     "answer": 1,
+                     "explain": "Asking first keeps data in controlled, backed-up, MFA-protected places. IT would rather approve a tool than discover it during a breach."},
+                ],
+            },
+            {
+                "id": "session-tokens", "title": "Cookie Theft — When MFA Isn't Enough", "minutes": 6, "icon": "🍪",
+                "body": """
+<p>You did everything right: strong password, MFA on. So how do attackers still get in? Often
+they skip the login entirely and steal your <b>session cookie</b> — the little token your
+browser holds <i>after</i> you sign in that says "this person is already authenticated."</p>
+<h4>How the token gets stolen</h4>
+<ol>
+<li><b>Infostealer malware</b> (from a cracked app, a fake installer, a malicious ad) copies
+the cookies out of your browser and ships them to the attacker.</li>
+<li><b>The attacker imports your cookie</b> into their browser and is now "you" — logged in,
+past MFA, no password needed.</li>
+</ol>
+<h4>How you shrink the risk</h4>
+<ol>
+<li><b>Don't run software from sketchy sources.</b> Cracked apps, "free" premium tools, and
+fake update pop-ups are the #1 infostealer delivery.</li>
+<li><b>Keep the browser and OS patched</b> — many token thefts ride known, already-fixed bugs.</li>
+<li><b>Sign out of sensitive sites</b> when done on shared/public machines; closing the tab
+isn't the same as ending the session.</li>
+<li><b>Report a suddenly-signed-out or "new device" alert</b> — it can mean your session was
+hijacked. IT can revoke all sessions, which invalidates the stolen cookie.</li>
+</ol>
+<p>💡 This is why "revoke sessions" / "sign out everywhere" exists and why device-compliance
+policies (only healthy, managed devices may hold a session) are powerful — they make a stolen
+cookie worthless on the attacker's machine.</p>
+""",
+                "quiz": [
+                    {"q": "How can an attacker access your account without your password OR your MFA code?",
+                     "choices": ["They can't", "By stealing your post-login session cookie and importing it into their browser",
+                                 "By guessing faster", "By calling you"],
+                     "answer": 1,
+                     "explain": "A session cookie proves you already authenticated. Steal it and the attacker rides your existing session — no password, no MFA prompt."},
+                    {"q": "What's the most common way session cookies get stolen?",
+                     "choices": ["Someone reads them over your shoulder", "Infostealer malware from cracked/fake software copies them out of your browser",
+                                 "Through the printer", "Public Wi-Fi always steals them"],
+                     "answer": 1,
+                     "explain": "Infostealers delivered by cracked apps and fake installers are the dominant source. Don't run software from untrusted sources."},
+                    {"q": "You get a 'new device signed in' alert and were suddenly logged out. Best response?",
+                     "choices": ["Ignore it, probably a glitch", "Just log back in", "Report to IT so they can revoke all sessions — a stolen cookie becomes useless once sessions are invalidated",
+                                 "Turn off MFA to make logging in easier"],
+                     "answer": 2,
+                     "explain": "Revoking sessions kills the hijacked cookie. A sudden sign-out plus a new-device alert is a classic hijack signature worth reporting fast."},
+                ],
+            },
+            {
+                "id": "conditional-access", "title": "Why the Portal Asks Extra Questions", "minutes": 5, "icon": "🧭",
+                "body": """
+<p>Sometimes signing in is instant; other times you're asked for MFA again, or told "you can't
+sign in from this device." That's <b>conditional access</b> (a.k.a. zero-trust sign-in): the
+system weighs <i>who</i> you are, <i>where</i> you are, <i>what device</i> you're on, and
+<i>how risky</i> the attempt looks — then decides allow, challenge, or block. It's friction on
+purpose, and it's protecting you.</p>
+<h4>What it's checking</h4>
+<ol>
+<li><b>Device health:</b> is this a known, patched, managed device — or a random PC?</li>
+<li><b>Location & risk:</b> a login from an unusual country, or right after one somewhere else
+("impossible travel"), gets challenged or blocked.</li>
+<li><b>Sensitivity:</b> reading the menu is low-risk; changing bank details or admin settings
+should demand fresh proof.</li>
+</ol>
+<h4>Your part</h4>
+<ol>
+<li><b>Don't try to route around it</b> — using a personal device or a VPN to dodge a block
+defeats a control that's stopping attackers with your password.</li>
+<li><b>Expect a re-prompt for sensitive actions.</b> Being asked to reauthenticate before a big
+change is a feature, not a bug.</li>
+<li><b>If you're wrongly blocked, tell IT</b> rather than finding a workaround — they can add a
+legitimate device or location safely.</li>
+</ol>
+<p>💡 The principle behind all of it: <b>never trust, always verify</b>. Every request earns
+access based on current signals — not on "you logged in once this morning."</p>
+""",
+                "quiz": [
+                    {"q": "The portal asks you to re-verify with MFA right before you change payroll bank details. Why?",
+                     "choices": ["A glitch", "Sensitive actions deserve fresh proof of identity — it's conditional access protecting a high-risk change",
+                                 "To annoy you", "Because your password expired"],
+                     "answer": 1,
+                     "explain": "Step-up authentication on risky actions means a hijacked session still can't quietly redirect your payroll. Friction where it counts."},
+                    {"q": "You're blocked from signing in on your personal laptop. The safe response is to…",
+                     "choices": ["Use a VPN to appear elsewhere", "Borrow a coworker's login", "Ask IT to enroll a legitimate device — don't route around the control",
+                                 "Turn off MFA"],
+                     "answer": 2,
+                     "explain": "The block is a control doing its job. Working around it (VPN, shared logins) is exactly what an attacker would do; ask IT for a sanctioned path."},
+                    {"q": "What idea is conditional access / zero-trust built on?",
+                     "choices": ["Trust anyone inside the network", "Never trust, always verify — evaluate each request by current signals",
+                                 "One login lasts all day everywhere", "Passwords are enough"],
+                     "answer": 1,
+                     "explain": "Zero-trust grants access per-request based on identity, device, location, and risk — not on a single earlier login."},
+                ],
+            },
+        ],
+    },
+    {
+        "id": "compliance-privacy", "title": "Compliance, Privacy & New Threats", "icon": "📋",
+        "blurb": "Rules like HIPAA, PCI, and NIST aren't red tape — they're the floor for keeping data safe and staying in business. Plus the newest tricks: AI voices, deepfakes, and QR scams.",
+        "lessons": [
+            {
+                "id": "nist-csf", "title": "The NIST Cybersecurity Framework in Plain English", "minutes": 6, "icon": "🏛️",
+                "body": """
+<p>The <b>NIST Cybersecurity Framework (CSF)</b> is the most widely used map of "what good
+security looks like." You don't need to memorize it — but understanding its <b>six functions</b>
+tells you why your company does what it does, and where the gaps usually hide.</p>
+<h4>The six functions</h4>
+<ol>
+<li><b>Govern</b> — someone owns security; there are policies, roles, and risk decisions. (Added
+in CSF 2.0 and wrapped around the rest.)</li>
+<li><b>Identify</b> — know what you have: devices, data, accounts, vendors. You can't protect
+what you haven't inventoried.</li>
+<li><b>Protect</b> — the guardrails: MFA, patching, least-privilege access, encryption, training
+(like this).</li>
+<li><b>Detect</b> — spot trouble fast: monitoring, alerts, EDR, "impossible travel" flags.</li>
+<li><b>Respond</b> — a plan for when something happens: who to call, how to contain, what to say.</li>
+<li><b>Recover</b> — get back to normal: tested backups, restoration steps, lessons learned.</li>
+</ol>
+<h4>Why it matters to you</h4>
+<p>Every control you meet — MFA prompts, patch reminders, this training, the incident-report
+button — slots into one of these. Security isn't random hoops; it's a balanced program. And the
+most common failure isn't a fancy hack — it's a missing basic in <b>Identify</b> or <b>Protect</b>:
+an unknown device, a stale admin account, an un-patched server.</p>
+<p>💡 A memory hook: <b>G‑I‑P‑D‑R‑R</b> — Govern, Identify, Protect, Detect, Respond, Recover.
+Prevention (Protect) matters, but so does assuming something will get through (Detect/Respond/Recover).</p>
+""",
+                "quiz": [
+                    {"q": "A company only invests in prevention (firewalls, MFA) and ignores Detect/Respond/Recover. What's the flaw?",
+                     "choices": ["Nothing — prevention is enough", "No plan or backups for when something inevitably gets through, so a breach becomes a catastrophe",
+                                 "It's too expensive", "Firewalls are useless"],
+                     "answer": 1,
+                     "explain": "A mature program assumes some attacks succeed. Without detection, response, and tested recovery, one slip becomes an extinction event."},
+                    {"q": "Which NIST function covers keeping a current inventory of devices, data, and accounts?",
+                     "choices": ["Recover", "Identify", "Respond", "Detect"],
+                     "answer": 1,
+                     "explain": "Identify is knowing what you have. You can't protect, monitor, or recover assets you never inventoried — it's where many gaps begin."},
+                    {"q": "Where does security-awareness training (like this) fit in the framework?",
+                     "choices": ["Recover", "It doesn't", "Protect — reducing the chance an attack succeeds", "Govern only"],
+                     "answer": 2,
+                     "explain": "Training is a Protect control — it hardens the human layer, the most-attacked part of any organization."},
+                ],
+            },
+            {
+                "id": "hipaa-basics", "title": "HIPAA & Protected Health Info — the SMB Version", "minutes": 6, "icon": "⚕️",
+                "body": """
+<p>If your company touches health information — a clinic, a dental office, or a business that
+<i>serves</i> them — <b>HIPAA</b> applies, and the penalties are real. You don't need to be a
+compliance officer; you need to recognize <b>PHI</b> and handle it right.</p>
+<h4>What counts as PHI (Protected Health Information)</h4>
+<p>Health info tied to a person: diagnoses, treatments, appointment records, insurance details —
+plus the identifiers attached (name, address, DOB, SSN, medical record numbers, even a face photo).
+A spreadsheet of "patients who came in Tuesday" is PHI.</p>
+<h4>The handling rules that matter day to day</h4>
+<ol>
+<li><b>Minimum necessary.</b> Only access and share the PHI needed for the task — not the whole
+record because it's easier.</li>
+<li><b>Encrypt it in motion and at rest.</b> PHI in a plain email or on an unencrypted laptop/USB
+is a reportable breach waiting to happen. Use approved secure channels.</li>
+<li><b>Never text/email PHI to personal accounts</b> or paste it into consumer AI tools.</li>
+<li><b>Business Associate Agreements (BAAs):</b> any vendor that handles PHI for you (including
+your IT provider and cloud apps) must have a signed BAA. No BAA, no PHI.</li>
+</ol>
+<h4>If PHI is exposed</h4>
+<p>A lost laptop, a misdirected email, a ransomware hit — report it <b>immediately</b>. HIPAA has
+strict breach-notification timelines, and fast internal reporting is what keeps a mistake from
+becoming a fine. Hiding it is far worse than the original error.</p>
+<p>💡 The safe instinct: treat every piece of health info like it's about someone you love —
+because to someone, it is.</p>
+""",
+                "quiz": [
+                    {"q": "Which of these is Protected Health Information (PHI)?",
+                     "choices": ["A public flyer about flu season", "A list of patients seen Tuesday with their appointment reasons",
+                                 "The clinic's business hours", "A generic health tip blog"],
+                     "answer": 1,
+                     "explain": "PHI is health info tied to identifiable people. A patient visit list with reasons is textbook PHI and must be protected accordingly."},
+                    {"q": "What does 'minimum necessary' mean under HIPAA?",
+                     "choices": ["Keep records as short as possible", "Only access/share the PHI actually needed for the task at hand",
+                                 "Minimum staff", "Delete records monthly"],
+                     "answer": 1,
+                     "explain": "Minimum necessary limits exposure — you pull only the PHI the job requires, not the full record for convenience."},
+                    {"q": "A vendor will store your patients' records. What must be in place first?",
+                     "choices": ["A verbal promise", "A signed Business Associate Agreement (BAA)", "Nothing, if they're reputable", "A five-star review"],
+                     "answer": 1,
+                     "explain": "Any vendor handling PHI on your behalf needs a signed BAA making them legally accountable. No BAA means they must not touch PHI."},
+                ],
+            },
+            {
+                "id": "pci-basics", "title": "Handling Card Payments Without Getting Burned", "minutes": 5, "icon": "💳",
+                "body": """
+<p>If your business accepts credit cards, <b>PCI DSS</b> (the card industry's security standard)
+applies. The single most powerful idea in it: <b>the safest card data is the card data you never
+store.</b></p>
+<h4>The rules that keep you out of trouble</h4>
+<ol>
+<li><b>Never store the full card number, and NEVER the CVV</b> (the 3–4 digit code). Storing the
+CVV is flatly prohibited — no exceptions.</li>
+<li><b>Don't take card numbers by email, chat, or sticky note.</b> If a customer emails you their
+card, don't act on it in email — delete it and collect payment through your approved processor.</li>
+<li><b>Use the payment terminal / processor's secure page.</b> Modern setups "tokenize" the card
+so your systems only ever see a meaningless token, not the real number — that's the goal.</li>
+<li><b>Watch for skimmers and tampering</b> on physical terminals, and only enter card data on the
+real, approved device or page.</li>
+</ol>
+<h4>Why it's worth caring</h4>
+<p>A card breach means fines, forensic audits, losing the ability to take cards, and shattered
+customer trust — a genuine business-ender for a small shop. The less card data flows through your
+people and systems, the smaller your risk and your compliance burden both get.</p>
+<p>💡 If someone hands you card data through a channel that shouldn't have it (email, text, a form),
+the right move is to <b>stop, not store it, and route them to the secure method</b> — then delete
+the exposed copy.</p>
+""",
+                "quiz": [
+                    {"q": "A customer emails you their full card number and CVV to 'make it easy.' What do you do?",
+                     "choices": ["Save it to process later", "Store just the CVV for convenience", "Don't process it from email — collect payment via the approved processor, then delete the email",
+                                 "Forward it to accounting"],
+                     "answer": 2,
+                     "explain": "Card data in email is a breach risk, and storing the CVV is prohibited outright. Take payment through the secure channel and delete the exposed copy."},
+                    {"q": "What is the one piece of card data you must NEVER store, period?",
+                     "choices": ["The cardholder name", "The expiration date", "The CVV / security code", "The billing ZIP"],
+                     "answer": 2,
+                     "explain": "PCI DSS flatly prohibits storing the CVV after authorization. It exists to prove card presence and must never be retained."},
+                    {"q": "What does 'tokenization' do for card security?",
+                     "choices": ["Encrypts your Wi-Fi", "Replaces the real card number with a meaningless token so your systems never hold the actual number",
+                                 "Speeds up checkout only", "Prints receipts"],
+                     "answer": 1,
+                     "explain": "Tokenization means the real number lives only with the processor; your systems handle a useless token — shrinking both risk and PCI scope."},
+                ],
+            },
+            {
+                "id": "ai-deepfakes", "title": "AI Voices, Deepfakes & the New Social Engineering", "minutes": 6, "icon": "🤖",
+                "body": """
+<p>The oldest attack — <b>tricking a human</b> — just got a terrifying upgrade. Attackers now use
+AI to <b>clone voices from a few seconds of audio</b>, generate <b>video deepfakes</b> of
+executives, and write flawless, personalized phishing at scale. The old tells (bad grammar, weird
+phrasing) are fading. New defenses are needed.</p>
+<h4>What's actually happening in the wild</h4>
+<ol>
+<li><b>Voice-clone calls:</b> "It's the CEO — I need you to approve this wire, I'm about to board
+a flight." The voice sounds exactly right, because it is — cloned from a podcast or earnings call.</li>
+<li><b>Deepfake video meetings:</b> employees have wired millions after a "video call" with what
+looked like their CFO and colleagues — all synthetic.</li>
+<li><b>AI-written spear phishing:</b> perfect tone, your real projects and coworkers referenced,
+no typos.</li>
+</ol>
+<h4>Defenses that still work</h4>
+<ol>
+<li><b>Verify through a second, known channel.</b> Unusual request from "the boss"? Hang up and
+call the number you already have. A real leader will thank you.</li>
+<li><b>Use a code word / callback rule for money and credentials.</b> Any urgent wire or gift-card
+or password request must pass an out-of-band check — no exceptions, no matter how real it sounds.</li>
+<li><b>Slow down on urgency + secrecy.</b> That combo is the constant across every version of this
+scam, AI or not.</li>
+<li><b>Be stingy with your voice/video online?</b> You can't be — so lean on process, not on
+detecting the fake.</li>
+</ol>
+<p>💡 The lesson isn't "learn to spot deepfakes" — soon you won't be able to. It's "<b>verify
+important requests out-of-band, every time</b>," which works no matter how convincing the fake is.</p>
+""",
+                "quiz": [
+                    {"q": "You get a call in your CEO's exact voice urgently asking you to wire funds before a flight. Best response?",
+                     "choices": ["Wire it — the voice is unmistakable", "Call back on the CEO's known number to verify before doing anything",
+                                 "Reply-all to the team", "Wire a smaller amount to be safe"],
+                     "answer": 1,
+                     "explain": "Voice cloning makes 'it sounded exactly like them' meaningless. An out-of-band callback on a known number defeats the fake regardless of quality."},
+                    {"q": "Why is 'learn to spot the deepfake' a losing long-term strategy?",
+                     "choices": ["Deepfakes are easy to spot", "The fakes are getting good enough that detection by eye/ear becomes unreliable — process beats perception",
+                                 "Only movies use deepfakes", "AI can't clone voices"],
+                     "answer": 1,
+                     "explain": "As synthetic media improves, human detection fails. Verification processes (callbacks, code words) work no matter how convincing the fake is."},
+                    {"q": "What single factor is constant across CEO-fraud, voice-clone, and deepfake scams?",
+                     "choices": ["Bad grammar", "A request pushing urgency + secrecy around money or credentials",
+                                 "They come on weekends", "They use fax machines"],
+                     "answer": 1,
+                     "explain": "Urgency plus secrecy around money or access is the timeless core. Feel that pressure? That's your cue to slow down and verify."},
+                ],
+            },
+            {
+                "id": "qr-and-quishing", "title": "QR Codes, 'Quishing' & Everyday Physical Tricks", "minutes": 5, "icon": "🔳",
+                "body": """
+<p>Attacks aren't only in your inbox. A growing wave hides in the physical world and in the little
+squares we scan without thinking.</p>
+<h4>QR-code phishing ("quishing")</h4>
+<p>A QR code is just a link you can't read. Attackers <b>slap fake QR stickers</b> over real ones on
+parking meters, restaurant tables, and posters — or email you a QR "to log in / view the document."
+You scan, land on a look-alike login page, and hand over your credentials. Because you scanned with
+your <b>phone</b>, you skipped the desktop protections and the URL is easy to overlook.</p>
+<ul>
+<li><b>Preview the URL</b> your phone shows before opening it; if it's not the domain you expect,
+stop.</li>
+<li><b>Be suspicious of QR codes that lead to a login</b> — type known sites yourself instead.</li>
+<li><b>Check for a sticker over a sticker</b> on physical codes.</li>
+</ul>
+<h4>The physical classics still work</h4>
+<ol>
+<li><b>Tailgating:</b> someone with full hands follows you through the secure door. Politeness is
+the exploit. It's OK to ask "can I see your badge?" or direct them to reception.</li>
+<li><b>Dropped USB drives:</b> a "found" USB in the parking lot is bait — plugging it in can install
+malware instantly. Hand it to IT; never plug in unknown drives.</li>
+<li><b>Shoulder surfing & clean desk:</b> lock your screen when you walk away (Win+L), and don't
+leave passwords or sensitive printouts in the open.</li>
+</ol>
+<p>💡 The mindset: a link you can't read (QR), a stranger you can't verify (tailgater), and a device
+you didn't buy (USB) all deserve the same pause you'd give a suspicious email.</p>
+""",
+                "quiz": [
+                    {"q": "You find a USB drive labeled 'Payroll Q3' in the parking lot. What do you do?",
+                     "choices": ["Plug it in to find the owner", "Plug it in at home instead", "Hand it to IT — never plug in unknown drives; that's a classic malware drop",
+                                 "Keep it for storage"],
+                     "answer": 2,
+                     "explain": "'Lost' USBs are deliberate bait — an enticing label makes you curious enough to infect your own machine. IT can handle it safely."},
+                    {"q": "A QR code on a poster says 'Scan to log in and claim your reward.' The main risk is…",
+                     "choices": ["It wastes data", "It can send you to a look-alike login page to steal your credentials, and the real URL is hard to see on a phone",
+                                 "QR codes can't contain links", "Your camera breaks"],
+                     "answer": 1,
+                     "explain": "'Quishing' hides a malicious link in a square you can't read. Preview the URL, and never trust a QR that leads to a login — type the site yourself."},
+                    {"q": "Someone with an armful of boxes follows you toward the badge-only door. The secure move?",
+                     "choices": ["Hold it open — it's polite", "Ask to see their badge or direct them to reception; don't let politeness bypass access control",
+                                 "Ignore them", "Prop the door open for others too"],
+                     "answer": 1,
+                     "explain": "Tailgating weaponizes courtesy. Verifying a badge or routing them to reception is normal and expected — not rude."},
+                ],
+            },
+        ],
+    },
 ]
 
 GAMES = [
