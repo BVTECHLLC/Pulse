@@ -6217,7 +6217,32 @@ def main():
               "PDF headers, category minimums, visibility split, idempotent DB "
               "seed, grouped ordering OK")
 
-    print("\n=== OpsPilot v1.60.0 SMOKE TEST PASSED ===")
+        # ==== v1.61.0: box self-updater — script sane, CI-gate logic verified ====
+        import subprocess as _sp61
+        _sh61 = _P60(__file__).resolve().parents[0].parent / "scripts" / "box_autoupdate.sh"
+        assert _sh61.is_file(), "box_autoupdate.sh missing"
+        _r61 = _sp61.run(["bash", "-n", str(_sh61)], capture_output=True)
+        assert _r61.returncode == 0, _r61.stderr.decode()[:200]
+        _txt61 = _sh61.read_text()
+        for _must61 in ("check-runs", "--ff-only", "rolling back", "pulse-autoupdate.timer",
+                        "docker compose up -d --build"):
+            assert _must61 in _txt61, _must61
+        # the embedded CI-verdict parser: green, red, and pending all decided right
+        import json as _j61
+        _parser61 = _txt61.split('python3 -c "')[1].split('" 2>/dev/null')[0]
+        for _runs61, _want61 in (
+                ([{"status": "completed", "conclusion": "success"}], "success"),
+                ([{"status": "completed", "conclusion": "failure"}], "failure"),
+                ([{"status": "in_progress", "conclusion": None}], "pending"),
+                ([], "pending")):
+            _out61 = _sp61.run(["python3", "-c", _parser61],
+                               input=_j61.dumps({"check_runs": _runs61}).encode(),
+                               capture_output=True)
+            assert _out61.stdout.decode().strip() == _want61, (_runs61, _out61.stdout)
+        print("box self-updater: script parses, CI gate decides green/red/pending "
+              "correctly, ff-only + health-gated rollback present OK")
+
+    print("\n=== OpsPilot v1.61.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

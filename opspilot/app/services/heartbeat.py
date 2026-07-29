@@ -249,6 +249,29 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         db.rollback()
 
+    # 13.560) v1.61 SELF-UPDATE announcement — the box deploys CI-green main on
+    #         its own (scripts/box_autoupdate.sh); the first heartbeat on a new
+    #         version tells the operator it happened. Never-silent, zero-SSH.
+    try:
+        from ..core.config import get_settings as _gs61
+        from . import secure_config as _sc61
+        _ver61 = _gs61().APP_VERSION
+        _conn61 = _sc61.get_platform(db, "pulse_meta")
+        _raw61 = dict((_conn61.config if _conn61 else None) or {})
+        if _raw61.get("last_version") != _ver61:
+            if _raw61.get("last_version"):
+                from ..models import Notification as _N61
+                db.add(_N61(client_id=None, target_user_id=None, kind="system",
+                            severity="info",
+                            message=(f"🚀 Pulse auto-updated to v{_ver61} "
+                                     f"(from v{_raw61.get('last_version')}) — deployed "
+                                     "automatically from CI-green main.")[:1000]))
+                db.commit()
+            _sc61.upsert_platform(db, "pulse_meta", "Pulse Meta", "System",
+                                  {**_raw61, "last_version": _ver61})
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
     # 13.565) v1.56 OUTBOUND acquisition engine — ramped cold-email touches to
     #         scraped CRM leads over the M365 mailbox. Armed via the portal or
     #         PULSE_OUTBOUND=test|live on the box; TEST emails the day's plan to
