@@ -6510,7 +6510,20 @@ def main():
         print("box self-updater: script parses, CI gate decides green/red/pending "
               "correctly, ff-only + health-gated rollback present OK")
 
-    print("\n=== OpsPilot v1.70.0 SMOKE TEST PASSED ===")
+        # ==== v1.71.0: tunnel watchdog — self-heals Cloudflare Error 1033 ====
+        _wd = _P60(__file__).resolve().parents[0].parent / "scripts" / "tunnel_watchdog.sh"
+        assert _wd.is_file(), "tunnel_watchdog.sh missing"
+        assert _sp61.run(["bash", "-n", str(_wd)], capture_output=True).returncode == 0
+        _wtxt = _wd.read_text()
+        for _mustw in ("cloudflared", "opspilot-watchdog.timer", "docker compose up -d",
+                       "--install", "systemctl restart cloudflared", "prune"):
+            assert _mustw in _wtxt, _mustw
+        # never nuke data volumes while freeing disk
+        assert "--volumes" not in _wtxt, "watchdog must not prune volumes"
+        print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
+              "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
+
+    print("\n=== OpsPilot v1.71.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
