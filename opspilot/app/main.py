@@ -73,6 +73,7 @@ _login_hits: dict[str, list[float]] = defaultdict(list)
 _RATE_LIMITED = {
     "/api/auth/login": lambda: _s.RATE_LIMIT_LOGIN_PER_MIN,
     "/api/signup": lambda: _s.RATE_LIMIT_SIGNUP_PER_MIN,
+    "/api/academy/register": lambda: _s.RATE_LIMIT_SIGNUP_PER_MIN,
 }
 
 

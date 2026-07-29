@@ -294,10 +294,15 @@ def _start(request: Request, db: Session, provider: str, purpose: str,
 
 
 @router.get("/{provider}/login")
-def sso_login(provider: str, request: Request, db: Session = Depends(get_db), next: str = "/dashboard"):
+def sso_login(provider: str, request: Request, db: Session = Depends(get_db),
+              next: str = "/dashboard", join: bool = False):
     if not _s.OAUTH_ALLOW_SSO:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "SSO sign-in is disabled")
-    return _start(request, db, provider, "sso", None, next)
+    # `join=1` marks the Academy door: on no existing match we create a self-serve
+    # Academy learner (isolated tenant) instead of rejecting — one-click signup
+    # with Google/Microsoft. This never provisions staff or real-client access.
+    purpose = "academy" if join else "sso"
+    return _start(request, db, provider, purpose, None, next if not join else "/academy")
 
 
 @router.get("/{provider}/connect")
@@ -356,6 +361,26 @@ def callback(provider: str, request: Request, response: Response,
     candidates = oauth.candidate_emails(provider, tok, access)
     email = candidates[0] if candidates else None
 
+    if purpose == "academy":
+        # Academy door: sign in an existing user OR create an isolated learner.
+        if not _s.OAUTH_ALLOW_SSO:
+            return RedirectResponse("/login?oauth_error=sso_disabled", status_code=302)
+        from ...services import school
+        claims = oauth.decode_id_token_claims(tok.get("id_token"))
+        user = None
+        for cand in candidates:
+            user = school.get_or_create_sso_student(db, cand, full_name=claims.get("name"))
+            if user:
+                email = cand
+                break
+        if not user:
+            return RedirectResponse("/login?oauth_error=no_account&as=academy", status_code=302)
+        redirect = RedirectResponse("/academy", status_code=302)
+        issue_session(db, user, request, redirect, method=f"oauth:{provider}")
+        audit.record(db, action="login.oauth_success", actor_user_id=user.id, actor_email=user.email,
+                     actor_role=user.role.value, ip=_ip(request), detail=f"academy provider={provider}")
+        return redirect
+
     if purpose == "sso":
         if not _s.OAUTH_ALLOW_SSO:
             return RedirectResponse("/?oauth_error=sso_disabled", status_code=302)
@@ -405,7 +430,8 @@ def callback(provider: str, request: Request, response: Response,
                          actor_email=(email or ",".join(candidates) or None), ip=_ip(request),
                          success=False, detail=f"provider={provider} tried={len(candidates)}")
             return RedirectResponse("/?oauth_error=no_account", status_code=302)
-        dest = "/portal" if user.role in (Role.CLIENT_ADMIN, Role.CLIENT_VIEWER) else "/dashboard"
+        from ...services import school
+        dest = school.home_for(db, user)
         redirect = RedirectResponse(dest, status_code=302)
         issue_session(db, user, request, redirect, method=f"oauth:{provider}")
         audit.record(db, action="login.oauth_success", actor_user_id=user.id, actor_email=user.email,

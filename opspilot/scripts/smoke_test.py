@@ -5772,6 +5772,46 @@ def main():
         print("onboarding wizard: 7-step computed checklist (agent/telemetry done from "
               "real data), 0% fresh client, least-done-first overview, tenant-isolated OK")
 
+        # ==== v1.72.0: three-door login + open Academy signup, school≠clients ====
+        from app.services import school as _school
+        # the front door is the chooser; /login is the form; /join is open signup
+        assert "how are you signing in" in c.get("/").text.lower(), "chooser missing at /"
+        assert c.get("/login").status_code == 200 and c.get("/join").status_code == 200
+        # staff home routing
+        from app.core.db import SessionLocal as _SLsch
+        _sdb = _SLsch()
+        _owner = _sdb.query(User).filter(User.email == owner_email).first()
+        assert _school.home_for(_sdb, _owner) == "/dashboard"
+        _sdb.close()
+        # OPEN self-registration: anyone, any email -> isolated Academy learner + auto-login
+        _stu = TestClient(app)
+        _rr = _stu.post("/api/academy/register",
+                        json={"email": "player1@example.org", "password": "hackme12", "full_name": "P1"})
+        assert _rr.status_code == 201 and _rr.json()["home"] == "/academy", _rr.text
+        assert _stu.get("/api/academy/catalog").status_code == 200          # signed in, can train
+        _sme = _stu.get("/api/auth/me").json()
+        assert _sme["role"] == "client_viewer" and _sme["client_id"], _sme  # low-priv, in a tenant
+        # the learner is in the dedicated Academy tenant, NOT a real client
+        _adb = _SLsch()
+        assert _sme["client_id"] == _school.academy_client_id(_adb), "student must be Academy-tenant"
+        # and a real client user routes to /portal, not the school
+        _realclient = _adb.query(User).filter(User.role.in_([_R for _R in [Role.CLIENT_ADMIN, Role.CLIENT_VIEWER]]),
+                                              User.client_id != _school.academy_client_id(_adb)).first()
+        if _realclient:
+            assert _school.home_for(_adb, _realclient) == "/portal"
+        _adb.close()
+        # a learner cannot see another tenant's data (isolation holds through the school)
+        assert _stu.get(f"/api/onboarding/{cid}").status_code in (403, 404)
+        # duplicate email is rejected cleanly
+        assert _stu.post("/api/academy/register",
+                         json={"email": "player1@example.org", "password": "hackme12"}).status_code == 400
+        # password login returns the server-decided home
+        _stu2 = TestClient(app)
+        assert _stu2.post("/api/auth/login",
+                          json={"email": "player1@example.org", "password": "hackme12"}).json()["home"] == "/academy"
+        print("login doors: chooser(/) + /login + open /join; staff->/dashboard, "
+              "client->/portal, self-signup student->/academy (isolated tenant), dup-guard OK")
+
         # ===================== v1.3: compliance + streak savers + AI questions ==========
         import datetime as _dt13
 
@@ -6523,7 +6563,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.71.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.72.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

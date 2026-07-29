@@ -33,8 +33,21 @@ def _page(name: str, request: Request, **extra) -> HTMLResponse:
 
 
 @router.get("/", response_class=HTMLResponse)
+def chooser_page(request: Request):
+    """The front door: pick BVTech (staff), Client Portal, or the Academy — so the
+    three audiences are separated from the very first tap."""
+    return _page("chooser.html", request)
+
+
+@router.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     return _page("login.html", request)
+
+
+@router.get("/join", response_class=HTMLResponse)
+def join_page(request: Request):
+    """Open, self-serve Academy registration (students / CTF players / anyone)."""
+    return _page("join.html", request)
 
 
 @router.get("/signup", response_class=HTMLResponse)

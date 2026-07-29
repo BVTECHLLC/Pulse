@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ app_name }} — Join the Academy</title>
+<meta name="description" content="Create a free BVTech Cyber Academy account and start hacking and defending in 50+ hands-on labs.">
+<link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/css/pulse.css?v={{ version }}">
+</head>
+<body>
+<div class="login-shell">
+  <div class="login-card">
+    <a class="lockup" href="/">
+      <img src="/static/img/mark.svg" alt="BVTech OpsPilot">
+      <span class="wm"><b>BVTech</b> Cyber Academy<span>Learn to hack &amp; defend</span></span>
+    </a>
+    <h1>Create your free account</h1>
+    <p class="sub">50+ hands-on labs · lessons · live leaderboard</p>
+
+    <label>Name <span style="color:var(--muted);font-weight:400">(or a handle)</span></label>
+    <input id="name" type="text" autocomplete="nickname" placeholder="Ada, or h4x0r_ada">
+    <label>Email</label>
+    <input id="email" type="email" autocomplete="username" placeholder="you@anywhere.com">
+    <label>Password <span style="color:var(--muted);font-weight:400">(8+ characters)</span></label>
+    <input id="password" type="password" autocomplete="new-password" placeholder="••••••••">
+    <div class="err" id="err"></div>
+    <button class="btn" style="width:100%;margin-top:18px" onclick="doJoin()">Create account &amp; start</button>
+
+    <div id="sso" class="hidden" style="margin-top:14px">
+      <div style="display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;margin:6px 0">
+        <span style="flex:1;height:1px;background:var(--line)"></span>or<span style="flex:1;height:1px;background:var(--line)"></span></div>
+      <div id="sso-btns" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+
+    <div class="auth-links">Already have an account? <a href="/login?as=academy">Sign in →</a></div>
+    <div class="auth-links" style="margin-top:2px"><a href="/" style="color:var(--muted)">← Choose a different login</a></div>
+    <div class="foot">Your Academy account is separate from any client data. Just learning. 🎓</div>
+    <div class="foot">v{{ version }} · Free · No credit card</div>
+  </div>
+</div>
+<script>
+fetch('/api/oauth/providers').then(r=>r.ok?r.json():{providers:[]}).then(j=>{
+  if(!j.sso_allowed||!(j.providers||[]).length)return;
+  document.getElementById('sso').classList.remove('hidden');
+  document.getElementById('sso-btns').innerHTML=(j.providers||[]).map(p=>
+    `<a class="btn ghost" style="width:100%;text-align:center;text-decoration:none" href="/api/oauth/${p.key}/login?join=1">Continue with ${p.name}</a>`).join('');
+}).catch(()=>{});
+async function doJoin(){
+  const err=document.getElementById('err');err.textContent='';
+  const body={
+    full_name:document.getElementById('name').value.trim()||null,
+    email:document.getElementById('email').value.trim(),
+    password:document.getElementById('password').value
+  };
+  if(!body.email||!body.password){err.textContent='Email and password are required.';return;}
+  const r=await fetch('/api/academy/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r.ok){const d=await r.json();location.href=d.home||'/academy';return;}
+  const d=await r.json().catch(()=>({detail:'Error'}));
+  err.textContent=(d.detail&&(typeof d.detail==='string'?d.detail:'Please check your details.'))||'Could not create the account.';
+}
+document.addEventListener('keydown',e=>{if(e.key==='Enter')doJoin();});
+</script>
+<script src="/static/js/brand.js?v={{ version }}"></script>
+</body>
+</html>

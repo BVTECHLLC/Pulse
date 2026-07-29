@@ -98,7 +98,9 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
 
     login_guard.clear(email, ip)   # clean slate after a good sign-in
     issue_session(db, user, request, response, method="password")
-    return {"ok": True, "role": user.role.value, "mfa_enabled": user.mfa_enabled}
+    from ...services import school
+    return {"ok": True, "role": user.role.value, "mfa_enabled": user.mfa_enabled,
+            "home": school.home_for(db, user)}
 
 
 def issue_session(db: Session, user: User, request: Request, response: Response,

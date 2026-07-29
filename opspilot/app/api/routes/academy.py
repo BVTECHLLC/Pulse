@@ -7,8 +7,8 @@ grading is server-side only.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from ...core.db import get_db
@@ -17,6 +17,29 @@ from ...models import Role, User
 from ...services import academy
 
 router = APIRouter(prefix="/api/academy", tags=["academy"])
+
+
+class RegisterIn(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str | None = None
+
+
+@router.post("/register", status_code=201)
+def register(body: RegisterIn, request: Request, response: Response,
+             db: Session = Depends(get_db)):
+    """PUBLIC, open self-registration for the Academy (students, CTF players,
+    anyone). Creates an isolated Academy-tenant learner and signs them straight
+    in — hack-this-site style. Never creates staff or real-client access.
+    Rate-limited in middleware."""
+    from ...services import school
+    from .auth import issue_session
+    user, err = school.register_student(
+        db, email=str(body.email), password=body.password, full_name=body.full_name)
+    if err:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, err)
+    issue_session(db, user, request, response, method="academy_register")
+    return {"ok": True, "home": "/academy"}
 
 
 @router.get("/me")
@@ -111,6 +134,19 @@ def submit_lab(lab_id: str, body: FlagIn, db: Session = Depends(get_db),
     out = academy.grade_lab(db, user, lab_id, body.flag)
     if out is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Lab not found")
+    return out
+
+
+@router.get("/team")
+def team(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """A client user's own team training adoption — powers the portal's
+    Guardz-style 'Security Awareness Training' card. Scoped to the caller's own
+    client; staff (no single client) get an empty shell."""
+    if not user.client_id:
+        return {"users": 0, "trained_users": 0, "trained_pct": None,
+                "total_lessons": academy.TOTAL_LESSONS}
+    out = academy.client_compliance(db, user.client_id)
+    out["total_lessons"] = academy.TOTAL_LESSONS
     return out
 
 

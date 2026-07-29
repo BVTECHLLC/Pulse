@@ -77,6 +77,16 @@
     <thead><tr><th>Host</th><th>OS</th><th>Health</th><th>Last check-in</th></tr></thead>
     <tbody id="t-devices"></tbody></table></div>
 
+  <div class="card" style="margin-top:16px;border-color:#6c5ce7">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+      <div><h3 style="margin:0">🎓 Security Awareness Training</h3>
+        <p class="muted" style="margin:6px 0 0;font-size:13px;max-width:52ch">Your team's human firewall. Managed by BVTech — phishing defense, passwords &amp; MFA, safe browsing, and 50+ hands-on labs. Track completion and turn every employee into a harder target.</p></div>
+      <div style="text-align:right"><div id="tr-pct" style="font-size:30px;font-weight:800;color:#6c5ce7">—</div><div class="muted" style="font-size:11px">TEAM TRAINED</div></div>
+    </div>
+    <div style="height:8px;background:var(--line);border-radius:6px;overflow:hidden;margin:12px 0"><div id="tr-bar" style="height:100%;width:0;background:#6c5ce7;transition:width .4s"></div></div>
+    <a href="/academy" class="btn" style="text-decoration:none;display:inline-block">Open training portal →</a>
+  </div>
+
   <div class="card" style="margin-top:16px"><h3>Request Support</h3>
     <label>Subject</label><input id="t-subject" placeholder="Brief summary">
     <label>Details</label><input id="t-body" placeholder="What's happening?">
@@ -279,6 +289,13 @@ async function load(){
   loadSecurity();
   loadInvoices();
   loadLibraryDocs();
+  loadTraining();
+}
+async function loadTraining(){
+  const t=await api('/api/academy/team'); if(!t)return;
+  const pct=(t.trained_pct==null)?null:Math.round(t.trained_pct);
+  document.getElementById('tr-pct').textContent=(pct==null)?'Start':pct+'%';
+  document.getElementById('tr-bar').style.width=(pct==null?4:pct)+'%';
 }
 async function loadLibraryDocs(){
   const j=await api('/api/library'); if(!j||!(j.groups||[]).length)return;

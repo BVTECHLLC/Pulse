@@ -14,8 +14,8 @@
       <img src="/static/img/mark.svg" alt="BVTech OpsPilot">
       <span class="wm"><b>BVTech</b> OpsPilot<span>MSP Command Center</span></span>
     </a>
-    <h1>Sign in</h1>
-    <p class="sub">Command center &amp; client portal</p>
+    <h1 id="title">Sign in</h1>
+    <p class="sub" id="subtitle">Command center &amp; client portal</p>
 
     <label>Email</label>
     <input id="email" type="email" autocomplete="username" placeholder="you@bvtech.org">
@@ -32,17 +32,31 @@
         <span style="flex:1;height:1px;background:var(--line)"></span>or<span style="flex:1;height:1px;background:var(--line)"></span></div>
       <div id="sso-btns" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
-    <div class="auth-links">New here? <a href="/signup">Request access →</a></div>
+    <div class="auth-links" id="authlink">New here? <a href="/signup">Request access →</a></div>
+    <div class="auth-links" style="margin-top:2px"><a href="/" style="color:var(--muted)">← Choose a different login</a></div>
     <div class="foot">BVTech LLC · Managed IT &amp; Cybersecurity · <a href="mailto:help@bvtech.org" style="color:inherit">help@bvtech.org</a></div>
     <div class="foot">v{{ version }} · Encrypted · MFA-ready · Audit-logged</div>
   </div>
 </div>
 <script>
 // Single sign-on buttons appear only for configured providers.
+const AS=new URLSearchParams(location.search).get('as')||'';
 (function(){
   const params=new URLSearchParams(location.search);
+  // Tailor the page to the door the visitor came through.
+  const doors={
+    staff:{t:'BVTech Team sign in',s:'MSP command center'},
+    client:{t:'Client Portal sign in',s:'Your security, devices &amp; support'},
+    academy:{t:'Academy sign in',s:'Learn to hack &amp; defend — welcome back'}
+  };
+  if(doors[AS]){document.getElementById('title').innerHTML=doors[AS].t;document.getElementById('subtitle').innerHTML=doors[AS].s;}
+  // "New here?" differs: the Academy is open self-signup; the rest request access.
+  if(AS==='academy'){
+    document.getElementById('authlink').innerHTML='New here? <a href="/join">Create a free account →</a>';
+    document.getElementById('email').placeholder='you@anywhere.com';
+  }
   if(params.get('oauth_error')){
-    const m={no_account:'That Microsoft/Google account isn’t linked to an OpsPilot login yet. Sign in with your work M365 email, or ask your MSP to invite that address.',
+    const m={no_account:(AS==='academy'?'No account yet — tap “Create a free account” below.':'That Microsoft/Google account isn’t linked to an OpsPilot login yet. Sign in with your work M365 email, or ask your MSP to invite that address.'),
       sso_disabled:'SSO is disabled.',
       exchange_failed:'Sign-in failed — please try again.',no_token:'Sign-in failed — please try again.'};
     setTimeout(()=>{const e=document.getElementById('err');if(e)e.textContent=m[params.get('oauth_error')]||'Sign-in failed.';},50);
@@ -50,8 +64,11 @@
   fetch('/api/oauth/providers').then(r=>r.ok?r.json():{providers:[]}).then(j=>{
     if(!j.sso_allowed||!(j.providers||[]).length)return;
     document.getElementById('sso').classList.remove('hidden');
+    // Academy door = one-click SSO signup (join=1 provisions an isolated learner).
+    const join=AS==='academy'?'?join=1':'';
+    const verb=AS==='academy'?'Continue with':'Sign in with';
     document.getElementById('sso-btns').innerHTML=(j.providers||[]).map(p=>
-      `<a class="btn ghost" style="width:100%;text-align:center;text-decoration:none" href="/api/oauth/${p.key}/login">Sign in with ${p.name}</a>`).join('');
+      `<a class="btn ghost" style="width:100%;text-align:center;text-decoration:none" href="/api/oauth/${p.key}/login${join}">${verb} ${p.name}</a>`).join('');
   }).catch(()=>{});
 })();
 async function doLogin(){
@@ -66,7 +83,8 @@ async function doLogin(){
     const d=await r.json();
     const nxt=new URLSearchParams(location.search).get('next');
     if(nxt && /^\/(?!\/)/.test(nxt)){ location.href=nxt; return; }
-    location.href = (d.role==='client_admin'||d.role==='client_viewer') ? '/portal' : '/dashboard';
+    // The server decides home: /dashboard (staff), /portal (client), /academy (student).
+    location.href = d.home || ((d.role==='client_admin'||d.role==='client_viewer') ? '/portal' : '/dashboard');
     return;
   }
   const d=await r.json().catch(()=>({detail:'Error'}));
