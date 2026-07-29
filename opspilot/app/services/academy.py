@@ -1281,6 +1281,262 @@ LABS = [
                    "dmarc=fail on a 'CEO wire' request is textbook business email "
                    "compromise. This is why DMARC enforcement matters.",
     },
+    # ------------------------------------------------------------------ #
+    # Wave 2 — crypto, forensics, recon, more web, and a coding lab.
+    # ------------------------------------------------------------------ #
+    {
+        "id": "caesar-cipher", "title": "Wheel of Misfortune", "icon": "🎡",
+        "difficulty": "Easy", "category": "Crypto", "points": DIFF_XP["Easy"],
+        "brief": "Julius Caesar shifted every letter by 3. This message is shifted by "
+                 "13 (a.k.a. ROT13). Rotate it back and read the flag.",
+        "target": {"kind": "data",
+                   "cipher": "SYNT{rg_gh_oehgr_guvf_vf_ebg13}",
+                   "note": "Each letter is rotated 13 places. Rotating 13 more brings it "
+                           "home (A<->N, B<->O ...). Digits and punctuation don't move."},
+        "hints": ["ROT13 is its own inverse — apply ROT13 again to decode.",
+                  "SYNT decodes to FLAG. Rotate the rest the same way."],
+        "check": ("exact", "FLAG{et_tu_brute_this_is_rot13}"),
+        "teaches": "Caesar/ROT ciphers are substitution with a fixed shift — trivially "
+                   "broken by trying all 25 shifts. Classical ciphers are history "
+                   "lessons, not security. Real confidentiality needs modern crypto.",
+    },
+    {
+        "id": "xor-key", "title": "One Byte to Rule Them All", "icon": "⊕",
+        "difficulty": "Medium", "category": "Crypto", "points": DIFF_XP["Medium"],
+        "brief": "This flag was XOR-encrypted with a single repeating byte, then shown "
+                 "as hex. Find the key (a printable ASCII byte) and XOR it back.",
+        "target": {"kind": "data",
+                   "hex": "6c666b6d515245587543597544455e754f444958535a5e434544754f435e424f5857",
+                   "note": "Single-byte XOR: every byte was XORed with the same key. XOR "
+                           "is reversible — cipher XOR key = plaintext. Try keys 32-126."},
+        "hints": ["Brute-force all 95 printable keys; the right one yields text starting "
+                  "with 'FLAG{'.", "The key is the byte 0x2A (the '*' character)."],
+        "check": ("exact", "FLAG{xor_is_not_encryption_either}"),
+        "teaches": "Single-byte (and short-key) XOR is broken instantly by brute force or "
+                   "frequency analysis. XOR is a building block of real ciphers, but XOR "
+                   "with a tiny reused key is obfuscation, not encryption.",
+    },
+    {
+        "id": "hash-crack-sha1", "title": "Rainbow's End", "icon": "🌈",
+        "difficulty": "Medium", "category": "Crypto", "points": DIFF_XP["Medium"],
+        "brief": "A leaked database stored passwords as unsalted SHA-1. Here's one hash. "
+                 "Crack it and submit the original password.",
+        "target": {"kind": "data",
+                   "hash": "8d6e34f987851aa599257d3831a1af040886842f",
+                   "algo": "SHA-1 (unsalted)",
+                   "note": "Unsalted fast hashes fall to wordlists. This one is a common "
+                           "password from every leak list."},
+        "hints": ["It's a single dictionary word — think 'rockyou' top-100.",
+                  "A warm, weather word. Rhymes with 'sunshine' because it IS sunshine."],
+        "check": ("sha1", "8d6e34f987851aa599257d3831a1af040886842f"),
+        "teaches": "Fast, unsalted hashes (MD5/SHA-1) let attackers test billions of "
+                   "guesses per second and reuse precomputed rainbow tables. Store "
+                   "passwords with a slow, salted KDF: bcrypt, scrypt, or Argon2.",
+    },
+    {
+        "id": "exif-metadata", "title": "The Photo Remembers", "icon": "📷",
+        "difficulty": "Easy", "category": "Forensics", "points": DIFF_XP["Easy"],
+        "brief": "A staffer posted a 'harmless' photo. Its embedded EXIF metadata says "
+                 "more than they meant to. Read the dump and capture the flag.",
+        "target": {"kind": "data",
+                   "exif": "$ exiftool leak.jpg\n"
+                           "File Name        : leak.jpg\n"
+                           "Camera Model     : iPhone 14 Pro\n"
+                           "Create Date      : 2026:03:11 22:41:07\n"
+                           "GPS Position     : 29.1988 N, 96.2719 W  (El Campo, TX)\n"
+                           "Artist           : j.doe@vertexdental.com\n"
+                           "User Comment     : FLAG{metadata_never_lies}\n"
+                           "Software         : Adobe Photoshop 25.0"},
+        "hints": ["Metadata fields like Artist, GPS, and User Comment travel inside the "
+                  "file.", "The flag is sitting in the User Comment field."],
+        "check": ("exact", "FLAG{metadata_never_lies}"),
+        "teaches": "Files carry hidden metadata — GPS coordinates, usernames, software, "
+                   "timestamps. Strip EXIF before publishing photos and scrub document "
+                   "metadata before sending. It has deanonymized people and leaked bases.",
+    },
+    {
+        "id": "pcap-basic-auth", "title": "Cleartext Confessions", "icon": "🎧",
+        "difficulty": "Medium", "category": "Forensics", "points": DIFF_XP["Medium"],
+        "brief": "A packet capture caught a login over plain HTTP. HTTP Basic Auth is "
+                 "just base64, not encryption. Recover the password (that's the flag).",
+        "target": {"kind": "data",
+                   "pcap": "GET /portal/dashboard HTTP/1.1\n"
+                           "Host: intranet.vertexdental.com\n"
+                           "Authorization: Basic YW5hbHlzdDpTM2NyM3RXMW50ZXIh\n"
+                           "User-Agent: Mozilla/5.0\n"
+                           "Accept: text/html\n",
+                   "note": "Basic Auth sends base64(user:pass). base64 is encoding, not "
+                           "encryption — decode it. Submit only the password."},
+        "hints": ["base64-decode the string after 'Basic '. You'll get user:password.",
+                  "The username is 'analyst'. Submit just the part after the colon."],
+        "check": ("exact", "S3cr3tW1nter!"),
+        "teaches": "HTTP Basic Auth base64-encodes credentials in the clear — anyone on "
+                   "the path reads them. Always use HTTPS (TLS); never send credentials, "
+                   "tokens, or PII over plain HTTP.",
+    },
+    {
+        "id": "log-analysis", "title": "Needle in the Logstack", "icon": "📜",
+        "difficulty": "Medium", "category": "Forensics", "points": DIFF_XP["Medium"],
+        "brief": "Someone brute-forced the admin panel and eventually got in. Read the "
+                 "access log and submit the attacker's IP (the one that finally hit 200 "
+                 "on /admin).",
+        "target": {"kind": "data",
+                   "log": '198.51.100.7 - - "POST /login" 200 (normal user, 1 request)\n'
+                          '203.0.113.66 - - "POST /admin" 401\n'
+                          '203.0.113.66 - - "POST /admin" 401\n'
+                          '203.0.113.66 - - "POST /admin" 401\n'
+                          '192.0.2.15   - - "GET /pricing" 200\n'
+                          '203.0.113.66 - - "POST /admin" 401\n'
+                          '203.0.113.66 - - "POST /admin" 200  <-- success\n'
+                          '198.51.100.7 - - "GET /dashboard" 200',
+                   "note": "One IP hammers /admin with 401s, then a 200. That pattern IS "
+                           "the brute force. Submit that IP."},
+        "hints": ["Look for many 401s from one IP followed by a 200 on the same path.",
+                  "The attacker's IP is in the 203.0.113.0/24 documentation range."],
+        "check": ("exact", "203.0.113.66"),
+        "teaches": "Repeated 401s from one source then a 200 is the signature of a "
+                   "successful brute force — exactly what account lockout and alerting "
+                   "exist to catch. Logs are how you detect and reconstruct an attack.",
+    },
+    {
+        "id": "git-exposed", "title": "The .git Time Machine", "icon": "🕰️",
+        "difficulty": "Easy", "category": "Recon", "points": DIFF_XP["Easy"],
+        "brief": "A deploy left the site's .git folder web-accessible — a full history of "
+                 "the code, including secrets someone 'removed'. Probe it and find the flag.",
+        "target": {"kind": "probe",
+                   "instructions": "Try fetching git internals under /.git/. Start with "
+                                   "the config, then the commit log.",
+                   "examples": ["?path=/.git/config", "?path=/.git/logs/HEAD"]},
+        "hints": ["/.git/config confirms the folder is exposed; /.git/logs/HEAD lists "
+                  "commits.", "An old commit message removed a secret — but git never "
+                  "forgets. The flag is in the logs."],
+        "check": ("exact", "FLAG{dot_git_is_a_time_machine}"),
+        "teaches": "An exposed .git directory leaks your entire source history — including "
+                   "secrets deleted in later commits. Block /.git in the web server and "
+                   "rotate any credential that was ever committed; deletion isn't removal.",
+    },
+    {
+        "id": "open-redirect", "title": "The Doorway to Anywhere", "icon": "🚪",
+        "difficulty": "Easy", "category": "Web", "points": DIFF_XP["Easy"],
+        "brief": "This login sends you to whatever ?next= says after you sign in — with no "
+                 "checks. Point it off-site to prove the open redirect, and grab the flag.",
+        "target": {"kind": "probe",
+                   "instructions": "The app redirects to the ?next= value. Try an internal "
+                                   "path, then an external URL.",
+                   "examples": ["?next=/dashboard", "?next=https://evil.example/phish"]},
+        "hints": ["Set next to a full external URL (https://...).",
+                  "Redirecting users to an attacker's domain is the bug — the flag "
+                  "appears when next points off-site."],
+        "check": ("exact", "FLAG{always_validate_redirect_targets}"),
+        "teaches": "Open redirects let attackers borrow your trusted domain to bounce "
+                   "victims to phishing pages. Allow only relative paths or an allowlist of "
+                   "hosts; never redirect to raw user-supplied URLs.",
+    },
+    {
+        "id": "xss-reflected", "title": "The Search Box Bites Back", "icon": "🐍",
+        "difficulty": "Medium", "category": "Web", "points": DIFF_XP["Medium"],
+        "brief": "This search page echoes your query straight back into the HTML with no "
+                 "encoding. Inject a script that the page would execute (reflected XSS).",
+        "target": {"kind": "probe",
+                   "instructions": "Whatever you put in ?q= is reflected into the page. "
+                                   "Try plain text, then an HTML/script payload.",
+                   "examples": ["?q=hello", "?q=<script>alert(1)</script>"]},
+        "hints": ["Submit a <script>...</script> (or an onerror= image) payload in q.",
+                  "The lab detects an executable script injection and returns the flag."],
+        "check": ("exact", "FLAG{encode_output_stop_reflected_xss}"),
+        "teaches": "Reflected XSS happens when user input is written into a page without "
+                   "output-encoding, letting an attacker run script in a victim's browser. "
+                   "Contextually encode all output and set a strict Content-Security-Policy.",
+    },
+    {
+        "id": "mass-assignment", "title": "Checking Your Own Box", "icon": "☑️",
+        "difficulty": "Medium", "category": "Web", "points": DIFF_XP["Medium"],
+        "brief": "The 'update profile' endpoint saves every field you send — including "
+                 "ones the form never showed you. Grant yourself admin (mass assignment).",
+        "target": {"kind": "probe",
+                   "instructions": "Send profile fields. The form only exposes 'name', but "
+                                   "the API blindly binds whatever you pass. Try adding an "
+                                   "admin-ish field.",
+                   "examples": ["?name=Jordan", "?name=Jordan&role=admin", "?is_admin=true"]},
+        "hints": ["Add a field the UI never offered, like role=admin or is_admin=true.",
+                  "The server binds it straight to your account object — and hands you the flag."],
+        "check": ("exact", "FLAG{never_bind_untrusted_fields}"),
+        "teaches": "Mass assignment / over-posting: binding request fields directly to a "
+                   "model lets users set fields (role, is_admin, balance) they should never "
+                   "control. Bind an explicit allowlist of fields on the server.",
+    },
+    {
+        "id": "ssrf-metadata", "title": "The Server's Inside Voice", "icon": "🛰️",
+        "difficulty": "Hard", "category": "Web", "points": DIFF_XP["Hard"],
+        "brief": "This 'fetch a URL' feature runs from the server, so it can reach places "
+                 "you can't — like the cloud metadata service. Make it fetch the secrets "
+                 "endpoint (SSRF).",
+        "target": {"kind": "probe",
+                   "instructions": "The server fetches whatever ?url= you give it. Point it "
+                                   "at the cloud metadata IP that hands out credentials.",
+                   "examples": ["?url=https://example.com",
+                                "?url=http://169.254.169.254/latest/meta-data/"]},
+        "hints": ["Cloud instances expose secrets at the link-local IP 169.254.169.254.",
+                  "Fetch http://169.254.169.254/latest/meta-data/iam/ to reach the creds — "
+                  "the flag is returned from there."],
+        "check": ("exact", "FLAG{ssrf_reaches_the_metadata_service}"),
+        "teaches": "Server-Side Request Forgery abuses server-side fetchers to hit internal "
+                   "services (metadata, admin panels, databases). Enforce an egress "
+                   "allowlist, block link-local/private ranges, and require IMDSv2.",
+    },
+    {
+        "id": "cmd-injection", "title": "Ping of Death", "icon": "📡",
+        "difficulty": "Hard", "category": "Web", "points": DIFF_XP["Hard"],
+        "brief": "A network-tools page runs `ping <your input>` on the server shell, gluing "
+                 "your text into the command. Chain an extra command to read the flag.",
+        "target": {"kind": "probe",
+                   "instructions": "The host value is passed to a shell ping. Try a normal "
+                                   "host, then append a second command with a shell "
+                                   "metacharacter.",
+                   "examples": ["?host=8.8.8.8", "?host=8.8.8.8; cat flag.txt",
+                                "?host=8.8.8.8 && cat flag.txt"]},
+        "hints": ["Shell metacharacters ; | && chain commands. Append one that reads the flag.",
+                  "Try host=8.8.8.8; cat flag.txt — the lab runs your second command."],
+        "check": ("exact", "FLAG{never_pass_user_input_to_a_shell}"),
+        "teaches": "OS command injection: concatenating user input into a shell command lets "
+                   "attackers run arbitrary commands. Never build shell strings from input — "
+                   "call binaries with an argument array and no shell, and validate inputs.",
+    },
+    {
+        "id": "regex-waf", "title": "Build Your Own Firewall", "icon": "🧱",
+        "difficulty": "Hard", "category": "Defense", "points": DIFF_XP["Hard"],
+        "brief": "Now play defense. Write ONE regular expression that blocks every SQL-"
+                 "injection payload below WITHOUT flagging any of the innocent inputs. "
+                 "Submit your regex — the lab tests it live against both sets.",
+        "target": {"kind": "waf",
+                   "instructions": "Your regex must MATCH all of the attacks and NONE of the "
+                                   "benign inputs (matching is case-insensitive). The tricky "
+                                   "part: benign names contain quotes and words like 'or' and "
+                                   "'union' — a lazy filter will false-positive. Target SQL "
+                                   "*syntax*, not innocent substrings.",
+                   "attacks": [
+                       "' OR '1'='1",
+                       "admin'--",
+                       "' UNION SELECT password FROM users--",
+                       "'; DROP TABLE users;--",
+                       "1' OR '1'='1",
+                   ],
+                   "benign": [
+                       "O'Brien",
+                       "orlando",
+                       "d'Angelo",
+                       "password--strong",
+                       "union square cafe",
+                   ]},
+        "hints": ["Anchor on a quote FOLLOWED by SQL syntax (a quote next to or/and/union/"
+                  "comment/semicolon), plus keyword pairs like UNION SELECT and DROP TABLE.",
+                  "Something like:  '\\s*(or|and|union|;|--)|union\\s+select|drop\\s+table"],
+        "check": ("regex_waf", ""),
+        "teaches": "Blocklists are brittle: too loose and you break real users (false "
+                   "positives on O'Brien), too tight and attacks slip through. That's why "
+                   "the real fix for SQLi is parameterized queries, not regex filtering — "
+                   "but writing a WAF rule teaches you exactly how attacks are shaped.",
+    },
 ]
 
 # --------------------------------------------------------------------------- #
@@ -1591,6 +1847,69 @@ def lab_probe(lab_id: str, params: dict) -> dict:
             return resp(404, "File not found (you escaped the folder — now aim for etc/passwd).")
         return resp(200, f"[contents of files/{base}]")
 
+    if lab_id == "git-exposed":
+        path = (params.get("path") or "").strip().lower().strip("/")
+        if path == ".git/config":
+            return resp(200, "[core]\n\trepositoryformatversion = 0\n"
+                             "[remote \"origin\"]\n\turl = git@github.com:vertex/portal.git\n"
+                             "(exposed! now read .git/logs/HEAD)")
+        if path == ".git/logs/head":
+            return resp(200, "0000000 a1b2c3d Jordan <j@vertex> commit: initial portal\n"
+                             "a1b2c3d 9f8e7d6 Jordan <j@vertex> commit: remove hardcoded key "
+                             "FLAG{dot_git_is_a_time_machine}")
+        if path.startswith(".git"):
+            return resp(200, "(exists) try .git/config then .git/logs/HEAD")
+        return resp(404, "Not found. Probe under /.git/ — start with ?path=/.git/config")
+
+    if lab_id == "open-redirect":
+        nxt = (params.get("next") or "").strip()
+        if nxt.lower().startswith(("http://", "https://", "//")):
+            return resp(302, f"Redirecting off-site to {nxt} — no validation! "
+                             "FLAG{always_validate_redirect_targets}")
+        if nxt:
+            return resp(302, f"Redirecting to internal path {nxt} (safe).")
+        return resp(400, "Provide ?next=. Try an external URL to prove the redirect.")
+
+    if lab_id == "xss-reflected":
+        q = params.get("q") or ""
+        low = q.lower()
+        # SAFE: pattern-match a script-injection shape; nothing is rendered or run.
+        if ("<script" in low or "onerror=" in low or "onload=" in low
+                or "<img" in low and "=" in low and "alert" in low):
+            return resp(200, "Your input was reflected UNENCODED into the page — a browser "
+                             "would execute it. FLAG{encode_output_stop_reflected_xss}")
+        return resp(200, f"You searched for: {q} (0 results)")
+
+    if lab_id == "mass-assignment":
+        low = {k.lower(): str(v).lower() for k, v in params.items()}
+        if low.get("role") == "admin" or low.get("is_admin") in ("true", "1", "yes") \
+                or low.get("admin") in ("true", "1", "yes"):
+            return resp(200, "Profile updated. role=admin was bound from your request! "
+                             "FLAG{never_bind_untrusted_fields}")
+        return resp(200, f"Profile updated: name={params.get('name', '(unchanged)')}, role=user")
+
+    if lab_id == "ssrf-metadata":
+        url = (params.get("url") or "").strip().lower()
+        if "169.254.169.254" in url:
+            if "iam" in url or "security-cred" in url or "meta-data/iam" in url:
+                return resp(200, "{ \"AccessKeyId\": \"ASIA...\", \"SecretAccessKey\": "
+                                 "\"FLAG{ssrf_reaches_the_metadata_service}\" }")
+            return resp(200, "meta-data/\n  iam/\n  hostname\n  (drill into iam/ for creds)")
+        if url.startswith(("http://", "https://")):
+            return resp(200, "<html>example page</html> (external fetch OK — now aim inward)")
+        return resp(400, "Provide ?url=. The server fetches it for you.")
+
+    if lab_id == "cmd-injection":
+        host = params.get("host") or ""
+        # SAFE: detect a shell-chaining pattern in the input; no shell is invoked.
+        if any(sep in host for sep in (";", "|", "&&", "`", "$(")) and \
+                any(kw in host.lower() for kw in ("cat", "flag", "ls", "id", "whoami")):
+            return resp(200, "PING 8.8.8.8 ... 0% loss\nflag.txt: "
+                             "FLAG{never_pass_user_input_to_a_shell}")
+        if host:
+            return resp(200, f"PING {host} ... 64 bytes, 0% packet loss")
+        return resp(400, "Provide ?host= to ping.")
+
     return resp(404, "No such lab endpoint.")
 
 
@@ -1613,6 +1932,31 @@ def _check_flag(b: dict, submission: str) -> bool:
         return s == expected
     if kind == "md5":
         return _hashlib.md5(s.encode("utf-8", "ignore")).hexdigest() == expected
+    if kind == "sha1":
+        return _hashlib.sha1(s.encode("utf-8", "ignore")).hexdigest() == expected
+    if kind == "regex_waf":
+        # Interactive defense lab: the learner submits a REGEX. We compile it
+        # safely and require it to match every attack string and no benign one.
+        # The candidate strings live on the lab (b["target"]) so the server is
+        # the single source of truth; nothing but a pattern is ever evaluated.
+        import re as _re
+        pat = s
+        if not pat or len(pat) > 200:
+            return False
+        try:
+            rx = _re.compile(pat, _re.IGNORECASE)
+        except _re.error:
+            return False
+        tgt = b.get("target") or {}
+        attacks = tgt.get("attacks") or []
+        benign = tgt.get("benign") or []
+        if not attacks:
+            return False
+        try:
+            return (all(rx.search(a) for a in attacks)
+                    and not any(rx.search(bn) for bn in benign))
+        except Exception:  # noqa: BLE001 — a pathological pattern must never crash grading
+            return False
     if kind == "cookie_admin":
         try:
             raw = _b64.b64decode(s + "=" * (-len(s) % 4)).decode("utf-8", "ignore")

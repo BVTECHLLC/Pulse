@@ -354,11 +354,21 @@ function renderTarget(l){
         <button class="btn" style="width:auto;padding:0 16px" onclick="runProbe('${l.id}')">Send ▶</button>
       </div>
       <pre id="probe-out" style="overflow:auto;background:#0b1220;color:#8ef5b8;padding:12px;border-radius:8px;margin-top:10px;min-height:40px;white-space:pre-wrap">— responses appear here —</pre>`;
+  } else if(t.kind==='waf'){
+    const set=(title,arr,col)=>`<div style="margin-top:8px"><b style="color:${col}">${title}</b>${(arr||[]).map(x=>`<div style="font-family:monospace;font-size:12px;word-break:break-all">${esc(x)}</div>`).join('')}</div>`;
+    box.innerHTML=`<b>🧱 Write a firewall rule</b>
+      <div class="explain" style="margin:6px 0 8px">${esc(t.instructions||'')}</div>
+      ${set('✅ Your regex MUST match these (attacks):', t.attacks, '#EB6F24')}
+      ${set('🚫 Your regex must NOT match these (real users):', t.benign, '#26C485')}
+      <div class="mut" style="margin-top:8px;font-size:12px">Type your regex in the flag box below and submit — it's tested live (case-insensitive).</div>`;
   } else { box.innerHTML=''; }
 }
 function probePlaceholder(id){return ({
   'robots-recon':'path=/robots.txt','idor-invoice':'id=4021',
-  'sqli-login':"user=admin&pass=' OR '1'='1",'path-traversal':'file=welcome.txt'
+  'sqli-login':"user=admin&pass=' OR '1'='1",'path-traversal':'file=welcome.txt',
+  'git-exposed':'path=/.git/config','open-redirect':'next=https://evil.example',
+  'xss-reflected':'q=<script>alert(1)</script>','mass-assignment':'name=Jordan&role=admin',
+  'ssrf-metadata':'url=http://169.254.169.254/latest/meta-data/','cmd-injection':'host=8.8.8.8; cat flag.txt'
 }[id])||'param=value';}
 async function runProbe(id){
   const q=($('probe-q').value||'').trim().replace(/^\?/,'');

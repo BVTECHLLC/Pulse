@@ -5597,7 +5597,7 @@ def main():
         # ==== v1.63.0: Cyber Range — hands-on labs, probe emulator, flag grading ====
         import base64 as _b64r, re as _rer
         _rc = c.get("/api/academy/range").json()
-        assert _rc["total"] == 10 and _rc["solved"] == 0, _rc
+        assert _rc["total"] == _aca.TOTAL_LABS >= 23 and _rc["solved"] == 0, _rc
         # lab view must NOT expose the check/flag for derived labs
         _lv = c.get("/api/academy/labs/sqli-login").json()
         assert "check" not in _lv and _lv["difficulty"] == "Medium" and "target" in _lv
@@ -5619,7 +5619,18 @@ def main():
         # path traversal WITHOUT the exploit must not leak
         assert "FLAG" not in c.get("/api/academy/labs/path-traversal/probe",
                                    params={"file": "welcome.txt"}).json()["body"]
-        # capture flags across all 10 labs -> difficulty-scaled XP, once each
+        # new probe labs also emulate safely — verify a few + no-leak on benign input
+        _gitf = _rer.search(r"FLAG\{[^}]+\}", c.get("/api/academy/labs/git-exposed/probe",
+                            params={"path": "/.git/logs/HEAD"}).json()["body"]).group(0)
+        assert "FLAG" not in c.get("/api/academy/labs/xss-reflected/probe",
+                                   params={"q": "hello"}).json()["body"], "XSS benign leak"
+        assert "FLAG" in c.get("/api/academy/labs/xss-reflected/probe",
+                               params={"q": "<script>alert(1)</script>"}).json()["body"]
+        assert "FLAG" not in c.get("/api/academy/labs/cmd-injection/probe",
+                                   params={"host": "8.8.8.8"}).json()["body"], "cmdi benign leak"
+        assert "FLAG" not in c.get("/api/academy/labs/ssrf-metadata/probe",
+                                   params={"url": "https://example.com"}).json()["body"], "ssrf benign leak"
+        # capture flags across EVERY lab -> difficulty-scaled XP, once each
         _solutions = {
             "recon-source": "FLAG{view_source_is_recon_101}",
             "robots-recon": "FLAG{robots_txt_is_a_treasure_map}",
@@ -5632,7 +5643,25 @@ def main():
             "base64-onion": "FLAG{encoding_is_not_encryption}",
             "path-traversal": _pt_flag,
             "email-forensics": "185.220.101.44",
+            # wave 2
+            "caesar-cipher": "FLAG{et_tu_brute_this_is_rot13}",
+            "xor-key": "FLAG{xor_is_not_encryption_either}",
+            "hash-crack-sha1": "sunshine",
+            "exif-metadata": "FLAG{metadata_never_lies}",
+            "pcap-basic-auth": "S3cr3tW1nter!",
+            "log-analysis": "203.0.113.66",
+            "git-exposed": _gitf,
+            "open-redirect": "FLAG{always_validate_redirect_targets}",
+            "xss-reflected": "FLAG{encode_output_stop_reflected_xss}",
+            "mass-assignment": "FLAG{never_bind_untrusted_fields}",
+            "ssrf-metadata": "FLAG{ssrf_reaches_the_metadata_service}",
+            "cmd-injection": "FLAG{never_pass_user_input_to_a_shell}",
+            # interactive coding lab: submit a working WAF regex, not a flag
+            "regex-waf": r"'\s*(or|and|union|;|--)|union\s+select|drop\s+table",
         }
+        # every lab must be covered so range_all is reachable
+        assert set(_solutions) == set(_aca._LABS), \
+            ("solve map out of sync", set(_aca._LABS) - set(_solutions))
         _base_xp = c.get("/api/academy/me").json()["xp"]
         _gained, _got_first_flag, _got_l33t = 0, False, False
         for _lid, _flag in _solutions.items():
@@ -5645,16 +5674,21 @@ def main():
             assert c.post(f"/api/academy/labs/{_lid}/submit",
                           json={"flag": _flag}).json()["xp_gained"] == 0
         assert _got_first_flag and _got_l33t, "first_flag + l33t badges must fire"
-        # XP is difficulty-weighted: 4 Easy(100)+4 Med(175)+2 Hard(275) = 1650
-        assert _gained == 4*100 + 4*175 + 2*275, _gained
+        # XP is difficulty-weighted — computed from the live catalog so it scales
+        _expect_xp = sum(_aca.DIFF_XP[b["difficulty"]] for b in _aca.LABS)
+        assert _gained == _expect_xp, (_gained, _expect_xp)
+        # a wrong WAF regex (blocks a real user) must NOT solve the coding lab
+        assert c.post("/api/academy/labs/regex-waf/submit",
+                      json={"flag": "'"}).json()["solved"] is False
         _rc2 = c.get("/api/academy/range").json()
-        assert _rc2["solved"] == 10, _rc2
+        assert _rc2["solved"] == _aca.TOTAL_LABS == len(_solutions), _rc2
         _prof = c.get("/api/academy/me").json()
         assert _prof["xp"] == _base_xp + _gained
         assert any(b["id"] == "range_all" for b in _prof["badges"]), "Range Master badge"
-        print("cyber range: 10 CTF labs (recon/web/auth/crypto/email) - probe emulator "
-              "solves IDOR/SQLi/traversal, difficulty-scaled XP (1650), XP-once, "
-              "first_flag/l33t/range_all badges, no flag leak in views OK")
+        print(f"cyber range: {_aca.TOTAL_LABS} CTF labs (recon/web/crypto/forensics/osint/"
+              f"defense) - safe probe emulators (XSS/SSRF/cmdi/IDOR/SQLi/git), a write-a-"
+              f"regex-WAF coding lab, difficulty-scaled XP ({_expect_xp}), XP-once, "
+              "first_flag/l33t/range_all badges, no flag leak in views/benign probes OK")
 
         # ==== v1.64.0: vCISO scorecard PDF — the board-ready QBR deliverable ====
         from app.services import vcio as _vcio64
@@ -6418,7 +6452,7 @@ def main():
         print("box self-updater: script parses, CI gate decides green/red/pending "
               "correctly, ff-only + health-gated rollback present OK")
 
-    print("\n=== OpsPilot v1.66.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.67.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
