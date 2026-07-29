@@ -405,7 +405,42 @@ function renderTarget(l){
     window.score=0;
     window.gmRender=()=>{const e=$('gm-score');if(e)e.textContent=Number(window.score).toLocaleString()};
     window.submitScore=(s)=>runProbe(l.id, 'score='+encodeURIComponent(s==null?window.score:s));
+  } else if(t.kind==='shell'){
+    box.innerHTML=`<b>🖥️ Live terminal — The Grid</b>
+      <div class="explain" style="margin:6px 0 8px">${esc(t.instructions||'')}</div>
+      <div id="term" style="background:#05070d;border:1px solid #1a2740;border-radius:10px;padding:12px;height:340px;overflow:auto;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.5;color:#c8f7d8;white-space:pre-wrap;cursor:text" onclick="const i=document.getElementById('term-in');if(i)i.focus()"></div>
+      <div class="row" style="margin-top:8px;align-items:center;gap:6px">
+        <span id="term-ps" style="font-family:ui-monospace,monospace;font-size:12.5px;color:#5cf08a;white-space:nowrap"></span>
+        <input id="term-in" autocomplete="off" autocapitalize="off" spellcheck="false" style="flex:1;font-family:ui-monospace,monospace;font-size:12.5px;background:#0b1130;border:1px solid var(--line);border-radius:8px;padding:8px" placeholder="type a command… (help)">
+      </div>`;
+    termStart();
   } else { box.innerHTML=''; }
+}
+/* ---------- The Grid: interactive terminal ---------- */
+let TERM_PW=false;
+function termWrite(lines){const t=$('term');if(!t)return;
+  (Array.isArray(lines)?lines:[lines]).forEach(l=>{ if(l==='\x0c'){t.innerHTML='';return;} const d=document.createElement('div');d.textContent=l;t.appendChild(d);});
+  t.scrollTop=t.scrollHeight;}
+async function termStart(){
+  const r=await postJ('/api/academy/shell/start',{});
+  const t=$('term');if(t)t.innerHTML='';
+  termWrite(r.lines); $('term-ps').textContent=r.prompt;
+  const inp=$('term-in'); if(inp){inp.value='';inp.type='text';inp.onkeydown=termKey;setTimeout(()=>inp.focus(),60);}
+}
+async function termKey(e){
+  if(e.key!=='Enter')return;
+  const inp=$('term-in'); const line=inp.value; inp.value='';
+  // echo the prompt + what they typed (mask if entering a password)
+  termWrite($('term-ps').textContent+' '+(TERM_PW?'•'.repeat(line.length):line));
+  const r=await postJ('/api/academy/shell/exec',{line:line});
+  termWrite(r.lines);
+  $('term-ps').textContent=r.prompt;
+  TERM_PW=!!r.awaiting_password;
+  inp.type=TERM_PW?'password':'text';
+  // if a flag scrolled by, gently point them at the submit box
+  if((r.lines||[]).some(l=>/FLAG\{[^}]+\}/.test(l))){
+    termWrite('  ↳ nice — copy that FLAG{...} into the “Submit the flag” box below to score it.');
+  }
 }
 function probePlaceholder(id){return ({
   'robots-recon':'path=/robots.txt','idor-invoice':'id=4021',

@@ -2249,6 +2249,27 @@ LABS = [
                    "browser is fully attacker-controlled. Validate and compute authoritative "
                    "values on the server; treat anything from the client as a claim, not a fact.",
     },
+    {
+        "id": "the-sentinel", "title": "The Grid: Sentinel — boot2root", "icon": "🖥️",
+        "difficulty": "Hard", "category": "Linux", "points": DIFF_XP["Hard"],
+        "brief": "A LIVE terminal on a vulnerable Linux box. You land as the web user "
+                 "'www-data'. Enumerate the filesystem, steal a reused password from a config "
+                 "file, pivot to the real user 'jordan', grab the user flag, then exploit a "
+                 "sudo/GTFOBins misconfiguration to escalate to root and capture the ROOT "
+                 "flag. Type your way in — then submit the ROOT flag below.",
+        "target": {"kind": "shell", "box": "sentinel",
+                   "instructions": "This is a full engagement. Start with `ls -la` and read "
+                                   "every file. `help` lists commands, `hint` nudges you."},
+        "hints": ["Read the web root: `cat config.php` leaks a password, and people reuse "
+                  "passwords. Then `su jordan`.",
+                  "As jordan: `sudo -l`. A NOPASSWD `find` is a GTFOBins escape — "
+                  "`sudo find . -exec /bin/sh \\;` drops a root shell."],
+        "check": ("exact", "FLAG{b00t2r00t_gtfo_via_sudo_find}"),
+        "teaches": "A real attack chain: plaintext creds in a web-readable config (leak) -> "
+                   "password reuse (lateral movement to jordan) -> sudo/GTFOBins privilege "
+                   "escalation (root). The fixes: never store secrets in web-served files, "
+                   "never reuse passwords, and audit every sudo NOPASSWD entry.",
+    },
 ]
 
 # --------------------------------------------------------------------------- #

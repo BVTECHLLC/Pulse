@@ -185,6 +185,25 @@ def dojo_submit(challenge_id: str, body: OutputsIn, db: Session = Depends(get_db
     return out
 
 
+@router.post("/shell/start")
+def shell_start(user: User = Depends(current_user)):
+    """Boot (or reboot) The Grid terminal box for this user. Pure emulator — no
+    real shell, filesystem, or code execution ever runs."""
+    from ...services import shell_range
+    return shell_range.start(user.id)
+
+
+class ShellIn(BaseModel):
+    line: str = ""
+
+
+@router.post("/shell/exec")
+def shell_exec(body: ShellIn, user: User = Depends(current_user)):
+    """Run one command line against the emulated box. State is per-user, server-side."""
+    from ...services import shell_range
+    return shell_range.run(user.id, (body.line or "")[:400])
+
+
 @router.get("/leaderboard")
 def board(db: Session = Depends(get_db), user: User = Depends(current_user)):
     return {"leaderboard": academy.leaderboard(db, user, staff=is_staff(user))}
