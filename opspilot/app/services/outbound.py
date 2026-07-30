@@ -348,18 +348,90 @@ def _graph_factory(tenant: str, client_id: str, client_secret: str):
 _GRAPH_FACTORY = _graph_factory   # test seam
 
 
-def _text_to_html(text: str) -> str:
-    """v1.56.2: send HTML, not plain text. The org's Exchange rule appends a
-    rich HTML signature (photo, banner, socials) to every outbound email —
-    stapling that onto a PLAIN-TEXT body makes Outlook downgrade the whole
-    message to text, so recipients saw raw [https://...png] brackets instead of
-    the signature. Escaping the body and preserving its exact line structure
-    (pre-wrap) keeps our copy byte-identical while letting the appended
-    signature render the way it was designed."""
+# --------------------------------------------------------------------------- #
+# Branded HTML signature — v1.77. The old approach leaned on a server-side
+# Exchange transport rule to staple a "photo/banner/socials" signature onto
+# every message. That rule is invisible to this code, breaks silently, and the
+# moment it stopped firing every email went out bare — the "lost banner". This
+# bakes a self-contained, email-safe signature straight into the message so it
+# ALWAYS renders: pure table + inline styles + a CSS-drawn logo tile (no
+# external image to be blocked), so it looks identical in Outlook, Gmail, and
+# Apple Mail whether or not the recipient loads remote images.
+# --------------------------------------------------------------------------- #
+def _signature_identity() -> dict:
+    """Signature fields, overridable from the box .env but with defaults that
+    always render so the banner can never go missing again."""
+    import os
+    return {
+        "name":  os.environ.get("PULSE_SIG_NAME")  or "Jordan Polasek",
+        "title": os.environ.get("PULSE_SIG_TITLE") or "Founder & Managing Partner",
+        "company": os.environ.get("PULSE_SIG_COMPANY") or "BVTech LLC",
+        "tagline": os.environ.get("PULSE_SIG_TAGLINE")
+                   or "Managed IT & Cybersecurity for Texas businesses",
+        "email": os.environ.get("PULSE_SIG_EMAIL") or "help@bvtech.org",
+        "phone": os.environ.get("PULSE_SIG_PHONE") or "",
+        "site":  os.environ.get("PULSE_SIG_SITE")  or "bvtech.org",
+        "portal": os.environ.get("PULSE_SIG_PORTAL") or "portal.bvtech.org",
+    }
+
+
+def _html_signature() -> str:
+    """A self-contained, images-off-safe HTML email signature. Brand navy/blue,
+    a CSS-drawn BV logo tile, name/title/company, and tappable contact links."""
+    s = _signature_identity()
+    navy, blue, ink, mut = "#0b1f3a", "#2b7cff", "#1a2233", "#5b6472"
+    rows = []
+    rows.append(
+        f'<a href="mailto:{s["email"]}" style="color:{blue};text-decoration:none">'
+        f'{s["email"]}</a>')
+    if s["phone"]:
+        rows.append(f'<span style="color:{ink}">{s["phone"]}</span>')
+    rows.append(
+        f'<a href="https://{s["site"]}" style="color:{blue};text-decoration:none">'
+        f'{s["site"]}</a>')
+    rows.append(
+        f'<a href="https://{s["portal"]}" style="color:{mut};text-decoration:none">'
+        f'Client portal</a>')
+    contact = ('&nbsp;&nbsp;·&nbsp;&nbsp;'.join(rows))
+    return (
+      '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
+      'style="margin-top:22px;border-collapse:collapse;'
+      "font-family:'Segoe UI',Calibri,Arial,sans-serif\">"
+      '<tr>'
+      # logo tile — drawn with CSS so it renders even with images blocked
+      '<td valign="top" style="padding-right:16px">'
+      f'<div style="width:52px;height:52px;border-radius:12px;background:{navy};'
+      f'background:linear-gradient(135deg,{navy},{blue});text-align:center;'
+      'line-height:52px;color:#ffffff;font-size:22px;font-weight:800;'
+      "font-family:'Segoe UI',Arial,sans-serif;letter-spacing:.5px\">BV</div>"
+      '</td>'
+      # left brand rule + text block
+      f'<td valign="top" style="border-left:3px solid {blue};padding-left:16px">'
+      f'<div style="font-size:16px;font-weight:700;color:{ink};line-height:1.2">'
+      f'{_H_ESC(s["name"])}</div>'
+      f'<div style="font-size:13px;color:{mut};padding-top:2px">'
+      f'{_H_ESC(s["title"])} · <span style="color:{ink};font-weight:600">'
+      f'{_H_ESC(s["company"])}</span></div>'
+      f'<div style="font-size:12px;color:{mut};font-style:italic;padding-top:4px">'
+      f'{_H_ESC(s["tagline"])}</div>'
+      f'<div style="font-size:12.5px;padding-top:8px;line-height:1.6">{contact}</div>'
+      '</td></tr></table>')
+
+
+def _H_ESC(v: str) -> str:
     import html as _h
+    return _h.escape(v or "")
+
+
+def _text_to_html(text: str) -> str:
+    """v1.77: render the message as HTML with a self-contained branded signature.
+    The body keeps its exact line structure (pre-wrap, escaped byte-for-byte),
+    then the baked-in signature is appended so the banner is guaranteed present
+    on every send — no dependency on any external Exchange rule that can (and
+    did) silently disappear."""
     return ('<div style="font-family:\'Segoe UI\',Calibri,Arial,sans-serif;'
             'font-size:15px;color:#222222;line-height:1.5;white-space:pre-wrap">'
-            + _h.escape(text) + "</div>")
+            + _H_ESC(text) + "</div>" + _html_signature())
 
 
 def _graph_and_mailbox(db: Session):

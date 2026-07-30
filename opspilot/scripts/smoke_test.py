@@ -6485,6 +6485,13 @@ def main():
             # Exchange signature rule renders instead of downgrading to text
             assert all(t[4].get("html") is True and t[3].startswith("<div ")
                        for t in _sent56[_n56_before:]), "sends must be HTML"
+            # v1.77: the branded signature is BAKED IN (not a fragile server-side
+            # Exchange rule) — every send must carry the banner: logo tile, name,
+            # tagline, and a mailto. The "lost banner" can never come back silent.
+            assert all(("<table" in t[3] and ">BV</div>" in t[3]
+                        and "Jordan Polasek" in t[3] and "Managed IT" in t[3]
+                        and "mailto:help@bvtech.org" in t[3])
+                       for t in _sent56[_n56_before:]), "branded signature missing"
             _acts56 = (_edb6.query(_CA56)
                        .filter(_CA56.contact_id.in_(_ourids56)).all())
             assert len(_acts56) == 2 and all(
@@ -6735,7 +6742,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.76.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.77.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

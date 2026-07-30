@@ -1,5 +1,25 @@
 # BVTech OpsPilot — Changelog
 
+## v1.77.0 — Baked-in branded email signature (the banner can't vanish) (July 2026)
+- **Self-contained HTML signature on every outbound email.** The rich
+  "photo/banner/socials" signature used to be stapled on by a server-side
+  Exchange transport rule — invisible to this code, and when it silently
+  stopped firing, every acquisition email went out bare (the "lost banner").
+  `_text_to_html` now bakes a professional, email-safe signature straight into
+  the message: a CSS-drawn **BV** logo tile (no external image to be blocked),
+  Jordan Polasek · Founder & Managing Partner · BVTech LLC, the "Managed IT &
+  Cybersecurity for Texas businesses" tagline, and tappable mailto/site/portal
+  links — table + inline styles so it renders identically in Outlook, Gmail,
+  and Apple Mail whether or not remote images load. Overridable via
+  `PULSE_SIG_*` env vars, but the defaults always render so the banner can
+  never go missing again.
+- **Free brain by default.** The personalized opener path already runs on the
+  free LLM (Groq) via `ai.complete(smart=False)`; with `FREE_LLM_ONLY=1` it
+  never spends a cent of paid Claude credit and degrades to the deterministic
+  evergreen intro if Groq is unreachable — so background outreach costs $0 to run.
+- Smoke: a new regression assertion proves every live send carries the baked-in
+  banner (logo tile, name, tagline, mailto), so it can't regress unnoticed.
+
 ## v1.50.0 — Token-relief engine: free LLM + zero-token evergreen floor (July 2026)
 - **Free-LLM provider**: `ai.complete()` now routes single-shot content to any
   OpenAI-compatible endpoint (Groq, OpenRouter, Together, Google's OpenAI-compat
