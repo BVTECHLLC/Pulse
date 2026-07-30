@@ -330,7 +330,7 @@ def callback(provider: str, request: Request, response: Response,
              db: Session = Depends(get_db)):
     if error:
         safe = "".join(ch for ch in error if ch.isalnum() or ch in "_-")[:60]
-        return RedirectResponse(f"/?oauth_error={safe}&oauth_provider={provider}", status_code=302)
+        return RedirectResponse(f"/login?oauth_error={safe}&oauth_provider={provider}", status_code=302)
     oauth.sync_vault_providers(db)   # ensure the provider config is present
     oauth.sync_connect_providers(db)
     st = _consume_state(db, provider, state)
@@ -353,7 +353,7 @@ def callback(provider: str, request: Request, response: Response,
                          success=False, detail=f"provider={provider} {str(e)[:400]}")
         except Exception:  # noqa: BLE001
             pass
-        return RedirectResponse("/?oauth_error=exchange_failed", status_code=302)
+        return RedirectResponse("/login?oauth_error=exchange_failed", status_code=302)
     access = tok.get("access_token")
     # For SSO we only need identity (the id_token), which is present even when no
     # access_token/Graph scope was granted — so don't hard-fail on a missing
@@ -383,10 +383,9 @@ def callback(provider: str, request: Request, response: Response,
 
     if purpose == "sso":
         if not _s.OAUTH_ALLOW_SSO:
-            return RedirectResponse("/?oauth_error=sso_disabled", status_code=302)
+            return RedirectResponse("/login?oauth_error=sso_disabled", status_code=302)
         # Match a provisioned user against ANY email/UPN this sign-in presented,
-        # case-insensitively. This is the real authorization gate — SSO never
-        # creates accounts, it only signs in someone already invited/onboarded.
+        # case-insensitively. This is the first authorization gate.
         user = None
         for cand in candidates:
             user = (db.query(User)
@@ -396,7 +395,33 @@ def callback(provider: str, request: Request, response: Response,
                 email = cand
                 break
         if not user:
-            # Zero-touch client SSO: if one of the presented emails belongs (by
+            from ...services import sso_provision
+            claims = oauth.decode_id_token_claims(tok.get("id_token"))
+            name = claims.get("name")
+            # (1) STAFF SSO: an account on your OWN domain signs your team in
+            # (bootstrap admin -> OWNER, others -> TECH). This is what makes
+            # "log in with our company Microsoft accounts" just work.
+            for cand in candidates:
+                user = sso_provision.maybe_staff_autoprovision(db, cand, full_name=name)
+                if user:
+                    email = cand
+                    audit.record(db, action="login.oauth_staff_provision", actor_user_id=user.id,
+                                 actor_email=user.email, actor_role=user.role.value,
+                                 ip=_ip(request), detail=f"provider={provider} role={user.role.value}")
+                    try:
+                        from ...models import Notification
+                        from ...services import notifications as _notif
+                        msg = (f"New staff SSO sign-in: {user.email} ({user.role.value}). "
+                               "Review in Users & Access.")
+                        db.add(Notification(client_id=None, target_user_id=None,
+                                            kind="access", severity="info", message=msg[:1000]))
+                        db.commit()
+                        _notif.fanout(db, message=msg, severity="info", client_id=None)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    break
+        if not user:
+            # (2) Zero-touch client SSO: if one of the presented emails belongs (by
             # domain) to exactly one onboarded client, create a read-only viewer.
             from ...services import sso_provision
             claims = oauth.decode_id_token_claims(tok.get("id_token"))
@@ -429,7 +454,7 @@ def callback(provider: str, request: Request, response: Response,
             audit.record(db, action="login.oauth_no_match",
                          actor_email=(email or ",".join(candidates) or None), ip=_ip(request),
                          success=False, detail=f"provider={provider} tried={len(candidates)}")
-            return RedirectResponse("/?oauth_error=no_account", status_code=302)
+            return RedirectResponse("/login?oauth_error=no_account&as=staff", status_code=302)
         from ...services import school
         dest = school.home_for(db, user)
         redirect = RedirectResponse(dest, status_code=302)

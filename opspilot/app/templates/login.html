@@ -56,9 +56,9 @@ const AS=new URLSearchParams(location.search).get('as')||'';
     document.getElementById('email').placeholder='you@anywhere.com';
   }
   if(params.get('oauth_error')){
-    const m={no_account:(AS==='academy'?'No account yet — tap “Create a free account” below.':'That Microsoft/Google account isn’t linked to an OpsPilot login yet. Sign in with your work M365 email, or ask your MSP to invite that address.'),
-      sso_disabled:'SSO is disabled.',
-      exchange_failed:'Sign-in failed — please try again.',no_token:'Sign-in failed — please try again.'};
+    const m={no_account:(AS==='academy'?'No account yet — tap “Create a free account” below.':'That account isn’t linked to a BVTech login yet. If you’re staff, sign in with your @bvtech.org work account (or email + password below); otherwise ask your MSP to invite that address.'),
+      sso_disabled:'Single sign-on is turned off. Sign in with your email and password below.',
+      exchange_failed:'Microsoft/Google sign-in failed (the app’s client secret may be wrong or expired). Try again, or use email + password.',no_token:'Sign-in didn’t complete — please try again.'};
     setTimeout(()=>{const e=document.getElementById('err');if(e)e.textContent=m[params.get('oauth_error')]||'Sign-in failed.';},50);
   }
   fetch('/api/oauth/providers').then(r=>r.ok?r.json():{providers:[]}).then(j=>{

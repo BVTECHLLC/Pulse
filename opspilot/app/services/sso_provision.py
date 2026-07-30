@@ -159,3 +159,36 @@ def maybe_autoprovision(db: Session, email: str | None, *, full_name: str | None
     db.commit()
     db.refresh(user)
     return user
+
+
+def maybe_staff_autoprovision(db: Session, email: str | None, *,
+                              full_name: str | None = None):
+    """Sign your OWN team in with company SSO. If `email` is on one of your staff
+    domains (config.staff_sso_domains) and no user exists yet, create a staff
+    account: OWNER for the bootstrap-admin address, TECH for everyone else on the
+    domain. Returns the User, or None. Safe because only you control accounts on
+    your domain in your IdP — a domain match is a teammate, not a stranger."""
+    from ..core.config import get_settings
+    s = get_settings()
+    if not s.STAFF_SSO_AUTO_PROVISION:
+        return None
+    email = (email or "").strip().lower()
+    dom = _domain(email)
+    if not dom or dom in _FREE_DOMAINS or dom not in s.staff_sso_domains():
+        return None
+    if db.query(User).filter(func.lower(User.email) == email).first():
+        return None
+    is_admin = email == (s.BOOTSTRAP_ADMIN_EMAIL or "").strip().lower()
+    user = User(
+        email=email,
+        full_name=(full_name or email.split("@")[0])[:200],
+        password_hash=hash_password(random_token(24)),   # SSO-only
+        role=Role.OWNER if is_admin else Role.TECH,       # admin -> full access; else operational
+        client_id=None,                                   # staff are not client-scoped
+        is_active=True,
+        provisioned_via="sso",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user

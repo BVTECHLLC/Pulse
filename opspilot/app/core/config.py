@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # --- Identity ---
     APP_NAME: str = "BVTech OpsPilot"
-    APP_VERSION: str = "1.75.0"
+    APP_VERSION: str = "1.76.0"
     ENV: str = "development"  # development | production
 
     # --- Security ---
@@ -79,6 +79,25 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str | None = None
     GOOGLE_CLIENT_SECRET: str | None = None
     OAUTH_ALLOW_SSO: bool = True   # allow signing in via a matched provider account
+
+    # --- Staff SSO (your own team signs in with company Microsoft/Google) ---
+    # When a work account whose email domain is one of YOUR OWN domains
+    # (STAFF_SSO_DOMAINS; defaults to the domain of BOOTSTRAP_ADMIN_EMAIL) signs in
+    # with no Pulse user yet, create a staff account automatically. Only you control
+    # accounts on your domain in your identity provider, so a domain match is a
+    # teammate — never a stranger. The bootstrap admin email always signs in as
+    # OWNER; other addresses on your domain get the lower TECH role (promotable).
+    # Free mailbox domains (gmail/outlook/…) are never eligible. Turn off with
+    # STAFF_SSO_AUTO_PROVISION=0.
+    STAFF_SSO_AUTO_PROVISION: bool = True
+    STAFF_SSO_DOMAINS: str = ""     # comma/space list; empty -> domain of BOOTSTRAP_ADMIN_EMAIL
+
+    def staff_sso_domains(self) -> set[str]:
+        raw = (self.STAFF_SSO_DOMAINS or "").replace("\n", ",").replace(" ", ",")
+        doms = {d.strip().lower().lstrip("@").strip(".") for d in raw.split(",") if d.strip()}
+        if not doms and "@" in (self.BOOTSTRAP_ADMIN_EMAIL or ""):
+            doms = {self.BOOTSTRAP_ADMIN_EMAIL.rsplit("@", 1)[-1].strip().lower()}
+        return {d for d in doms if "." in d}
 
     @property
     def google_oauth_enabled(self) -> bool:

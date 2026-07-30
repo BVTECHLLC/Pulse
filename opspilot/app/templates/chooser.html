@@ -71,6 +71,12 @@
     BVTech LLC · Managed IT &amp; Cybersecurity · <a href="mailto:help@bvtech.org">help@bvtech.org</a> · v{{ version }}
   </div>
 </div>
+<script>
+// If an OAuth error ever lands on the chooser, forward it to the login page,
+// which knows how to display it (belt-and-suspenders after the callback fix).
+(function(){var p=new URLSearchParams(location.search);
+  if(p.get('oauth_error')){location.replace('/login?'+p.toString());}})();
+</script>
 <script src="/static/js/brand.js?v={{ version }}"></script>
 </body>
 </html>

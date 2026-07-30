@@ -4353,6 +4353,62 @@ def main():
         osrv.shutdown()
         print("OAuth connector: encrypted token store + list + RBAC + revoke OK")
 
+        # --- v1.76: staff SSO auto-provision + VISIBLE sign-in errors ---
+        from app.services import sso_provision as _ssop
+        from app.core.config import get_settings as _gs76
+        from app.core.db import SessionLocal as _SL76
+        from app.models import User as _U76, Role as _R76
+        _dom76 = owner_email.rsplit("@", 1)[-1].lower()
+        assert _dom76 in _gs76().staff_sso_domains(), _gs76().staff_sso_domains()
+        _pdb = _SL76()
+        try:
+            _newstaff = f"tech-newbie@{_dom76}"
+            _pdb.query(_U76).filter(_U76.email == _newstaff).delete(); _pdb.commit()
+            _u = _ssop.maybe_staff_autoprovision(_pdb, _newstaff, full_name="New Tech")
+            assert _u and _u.role == _R76.TECH and _u.client_id is None, _u   # teammate -> TECH staff
+            assert _ssop.maybe_staff_autoprovision(_pdb, owner_email) is None  # admin already exists
+            assert _ssop.maybe_staff_autoprovision(_pdb, "someone@gmail.com") is None      # free domain
+            assert _ssop.maybe_staff_autoprovision(_pdb, "x@totally-external.io") is None   # foreign domain
+        finally:
+            _pdb.close()
+        # integration through the SSO callback (configurable-email mock)
+        _omail = {"v": "outsider@totally-external.io"}
+        class _M2(BaseHTTPRequestHandler):
+            def _s(self, o):
+                import json as _j; b = _j.dumps(o).encode()
+                self.send_response(200); self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+            def do_POST(self):
+                n = int(self.headers.get("content-length", 0)); self.rfile.read(n)
+                self._s({"access_token": "AT", "expires_in": 3600, "scope": "openid email"})
+            def do_GET(self): self._s({"email": _omail["v"], "mail": _omail["v"]})
+            def log_message(self, *a): pass
+        _s2 = HTTPServer(("127.0.0.1", 0), _M2)
+        threading.Thread(target=_s2.serve_forever, daemon=True).start()
+        _b2 = f"http://127.0.0.1:{_s2.server_address[1]}"
+        oauthsvc.register_provider("mock2", {
+            "name": "Mock2", "authorize_url": f"{_b2}/authorize", "token_url": f"{_b2}/token",
+            "userinfo_url": f"{_b2}/userinfo", "scopes": ["openid", "email"],
+            "client_id": "c2", "client_secret": "s2", "email_fields": ["email", "mail"]})
+        def _sso2(email_):
+            _omail["v"] = email_
+            _cl = TestClient(app); _cl.cookies.clear()
+            _r = _cl.get("/api/oauth/mock2/login", follow_redirects=False)
+            _stt = _up.parse_qs(_up.urlparse(_r.headers["location"]).query)["state"][0]
+            return _cl, _cl.get(f"/api/oauth/mock2/callback?state={_stt}&code=AC", follow_redirects=False)
+        # 1) unmatched external account -> VISIBLE error on /login (the bug we fixed)
+        _cl, _cb = _sso2("outsider@totally-external.io")
+        _loc = _cb.headers["location"]
+        assert _cb.status_code == 302 and _loc.startswith("/login") and "oauth_error=no_account" in _loc, _loc
+        assert not _cl.cookies.get("access_token")
+        # 2) a NEW teammate on YOUR domain -> auto-signed-in as staff, lands on /dashboard
+        _cl2, _cb2 = _sso2(f"another-tech@{_dom76}")
+        assert _cb2.status_code == 302 and _cb2.headers["location"] == "/dashboard", _cb2.headers.get("location")
+        assert _cl2.cookies.get("access_token") and _cl2.get("/api/auth/me").json()["role"] == "tech"
+        _s2.shutdown()
+        print("staff SSO: own-domain sign-in auto-provisions the team (admin->OWNER, staff->TECH) "
+              "and lands on /dashboard; unmatched accounts show a VISIBLE error on /login OK")
+
         # --- v0.86: Microsoft SSO hardening (work-account tenant + robust match) ---
         import base64 as _b64, json as _js2
         # tenant normalization: personal-account-inviting values become work/school
@@ -6679,7 +6735,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.75.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.76.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
