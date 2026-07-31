@@ -1,5 +1,25 @@
 # BVTech OpsPilot — Changelog
 
+## v1.78.0 — Free lead source: the tank fills with $0 API cost (July 2026)
+- **Root cause of "auto-emailing isn't working": an empty lead tank, not a broken
+  mailer.** The M365 Graph transport was sending fine — the TEST digest proved it
+  — but auto-prospecting only supported the paid Google Places API. With no
+  Places key on the box, `_ensure_leads` bailed with `no_places_key` every day,
+  so "eligible leads today" sat at 0 forever and nothing could go out.
+- **New zero-key source: OpenStreetMap Overpass.** `prospecting.OverpassClient`
+  finds real local businesses (with website/phone/email tags) by vertical within
+  a metro radius — no API key, no billing, no quota. It's shaped to the exact
+  `text_search`/`place_details` interface as the Places client, so the whole
+  existing scrape→score→enrich→email pipeline is reused unchanged. Verified live:
+  38 San Antonio dental practices returned in one call.
+- **Automatic fallback.** `_ensure_leads` now prefers Google Places when a key is
+  configured (richer ratings/reviews) and otherwise uses the free source — so the
+  engine fills the tank and sends cold email with **no paid API at all**. Leads
+  whose OSM entry lists an email are instantly emailable; website-only leads are
+  enriched from their own /contact pages as before. Disable with `PULSE_PROSPECT=off`.
+- Smoke: new assertion drives the free path end-to-end (direct-email lead instant,
+  website-only lead enriched, `source == "free"`).
+
 ## v1.77.0 — Baked-in branded email signature (the banner can't vanish) (July 2026)
 - **Self-contained HTML signature on every outbound email.** The rich
   "photo/banner/socials" signature used to be stapled on by a server-side

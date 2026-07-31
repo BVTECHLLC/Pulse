@@ -87,6 +87,115 @@ class PlacesClient:
         return data.get("result", {})
 
 
+# --------------------------------------------------------------------------- #
+# FREE lead source (v1.78) — OpenStreetMap Overpass. No API key, no billing, no
+# quota card. It returns real local businesses (with website/phone/email tags)
+# by category within a radius, shaped to the SAME text_search/place_details
+# interface as PlacesClient so the whole scrape→score→enrich→email pipeline is
+# reused unchanged. When a Google Places key IS configured, the engine still
+# prefers it (richer ratings/reviews); this is the zero-cost default so the lead
+# tank fills — and cold email actually goes out — with no paid API at all.
+# Host is fixed (overpass-api.de) so there's no SSRF surface, same as Places.
+# --------------------------------------------------------------------------- #
+# Industry query -> OpenStreetMap tag selectors. Businesses are tagged in OSM
+# under office=/amenity=/craft=/shop=; we cast a couple of nets per vertical.
+OSM_SELECTORS: dict[str, list[str]] = {
+    "law firm": ['["office"="lawyer"]'],
+    "medical office": ['["amenity"="doctors"]', '["healthcare"="clinic"]'],
+    "dental office": ['["amenity"="dentist"]', '["healthcare"="dentist"]'],
+    "accounting firm": ['["office"="accountant"]', '["office"="tax_advisor"]'],
+    "financial advisor": ['["office"="financial"]', '["office"="financial_advisor"]'],
+    "insurance agency": ['["office"="insurance"]'],
+    "property management company": ['["office"="property_management"]',
+                                    '["office"="estate_agent"]'],
+    "architecture firm": ['["office"="architect"]'],
+    "engineering firm": ['["office"="engineer"]', '["office"="engineering"]'],
+    "real estate agency": ['["office"="estate_agent"]'],
+    "marketing agency": ['["office"="advertising_agency"]', '["office"="it"]'],
+    "manufacturing company": ['["office"="company"]', '["craft"="metal_construction"]'],
+    "construction company": ['["craft"="builder"]', '["office"="construction_company"]'],
+}
+_OSM_DEFAULT_SELECTORS = ['["office"="company"]']
+
+
+def _osm_clean_url(url: str | None) -> str | None:
+    u = (url or "").strip()
+    if not u:
+        return None
+    if not u.startswith(("http://", "https://")):
+        u = "https://" + u
+    return u
+
+
+def _osm_address(tags: dict) -> str | None:
+    """Assemble a human address from addr:* tags (best-effort)."""
+    hn, street = tags.get("addr:housenumber"), tags.get("addr:street")
+    line1 = " ".join(p for p in (hn, street) if p)
+    city = tags.get("addr:city")
+    st = tags.get("addr:state")
+    pc = tags.get("addr:postcode")
+    tail = " ".join(p for p in (st, pc) if p)
+    parts = [p for p in (line1, city, tail) if p]
+    return ", ".join(parts) or None
+
+
+class OverpassClient:
+    """Free OpenStreetMap business finder, PlacesClient-compatible (no key)."""
+
+    ENDPOINT = "https://overpass-api.de/api/interpreter"
+
+    def __init__(self, endpoint: str | None = None):
+        self.endpoint = endpoint or self.ENDPOINT
+        self._by_id: dict[str, dict] = {}
+
+    def _post(self, query: str) -> dict:
+        body = parse.urlencode({"data": query}).encode()
+        req = urlrequest.Request(self.endpoint, data=body, headers={
+            "User-Agent": "BVTech-Pulse/1.0 (+https://bvtech.org)",
+            "Content-Type": "application/x-www-form-urlencoded"})
+        try:
+            with urlrequest.urlopen(req, timeout=40) as r:
+                return json.loads(r.read().decode())
+        except Exception as e:  # noqa: BLE001
+            raise ProspectingError(f"Overpass request failed: {e}")
+
+    def text_search(self, query: str, lat: float, lng: float, radius: int) -> list[dict]:
+        selectors = OSM_SELECTORS.get(query, _OSM_DEFAULT_SELECTORS)
+        blocks = []
+        for sel in selectors:
+            for typ in ("node", "way"):
+                blocks.append(f'{typ}{sel}(around:{int(radius)},{lat},{lng});')
+        q = f"[out:json][timeout:25];({''.join(blocks)});out center tags 80;"
+        data = self._post(q)
+        results: list[dict] = []
+        for el in data.get("elements", []):
+            tags = el.get("tags") or {}
+            name = (tags.get("name") or "").strip()
+            if not name:
+                continue
+            website = _osm_clean_url(tags.get("website") or tags.get("contact:website")
+                                     or tags.get("url"))
+            email = (tags.get("email") or tags.get("contact:email") or "").strip().lower() or None
+            # Must be reachable: a website to scrape an email from, or a listed email.
+            if not (website or email):
+                continue
+            phone = tags.get("phone") or tags.get("contact:phone")
+            addr = _osm_address(tags)
+            pid = f"osm/{el.get('type')}/{el.get('id')}"
+            self._by_id[pid] = {
+                "website": website, "formatted_phone_number": phone,
+                "formatted_address": addr, "email": email,
+                "business_status": "OPERATIONAL",
+            }
+            results.append({"name": name, "place_id": pid,
+                            "business_status": "OPERATIONAL",
+                            "formatted_address": addr})
+        return results
+
+    def place_details(self, place_id: str) -> dict:
+        return self._by_id.get(place_id, {})
+
+
 def score_prospect(place: dict, details: dict, boost: int = 0) -> int:
     """0-100 MSP-readiness score."""
     score = 30
@@ -151,6 +260,9 @@ def run(db: Session, client, market: str, industry_query: str, max_results: int 
                  if rating and reviews else (f"Google rating {rating}" if rating else None))
         contact = CrmContact(
             name=name, company=name,
+            # Free OSM source sometimes lists a public email directly -> instantly
+            # emailable, no website scrape needed. Places never sets this (stays None).
+            email=(details.get("email") or None),
             phone=details.get("formatted_phone_number"),
             website=details.get("website"),
             address=details.get("formatted_address") or place.get("formatted_address"),

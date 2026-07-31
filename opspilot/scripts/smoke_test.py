@@ -6550,6 +6550,60 @@ def main():
             finally:
                 _ob56._PLACES_FACTORY = _orig_pf56
                 _ob56._FETCH_PAGE = _orig_ff56
+            # 5b) v1.78 FREE LEAD SOURCE: with NO Google Places key, the engine
+            #     falls back to the zero-cost OpenStreetMap source so the tank
+            #     still fills and cold email actually sends. A lead whose OSM
+            #     entry lists an email directly is instantly emailable (no scrape);
+            #     one with only a website is enriched as usual.
+            from app.models import IntegrationConnection as _IC78
+            (_edb6.query(_IC78).filter(_IC78.provider == "google_places")
+             .delete(synchronize_session=False))
+            _edb6.commit()
+
+            class _FakeOverpass78:
+                def text_search(self, query, lat, lng, radius):
+                    return [
+                        {"place_id": "osm/node/1", "name": "Alamo Law Group",
+                         "business_status": "OPERATIONAL"},
+                        {"place_id": "osm/way/2", "name": "Hill Country CPA",
+                         "business_status": "OPERATIONAL"}]
+
+                def place_details(self, pid):
+                    if pid == "osm/node/1":
+                        return {"email": "clerk@alamolawgroup.com",
+                                "website": "https://alamolawgroup.com",
+                                "formatted_phone_number": "210-555-0200",
+                                "formatted_address": "9 Commerce St, San Antonio, TX",
+                                "business_status": "OPERATIONAL"}
+                    return {"website": "https://hillcountrycpa.com",
+                            "formatted_phone_number": "512-555-0300",
+                            "formatted_address": "5 Congress Ave, Austin, TX",
+                            "business_status": "OPERATIONAL"}
+
+            def _fake_fetch78(url):
+                if "hillcountrycpa.com" in url:
+                    return '<a href="mailto:info@hillcountrycpa.com">Contact</a>'
+                return "<html>no public email here</html>"
+
+            _ob56._OVERPASS_FACTORY = lambda: _FakeOverpass78()
+            _ob56._FETCH_PAGE = _fake_fetch78
+            try:
+                _ob56.save_config(_edb6, prospected_on="", prospect_cycle=0)
+                _r78 = _ob56._ensure_leads(_edb6, _ob56.get_config(_edb6), _hour56)
+                assert _r78["ran"] is True and _r78["source"] == "free", _r78
+                assert _r78["scraped"] == 2, _r78
+                _law = (_edb6.query(_CC56)
+                        .filter(_CC56.company == "Alamo Law Group").first())
+                # OSM listed the email directly -> emailable with no website scrape
+                assert _law and _law.email == "clerk@alamolawgroup.com", _law
+                _cpa = (_edb6.query(_CC56)
+                        .filter(_CC56.company == "Hill Country CPA").first())
+                # website-only lead got enriched from its own /contact page
+                assert _cpa and _cpa.email == "info@hillcountrycpa.com", _cpa
+                assert _r78["pool"] >= 2, _r78
+            finally:
+                _ob56._OVERPASS_FACTORY = _ob56._overpass_factory
+                _ob56._FETCH_PAGE = _orig_ff56
             # 6) v1.58 REPLY WATCHER: hot lead flagged + sequence stopped, STOP
             #    honored automatically, bounce retired, watermark holds.
             from app.services import crm as _crm56
@@ -6653,6 +6707,8 @@ def main():
             for _k56 in ("PULSE_OUTBOUND", "PULSE_OUTBOUND_ADDRESS"):
                 _os56.environ.pop(_k56, None)
             _edb6.close()
+        print("free lead source: no Places key -> zero-cost OpenStreetMap prospecting "
+              "(direct-email leads instant, website-only leads enriched) OK")
         print("outbound engine WIRED: Graph transport from m365_mailbox creds + TEST mode "
               "(self-inbox plan+sample, leads untouched, once/day) + LIVE mode (business "
               "hours, DNC excluded, CAN-SPAM footer, CRM-logged, same-day idempotent) OK")
@@ -6742,7 +6798,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.77.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.78.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

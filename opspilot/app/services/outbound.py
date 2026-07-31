@@ -670,6 +670,16 @@ def _places_factory(key: str):
 _PLACES_FACTORY = _places_factory     # test seam
 
 
+def _overpass_factory():
+    """FREE, no-key lead source (OpenStreetMap). Used when Google Places isn't
+    configured so the tank fills — and cold email actually sends — at $0 cost."""
+    from .prospecting import OverpassClient
+    return OverpassClient()
+
+
+_OVERPASS_FACTORY = _overpass_factory  # test seam
+
+
 def _fetch_page(url: str) -> str:
     """Fetch one public web page (the lead's own site). Small, tolerant, capped."""
     import urllib.request
@@ -763,12 +773,14 @@ def _ensure_leads(db: Session, cfg: dict, now: datetime) -> dict:
     today = _today(now)
     if cfg.get("prospected_on") == today:
         return {"ran": False, "reason": "already_today"}
+    # Prefer Google Places when a key is configured (richer ratings/reviews);
+    # otherwise use the FREE, no-key OpenStreetMap source so the tank still fills
+    # and cold email actually goes out at $0 API cost. Both feed the same
+    # scrape→score→enrich→email pipeline.
     conn = secure_config.get_platform(db, "google_places")
     pcfg = dict((conn.config if conn else None) or {})
     key = secure_config.get_secret(pcfg, "api_key") or ""
-    if not key:
-        save_config(db, prospected_on=today)   # don't re-check 720×/day
-        return {"ran": False, "reason": "no_places_key"}
+    source = "places" if key else "free"
     # today's cap decides how full the tank should be
     started = cfg.get("started_on") or today
     try:
@@ -785,13 +797,14 @@ def _ensure_leads(db: Session, cfg: dict, now: datetime) -> dict:
         cycle = int(cfg.get("prospect_cycle") or 0)
         market, industry = combos[cycle % len(combos)]
         try:
-            client = _PLACES_FACTORY(key)
+            client = _PLACES_FACTORY(key) if key else _OVERPASS_FACTORY()
             scraped = prospecting.run(db, client, market, industry,
                                       max_results=PROSPECT_BATCH)
         except Exception as e:  # noqa: BLE001
             _notify(db, "warning",
-                    f"🎯 Auto-prospecting hit a problem ({market}/{industry}): "
-                    f"{str(e)[:200]} — will try the next combo tomorrow.")
+                    f"🎯 Auto-prospecting hit a problem ({market}/{industry}, "
+                    f"{source} source): {str(e)[:200]} — will try the next combo "
+                    "tomorrow.")
         save_config(db, prospect_cycle=cycle + 1)
     enriched = {"checked": 0, "emails_found": 0}
     try:
@@ -800,12 +813,13 @@ def _ensure_leads(db: Session, cfg: dict, now: datetime) -> dict:
         db.rollback()
     save_config(db, prospected_on=today)
     if scraped.get("created") or enriched.get("emails_found"):
+        src_label = "Google Places" if source == "places" else "free OpenStreetMap"
         _notify(db, "info",
-                f"🎯 Lead tank: +{scraped.get('created', 0)} new "
+                f"🎯 Lead tank ({src_label}): +{scraped.get('created', 0)} new "
                 f"{scraped.get('market', '')} {scraped.get('industry', '')} lead(s) "
                 f"scraped, {enriched.get('emails_found', 0)} email(s) found on their "
                 f"websites — emailable untouched pool now {_untouched_pool(db)}.")
-    return {"ran": True, "scraped": scraped.get("created", 0),
+    return {"ran": True, "source": source, "scraped": scraped.get("created", 0),
             "enriched": enriched.get("emails_found", 0),
             "pool": _untouched_pool(db)}
 
