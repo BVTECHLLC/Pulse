@@ -31,21 +31,20 @@ PROVIDER = "content_autopilot"
 POST_HOUR_UTC = 14        # ~9am Central — content lands before the business day
 CHANNELS = ("bvtech", "news", "jp", "txplants", "linkedin", "gbp")
 
-# v1.80 SEO STAGGER — the sites must NOT all update in the same minute, or search
-# engines read the network as one automated program. Each channel posts at its
-# own time of morning: an offset (hours) added to the base post hour (cfg
-# ["hour_utc"], default 14 UTC = 9am Central). bvtech.org therefore ships its SMB
-# article at 9am CT and a SEPARATE daily KEV briefing at 11am CT; the founder and
-# plants sites land midday. Weekly social (LinkedIn/GBP) rides along on Mondays.
-CHANNEL_HOUR_OFFSET = {
-    "bvtech": 0,     # 9:00 CT  — SMB IT article (bvtech.org/blog)
-    "jp": 1,         # 10:00 CT — founder post (jordanpolasek.com)
-    "news": 2,       # 11:00 CT — daily CISA-KEV briefing (bvtech.org/news)
-    "txplants": 3,   # 12:00 CT — Field Notes (tx-plants.com/blog)
-    # Weekly social (Mondays only) rides the base hour — it posts to LinkedIn /
-    # Google, not the site network, so cross-site SEO fingerprinting doesn't apply.
-    "linkedin": 0,
-    "gbp": 0,
+# v1.81 SEO STAGGER — the posts must NOT all fire in the same minute, or search
+# engines read the network as one automated program. Each channel posts 15
+# minutes after the previous one, as an offset (MINUTES) from the base post time
+# (cfg["hour_utc"]:00, default 14:00 UTC = 9:00am Central). Seven posts across six
+# surfaces, walked out over ~1h15: bvtech SMB 9:00, jordanpolasek 9:15, bvtech
+# KEV 9:30, tx-plants 9:45, LinkedIn 10:00, Google Business 10:15. A 2-minute
+# heartbeat tick publishes each as its slot arrives; force ignores the stagger.
+CHANNEL_MINUTE_OFFSET = {
+    "bvtech": 0,      # 9:00 CT  — SMB IT article (bvtech.org/blog)
+    "jp": 15,         # 9:15 CT  — founder post (jordanpolasek.com)
+    "news": 30,       # 9:30 CT  — daily CISA-KEV briefing (bvtech.org/news)
+    "txplants": 45,   # 9:45 CT  — Field Notes (tx-plants.com/blog)
+    "linkedin": 60,   # 10:00 CT — daily SMB IT post (LinkedIn)
+    "gbp": 75,        # 10:15 CT — WEEKLY (Mondays) local update (Google Business)
 }
 
 _METROS = ("Sugar Land", "Houston", "Austin", "San Antonio")
@@ -891,19 +890,21 @@ def run_daily(db: Session, now: datetime | None = None, *, force: bool = False) 
     # this removes). AI availability is now decided per-channel, inside each
     # runner, where a failure degrades gracefully instead of blanking the day.
     results: dict[str, dict] = {}
-    base_hour = cfg["hour_utc"]
+    from datetime import timedelta as _timedelta
+    base_dt = now.replace(hour=cfg["hour_utc"], minute=0, second=0, microsecond=0)
     for ch in CHANNELS:
         if not cfg["channels"].get(ch, True):
             continue
-        # v1.80 SEO STAGGER: hold each channel until its own time of morning so
-        # the sites don't all publish in the same minute. A later heartbeat tick
-        # (every 2 min) posts it once its hour arrives. Force ignores the stagger.
-        ch_hour = min(23, base_hour + CHANNEL_HOUR_OFFSET.get(ch, 0))
-        if not force and now.hour < ch_hour:
+        # v1.81 SEO STAGGER: hold each channel until its own 15-minute slot so no
+        # two posts fire in the same minute. A later heartbeat tick (every 2 min)
+        # publishes it once its slot arrives. Force ignores the stagger entirely.
+        slot = base_dt + _timedelta(minutes=CHANNEL_MINUTE_OFFSET.get(ch, 0))
+        if not force and now < slot:
             continue
-        # v1.47: LinkedIn + Google Business are WEEKLY - Mondays only (a
-        # deliberate force-run can still post any day, capped 1/day).
-        if ch in ("linkedin", "gbp") and not force and now.weekday() != 0:
+        # v1.81: Google Business is WEEKLY - Mondays only (Google penalizes
+        # spammy daily local-post cadence). LinkedIn now posts a DAILY SMB IT tip.
+        # A deliberate force-run can still post GBP any day (capped 1/day).
+        if ch == "gbp" and not force and now.weekday() != 0:
             continue
         if cfg["last"].get(ch) == _today(now):
             # v1.40 FLOOD GUARD: one post per channel per day, ALWAYS — even on

@@ -2085,7 +2085,7 @@ def main():
         _o20 = (_ai20.enabled, _ai20.complete, _jp20._HTTP, _wp20.configured,
                 _ba20.generate_article, _ba20.publish_article)
         try:
-            now20 = _dt20.datetime(2026, 7, 6, 15, tzinfo=_dt20.timezone.utc)  # a Monday (weekly channels run)
+            now20 = _dt20.datetime(2026, 7, 6, 15, 20, tzinfo=_dt20.timezone.utc)  # Monday, past every 15-min stagger slot
             # One-click JP repo setup via the API (token encrypted in the vault).
             assert c.put("/api/content-autopilot/jp-site",
                          json={"project": "BVTECHLLC-group/jordanpolasek-website",
@@ -2126,7 +2126,9 @@ def main():
                 title = "BV"; error = None
             _ba20.publish_article = lambda db, a, source=None: _Row20()
             # Enable + run: all four channels post, each customized per channel.
-            _cap20.save_config(_c20, enabled=True)
+            # (news shares bvtech's repo and is exercised on its own below; keep it
+            # off here so this legacy four-channel assertion stays exact.)
+            _cap20.save_config(_c20, enabled=True, channels={"news": False})
             out20 = _cap20.run_daily(_c20, now20)
             assert set(out20["results"]) == {"bvtech", "jp", "linkedin", "gbp"}, out20
             assert all(v["ok"] for v in out20["results"].values()), out20
@@ -2909,11 +2911,13 @@ def main():
         assert _ca33.get_config(db)["enabled"] is True, "fresh install must be hands-free ON"
         _ca33.save_config(db, enabled=False)
         assert _ca33.get_config(db)["enabled"] is False, "explicit OFF must stick"
-        _ca33.save_config(db, enabled=True)
+        # news shares bvtech's repo and is covered by its own checks; keep it off
+        # in this legacy site+social receipt test so the assertions stay exact.
+        _ca33.save_config(db, enabled=True, channels={"news": False})
         assert _ca33.get_config(db)["enabled"] is True
         # (b) Weekday editorial angles: 7 distinct, and both writers get them.
         assert len(set(_ca33.WEEKDAY_ANGLES)) == 7
-        _mon33 = _dt33(2026, 7, 6, 15, tzinfo=_tz33.utc)     # Monday
+        _mon33 = _dt33(2026, 7, 6, 15, 20, tzinfo=_tz33.utc)  # Monday, past every stagger slot
         _tue33 = _mon33 + _td33(days=1)
         assert _ca33.day_angle(_mon33) != _ca33.day_angle(_tue33)
         _prompts33 = []
@@ -6370,15 +6374,18 @@ def main():
         from app.services import content_autopilot as _cap
         from app.services import jp_site as _jps3
         assert "txplants" in _cap.CHANNELS and _cap._RUNNERS.get("txplants"), _cap.CHANNELS
-        # v1.80: daily KEV briefing is its OWN staggered channel (bvtech.org gets
-        # BOTH an SMB post and a separate KEV /news/ post each day), and no two
-        # sites share a post minute (SEO — must not read as one program).
+        # v1.81: daily KEV briefing is its OWN staggered channel (bvtech.org gets
+        # BOTH an SMB post and a separate KEV /news/ post each day). All SIX
+        # channels are spaced 15 minutes apart so no two posts fire in the same
+        # minute (SEO — the network must not read as one automated program).
         assert "news" in _cap.CHANNELS and _cap._RUNNERS.get("news"), _cap.CHANNELS
-        _base80 = 14
-        _hours80 = {c: min(23, _base80 + _cap.CHANNEL_HOUR_OFFSET.get(c, 0))
-                    for c in ("bvtech", "news", "jp", "txplants")}
-        assert len(set(_hours80.values())) == 4, ("sites must be time-staggered", _hours80)
-        assert _hours80["bvtech"] < _hours80["news"], "SMB post before the KEV briefing"
+        _off81 = _cap.CHANNEL_MINUTE_OFFSET
+        _mins81 = {c: _off81.get(c, 0) for c in
+                   ("bvtech", "jp", "news", "txplants", "linkedin", "gbp")}
+        assert len(set(_mins81.values())) == 6, ("all channels must be staggered", _mins81)
+        # exactly 15-minute spacing between consecutive slots
+        assert sorted(_mins81.values()) == [0, 15, 30, 45, 60, 75], _mins81
+        assert _mins81["bvtech"] < _mins81["news"], "SMB post before the KEV briefing"
         # v1.55.6: the v8 site repo is the default project, but publishing still
         # requires a resolvable GitLab token — a fresh install stays a no-op.
         assert _jps3.SITES["txplants"]["default_project"] == "bvtechllc-group/tx-plants-site"
@@ -6833,7 +6840,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.80.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.81.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -1,5 +1,17 @@
 # BVTech OpsPilot — Changelog
 
+## v1.81.0 — 15-minute post spacing + LinkedIn daily, Google Business weekly (July 2026)
+- **15-minute stagger across all six channels.** Posts now walk out one every
+  quarter hour instead of by whole-hour blocks, so no two of the seven daily
+  posts fire in the same minute: bvtech.org SMB 9:00 CT, jordanpolasek.com 9:15,
+  bvtech.org KEV briefing 9:30, tx-plants.com 9:45, LinkedIn 10:00, Google
+  Business 10:15. Gating is minute-precise; a 2-minute heartbeat tick publishes
+  each as its slot arrives.
+- **LinkedIn is now DAILY** (a fresh, metro-rotated SMB IT tip every day) instead
+  of Mondays-only.
+- **Google Business stays WEEKLY** (Mondays) — Google penalizes spammy daily
+  local-post cadence, so once a week is deliberate.
+
 ## v1.80.0 — Daily KEV its own channel + SEO time-staggering across the sites (July 2026)
 - **The daily CISA-KEV briefing is now a first-class channel** (`news`), not a
   side-effect welded inside the bvtech.org SMB runner. bvtech.org therefore ships
