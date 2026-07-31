@@ -3080,6 +3080,32 @@ def main():
         assert _jp35.inject_post_into_listing("<p>no cards at all</p>", title="t",
                                               url="/blog/u.html", excerpt="e",
                                               date_str="d", style="blog-file")[1] is False
+        # (b2) v1.79: the v8 tx-plants/bvtech "Field Notes" card writes its
+        #      dateline separator as the HTML ENTITY (`&middot;`). The old date
+        #      swap only matched the literal `·`, so every cloned card kept the
+        #      template's frozen date and the sites looked stuck on one day.
+        _v8 = ('<html><body><div class="blog-grid">'
+               '<a href="/blog/old-note.html" class="blog-card">'
+               '<div class="bc-date">July 28, 2026 &middot; Field Notes</div>'
+               '<h3>Old Field Note</h3><p>Old body paragraph of the note here.</p>'
+               '<div class="ac-more">Read &rarr;</div></a></div></body></html>')
+        _v8o, _v8ch = _jp35.inject_post_into_listing(
+            _v8, title="Watering Deep in August", url="/blog/watering-deep.html",
+            excerpt="Deep, infrequent watering builds drought-proof roots.",
+            date_str="July 31, 2026", style="blog-file")
+        assert _v8ch, "v8 &middot; card must accept a new post"
+        _newcard = _v8o[_v8o.find("<a ", ):_v8o.find("</a>") + 4]
+        assert "July 31, 2026" in _v8o, "v8 entity-separator date must swap to today"
+        # the freshly injected card must NOT carry the template's frozen date
+        _inj = _v8o[_v8o.find('href="/blog/watering-deep.html"'):]
+        _inj = _inj[:_inj.find("</a>") + 4]
+        assert "July 31, 2026" in _inj and "July 28" not in _inj, _inj
+        # (b3) excerpt derivation never leaks CSS/head text from a full page
+        from app.services.content_studio import _excerpt_from_html as _exq
+        _leak = _exq('<html><head><title>T | X</title><style>.art-hero{color:red}</style>'
+                     '</head><body><p>' + 'Real first paragraph of the article. ' * 3
+                     + '</p></body></html>')
+        assert "{" not in _leak and "art-hero" not in _leak and "Real first" in _leak, _leak
         # (c) Anthropic errors become sentences a human can act on.
         _e35 = _ai35._human_api_error(400, '{"type":"error","error":{"type":"invalid_request_error",'
                                             '"message":"Your credit balance is too low to access the API."}}')
@@ -6798,7 +6824,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.78.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.79.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

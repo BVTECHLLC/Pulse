@@ -410,16 +410,19 @@ def _rewrite_card(card: str, *, title: str, url: str, excerpt: str,
                        card, count=1)
     if date_str:      # v1.41: empty date_str means "leave the card's date alone"
         n_dated = 0
-        card, _n = _re.subn(r"(>)([A-Z][a-z]+ \d{1,2}, \d{4})(<)",
-                            lambda m: m.group(1) + date_str + m.group(3), card, count=1)
-        n_dated += _n
-        card, _n = _re.subn(r"(>)([A-Z][a-z]+ \d{1,2}, \d{4})(\s*\u00b7)",
+        # A dateline's separator can be a tag (<), a literal middot (\u00b7), or ANY
+        # HTML-entity form of it. v1.79: the v8 tx-plants / bvtech "Field Notes"
+        # cards write the ENTITY (`&middot;`), which the old literal-\u00b7-only
+        # pattern missed \u2014 so every cloned card kept the template's frozen date
+        # ("July 28, 2026 &middot; Field Notes") and the sites looked stale.
+        _mid = r"\u00b7|&middot;|&#0*183;|&#x0*[bB]7;|&bull;"
+        card, _n = _re.subn(r"(>)([A-Z][a-z]+ \d{1,2}, \d{4})(\s*(?:<|" + _mid + r"))",
                             lambda m: m.group(1) + date_str + m.group(3), card, count=1)
         n_dated += _n
         card, _n = _re.subn(r"(>)(\d{4}-\d{2}-\d{2})(<)",
                             lambda m: m.group(1) + date_str + m.group(3), card, count=1)
         n_dated += _n
-        card, _n = _re.subn(r"(\u00b7\s*)([A-Z][a-z]+ \d{1,2}, \d{4})",
+        card, _n = _re.subn(r"((?:" + _mid + r")\s*)([A-Z][a-z]+ \d{1,2}, \d{4})",
                             lambda m: m.group(1) + date_str, card, count=1)
         n_dated += _n
         # v1.40: badge-style dates without a year ("NEW · JUNE 22 WEEKLY REPORT",
@@ -605,7 +608,7 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
         layout = detect_layout(cfg)
         if layout["format"] == "markdown":
             ops = _repo_ops(cfg)
-            excerpt_md = (post.get("description")
+            excerpt_md = (post.get("description") or post.get("excerpt")
                           or content_studio._excerpt_from_html(post.get("html") or ""))[:220]
             sample = ops["fetch"](layout["sample_path"]) or "---\ntitle: x\n---\n"
             ext = layout["sample_path"].rsplit(".", 1)[-1]
@@ -655,7 +658,11 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
         # Add the post to the site's listing pages IN THE SAME COMMIT so it shows
         # up in navigation, not just at its own URL. Best-effort per file: an
         # unrecognized/absent listing is skipped (and reported), never corrupted.
-        excerpt = (post.get("description") or content_studio._excerpt_from_html(rendered))[:220]
+        # v1.79: prefer the composer's own clean one-line excerpt; only fall back
+        # to deriving one from the rendered page (which now strips head/style so
+        # it can't leak CSS) when the post didn't supply one.
+        excerpt = (post.get("description") or post.get("excerpt")
+                   or content_studio._excerpt_from_html(rendered))[:220]
         date_str = biz_now().strftime("%B %-d, %Y")
         listings_updated, listings_skipped = [], []
         for lp in meta.get("index_paths", ()):

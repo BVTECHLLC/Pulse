@@ -184,7 +184,7 @@ def diagnose(db: Session = Depends(get_db),
                   {"fix": "the app's background scheduler isn't running - the daily GitHub "
                           "cron still posts, but restart the api container to restore full "
                           "automation (docker compose restart api)"})},
-           "sites": [jp_site.diagnose(db, s) for s in ("bvtech", "jp")],
+           "sites": [jp_site.diagnose(db, s) for s in ("bvtech", "jp", "txplants")],
            "autopilot": {
                "enabled": cfg["enabled"],
                "hour_utc": cfg["hour_utc"],

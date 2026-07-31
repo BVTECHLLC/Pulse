@@ -123,9 +123,30 @@ def _excerpt(body: str, limit: int = 155) -> str:
 
 
 def _excerpt_from_html(html_body: str, limit: int = 155) -> str:
-    """Derive a plain-text excerpt from an already-rendered HTML body."""
-    text = re.sub(r"<[^>]+>", " ", html_body or "")
-    text = html.unescape(text)
+    """Derive a plain-text excerpt from HTML — even a full rendered page.
+
+    v1.79: strip non-content regions BEFORE removing tags. The v8 tx-plants /
+    bvtech article templates embed a `<style>` block (the ".art-hero{…}" hero)
+    and a `<head><title>` inside the rendered page; the old "replace every tag
+    with a space" left the TEXT inside <style>/<script>/<head>/<title> behind,
+    so excerpts leaked raw CSS ("… .art-hero{background:var(--ink)…}"). Drop
+    those regions first, then prefer the first real <p>/<h*> body text."""
+    src = html_body or ""
+    # Remove head + non-content blocks whose text must never surface in a blurb.
+    src = re.sub(r"(?is)<head\b.*?</head>", " ", src)
+    src = re.sub(r"(?is)<(style|script|template|noscript)\b.*?</\1>", " ", src)
+    # Prefer the first substantial paragraph/heading of the actual body.
+    body_m = re.search(r"(?is)<body\b[^>]*>(.*?)</body>", src)
+    body = body_m.group(1) if body_m else src
+    for m in re.finditer(r"(?is)<(p|h[1-6]|li)\b[^>]*>(.*?)</\1>", body):
+        chunk = re.sub(r"<[^>]+>", " ", m.group(2))
+        chunk = re.sub(r"\s+", " ", html.unescape(chunk)).strip()
+        # Skip empty shells and CSS-looking junk (a stray inline style/selector).
+        if len(chunk) >= 40 and "{" not in chunk and "}" not in chunk:
+            return (chunk[:limit].rsplit(" ", 1)[0] + "…") if len(chunk) > limit else chunk
+    # Fallback: strip everything, drop any residual CSS-rule text, then truncate.
+    text = re.sub(r"<[^>]+>", " ", body)
+    text = re.sub(r"\{[^{}]*\}", " ", html.unescape(text))   # kill CSS-rule bodies
     text = re.sub(r"\s+", " ", text).strip()
     return (text[:limit].rsplit(" ", 1)[0] + "…") if len(text) > limit else text
 

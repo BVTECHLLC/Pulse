@@ -1,5 +1,28 @@
 # BVTech OpsPilot — Changelog
 
+## v1.79.0 — Daily posts un-stuck: date-swap + excerpt fixes for the v8 sites (July 2026)
+- **The "stuck on July 28" bug.** tx-plants.com migrated to its v8 "Field Notes"
+  template on July 28. Those cards write the dateline separator as the HTML
+  ENTITY `&middot;`, but the listing date-swap only matched the literal `·`
+  character — so every cloned daily card kept the template's frozen date and the
+  site looked stale even though posts were publishing. Fixed: the swap now
+  accepts `<`, the literal `·`, and every entity form (`&middot;`, `&#183;`,
+  `&#xB7;`, `&bull;`). Verified against the real v8 index — new cards now date to
+  today. (Same fix protects bvtech.org's v8 cards.)
+- **Excerpts leaked raw CSS.** The v8 article pages embed a `<style>.art-hero{…}`
+  block; the excerpt deriver replaced tags with spaces but kept the TEXT inside
+  `<style>`/`<script>`/`<head>`/`<title>`, so cards showed
+  "Title | Jordan Polasek | TX-Plants .art-hero{background:var(--ink)…}". Now it
+  strips those regions first and prefers the first real body paragraph; the
+  publisher also honors the composer's own `excerpt` before deriving one.
+- **The Doctor was blind to tx-plants.** `POST /api/content-autopilot/diagnose`
+  only walked `bvtech` + `jp`; it now also diagnoses `txplants`, so a tx-plants
+  publish failure (token/repo/pipeline) actually surfaces with a fix.
+- Note: bvtech.org already publishes a **daily KEV briefing to /news/ alongside**
+  the SMB post (`_run_bvtech` → `_publish_news_edition`) and refreshes the KEV
+  ticker daily — that was never a missing feature, only blocked when bvtech
+  publishing itself fails.
+
 ## v1.78.0 — Free lead source: the tank fills with $0 API cost (July 2026)
 - **Root cause of "auto-emailing isn't working": an empty lead tank, not a broken
   mailer.** The M365 Graph transport was sending fine — the TEST digest proved it
