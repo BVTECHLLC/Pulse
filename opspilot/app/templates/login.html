@@ -67,8 +67,13 @@ const AS=new URLSearchParams(location.search).get('as')||'';
     // Academy door = one-click SSO signup (join=1 provisions an isolated learner).
     const join=AS==='academy'?'?join=1':'';
     const verb=AS==='academy'?'Continue with':'Sign in with';
+    // Carry a safe ?next= through the SSO round-trip so, e.g., an OAuth connect
+    // that bounced here (session expired) lands back on the provider's approve
+    // screen after sign-in instead of dumping the operator on the dashboard.
+    const nx=new URLSearchParams(location.search).get('next')||'';
+    const nq=(nx && /^\/(?!\/)/.test(nx) && AS!=='academy')?((join?'&':'?')+'next='+encodeURIComponent(nx)):'';
     document.getElementById('sso-btns').innerHTML=(j.providers||[]).map(p=>
-      `<a class="btn ghost" style="width:100%;text-align:center;text-decoration:none" href="/api/oauth/${p.key}/login${join}">${verb} ${p.name}</a>`).join('');
+      `<a class="btn ghost" style="width:100%;text-align:center;text-decoration:none" href="/api/oauth/${p.key}/login${join}${nq}">${verb} ${p.name}</a>`).join('');
   }).catch(()=>{});
 })();
 async function doLogin(){

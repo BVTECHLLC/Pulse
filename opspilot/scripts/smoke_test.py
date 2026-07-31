@@ -4380,8 +4380,18 @@ def main():
         assert cryptosvc.encrypt("AT-123")!="AT-123" and cryptosvc.decrypt(cryptosvc.encrypt("AT-123"))=="AT-123"
         assert ca_c.get("/api/oauth/tokens").status_code==403   # staff-only
         assert c.delete(f"/api/oauth/tokens/{mocktok[0]['id']}").status_code==204
+        # v1.82: /connect is a full-page nav — an UNauthenticated hit must NOT
+        # dead-end on a 401 JSON ("Not authenticated" in a bare tab). It bounces
+        # to /login with a next= back into the connect flow, so signing in lands
+        # the operator straight on the provider's approve screen.
+        _noauth=TestClient(app); _noauth.cookies.clear()
+        _rcx=_noauth.get("/api/oauth/mock/connect", follow_redirects=False)
+        assert _rcx.status_code==302, _rcx.status_code
+        _loc=_rcx.headers["location"]
+        assert _loc.startswith("/login") and "next=" in _loc and "oauth/mock/connect" in _loc, _loc
         osrv.shutdown()
-        print("OAuth connector: encrypted token store + list + RBAC + revoke OK")
+        print("OAuth connector: encrypted token store + list + RBAC + revoke + "
+              "unauth connect bounces to login(next) OK")
 
         # --- v1.76: staff SSO auto-provision + VISIBLE sign-in errors ---
         from app.services import sso_provision as _ssop
@@ -6840,7 +6850,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.81.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.82.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

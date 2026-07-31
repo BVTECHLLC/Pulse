@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -307,7 +307,26 @@ def sso_login(provider: str, request: Request, db: Session = Depends(get_db),
 
 @router.get("/{provider}/connect")
 def connect(provider: str, request: Request, db: Session = Depends(get_db),
-            user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+            access_token: str | None = Cookie(default=None),
+            authorization: str | None = Header(default=None),
+            x_api_key: str | None = Header(default=None)):
+    """Begin an integration OAuth connect (LinkedIn/Google Business/…).
+
+    This is a full-PAGE browser navigation, not an XHR, so the frontend can't
+    silently refresh an expired access token first. If the session is missing or
+    expired we must NOT dead-end on a raw 401 JSON ("Not authenticated" in a bare
+    tab) — instead bounce through the login page with a `next` back here, so the
+    moment the operator signs in they land straight on the provider's approve
+    screen. (v1.82)"""
+    from ...core.deps import current_user
+    try:
+        user = current_user(db=db, access_token=access_token,
+                            authorization=authorization, x_api_key=x_api_key)
+    except HTTPException:
+        return RedirectResponse(f"/login?as=staff&next=/api/oauth/{provider}/connect",
+                                status_code=302)
+    if user.role not in (Role.OWNER, Role.TECH):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient role")
     return _start(request, db, provider, "connect", user.id, "/dashboard")
 
 

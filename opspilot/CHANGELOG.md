@@ -1,5 +1,16 @@
 # BVTech OpsPilot — Changelog
 
+## v1.82.0 — OAuth "Connect" self-heals a stale session instead of 401-ing (July 2026)
+- **The "Not authenticated" dead-end on `/api/oauth/{provider}/connect`.** Starting
+  an integration connect (LinkedIn, Google Business, …) is a full-PAGE browser
+  navigation, so the frontend can't silently refresh an expired access token
+  first the way it does for XHR calls. With a missing/expired session the route
+  returned a raw 401 JSON — a bare "Not authenticated" tab that looked broken.
+  It now redirects to `/login?as=staff&next=<connect_url>`, so signing in drops
+  the operator straight onto the provider's approve screen. The login page also
+  threads a safe `next` through the Microsoft/Google SSO round-trip, so either
+  sign-in method returns to the connect flow.
+
 ## v1.81.0 — 15-minute post spacing + LinkedIn daily, Google Business weekly (July 2026)
 - **15-minute stagger across all six channels.** Posts now walk out one every
   quarter hour instead of by whole-hour blocks, so no two of the seven daily
