@@ -1,5 +1,20 @@
 # BVTech OpsPilot — Changelog
 
+## v1.80.0 — Daily KEV its own channel + SEO time-staggering across the sites (July 2026)
+- **The daily CISA-KEV briefing is now a first-class channel** (`news`), not a
+  side-effect welded inside the bvtech.org SMB runner. bvtech.org therefore ships
+  TWO distinct posts a day — the SMB IT article AND the /news/ KEV briefing — and
+  one failing never masks or blocks the other. Zero-token deterministic from the
+  live CISA feed; the KEV homepage ticker still refreshes daily.
+- **SEO time-staggering.** The daily engine used to fire every site in the same
+  minute, which reads to search engines as one automated program. Each channel
+  now posts at its own time of morning (offsets from the base hour): bvtech.org
+  SMB at 9am CT, jordanpolasek.com at 10am, the bvtech.org KEV briefing at 11am,
+  tx-plants.com at noon. A later heartbeat tick publishes each as its hour
+  arrives; `force` (Post-to-all-now) ignores the stagger.
+- The publishing Doctor and the autopilot status card now include the `news`
+  channel so its state/health is visible.
+
 ## v1.79.0 — Daily posts un-stuck: date-swap + excerpt fixes for the v8 sites (July 2026)
 - **The "stuck on July 28" bug.** tx-plants.com migrated to its v8 "Field Notes"
   template on July 28. Those cards write the dateline separator as the HTML

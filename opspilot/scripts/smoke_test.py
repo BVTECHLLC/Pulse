@@ -2156,7 +2156,7 @@ def main():
             assert _cap20.get_config(_c20)["last"].get("jp")               # others done
             # Status endpoint powers the one-click card; staff-only.
             st20 = c.get("/api/content-autopilot/status").json()
-            assert {x["key"] for x in st20["channels"]} == {"bvtech", "jp", "txplants", "linkedin", "gbp"}
+            assert {x["key"] for x in st20["channels"]} == {"bvtech", "news", "jp", "txplants", "linkedin", "gbp"}
             assert all(x["setup_hint"] for x in st20["channels"])
             assert ca_c.get("/api/content-autopilot/status").status_code == 403
             # v1.21: both sites are GitLab static sites (NOT WordPress) — ONE
@@ -6370,6 +6370,15 @@ def main():
         from app.services import content_autopilot as _cap
         from app.services import jp_site as _jps3
         assert "txplants" in _cap.CHANNELS and _cap._RUNNERS.get("txplants"), _cap.CHANNELS
+        # v1.80: daily KEV briefing is its OWN staggered channel (bvtech.org gets
+        # BOTH an SMB post and a separate KEV /news/ post each day), and no two
+        # sites share a post minute (SEO — must not read as one program).
+        assert "news" in _cap.CHANNELS and _cap._RUNNERS.get("news"), _cap.CHANNELS
+        _base80 = 14
+        _hours80 = {c: min(23, _base80 + _cap.CHANNEL_HOUR_OFFSET.get(c, 0))
+                    for c in ("bvtech", "news", "jp", "txplants")}
+        assert len(set(_hours80.values())) == 4, ("sites must be time-staggered", _hours80)
+        assert _hours80["bvtech"] < _hours80["news"], "SMB post before the KEV briefing"
         # v1.55.6: the v8 site repo is the default project, but publishing still
         # requires a resolvable GitLab token — a fresh install stays a no-op.
         assert _jps3.SITES["txplants"]["default_project"] == "bvtechllc-group/tx-plants-site"
@@ -6824,7 +6833,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.79.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.80.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

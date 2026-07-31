@@ -29,7 +29,24 @@ from .jp_site import biz_now   # Central-time dates (Texas), never UTC "future" 
 
 PROVIDER = "content_autopilot"
 POST_HOUR_UTC = 14        # ~9am Central — content lands before the business day
-CHANNELS = ("bvtech", "jp", "txplants", "linkedin", "gbp")
+CHANNELS = ("bvtech", "news", "jp", "txplants", "linkedin", "gbp")
+
+# v1.80 SEO STAGGER — the sites must NOT all update in the same minute, or search
+# engines read the network as one automated program. Each channel posts at its
+# own time of morning: an offset (hours) added to the base post hour (cfg
+# ["hour_utc"], default 14 UTC = 9am Central). bvtech.org therefore ships its SMB
+# article at 9am CT and a SEPARATE daily KEV briefing at 11am CT; the founder and
+# plants sites land midday. Weekly social (LinkedIn/GBP) rides along on Mondays.
+CHANNEL_HOUR_OFFSET = {
+    "bvtech": 0,     # 9:00 CT  — SMB IT article (bvtech.org/blog)
+    "jp": 1,         # 10:00 CT — founder post (jordanpolasek.com)
+    "news": 2,       # 11:00 CT — daily CISA-KEV briefing (bvtech.org/news)
+    "txplants": 3,   # 12:00 CT — Field Notes (tx-plants.com/blog)
+    # Weekly social (Mondays only) rides the base hour — it posts to LinkedIn /
+    # Google, not the site network, so cross-site SEO fingerprinting doesn't apply.
+    "linkedin": 0,
+    "gbp": 0,
+}
 
 _METROS = ("Sugar Land", "Houston", "Austin", "San Antonio")
 
@@ -225,9 +242,11 @@ def _run_bvtech(db: Session, now: datetime) -> tuple[bool, str]:
                         status="posted", url=out.get("url"), source="autopilot"))
         db.commit()
         note = _pub_note(out)
-        news_note = _publish_news_edition(db, now)
+        # v1.80: the daily KEV briefing is now its OWN channel (_run_news),
+        # published on a separate SEO-staggered time slot — no longer welded to
+        # this SMB post, so one failing never masks or blocks the other.
         return True, ((out.get("url") or article.get("title", ""))
-                      + (f" | {note}" if note else "") + news_note)
+                      + (f" | {note}" if note else ""))
     if wordpress.configured(db):
         row = blog_autopilot.publish_article(db, article, source="autopilot")
         if row.status != "posted":
@@ -550,42 +569,46 @@ def _compose_jp_deterministic(now: datetime) -> dict:
     return art
 
 
-def _publish_news_edition(db: Session, now: datetime) -> str:
-    """Daily KEV briefing to bvtech.org/news/ (its own page + index), cloned
-    from the newest existing edition's markup. 1/day rides the bvtech cap.
+def _run_news(db: Session, now: datetime) -> tuple[bool, str]:
+    """Daily bvtech.org/news/ CISA-KEV briefing — its OWN channel (v1.80), on a
+    separate SEO-staggered time slot from the SMB article so bvtech.org gets TWO
+    distinct daily posts and one failing never blocks the other.
 
-    v1.49: composed DETERMINISTICALLY from the CISA KEV feed — ZERO AI tokens.
-    Factual security bulletins don't need a language model. AI is opt-in only
-    (PULSE_NEWS_AI=1), and even then the deterministic edition is the fallback,
-    so the /news/ page publishes daily even when the AI balance is exhausted."""
+    Composed DETERMINISTICALLY from the live CISA KEV feed — ZERO AI tokens.
+    Factual security bulletins don't need a language model; AI is opt-in only
+    (PULSE_NEWS_AI=1), with the deterministic edition as the fallback, so /news/
+    publishes daily even when every AI balance is exhausted."""
     import os as _os
     if _os.environ.get("PULSE_DISABLE_KEV_TICKER"):
-        return ""
+        return False, "news disabled (PULSE_DISABLE_KEV_TICKER)"
     from . import jp_site
+    if not jp_site.configured(db, "bvtech_news"):
+        return False, "bvtech.org not connected (GitLab token — one paste connects both sites)"
     try:
         kev = jp_site._KEV_FETCH(6)
-        if not kev:
-            return " | news: no KEV data available"
-        npost = None
-        if _os.environ.get("PULSE_NEWS_AI") and ai.enabled():
-            items = "; ".join(f"{k['cve']} ({k['vendor']} {k['product']}: {k['name']}, "
-                              f"added {k['added']}, federal due {k['due']})" for k in kev)
-            try:
-                raw = ai.complete(_NEWS_SYSTEM,
-                                  f"Today: {biz_now(now):%B %d, %Y}. Real CISA KEV entries to cover "
-                                  f"(exact facts): {items}", smart=True, max_tokens=4000)
-                npost = ai.parse_article(raw)
-            except Exception:  # noqa: BLE001 — AI down/exhausted -> deterministic
-                npost = None
-        if not npost:
-            npost = _compose_news_deterministic(now, kev)   # zero-token default
-        if not npost:
-            return " | news: article unparseable"
-        nout = jp_site.publish(db, npost, site="bvtech_news")
-        return (f" | news: {nout.get('url')}" if nout.get("ok")
-                else f" | news FAILED: {nout.get('error', '?')[:80]}")
     except Exception as e:  # noqa: BLE001
-        return f" | news FAILED: {str(e)[:80]}"
+        return False, f"KEV feed fetch failed: {str(e)[:120]}"
+    if not kev:
+        return False, "no KEV data available today"
+    npost = None
+    if _os.environ.get("PULSE_NEWS_AI") and ai.enabled():
+        items = "; ".join(f"{k['cve']} ({k['vendor']} {k['product']}: {k['name']}, "
+                          f"added {k['added']}, federal due {k['due']})" for k in kev)
+        try:
+            raw = ai.complete(_NEWS_SYSTEM,
+                              f"Today: {biz_now(now):%B %d, %Y}. Real CISA KEV entries to cover "
+                              f"(exact facts): {items}", smart=True, max_tokens=4000)
+            npost = ai.parse_article(raw)
+        except Exception:  # noqa: BLE001 — AI down/exhausted -> deterministic
+            npost = None
+    if not npost:
+        npost = _compose_news_deterministic(now, kev)   # zero-token default
+    if not npost:
+        return False, "news article unparseable"
+    out = jp_site.publish(db, npost, site="bvtech_news")
+    if not out.get("ok"):
+        return False, out.get("error") or "news publish failed"
+    return True, out.get("url") or npost.get("title", "news edition")
 
 
 def _run_jp(db: Session, now: datetime) -> tuple[bool, str]:
@@ -776,8 +799,8 @@ def _run_gbp(db: Session, now: datetime) -> tuple[bool, str]:
     return True, "queued to Google Business (autopost engine delivers + retries)"
 
 
-_RUNNERS = {"bvtech": _run_bvtech, "jp": _run_jp, "txplants": _run_txplants,
-            "linkedin": _run_linkedin, "gbp": _run_gbp}
+_RUNNERS = {"bvtech": _run_bvtech, "news": _run_news, "jp": _run_jp,
+            "txplants": _run_txplants, "linkedin": _run_linkedin, "gbp": _run_gbp}
 
 
 # --------------------------------------------------------------------------- #
@@ -868,8 +891,15 @@ def run_daily(db: Session, now: datetime | None = None, *, force: bool = False) 
     # this removes). AI availability is now decided per-channel, inside each
     # runner, where a failure degrades gracefully instead of blanking the day.
     results: dict[str, dict] = {}
+    base_hour = cfg["hour_utc"]
     for ch in CHANNELS:
         if not cfg["channels"].get(ch, True):
+            continue
+        # v1.80 SEO STAGGER: hold each channel until its own time of morning so
+        # the sites don't all publish in the same minute. A later heartbeat tick
+        # (every 2 min) posts it once its hour arrives. Force ignores the stagger.
+        ch_hour = min(23, base_hour + CHANNEL_HOUR_OFFSET.get(ch, 0))
+        if not force and now.hour < ch_hour:
             continue
         # v1.47: LinkedIn + Google Business are WEEKLY - Mondays only (a
         # deliberate force-run can still post any day, capped 1/day).
@@ -931,8 +961,12 @@ def status(db: Session) -> dict:
     li_cfg = (li_conn.config if li_conn else None) or {}
     gbp_conn = secure_config.get_platform(db, "gbp")
     gbp_cfg = (gbp_conn.config if gbp_conn else None) or {}
+    _bv = jp_site.configured(db, "bvtech") or wordpress.configured(db)
     connected = {
-        "bvtech": jp_site.configured(db, "bvtech") or wordpress.configured(db),
+        "bvtech": _bv,
+        # The KEV news edition shares bvtech.org's repo/token, so it's connected
+        # exactly when bvtech.org is.
+        "news": jp_site.configured(db, "bvtech_news") or _bv,
         "jp": jp_site.configured(db, "jp"),
         "txplants": jp_site.configured(db, "txplants"),
         "linkedin": bool(secure_config.get_secret(li_cfg, "access_token")
@@ -941,6 +975,7 @@ def status(db: Session) -> dict:
     }
     hints = {
         "bvtech": "Marketing → Content Autopilot: one GitLab token connects both sites",
+        "news": "Shares bvtech.org's repo — connects with the same GitLab token",
         "jp": "Marketing → Content Autopilot: one GitLab token connects both sites",
         "txplants": "Marketing → Content Autopilot: connect the tx-plants.com blog repo (site=txplants)",
         "linkedin": "Settings → One-click Connect → LinkedIn (Connect →)",
@@ -949,7 +984,8 @@ def status(db: Session) -> dict:
     return {"enabled": cfg["enabled"], "hour_utc": cfg["hour_utc"],
             "ai_connected": ai.enabled(),
             "channels": [{"key": c,
-                          "name": {"bvtech": "bvtech.org blog", "jp": "jordanpolasek.com",
+                          "name": {"bvtech": "bvtech.org blog", "news": "bvtech.org/news (KEV)",
+                                   "jp": "jordanpolasek.com",
                                    "txplants": "tx-plants.com blog",
                                    "linkedin": "LinkedIn", "gbp": "Google Business"}[c],
                           "enabled": cfg["channels"].get(c, True),
