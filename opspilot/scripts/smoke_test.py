@@ -6396,6 +6396,18 @@ def main():
         # exactly 15-minute spacing between consecutive slots
         assert sorted(_mins81.values()) == [0, 15, 30, 45, 60, 75], _mins81
         assert _mins81["bvtech"] < _mins81["news"], "SMB post before the KEV briefing"
+        # v1.84: LinkedIn rotates themed posts (cyber tips, free Academy, our tools,
+        # switch-to-BVTech pitch) — each carries a real link + hashtags, and the
+        # zero-token floor is on-brand so daily posting never depends on any LLM.
+        assert len(_cap.LINKEDIN_THEMES) >= 8, "expected a themed LinkedIn rotation"
+        for _th in _cap.LINKEDIN_THEMES:
+            _p = _cap._linkedin_deterministic(_th, "Austin")
+            assert _th["link"] in _p and "#" in _p and len(_p) > 120, _th["key"]
+            assert "El Campo" not in _p, ("never name El Campo", _th["key"])
+        _lk_keys = {_cap.LINKEDIN_THEMES[d % len(_cap.LINKEDIN_THEMES)]["key"]
+                    for d in range(len(_cap.LINKEDIN_THEMES))}
+        assert len(_lk_keys) == len(_cap.LINKEDIN_THEMES), "themes must be distinct"
+        assert {"academy", "switch_msp", "backup_dr", "ai_automation"} <= _lk_keys
         # v1.55.6: the v8 site repo is the default project, but publishing still
         # requires a resolvable GitLab token — a fresh install stays a no-op.
         assert _jps3.SITES["txplants"]["default_project"] == "bvtechllc-group/tx-plants-site"
@@ -6877,7 +6889,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.83.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.84.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

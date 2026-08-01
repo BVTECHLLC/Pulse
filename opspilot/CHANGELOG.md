@@ -1,5 +1,15 @@
 # BVTech OpsPilot — Changelog
 
+## v1.84.0 — LinkedIn content rotation: cyber tips, Academy, and the switch-to-BVTech pitch (July 2026)
+- **9-theme daily LinkedIn rotation** instead of one generic tip. Cycles through
+  a this-week cyber tip, the FREE Cyber Academy (60+ labs), why-switch-MSPs
+  (flat pricing / faster response), backup & DR (the 94%-never-recover stat),
+  email protection (DMARC/phishing/BEC), AI & automation, faster response times,
+  the vCISO scorecard, and weekly threat-intel — each with a real CTA link
+  (bvtech.org, /contact, /news, portal.bvtech.org) and hashtags. Groq writes a
+  fresh variation daily; a hand-written on-brand post is the zero-token floor for
+  every theme, so posting never depends on any AI balance.
+
 ## v1.83.0 — Your REAL email signature on every outbound send (July 2026)
 - **The operator's own branded signature replaces the built-in one.** The v1.77
   built-in CSS-tile signature was a floor, not the goal — the operator's real

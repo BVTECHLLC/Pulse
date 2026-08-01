@@ -91,10 +91,127 @@ _JP_SYSTEM = (
     "<the article BODY as clean HTML: <p>, <h2>, <ul> — no <html>/<head>>"
 )
 _LI_SYSTEM = (
-    "You write LinkedIn posts for BVTech, a managed IT provider serving Sugar Land, "
-    "Houston, Austin and San Antonio. 60-120 words, hook first line, concrete insight, "
-    "one soft CTA, 2-3 hashtags. Never mention El Campo. Return the post text only."
+    "You are the voice of BVTech LLC — an award-winning managed IT & cybersecurity "
+    "provider serving Sugar Land, Houston, Austin and San Antonio since 2013. Write ONE "
+    "LinkedIn post (70-130 words) that delivers REAL value first, then positions BVTech as "
+    "the better, more modern MSP: faster response times, flat predictable pricing (no "
+    "surprise break-fix invoices), AI-driven proactive monitoring, tested backup & disaster "
+    "recovery, and strong email protection. Strong hook first line, concrete and specific, "
+    "confident but never hypey, one clear CTA. Put the given LINK on its own final line and "
+    "end with the given HASHTAGS. Never mention El Campo. Return the post text only."
 )
+
+# v1.84 LinkedIn editorial rotation — cyber tips, the free Academy, our tools, and
+# the switch-to-BVTech pitch (price / speed / AI / backup / email). One theme per
+# day, cycled by date, so the feed stays varied and always drives somewhere useful.
+LINKEDIN_THEMES = [
+    {"key": "cyber_tip", "link": "https://bvtech.org",
+     "tags": "#CyberSecurity #SmallBusiness #TexasBusiness",
+     "seed": "one specific, do-it-this-week cybersecurity tip for a Texas SMB (MFA "
+             "everywhere, fast patching, tested backups, phishing awareness, a password "
+             "manager, or removing ex-employee accounts) and why it matters"},
+    {"key": "academy", "link": "https://portal.bvtech.org",
+     "tags": "#SecurityAwareness #CyberTraining #FreeTraining",
+     "seed": "BVTech's FREE Cyber Academy: 60+ hands-on hacking & defense labs, coding "
+             "challenges and a live leaderboard - invite owners to train their whole team "
+             "to spot and stop attacks, at no cost"},
+    {"key": "switch_msp", "link": "https://bvtech.org/contact",
+     "tags": "#ManagedIT #MSP #TexasBusiness",
+     "seed": "why a growing Texas business should switch MSPs: flat predictable monthly "
+             "pricing instead of surprise break-fix invoices, and a partner that prevents "
+             "problems instead of billing you to fix them"},
+    {"key": "backup_dr", "link": "https://bvtech.org/contact",
+     "tags": "#DataProtection #DisasterRecovery #Ransomware",
+     "seed": "backup & disaster recovery: 94% of businesses that suffer major data loss "
+             "never fully recover (Gartner). BVTech runs verified, regularly-TESTED backups "
+             "and fast recovery - a backup you've never restored is only a hope"},
+    {"key": "email_protection", "link": "https://bvtech.org",
+     "tags": "#EmailSecurity #Phishing #BEC",
+     "seed": "email is the #1 way attackers get in. How BVTech stops phishing, domain "
+             "spoofing (DMARC/SPF/DKIM) and business email compromise before it ever "
+             "reaches an inbox"},
+    {"key": "ai_automation", "link": "https://bvtech.org",
+     "tags": "#AI #Automation #ManagedIT",
+     "seed": "how BVTech uses AI and automation to catch issues before they cause "
+             "downtime, auto-remediate common problems, and answer clients faster - a "
+             "modern MSP, not a break-fix shop"},
+    {"key": "response_time", "link": "https://bvtech.org/contact",
+     "tags": "#ITSupport #ManagedServices #Uptime",
+     "seed": "faster response times: when IT breaks, every minute costs money. BVTech's "
+             "proactive monitoring means many issues are fixed before you even notice - and "
+             "a real human answers when you call"},
+    {"key": "vciso", "link": "https://bvtech.org/contact",
+     "tags": "#vCISO #CyberSecurity #Compliance",
+     "seed": "BVTech's vCISO security scorecard: a clear letter grade of where your "
+             "business stands, a prioritized roadmap, and a free security assessment to "
+             "start - board-level security without a full-time hire"},
+    {"key": "threat_intel", "link": "https://bvtech.org/news",
+     "tags": "#ThreatIntel #CISA #CyberSecurity",
+     "seed": "a current, real exploited-vulnerability threat every Texas SMB should know "
+             "this week and the one action to take - point readers to BVTech's plain-English "
+             "weekly CISA-KEV briefings"},
+]
+
+
+def _linkedin_deterministic(theme: dict, metro: str) -> str:
+    """Zero-token LinkedIn post per theme — real value + the BVTech pitch, with the
+    link and hashtags baked in. The floor when no LLM (free or paid) is reachable,
+    so daily posting never depends on any AI balance."""
+    posts = {
+        "cyber_tip": (
+            f"Quick security win for {metro}-area owners: turn on multi-factor "
+            "authentication everywhere - email, banking, remote access. It's free, takes "
+            "an afternoon, and stops the vast majority of account takeovers cold. Most "
+            "breaches we clean up started with one password and no second factor. If you "
+            "want a hand rolling it out across your team, that's exactly what we do."),
+        "academy": (
+            "Your team is your first firewall - so we made training it free. BVTech's "
+            "Cyber Academy has 60+ hands-on labs where anyone can learn to spot phishing, "
+            "understand how attacks actually work, and defend against them - with a live "
+            "leaderboard to keep it fun. No cost, no catch. Send it to your staff."),
+        "switch_msp": (
+            f"If your {metro} business dreads opening the IT invoice, that's the problem. "
+            "Break-fix pricing rewards your provider when things break. BVTech is flat and "
+            "predictable - one monthly price, proactive monitoring, and we're on the hook "
+            "to keep things running, not to bill you when they don't. Growing companies "
+            "deserve a partner, not a meter."),
+        "backup_dr": (
+            "94% of businesses that suffer major data loss never fully recover (Gartner). "
+            "A single ransomware hit, failed drive, or wrong-click delete can erase years "
+            "of work in minutes. BVTech runs verified, regularly-TESTED backups and fast "
+            "disaster recovery - because a backup you've never restored is a hope, not a "
+            "plan. When did you last test yours?"),
+        "email_protection": (
+            "Nine out of ten attacks start in the inbox. Phishing, spoofed domains, and "
+            "business email compromise are how attackers get a foot in the door of Texas "
+            "SMBs every day. BVTech layers real email protection - DMARC/SPF/DKIM, threat "
+            "filtering, and impersonation defense - so the bad stuff is stopped before "
+            "anyone has to be perfect."),
+        "ai_automation": (
+            "The best IT problem is the one you never noticed. BVTech pairs 24/7 "
+            "monitoring with AI and automation that flags trouble early, auto-fixes common "
+            "issues, and gets clients answers faster. That's the difference between a "
+            "modern MSP and a break-fix shop still waiting for the phone to ring."),
+        "response_time": (
+            f"When IT goes down in {metro}, minutes are money. BVTech's proactive "
+            "monitoring catches many issues before you ever feel them - and when you do "
+            "need us, a real person answers, not a ticket black hole. Fast, human, "
+            "accountable response is the whole point of managed IT. Ask us what our "
+            "response times actually look like."),
+        "vciso": (
+            "Most small businesses have no idea where they really stand on security - "
+            "until it's tested the hard way. BVTech's vCISO scorecard gives you a clear "
+            "letter grade and a prioritized roadmap, so you fix what matters first. "
+            "Board-level security guidance without a full-time hire. The first assessment "
+            "is on us."),
+        "threat_intel": (
+            "Attackers move fast - so we translate the noise into plain English. Every "
+            "week BVTech breaks down the newest actively-exploited vulnerabilities (the "
+            "CISA KEV list) and the one thing a Texas business should actually do about "
+            "each. No hype, no jargon - just what to patch and by when."),
+    }
+    body = posts.get(theme["key"], posts["cyber_tip"])
+    return f"{body}\n\n{theme['link']}\n\n{theme['tags']}"
 _GBP_SYSTEM = (
     "You write Google Business Profile updates for BVTech (managed IT, cybersecurity). "
     "2-3 sentences, local flavor for the given metro, one clear CTA to bvtech.org. "
@@ -772,14 +889,23 @@ def _run_linkedin(db: Session, now: datetime) -> tuple[bool, str]:
     if not (secure_config.get_secret(cfg, "access_token") or has_oauth):
         return False, "LinkedIn not connected (Settings → One-click Connect)"
     metro = _METROS[(now.toordinal() + 1) % len(_METROS)]
+    # v1.84: rotate through the editorial themes (cyber tips, the free Academy, our
+    # tools, and the switch-to-BVTech pitch) so the feed is varied and always links
+    # somewhere useful — never the same generic tip every day.
+    theme = LINKEDIN_THEMES[now.toordinal() % len(LINKEDIN_THEMES)]
+    prompt = (f"Theme: {theme['seed']}. Angle it for {metro}-area business owners. "
+              f"LINK (put on its own final line): {theme['link']}. "
+              f"HASHTAGS (end with these): {theme['tags']}. Date context: {now:%B %d}.")
     try:
-        text = ai.complete(_LI_SYSTEM,
-                           f"Topic seed: one thing {metro}-area businesses get wrong about IT/"
-                           f"security, and the fix. Date: {now:%B %d}.", max_tokens=400)
+        text = (ai.complete(_LI_SYSTEM, prompt, max_tokens=400) or "").strip()
+        if not text:
+            raise ai.AIError("empty")
+        if theme["link"] not in text:               # guarantee the CTA link is present
+            text = f"{text}\n\n{theme['link']}"
     except ai.AIError:
-        text = _social_deterministic(metro, "linkedin", now)   # zero-token floor
+        text = _linkedin_deterministic(theme, metro)   # themed zero-token floor
     _enqueue_social(db, text.strip(), "linkedin")
-    return True, "queued to LinkedIn (autopost engine delivers + retries)"
+    return True, f"queued to LinkedIn ({theme['key']}: {theme['link']})"
 
 
 def _run_gbp(db: Session, now: datetime) -> tuple[bool, str]:
