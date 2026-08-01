@@ -6569,6 +6569,16 @@ def main():
             _fn84, _ = _ob56.resolve_send_fn(_edb6)
             _fn84("sig-test@example.com", "sig check 2", "Body line 2.")
             assert ">BV</div>" in _sent56[-1][3], "clearing custom sig must restore built-in"
+            # v1.83: signature_html="OFF" appends NOTHING so the org's Exchange/M365
+            # signature rule staples the real one — no Pulse double-signature.
+            _ob56.save_config(_edb6, signature_html="OFF")
+            _fn85, _ = _ob56.resolve_send_fn(_edb6)
+            _fn85("sig-test@example.com", "sig check 3", "Clean body for Exchange.")
+            _off_body = _sent56[-1][3]
+            assert ">BV</div>" not in _off_body and "<table" not in _off_body, "OFF must add no sig"
+            assert _off_body.rstrip().endswith("</div>"), "OFF: body ends at the div, sig-free"
+            assert "Clean body for Exchange." in _off_body
+            _ob56.save_config(_edb6, signature_html="")     # restore default for later blocks
             # 5) v1.57 AUTO-PROSPECTING: low pool -> scrape next rotation combo,
             #    enrich the lead's email from its OWN website, once per day.
             _sc56.upsert_platform(_edb6, "google_places", "Google Places",

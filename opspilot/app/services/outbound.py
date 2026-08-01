@@ -459,12 +459,24 @@ def _sig_from_env() -> str:
     return _SIG_CACHE["html"] if _SIG_CACHE["url"] == url else ""
 
 
+# Sentinels that mean "append NOTHING — let the org's M365/Exchange signature
+# rule staple the real branded signature on outbound mail." This is the right
+# mode when the operator already has a working Exchange/Outlook signature (photo,
+# banner, socials) — Pulse must not double it up with its own.
+_SIG_OFF = {"off", "none", "disabled", "exchange", "m365", "outlook"}
+
+
 def _text_to_html(text: str, custom_sig: str | None = None) -> str:
-    """Render the message as HTML with the branded signature appended. The body
-    keeps its exact line structure (pre-wrap, escaped byte-for-byte). The
-    signature is the operator's real hosted one when configured (vault/env),
-    else the built-in tile — so no email ever goes out bare."""
-    sig = (custom_sig or "").strip() or _sig_from_env() or _html_signature()
+    """Render the message as HTML. The body keeps its exact line structure
+    (pre-wrap, escaped byte-for-byte). The signature is: the operator's own HTML
+    when set; NOTHING when set to an OFF sentinel (so the M365/Exchange rule
+    appends the real one); the hosted env signature; else the built-in tile —
+    so an email is never bare AND never double-signed."""
+    raw = (custom_sig or "").strip()
+    if raw.lower() in _SIG_OFF:
+        sig = ""                                  # let Exchange append the real one
+    else:
+        sig = raw or _sig_from_env() or _html_signature()
     return ('<div style="font-family:\'Segoe UI\',Calibri,Arial,sans-serif;'
             'font-size:15px;color:#222222;line-height:1.5;white-space:pre-wrap">'
             + _H_ESC(text) + "</div>" + sig)

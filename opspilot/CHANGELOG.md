@@ -11,6 +11,10 @@
   ever goes out bare.
 - `PUT /api/campaigns/outbound/config` accepts `signature_html`, so the portal
   can set/clear it without box access.
+- **`signature_html="OFF"` lets the org's Exchange/M365 signature rule own it.**
+  When the operator already has a working Exchange/Outlook signature (photo,
+  banner, socials — applied to all outbound mail including Graph sends), Pulse
+  appends NOTHING, so the real signature isn't doubled up by the built-in tile.
 
 ## v1.82.0 — OAuth "Connect" self-heals a stale session instead of 401-ing (July 2026)
 - **The "Not authenticated" dead-end on `/api/oauth/{provider}/connect`.** Starting
