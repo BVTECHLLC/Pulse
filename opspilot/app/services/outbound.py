@@ -302,6 +302,25 @@ def run_daily(db: Session, send_fn, now: datetime | None = None, *,
                      "step": step, "subject": subject})
         if dry_run:
             continue
+        # v1.87 DELIVERABILITY GUARD: never email a dead domain — it just bounces
+        # and burns the mailbox's sender reputation. Verify MX right before the
+        # send; a failure retires the lead permanently (do_not_contact) so it's
+        # never retried. The bounce watcher catches any live-domain mailbox that
+        # still doesn't exist.
+        from . import deliverability
+        ok_send, why = deliverability.is_sendable(contact.email)
+        if not ok_send:
+            contact.do_not_contact = True
+            contact.status = "invalid"
+            # Log as a NOTE, not an email — it was NOT sent, so it must not count
+            # as a send in the scorecard/CRM timeline.
+            crm.log_activity(db, contact, "note", subject="(not sent — undeliverable)",
+                             body=f"skipped: {why}", direction="outbound",
+                             meta={"campaign": CAMPAIGN, "kind": "suppressed", "why": why},
+                             commit=False)
+            failed += 1
+            errors.append({"contact_id": contact.id, "error": f"undeliverable ({why})"})
+            continue
         try:
             send_fn(contact.email, subject, body)
         except Exception as e:  # noqa: BLE001
@@ -910,6 +929,22 @@ def _is_stop(subject: str, preview: str) -> bool:
     return bool(_re.match(r"\s*stop\b", preview or "", _re.I))
 
 
+_NDR_SUBJECT_RX = None
+
+
+def _re_ndr_subject(subject: str) -> bool:
+    """Classic delivery-failure subjects (Microsoft/Google/generic NDRs)."""
+    import re as _re
+    global _NDR_SUBJECT_RX
+    if _NDR_SUBJECT_RX is None:
+        _NDR_SUBJECT_RX = _re.compile(
+            r"\b(undeliverable|delivery has failed|delivery status notification"
+            r"|delivery failure|returned mail|mail delivery failed|failure notice"
+            r"|message not delivered|address not found|could not be delivered)\b",
+            _re.I)
+    return bool(_NDR_SUBJECT_RX.search(subject or ""))
+
+
 def _parse_iso(ts: str):
     try:
         return datetime.fromisoformat((ts or "").replace("Z", "+00:00"))
@@ -940,13 +975,21 @@ def _watch_replies(db: Session, cfg: dict, now: datetime) -> dict:
         text = f"{m.get('subject') or ''} {m.get('preview') or ''}"
         if not sender:
             continue
-        if sender.startswith(("mailer-daemon", "postmaster")) or "mailer-daemon" in sender:
+        # v1.87: broaden NDR detection. Microsoft/Exchange bounces don't always
+        # come from a "postmaster@" address — the display name is often "Microsoft
+        # Outlook" — so also treat a message as an NDR when the SUBJECT is a classic
+        # delivery-failure notice, regardless of sender.
+        _is_ndr = (sender.startswith(("mailer-daemon", "postmaster"))
+                   or "mailer-daemon" in sender or "microsoftexchange" in sender
+                   or _re_ndr_subject(m.get("subject") or ""))
+        if _is_ndr:
             # NDR: find which campaign lead bounced by their address in the text
             tl = text.lower()
             for c in (db.query(CrmContact)
                       .filter(CrmContact.email.isnot(None)).all()):
                 if c.email and c.email.lower() in tl and _position(db, c.id) > 0:
                     c.status = "bounced"
+                    c.do_not_contact = True   # v1.87: retire permanently, never retry
                     bounced.append(c.company or c.name)
                     crm.log_activity(db, c, "email", subject="(bounce)",
                                      body=text[:500], direction="inbound",

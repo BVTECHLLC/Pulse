@@ -6482,6 +6482,13 @@ def main():
 
         _orig_gf56 = _ob56._GRAPH_FACTORY
         _ob56._GRAPH_FACTORY = _FakeGraph56
+        # v1.87: the deliverability guard does a REAL MX lookup before each send;
+        # this suite uses fake domains (leadco-a.com…) that legitimately have no
+        # MX, so stub it permissive here. The dedicated guard sub-test overrides
+        # this locally to exercise the suppression path.
+        from app.services import deliverability as _dlv56
+        _orig_mx56 = _dlv56._MX_FN
+        _dlv56._MX_FN = lambda _dom: True
         _hour56 = _dt56.datetime(2026, 7, 28, 16, 0, 0, tzinfo=_dt56.timezone.utc)
         try:
             # earlier smoke sections configured the mailbox in this shared DB.
@@ -6760,7 +6767,8 @@ def main():
             _edb6.refresh(_lead_a); _edb6.refresh(_lead_b); _edb6.refresh(_lead_c)
             assert _lead_a.do_not_contact is True and _lead_a.status == "unsubscribed"
             assert _lead_b.status == "replied" and _lead_b.do_not_contact is False
-            assert _lead_c.status == "bounced"
+            # v1.87: a bounce is retired PERMANENTLY (do_not_contact), never retried
+            assert _lead_c.status == "bounced" and _lead_c.do_not_contact is True
             # all three are OUT of the sequence from this moment on
             _due56 = {c.id for c, _ in
                       _ob56.select_due(_edb6, _hour56.replace(hour=17))}
@@ -6771,6 +6779,32 @@ def main():
             _rw2 = _ob56._watch_replies(_edb6, _ob56.get_config(_edb6),
                                         _hour56.replace(hour=17, minute=5))
             assert _rw2["reason"] == "recently_checked", _rw2
+            # v1.87 DELIVERABILITY GUARD: verify MX before sending; a dead domain
+            # is suppressed (do_not_contact + 'invalid'), never emailed, so it can't
+            # bounce and burn sender reputation. MX lookup is stubbed for offline.
+            from app.services import deliverability as _dlv
+            _orig_mx = _dlv._MX_FN
+            _dlv._MX_FN = lambda dom: dom != "deaddomain.example"   # only this domain lacks MX
+            try:
+                assert _dlv.is_sendable("owner@realbiz.com")[0] is True
+                assert _dlv.is_sendable("info@deaddomain.example") == (False, "no_mx")
+                assert _dlv.is_sendable("not-an-email")[0] is False
+                assert _dlv.is_sendable("x@example.com") == (False, "junk_domain")
+                # a fresh lead on a dead domain must be SUPPRESSED, not emailed.
+                # isolate: suppress every other lead so run_daily only sees this one.
+                _edb6.query(_CC56).update({"do_not_contact": True})
+                _dead = _CC56(name="Ghost LLC", company="Ghost LLC",
+                              email="info@deaddomain.example", score=95, status="new")
+                _edb6.add(_dead); _edb6.commit()
+                _n_before87 = len(_sent56)
+                _r87 = _ob56.run_daily(_edb6, _fn56, _hour56.replace(hour=18), force=True)
+                assert _r87.get("sent", 0) == 0, _r87   # nothing deliverable -> nothing sent
+                _edb6.refresh(_dead)
+                assert _dead.do_not_contact is True and _dead.status == "invalid", _dead.status
+                assert all("deaddomain" not in t[1][0] for t in _sent56[_n_before87:]), \
+                    "a dead-domain lead was emailed!"
+            finally:
+                _dlv._MX_FN = _orig_mx
             # 7) v1.59 CONVERSION LAYER: personalized opener (validated, junk
             #    rejected), domain-snapshot touch 2, booking link touch 3,
             #    Monday scorecard (once, with real counts from this block).
@@ -6825,6 +6859,7 @@ def main():
                                            _hour56)["reason"] == "not_monday"
         finally:
             _ob56._GRAPH_FACTORY = _orig_gf56
+            _dlv56._MX_FN = _orig_mx56
             for _k56 in ("PULSE_OUTBOUND", "PULSE_OUTBOUND_ADDRESS"):
                 _os56.environ.pop(_k56, None)
             _edb6.close()
@@ -6919,7 +6954,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.86.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.87.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

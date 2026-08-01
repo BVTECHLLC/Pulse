@@ -1,5 +1,16 @@
 # BVTech OpsPilot — Changelog
 
+## v1.87.0 — Deliverability guard: verify before send, retire bounces for good (Aug 2026)
+- **Pre-send MX verification.** New deliverability.is_sendable() checks syntax +
+  a real MX record on the domain right before each send; a dead domain is
+  suppressed (do_not_contact + status 'invalid') and never emailed — so it can't
+  bounce and burn the mailbox's sender reputation. DNS-over-HTTPS, cached, fails
+  open on a network blip.
+- **Bounces retired permanently.** NDR detection broadened (Microsoft/Exchange
+  bounces whose sender is "Microsoft Outlook", plus classic "Undeliverable /
+  delivery failed" subjects), and a bounce now sets do_not_contact — a lead that
+  bounces once is never emailed again.
+
 ## v1.86.0 — Human greetings on company leads + HubSpot list import (Aug 2026)
 - **"Hi there," not "Hi Law,".** Cold leads are often generic addresses (info@,
   contact@) whose "name" is really the COMPANY. Greeting those by the first word
