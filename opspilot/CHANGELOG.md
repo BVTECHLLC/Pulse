@@ -1,5 +1,17 @@
 # BVTech OpsPilot — Changelog
 
+## v1.83.0 — Your REAL email signature on every outbound send (July 2026)
+- **The operator's own branded signature replaces the built-in one.** The v1.77
+  built-in CSS-tile signature was a floor, not the goal — the operator's real
+  signature (the bvtech.org-hosted one with the gif, used for help@bvtech.org)
+  now rides every outbound email. Sources, in order: vault `signature_html`
+  (set once — survives every rebuild), `PULSE_SIG_HTML_URL` (fetches the hosted
+  signature, cached ~12h, so editing the file on bvtech.org updates emails
+  automatically), then the built-in tile as the guaranteed floor so no email
+  ever goes out bare.
+- `PUT /api/campaigns/outbound/config` accepts `signature_html`, so the portal
+  can set/clear it without box access.
+
 ## v1.82.0 — OAuth "Connect" self-heals a stale session instead of 401-ing (July 2026)
 - **The "Not authenticated" dead-end on `/api/oauth/{provider}/connect`.** Starting
   an integration connect (LinkedIn, Google Business, …) is a full-PAGE browser

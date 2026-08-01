@@ -144,6 +144,10 @@ def get_config(db: Session) -> dict:
         "prospect_cycle": int(raw.get("prospect_cycle") or 0),  # market×industry rotation
         "replies_checked_at": raw.get("replies_checked_at") or "",  # inbox watermark (v1.58)
         "scorecard_on": raw.get("scorecard_on") or "",  # last Monday scorecard date (v1.59)
+        # v1.83: the operator's REAL branded signature (the bvtech.org-hosted one
+        # with the gif) — full HTML, stored in the vault so it survives every
+        # rebuild. When set it replaces the built-in CSS-tile signature.
+        "signature_html": raw.get("signature_html") or "",
     }
 
 
@@ -423,15 +427,47 @@ def _H_ESC(v: str) -> str:
     return _h.escape(v or "")
 
 
-def _text_to_html(text: str) -> str:
-    """v1.77: render the message as HTML with a self-contained branded signature.
-    The body keeps its exact line structure (pre-wrap, escaped byte-for-byte),
-    then the baked-in signature is appended so the banner is guaranteed present
-    on every send — no dependency on any external Exchange rule that can (and
-    did) silently disappear."""
+# v1.83: the operator's REAL signature wins. Sources, in order:
+#   1. vault  — outbound config `signature_html` (survives every rebuild; set once
+#               from the bvtech.org-hosted signature file with the gif)
+#   2. env    — PULSE_SIG_HTML_URL: fetch the hosted signature (cached ~12h) so
+#               editing the file on bvtech.org updates emails automatically
+#   3. built-in CSS tile — the guaranteed floor so no email ever goes out bare.
+_SIG_CACHE: dict = {"url": "", "html": "", "at": 0.0}
+
+
+def _sig_from_env() -> str:
+    import os
+    import time
+    import urllib.request
+    url = (os.environ.get("PULSE_SIG_HTML_URL") or "").strip()
+    if not url:
+        return ""
+    if _SIG_CACHE["url"] == url and _SIG_CACHE["html"] and \
+            time.time() - _SIG_CACHE["at"] < 12 * 3600:
+        return _SIG_CACHE["html"]
+    try:
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "BVTech-Pulse/1.0 (+https://bvtech.org)"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            html_sig = r.read(200_000).decode("utf-8", errors="replace").strip()
+        if "<" in html_sig:      # sanity: looks like markup, not an error page
+            _SIG_CACHE.update({"url": url, "html": html_sig, "at": time.time()})
+            return html_sig
+    except Exception:  # noqa: BLE001 — unreachable host -> fall through
+        pass
+    return _SIG_CACHE["html"] if _SIG_CACHE["url"] == url else ""
+
+
+def _text_to_html(text: str, custom_sig: str | None = None) -> str:
+    """Render the message as HTML with the branded signature appended. The body
+    keeps its exact line structure (pre-wrap, escaped byte-for-byte). The
+    signature is the operator's real hosted one when configured (vault/env),
+    else the built-in tile — so no email ever goes out bare."""
+    sig = (custom_sig or "").strip() or _sig_from_env() or _html_signature()
     return ('<div style="font-family:\'Segoe UI\',Calibri,Arial,sans-serif;'
             'font-size:15px;color:#222222;line-height:1.5;white-space:pre-wrap">'
-            + _H_ESC(text) + "</div>" + _html_signature())
+            + _H_ESC(text) + "</div>" + sig)
 
 
 def _graph_and_mailbox(db: Session):
@@ -453,9 +489,12 @@ def resolve_send_fn(db: Session):
     gm = _graph_and_mailbox(db)
     if gm:
         graph, mailbox = gm
+        # v1.83: resolve the operator's real signature once per send-fn build.
+        custom_sig = (get_config(db).get("signature_html") or "").strip()
 
         def _send_graph(to: str, subject: str, body: str) -> None:
-            graph.send_mail(mailbox, [to], subject, _text_to_html(body), html=True)
+            graph.send_mail(mailbox, [to], subject,
+                            _text_to_html(body, custom_sig), html=True)
 
         return _send_graph, f"M365 Graph as {mailbox}"
     from ..core.config import get_settings

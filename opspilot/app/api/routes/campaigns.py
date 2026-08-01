@@ -169,6 +169,10 @@ class OutboundConfigIn(BaseModel):
     reply_to: str | None = None
     physical_address: str | None = None
     target: int | None = None
+    # v1.83: the operator's real branded signature (full HTML, e.g. the
+    # bvtech.org-hosted one with the gif). Stored in the vault; replaces the
+    # built-in signature on every outbound email.
+    signature_html: str | None = None
 
 
 @router.put("/outbound/config")
@@ -178,7 +182,8 @@ def outbound_config(body: OutboundConfigIn, request: Request,
     cfg = outbound_svc.save_config(db, enabled=body.enabled, sender=body.sender,
                                    reply_to=body.reply_to,
                                    physical_address=body.physical_address,
-                                   target=body.target)
+                                   target=body.target,
+                                   signature_html=body.signature_html)
     audit.record(db, action="outbound.config", actor_user_id=user.id,
                  actor_email=user.email, actor_role=user.role.value,
                  target_type="campaign", target_id="outbound", ip=_ip(request),

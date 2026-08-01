@@ -6552,6 +6552,23 @@ def main():
             _r56e = _ob56.tick(_edb6, _hour56)
             assert _r56e.get("sent", 0) == 0, _r56e
             assert len(_sent56) == _n56_before + 2
+            # v1.83: the operator's REAL signature (vault `signature_html`, e.g.
+            # the bvtech.org-hosted one with the gif) replaces the built-in tile
+            # on every send — and clearing it restores the built-in floor.
+            _ob56.save_config(_edb6, signature_html=(
+                '<table id="real-bvtech-sig"><tr><td>'
+                '<img src="https://bvtech.org/sig/jordan.gif" alt="BVTech">'
+                '</td></tr></table>'))
+            _fn83, _ = _ob56.resolve_send_fn(_edb6)
+            _fn83("sig-test@example.com", "sig check", "Body line.")
+            _sig_body = _sent56[-1][3]
+            assert 'id="real-bvtech-sig"' in _sig_body and "sig/jordan.gif" in _sig_body
+            assert ">BV</div>" not in _sig_body, "custom signature must REPLACE the built-in tile"
+            assert "Body line." in _sig_body
+            _ob56.save_config(_edb6, signature_html="")     # back to the built-in floor
+            _fn84, _ = _ob56.resolve_send_fn(_edb6)
+            _fn84("sig-test@example.com", "sig check 2", "Body line 2.")
+            assert ">BV</div>" in _sent56[-1][3], "clearing custom sig must restore built-in"
             # 5) v1.57 AUTO-PROSPECTING: low pool -> scrape next rotation combo,
             #    enrich the lead's email from its OWN website, once per day.
             _sc56.upsert_platform(_edb6, "google_places", "Google Places",
@@ -6850,7 +6867,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.82.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.83.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
