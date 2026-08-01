@@ -6546,6 +6546,15 @@ def main():
             assert all("leadco" not in a for a in _to56), "TEST mode emailed a lead!"
             assert "TEST MODE" in _body56 and "happy with your" in _body56  # v1.85 short copy
             assert "San Antonio, TX 78205" in _body56 and "no@optout.com" not in _body56
+            # v1.86: greeting stays human on generic company leads (info@ with the
+            # company as the name) -> "Hi there,"; a real person still gets a first name.
+            from app.services import campaigns as _camp86
+            _co86 = type("C", (), {"name": "Law Office of Jackson F Gorski",
+                                   "company": "Law Office of Jackson F Gorski"})()
+            _pr86 = type("C", (), {"name": "Maria Delgado", "company": "Delgado Dental"})()
+            assert _camp86.personalize("Hi {first},", _co86) == "Hi there,", "company name must greet 'there'"
+            assert _camp86.personalize("Hi {first},", _pr86) == "Hi Maria,", "person keeps first name"
+            assert _camp86.personalize("about {company}", _co86) == "about Law Office of Jackson F Gorski"
             _ourids56 = [_lead_a.id, _lead_b.id, _lead_x.id]
             assert _edb6.query(_CA56).filter(
                 _CA56.contact_id.in_(_ourids56)).count() == 0, \
@@ -6910,7 +6919,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.85.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.86.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

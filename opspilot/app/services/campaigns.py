@@ -15,9 +15,36 @@ from ..models import CrmContact
 from . import crm
 
 
+import re as _re
+
+# v1.86: business-name tokens. A cold lead is very often a generic address
+# (info@, contact@) whose "name" is actually the COMPANY (e.g. "Law Office of…",
+# "Amani Desravines LLC CPAs"). Greeting those "Hi Law," / "Hi Amani," reads like
+# a bot — so when the name looks like a company (or just equals the company), the
+# greeting falls back to a clean "Hi there,". Real person names still get a first name.
+_COMPANY_TOKENS = _re.compile(
+    r"\b(LLC|L\.L\.C|INC|PLLC|P\.?C|LLP|LP|CORP|CO|GROUP|ASSOCIATES|ASSOC|OFFICE|"
+    r"OFFICES|FIRM|CLINIC|DENTAL|DENTISTRY|ORTHODONTICS|LAW|CPA|CPAS|ATTORNEY|"
+    r"COUNSELOR|PRACTICE|SERVICES|INSURANCE|MEDICAL|HEALTH|HEALTHCARE|WEALTH|"
+    r"FINANCIAL|TAX|AGENCY|SOLUTIONS|SYSTEMS|CENTER|CLINICS|CARE|BANK|REALTY|"
+    r"PROPERTIES|CONSTRUCTION|ENGINEERING|ARCHITECTURE|MANUFACTURING)\b", _re.I)
+
+
+def _greeting_first(c: CrmContact) -> str:
+    """First name for a greeting, or '' (→ 'there') when the name is really a
+    company. Keeps cold-open greetings human instead of 'Hi Law,'."""
+    n = (c.name or "").strip()
+    if not n:
+        return ""
+    if (c.company and n.lower() == (c.company or "").strip().lower()) \
+            or len(n.split()) > 3 or _COMPANY_TOKENS.search(n):
+        return ""
+    return n.split(" ")[0]
+
+
 def personalize(template: str, c: CrmContact) -> str:
     """Fill {name}/{first}/{company} placeholders from a contact."""
-    first = (c.name or "").split(" ")[0] if c.name else ""
+    first = _greeting_first(c)
     return (template or "").replace("{name}", c.name or "there") \
                            .replace("{first}", first or "there") \
                            .replace("{company}", c.company or "your team")

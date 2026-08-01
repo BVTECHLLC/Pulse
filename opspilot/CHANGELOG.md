@@ -1,5 +1,13 @@
 # BVTech OpsPilot — Changelog
 
+## v1.86.0 — Human greetings on company leads + HubSpot list import (Aug 2026)
+- **"Hi there," not "Hi Law,".** Cold leads are often generic addresses (info@,
+  contact@) whose "name" is really the COMPANY. Greeting those by the first word
+  ("Hi Law," / "Hi Amani,") reads like a bot. `personalize()` now detects a
+  company-shaped name (business tokens, >3 words, or name==company) and greets
+  "Hi there," instead — while real person names still get a proper first name.
+  The subject/body still use the real company.
+
 ## v1.85.0 — Short-punchy email campaign + a daily proof report to your inbox (July 2026)
 - **Sequence rewritten short + sales-forward.** Touch 1 leads with "happy with
   your IT provider? want to save money?"; every touch is skimmable, benefit-led,
