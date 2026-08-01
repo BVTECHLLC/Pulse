@@ -25,6 +25,16 @@ MARKETS = {
     "san_antonio": {"name": "San Antonio", "lat": 29.4241, "lng": -98.4936, "radius": 40000},
     "houston": {"name": "Houston", "lat": 29.7604, "lng": -95.3698, "radius": 50000},
     "sugar_land": {"name": "Sugar Land", "lat": 29.6197, "lng": -95.6349, "radius": 35000},
+    # v1.88: widen the net across Texas so the tank never runs dry and the same
+    # metro isn't hit every rotation.
+    "new_braunfels": {"name": "New Braunfels", "lat": 29.7030, "lng": -98.1245, "radius": 30000},
+    "the_woodlands": {"name": "The Woodlands", "lat": 30.1658, "lng": -95.4613, "radius": 30000},
+    "round_rock": {"name": "Round Rock", "lat": 30.5083, "lng": -97.6789, "radius": 30000},
+    "dallas": {"name": "Dallas", "lat": 32.7767, "lng": -96.7970, "radius": 45000},
+    "fort_worth": {"name": "Fort Worth", "lat": 32.7555, "lng": -97.3308, "radius": 40000},
+    "corpus_christi": {"name": "Corpus Christi", "lat": 27.8006, "lng": -97.3964, "radius": 35000},
+    "waco": {"name": "Waco", "lat": 31.5493, "lng": -97.1467, "radius": 35000},
+    "el_campo": {"name": "El Campo", "lat": 29.1966, "lng": -96.2697, "radius": 45000},
 }
 
 # Industry → MSP-readiness boost (compliance/data-heavy verticals convert best).
@@ -42,6 +52,13 @@ INDUSTRIES = [
     {"query": "marketing agency", "industry": "Marketing Agencies", "boost": 12},
     {"query": "manufacturing company", "industry": "Manufacturing", "boost": 11},
     {"query": "construction company", "industry": "Construction", "boost": 10},
+    # v1.88: more MSP-ready verticals (compliance / data-heavy, book-of-business).
+    {"query": "veterinary clinic", "industry": "Veterinary", "boost": 13},
+    {"query": "chiropractor", "industry": "Chiropractic", "boost": 12},
+    {"query": "optometrist", "industry": "Optometry", "boost": 13},
+    {"query": "physical therapy", "industry": "Physical Therapy", "boost": 12},
+    {"query": "title company", "industry": "Title / Escrow", "boost": 16},
+    {"query": "credit union", "industry": "Credit Unions", "boost": 16},
 ]
 _INDUSTRY_BY_QUERY = {i["query"]: i for i in INDUSTRIES}
 
@@ -114,6 +131,12 @@ OSM_SELECTORS: dict[str, list[str]] = {
     "marketing agency": ['["office"="advertising_agency"]', '["office"="it"]'],
     "manufacturing company": ['["office"="company"]', '["craft"="metal_construction"]'],
     "construction company": ['["craft"="builder"]', '["office"="construction_company"]'],
+    "veterinary clinic": ['["amenity"="veterinary"]'],
+    "chiropractor": ['["healthcare"="chiropractor"]', '["healthcare:speciality"="chiropractic"]'],
+    "optometrist": ['["shop"="optician"]', '["healthcare"="optometrist"]'],
+    "physical therapy": ['["healthcare"="physiotherapist"]'],
+    "title company": ['["office"="company"]', '["office"="notary"]'],
+    "credit union": ['["amenity"="bank"]'],
 }
 _OSM_DEFAULT_SELECTORS = ['["office"="company"]']
 

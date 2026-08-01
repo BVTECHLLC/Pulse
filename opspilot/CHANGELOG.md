@@ -1,5 +1,19 @@
 # BVTech OpsPilot — Changelog
 
+## v1.88.0 — Godlike scraper + self-cleaning HubSpot list (Aug 2026)
+- **Scraper reaches statewide.** Prospecting now sweeps 12 Texas metros (added
+  New Braunfels, The Woodlands, Round Rock, Dallas, Fort Worth, Corpus Christi,
+  Waco, and our home town El Campo) across 19 SMB verticals (added veterinary,
+  chiropractic, optometry, physical therapy, title companies, and credit
+  unions). Free OSM/Overpass discovery + on-site email scrape + MX verify feeds
+  the box CRM — no paid API, no bounce risk.
+- **HubSpot write-back — the list self-cleans.** When Pulse suppresses a dead
+  domain (pre-send MX fail) or retires a hard bounce, it now flags the matching
+  HubSpot contact hs_lead_status=UNQUALIFIED and logs a note explaining why.
+  Bad addresses stop counting against your list quality automatically; you never
+  re-import a corpse. Best-effort and no-op without a HubSpot token, so the box
+  stays the free source of truth.
+
 ## v1.87.0 — Deliverability guard: verify before send, retire bounces for good (Aug 2026)
 - **Pre-send MX verification.** New deliverability.is_sendable() checks syntax +
   a real MX record on the domain right before each send; a dead domain is

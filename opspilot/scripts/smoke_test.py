@@ -6732,6 +6732,44 @@ def main():
             finally:
                 _ob56._OVERPASS_FACTORY = _ob56._overpass_factory
                 _ob56._FETCH_PAGE = _orig_ff56
+            # v1.88: scraper widened — more Texas metros + MSP-ready verticals,
+            # and every vertical maps to an OSM selector (no silent default-only).
+            from app.services import prospecting as _prosp88
+            assert len(_prosp88.MARKETS) >= 12, len(_prosp88.MARKETS)
+            assert len(_prosp88.INDUSTRIES) >= 19, len(_prosp88.INDUSTRIES)
+            for _mk in ("dallas", "fort_worth", "corpus_christi", "waco", "el_campo"):
+                assert _mk in _prosp88.MARKETS, _mk
+            for _iv in _prosp88.INDUSTRIES:
+                assert _iv["query"] in _prosp88.OSM_SELECTORS, ("vertical missing OSM map", _iv["query"])
+            # v1.88 HubSpot WRITE-BACK: a suppressed/bounced lead flags the same
+            # HubSpot contact UNQUALIFIED so the source list self-cleans.
+            _hs_calls = []
+
+            class _FakeHS88:
+                def __init__(self, token): assert token == "hs-tok-88"
+                def flag_unqualified(self, email, note=""):
+                    _hs_calls.append((email, note)); return True
+
+            _sc56.upsert_platform(_edb6, "hubspot", "HubSpot", "CRM", {"token": "hs-tok-88"})
+            _orig_hs88 = _ob56._HUBSPOT_CLIENT
+            _ob56._HUBSPOT_CLIENT = _FakeHS88
+            try:
+                _ob56._hubspot_flag(_edb6, "dead@nowhere.example", "undeliverable")
+                assert _hs_calls and _hs_calls[-1][0] == "dead@nowhere.example", _hs_calls
+                # and the HubSpot client itself builds the right search+patch calls
+                from app.services import hubspot as _hsmod88
+                _api_calls = []
+                _cli88 = _hsmod88.HubSpotClient("t")
+                _cli88._api = lambda m, p, b=None: (_api_calls.append((m, p, b)) or (
+                    {"results": [{"id": "42"}]} if "search" in p else {}))
+                assert _cli88.flag_unqualified("x@y.com", "bounced") is True
+                assert any(m == "PATCH" and "42" in p for m, p, b in _api_calls)
+                assert any((b or {}).get("properties", {}).get("hs_lead_status") == "UNQUALIFIED"
+                           for m, p, b in _api_calls)
+            finally:
+                _ob56._HUBSPOT_CLIENT = _orig_hs88
+                (_edb6.query(_IC56).filter(_IC56.provider == "hubspot")
+                 .delete(synchronize_session=False)); _edb6.commit()
             # 6) v1.58 REPLY WATCHER: hot lead flagged + sequence stopped, STOP
             #    honored automatically, bounce retired, watermark holds.
             from app.services import crm as _crm56
@@ -6954,7 +6992,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.87.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.88.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

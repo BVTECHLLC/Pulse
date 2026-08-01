@@ -67,6 +67,29 @@ class HubSpotClient:
         created = self._api("POST", "crm/v3/objects/contacts", {"properties": props})
         return created["id"]
 
+    def flag_unqualified(self, email: str, note: str = "") -> bool:
+        """v1.88 write-back: when Pulse suppresses/bounces a lead, mark the same
+        HubSpot contact UNQUALIFIED (+ optional note) so the source list
+        self-cleans. Returns True if the contact was found and updated."""
+        if not email:
+            return False
+        found = self._api("POST", "crm/v3/objects/contacts/search", {
+            "filterGroups": [{"filters": [
+                {"propertyName": "email", "operator": "EQ", "value": email}]}],
+            "limit": 1})
+        results = found.get("results") or []
+        if not results:
+            return False
+        cid = results[0]["id"]
+        self._api("PATCH", f"crm/v3/objects/contacts/{cid}",
+                  {"properties": {"hs_lead_status": "UNQUALIFIED"}})
+        if note:
+            try:
+                self.log_note(cid, note)
+            except HubSpotError:
+                pass
+        return True
+
     def log_note(self, contact_id: str, body: str) -> str:
         note = self._api("POST", "crm/v3/objects/notes", {
             "properties": {"hs_note_body": body[:65000], "hs_timestamp": _ms_now()},

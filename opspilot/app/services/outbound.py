@@ -318,6 +318,7 @@ def run_daily(db: Session, send_fn, now: datetime | None = None, *,
                              body=f"skipped: {why}", direction="outbound",
                              meta={"campaign": CAMPAIGN, "kind": "suppressed", "why": why},
                              commit=False)
+            _hubspot_flag(db, contact.email, f"Pulse: undeliverable ({why}) — suppressed.")
             failed += 1
             errors.append({"contact_id": contact.id, "error": f"undeliverable ({why})"})
             continue
@@ -565,6 +566,30 @@ def _apply_env_defaults(db: Session, cfg: dict) -> dict:
         except ValueError:
             pass
     return save_config(db, **updates) if updates else cfg
+
+
+def _hubspot_flag(db: Session, email: str, note: str) -> None:
+    """v1.88 write-back: when Pulse suppresses (dead domain) or retires (bounced)
+    a lead, flag the same HubSpot contact UNQUALIFIED so the source list
+    self-cleans. Best-effort and fully optional — a no-op when HubSpot isn't
+    connected, and it never raises into the send/reply path."""
+    try:
+        conn = secure_config.get_platform(db, "hubspot")
+        cfg = dict((conn.config if conn else None) or {})
+        token = secure_config.get_secret(cfg, "token") or cfg.get("token")
+        if not token:
+            return
+        _HUBSPOT_CLIENT(str(token)).flag_unqualified(email, note)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _hs_client(token: str):
+    from .hubspot import HubSpotClient
+    return HubSpotClient(token)
+
+
+_HUBSPOT_CLIENT = _hs_client       # test seam
 
 
 def _notify(db: Session, severity: str, message: str) -> None:
@@ -990,6 +1015,7 @@ def _watch_replies(db: Session, cfg: dict, now: datetime) -> dict:
                 if c.email and c.email.lower() in tl and _position(db, c.id) > 0:
                     c.status = "bounced"
                     c.do_not_contact = True   # v1.87: retire permanently, never retry
+                    _hubspot_flag(db, c.email, "Pulse: email bounced — retired.")
                     bounced.append(c.company or c.name)
                     crm.log_activity(db, c, "email", subject="(bounce)",
                                      body=text[:500], direction="inbound",
