@@ -1076,7 +1076,98 @@ def run_daily(db: Session, now: datetime | None = None, *, force: bool = False) 
             db.commit()
         except Exception:  # noqa: BLE001
             db.rollback()
+
+    # v1.85: daily PROOF digest to the shop inbox — fired after the last morning
+    # stagger slot so it captures the whole run (posts + social + outbound +
+    # retries/fixes). Once/day, best-effort — never breaks the tick.
+    if not force and now.hour >= cfg["hour_utc"] + 2:
+        try:
+            email_daily_digest(db, now)
+        except Exception:  # noqa: BLE001
+            db.rollback()
+
     return {"ran": True, "results": results, "kev_ticker": kev}
+
+
+def email_daily_digest(db: Session, now: datetime) -> dict:
+    """v1.85: once a day, email a full ops report to the shop inbox — what
+    published on every site + social, the outbound-email numbers, and the last
+    24h of retries/fixes from the activity log. Proof, delivered. Best-effort:
+    never raises (the caller wraps it), stamped so it sends exactly once/day."""
+    from datetime import timedelta
+    from ..core.config import get_settings
+    from ..models import Notification, SocialPost
+    from . import outbound as _ob
+    today = _today(now)
+    conn = secure_config.get_platform(db, "content_autopilot")
+    raw = dict((conn.config if conn else None) or {})
+    if raw.get("digest_on") == today:
+        return {"ran": False, "reason": "already_today"}
+
+    cfg = get_config(db)
+    last, lerr = cfg["last"], cfg["last_error"]
+    site_names = {"bvtech": "bvtech.org (SMB post)", "news": "bvtech.org/news (KEV)",
+                  "jp": "jordanpolasek.com", "txplants": "tx-plants.com",
+                  "linkedin": "LinkedIn", "gbp": "Google Business"}
+
+    def _line(ch: str) -> str:
+        if last.get(ch) == today:
+            return f"  [OK]   {site_names[ch]}"
+        e = lerr.get(ch)
+        if e and e.get("date") == today:
+            return f"  [FAIL] {site_names[ch]} — {str(e.get('error',''))[:120]} (retries automatically)"
+        return f"  [--]   {site_names[ch]} — not yet today"
+
+    lines = [_line(c) for c in ("bvtech", "news", "jp", "txplants", "linkedin", "gbp")]
+
+    # Outbound email numbers.
+    try:
+        ob = _ob.get_config(db)
+        mode = _ob._env_mode()
+        sent_today = int((ob.get("last") or {}).get(today, 0))
+        pool = _ob._untouched_pool(db)
+        ob_block = (f"  Mode: {mode.upper()}   Sent today: {sent_today}   "
+                    f"Emailable prospects waiting: {pool}")
+    except Exception:  # noqa: BLE001
+        ob_block = "  (outbound engine not configured)"
+
+    # Last 24h of the activity log (posts, lead-tank, retries, fixes).
+    since = now - timedelta(hours=24)
+    notes = (db.query(Notification)
+             .filter(Notification.kind == "content", Notification.created_at >= since)
+             .order_by(Notification.created_at.desc()).limit(20).all())
+    activity = [f"  • {(n.message or '').strip()[:160]}" for n in notes] or ["  (quiet)"]
+
+    # Social delivery detail (last 24h).
+    socials = (db.query(SocialPost)
+               .filter(SocialPost.created_at >= since)
+               .order_by(SocialPost.id.desc()).limit(6).all())
+    soc = [f"  {(s.channels or ['?'])[0]}: {s.status} — {str(s.result or '')[:80]}"
+           for s in socials] or ["  (none queued in 24h)"]
+
+    body = (
+        f"BVTech Pulse — Daily Ops Report — {biz_now(now):%A, %B %-d, %Y}\n"
+        "======================================================\n\n"
+        "WEBSITES + SOCIAL (today's posts, 15 min apart):\n"
+        + "\n".join(lines) + "\n\n"
+        "OUTBOUND EMAIL CAMPAIGN:\n" + ob_block + "\n\n"
+        "SOCIAL DELIVERY (last 24h):\n" + "\n".join(soc) + "\n\n"
+        "ACTIVITY LOG — posts · lead-tank · retries · fixes (last 24h):\n"
+        + "\n".join(activity) + "\n\n"
+        "— Pulse runs this for you every morning. Reply here if anything looks off.\n"
+    )
+    inbox = get_settings().SUPPORT_EMAIL
+    send_fn, transport = _ob.resolve_send_fn(db)
+    if not send_fn:
+        return {"ran": False, "reason": "no_transport", "detail": transport}
+    try:
+        send_fn(inbox, f"Pulse Daily Report — {biz_now(now):%b %-d}", body)
+    except Exception as e:  # noqa: BLE001
+        return {"ran": False, "reason": "send_failed", "error": str(e)[:200]}
+    raw["digest_on"] = today
+    secure_config.upsert_platform(db, "content_autopilot", "Content Autopilot",
+                                  "Publishing", raw)
+    return {"ran": True, "sent_to": inbox, "transport": transport}
 
 
 def status(db: Session) -> dict:

@@ -6408,6 +6408,27 @@ def main():
                     for d in range(len(_cap.LINKEDIN_THEMES))}
         assert len(_lk_keys) == len(_cap.LINKEDIN_THEMES), "themes must be distinct"
         assert {"academy", "switch_msp", "backup_dr", "ai_automation"} <= _lk_keys
+        # v1.85: daily PROOF digest emails an ops report (posts + outbound + social
+        # + retries/fixes) to the shop inbox once per day, via the mail transport.
+        import datetime as _dtd85
+        from app.services import outbound as _obd85
+        _dig_sent = []
+        _orig_rsf85 = _obd85.resolve_send_fn
+        _obd85.resolve_send_fn = lambda db: (
+            (lambda to, subj, body: _dig_sent.append((to, subj, body))), "FakeTransport")
+        try:
+            _now85 = _dtd85.datetime(2026, 7, 28, 17, tzinfo=_dtd85.timezone.utc)
+            _rd85 = _cap.email_daily_digest(db, _now85)
+            assert _rd85["ran"] is True, _rd85
+            assert _dig_sent, "digest not sent"
+            _dbody85 = _dig_sent[-1][2]
+            assert "Daily Ops Report" in _dbody85, _dbody85[:80]
+            for _sec in ("WEBSITES + SOCIAL", "OUTBOUND EMAIL", "ACTIVITY LOG"):
+                assert _sec in _dbody85, _sec
+            # once/day: an immediate re-run no-ops (won't spam the inbox)
+            assert _cap.email_daily_digest(db, _now85)["reason"] == "already_today"
+        finally:
+            _obd85.resolve_send_fn = _orig_rsf85
         # v1.55.6: the v8 site repo is the default project, but publishing still
         # requires a resolvable GitLab token — a fresh install stays a no-op.
         assert _jps3.SITES["txplants"]["default_project"] == "bvtechllc-group/tx-plants-site"
@@ -6523,7 +6544,7 @@ def main():
             assert _sent56 and _sent56[-1][0] == "jordan@bvtech.org", _sent56
             _to56, _body56 = _sent56[-1][1], _sent56[-1][3]
             assert all("leadco" not in a for a in _to56), "TEST mode emailed a lead!"
-            assert "TEST MODE" in _body56 and "quick question" in _body56
+            assert "TEST MODE" in _body56 and "happy with your" in _body56  # v1.85 short copy
             assert "San Antonio, TX 78205" in _body56 and "no@optout.com" not in _body56
             _ourids56 = [_lead_a.id, _lead_b.id, _lead_x.id]
             assert _edb6.query(_CA56).filter(
@@ -6889,7 +6910,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.84.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.85.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

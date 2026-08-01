@@ -1,5 +1,17 @@
 # BVTech OpsPilot — Changelog
 
+## v1.85.0 — Short-punchy email campaign + a daily proof report to your inbox (July 2026)
+- **Sequence rewritten short + sales-forward.** Touch 1 leads with "happy with
+  your IT provider? want to save money?"; every touch is skimmable, benefit-led,
+  one clear CTA (bvtech.org/book). Short cold email that respects the inbox gets
+  read and replied to.
+- **Daily proof digest.** Every morning (after the staggered posts) Pulse emails
+  help@bvtech.org a full ops report: which of the 6 surfaces posted (OK/FAIL),
+  the outbound-email numbers (mode, sent today, prospects waiting), social
+  delivery status, and the last 24h of the activity log — posts, lead-tank,
+  retries, fixes. Sent once/day via the M365 transport, best-effort so it never
+  breaks a tick.
+
 ## v1.84.0 — LinkedIn content rotation: cyber tips, Academy, and the switch-to-BVTech pitch (July 2026)
 - **9-theme daily LinkedIn rotation** instead of one generic tip. Cycles through
   a this-week cyber tip, the FREE Cyber Academy (60+ labs), why-switch-MSPs

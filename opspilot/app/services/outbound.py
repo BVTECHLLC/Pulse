@@ -64,49 +64,48 @@ def warmup_cap(day_index: int, target: int, *, start: int = RAMP_START,
 # --- The sequence. First-person, from Jordan; value-first; Texas-local; never
 #     salesy-spammy. {first}/{company} are filled per contact. Keep each touch
 #     short — cold email that reads like a human gets replies. -------------------
+# v1.85: SHORT + punchy. The opener earns the first line, then it's benefit-led
+# and skimmable — "happy with your IT provider? want to save money? give us a
+# try." One clear CTA. Short cold emails that respect the inbox get read + replied.
 _SEQUENCE = [
     {
         "step": 0,
-        "subject": "quick question about {company}'s IT",
+        "subject": "{company} — happy with your IT provider?",
         "body": (
             "Hi {first},\n\n"
             "{opener}"
-            "I'm Jordan, founder of BVTech — a Texas MSP that's handled IT and "
-            "cybersecurity for local small businesses since 2013.\n\n"
-            "I work with a handful of teams around San Antonio, Houston, and "
-            "Austin, and the pattern is almost always the same: things run fine "
-            "until one outage, one phishing email, or one failed backup turns "
-            "into a very expensive week.\n\n"
-            "Would it be worth a 15-minute call to see whether {company} has any "
-            "of those gaps? No pitch — I'll tell you straight if you're already "
-            "in good shape.\n\n"
+            "Quick question — are you happy with your current IT provider? Fast "
+            "support, real security, a fair bill?\n\n"
+            "Most Texas businesses we take on were paying more for slower service "
+            "than they realized. We're BVTech — managed IT & cybersecurity, local, "
+            "since 2013.\n\n"
+            "Want to save money and get better coverage? Grab a free 15-minute "
+            "look at {company}: bvtech.org/book\n\n"
             "— Jordan Polasek, BVTech LLC"
         ),
     },
     {
         "step": 1,
-        "subject": "re: {company}'s IT — one thing worth checking",
+        "subject": "re: {company}'s IT — quick idea",
         "body": (
             "Hi {first},\n\n"
             "{value_para}\n\n"
-            "If you'd like, I'll do a free 15-minute review of where {company} "
-            "stands and hand you the list whether or not we ever work together.\n\n"
+            "We fix that — flat monthly pricing, faster response, real backup and "
+            "security. Often for less than you pay now.\n\n"
+            "Free 15-minute review of {company}, no strings: bvtech.org/book\n\n"
             "— Jordan, BVTech LLC"
         ),
     },
     {
         "step": 2,
-        "subject": "closing the loop, {first}",
+        "subject": "last note, {first}",
         "body": (
             "Hi {first},\n\n"
-            "I don't want to crowd your inbox, so this is my last note. If IT and "
-            "security for {company} are handled, genuinely glad to hear it.\n\n"
-            "If they're ever not — an outage, a scare, a provider who stopped "
-            "answering — keep BVTech in your back pocket. We're local, we pick up "
-            "the phone, and we've been doing this for Texas businesses since 2013.\n\n"
-            "And if a quick chat ever does make sense, grab any 15-minute slot "
-            "that suits you: bvtech.org/book\n\n"
-            "Wishing you the best either way.\n\n"
+            "Last note — I won't crowd your inbox.\n\n"
+            "If {company}'s IT is handled, glad to hear it. If it ever isn't — an "
+            "outage, a scare, a provider who stopped answering — we're local, we "
+            "pick up the phone, and we've done this since 2013.\n\n"
+            "Grab any 15-minute slot whenever it helps: bvtech.org/book\n\n"
             "— Jordan Polasek, BVTech LLC"
         ),
     },
