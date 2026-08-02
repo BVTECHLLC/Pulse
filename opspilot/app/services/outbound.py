@@ -786,17 +786,36 @@ def _fetch_page(url: str) -> str:
 _FETCH_PAGE = _fetch_page             # test seam
 
 
+# Role/shared inboxes: these are the biggest bounce source on scraped SMB sites
+# (stale template defaults, abandoned generic boxes). We only fall back to one
+# if it was DELIBERATELY published as a clickable mailto: link — never a bare
+# string found loose in the page markup.
+_ROLE_PREFIXES = ("info@", "contact@", "office@", "hello@", "admin@", "sales@",
+                  "team@", "mail@", "support@", "enquiries@", "inquiries@")
+
+
+def _is_role(email: str) -> bool:
+    return email.startswith(_ROLE_PREFIXES)
+
+
 def _extract_email(html_text: str, site_host: str) -> str | None:
-    """Best public contact email on a page: mailto first, own-domain preferred,
-    then the classic info@/contact@/office@ shapes; junk filtered."""
+    """Best public contact email on a page. v1.88.2 — bounce-hardened:
+      * Only trust addresses published as clickable ``mailto:`` links; bare
+        email-shaped strings loose in the HTML (schema/JSON/3rd-party widgets,
+        stale template defaults) are the info@-that-doesn't-exist culprits, so
+        they are ignored.
+      * Prefer a real NAMED person's address on the business's own domain over a
+        generic role box (info@/contact@/…). A role box is used only as a last
+        resort, and only because a human made it a mailto link.
+    Junk placeholders are always filtered."""
     import re as _re
     global _EMAIL_RX
     if _EMAIL_RX is None:
         _EMAIL_RX = _re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
     mailtos = _re.findall(r'mailto:([^"\'\s?>]+)', html_text, _re.I)
-    everywhere = _EMAIL_RX.findall(html_text)
     seen, ordered = set(), []
-    for e in [m.strip().lower() for m in mailtos + everywhere]:
+    for raw in mailtos:
+        e = raw.strip().lower().split("?", 1)[0]   # drop ?subject=… params
         if e and e not in seen and _EMAIL_RX.fullmatch(e):
             seen.add(e)
             ordered.append(e)
@@ -804,16 +823,25 @@ def _extract_email(html_text: str, site_host: str) -> str | None:
     if not ordered:
         return None
     host = (site_host or "").lower().removeprefix("www.")
-    if host:
-        same = [e for e in ordered if e.rsplit("@", 1)[-1].removeprefix("www.")
-                in (host, "www." + host)]
-        if same:
-            return same[0]
-    for pref in ("info@", "contact@", "office@", "hello@", "admin@", "sales@"):
-        for e in ordered:
-            if e.startswith(pref):
-                return e
-    return ordered[0]
+
+    def _same_domain(e: str) -> bool:
+        return bool(host) and e.rsplit("@", 1)[-1].removeprefix("www.") in (
+            host, "www." + host)
+
+    # 1) a named person on the business's own domain — best deliverability
+    named_same = [e for e in ordered if _same_domain(e) and not _is_role(e)]
+    if named_same:
+        return named_same[0]
+    # 2) any named person's address (own domain preferred already exhausted)
+    named_any = [e for e in ordered if not _is_role(e)]
+    if named_any:
+        return named_any[0]
+    # 3) last resort: a role box, but only same-domain (a deliberately
+    #    published contact box), never a foreign/aggregator generic address
+    role_same = [e for e in ordered if _same_domain(e)]
+    if role_same:
+        return role_same[0]
+    return None
 
 
 def enrich_emails(db: Session, limit: int = ENRICH_BATCH, fetcher=None) -> dict:

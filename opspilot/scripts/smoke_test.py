@@ -6488,7 +6488,11 @@ def main():
         # this locally to exercise the suppression path.
         from app.services import deliverability as _dlv56
         _orig_mx56 = _dlv56._MX_FN
+        _orig_probe56 = _dlv56._PROBE_FN
         _dlv56._MX_FN = lambda _dom: True
+        # keep the mailbox probe offline: undeterminable -> fail-open (sendable)
+        _dlv56._PROBE_FN = lambda _email, _dom: None
+        _dlv56._MB_CACHE.clear()
         _hour56 = _dt56.datetime(2026, 7, 28, 16, 0, 0, tzinfo=_dt56.timezone.utc)
         try:
             # earlier smoke sections configured the mailbox in this shared DB.
@@ -6678,6 +6682,25 @@ def main():
             finally:
                 _ob56._PLACES_FACTORY = _orig_pf56
                 _ob56._FETCH_PAGE = _orig_ff56
+            # 5a2) v1.88.2 SCRAPER BOUNCE-HARDENING: only trust mailto: links,
+            #      and prefer a real named person over a generic role box.
+            _xe = _ob56._extract_email
+            # bare-text role address (loose in markup, no mailto) is IGNORED —
+            # this is the stale info@ that bounces. Named mailto wins.
+            _html_mix = ('random footer info@bounces-here.com '
+                         '<a href="mailto:jane.doe@realbiz.com">Jane</a> '
+                         '<a href="mailto:info@realbiz.com">General</a>')
+            assert _xe(_html_mix, "realbiz.com") == "jane.doe@realbiz.com", \
+                _xe(_html_mix, "realbiz.com")
+            # only a role mailto present -> used as last resort (still real)
+            _html_roleonly = '<a href="mailto:info@realbiz.com">Contact</a>'
+            assert _xe(_html_roleonly, "realbiz.com") == "info@realbiz.com"
+            # NO mailto anywhere -> nothing trusted (bare text never scraped)
+            _html_bare = 'reach us at info@realbiz.com or sales@realbiz.com'
+            assert _xe(_html_bare, "realbiz.com") is None, _xe(_html_bare, "realbiz.com")
+            # a foreign/aggregator generic mailto is not used for this lead
+            _html_foreign = '<a href="mailto:info@some-directory.com">Listing</a>'
+            assert _xe(_html_foreign, "realbiz.com") is None
             # 5b) v1.78 FREE LEAD SOURCE: with NO Google Places key, the engine
             #     falls back to the zero-cost OpenStreetMap source so the tank
             #     still fills and cold email actually sends. A lead whose OSM
@@ -6906,12 +6929,28 @@ def main():
             # bounce and burn sender reputation. MX lookup is stubbed for offline.
             from app.services import deliverability as _dlv
             _orig_mx = _dlv._MX_FN
+            _orig_probe = _dlv._PROBE_FN
             _dlv._MX_FN = lambda dom: dom != "deaddomain.example"   # only this domain lacks MX
+            # default: mailbox probe undeterminable (fail-open) so no real SMTP
+            _dlv._MB_CACHE.clear()
+            _dlv._PROBE_FN = lambda _email, _dom: None
             try:
                 assert _dlv.is_sendable("owner@realbiz.com")[0] is True
                 assert _dlv.is_sendable("info@deaddomain.example") == (False, "no_mx")
                 assert _dlv.is_sendable("not-an-email")[0] is False
                 assert _dlv.is_sendable("x@example.com") == (False, "junk_domain")
+                # v1.88.2 mailbox probe: a hard SMTP rejection (user unknown)
+                # blocks the send even when the domain has MX. Undeterminable
+                # (None) and accept (True) both stay sendable (fail-open).
+                _dlv._MB_CACHE.clear()
+                _dlv._PROBE_FN = lambda _email, _dom: False
+                assert _dlv.is_sendable("ghost@realbiz.com") == (False, "no_mailbox")
+                _dlv._MB_CACHE.clear()
+                _dlv._PROBE_FN = lambda _email, _dom: True
+                assert _dlv.is_sendable("real.person@realbiz.com")[0] is True
+                _dlv._MB_CACHE.clear()
+                _dlv._PROBE_FN = lambda _email, _dom: None
+                assert _dlv.is_sendable("maybe@realbiz.com")[0] is True
                 # a fresh lead on a dead domain must be SUPPRESSED, not emailed.
                 # isolate: suppress every other lead so run_daily only sees this one.
                 _edb6.query(_CC56).update({"do_not_contact": True})
@@ -6927,6 +6966,8 @@ def main():
                     "a dead-domain lead was emailed!"
             finally:
                 _dlv._MX_FN = _orig_mx
+                _dlv._PROBE_FN = _orig_probe
+                _dlv._MB_CACHE.clear()
             # 7) v1.59 CONVERSION LAYER: personalized opener (validated, junk
             #    rejected), domain-snapshot touch 2, booking link touch 3,
             #    Monday scorecard (once, with real counts from this block).
@@ -6982,6 +7023,8 @@ def main():
         finally:
             _ob56._GRAPH_FACTORY = _orig_gf56
             _dlv56._MX_FN = _orig_mx56
+            _dlv56._PROBE_FN = _orig_probe56
+            _dlv56._MB_CACHE.clear()
             for _k56 in ("PULSE_OUTBOUND", "PULSE_OUTBOUND_ADDRESS"):
                 _os56.environ.pop(_k56, None)
             _edb6.close()
@@ -7076,7 +7119,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.88.1 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.88.2 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -54,10 +54,83 @@ def domain_has_mx(domain: str) -> bool:
 
 _MX_FN = domain_has_mx     # test seam
 
+# --- v1.88.2 mailbox verification -----------------------------------------
+# MX-only proves the DOMAIN can receive mail, not that the specific mailbox
+# exists — so a stale info@ on a live domain still bounces ("address not
+# found"). An SMTP RCPT probe asks the mail server directly. It fails OPEN
+# (unknown -> allow) and SELF-DISABLES after a few connect failures, so a box
+# whose outbound port 25 is blocked pays at most a couple of timeouts, then
+# stops probing entirely and behaves exactly like the MX-only guard.
+_MB_CACHE: dict[str, bool | None] = {}
+_PROBE_CONNECT_FAILS = 0
+_PROBE_MAX_FAILS = 3
+_PROBE_DISABLED = False
+
+
+def _mx_host(domain: str) -> str | None:
+    try:
+        answers = _doh_mx(domain)
+    except Exception:  # noqa: BLE001
+        return None
+    hosts = sorted((int(a.get("data", "999 x").split()[0]),
+                    a.get("data", "").split()[-1].strip("."))
+                   for a in answers if a.get("data"))
+    return hosts[0][1] if hosts else None
+
+
+def _smtp_probe(email: str, domain: str) -> bool | None:
+    """True = mailbox accepts, False = server rejects (user unknown), None =
+    undeterminable (port blocked, timeout, greylist, catch-all). Never raises."""
+    global _PROBE_CONNECT_FAILS, _PROBE_DISABLED
+    host = _mx_host(domain)
+    if not host:
+        return None
+    import smtplib
+    try:
+        srv = smtplib.SMTP(timeout=8)
+        srv.connect(host, 25)
+    except Exception:  # noqa: BLE001 — port 25 blocked/unreachable
+        _PROBE_CONNECT_FAILS += 1
+        if _PROBE_CONNECT_FAILS >= _PROBE_MAX_FAILS:
+            _PROBE_DISABLED = True
+        return None
+    try:
+        srv.helo("bvtech.org")
+        srv.mail("postmaster@bvtech.org")
+        code, _ = srv.rcpt(email)
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        try:
+            srv.quit()
+        except Exception:  # noqa: BLE001
+            pass
+    if code in (250, 251, 252):
+        return True
+    if code in (550, 551, 553, 554):   # user unknown / mailbox unavailable
+        return False
+    return None
+
+
+_PROBE_FN = _smtp_probe     # test seam
+
+
+def mailbox_exists(email: str, domain: str) -> bool | None:
+    """Cached mailbox probe. None when undeterminable (treated as sendable)."""
+    if _PROBE_DISABLED:
+        return None
+    key = email.strip().lower()
+    if key in _MB_CACHE:
+        return _MB_CACHE[key]
+    result = _PROBE_FN(key, domain)
+    _MB_CACHE[key] = result
+    return result
+
 
 def is_sendable(email: str) -> tuple[bool, str]:
-    """(ok, reason). Cheap pre-send verification: valid syntax + a real MX on the
-    domain. reason is 'ok' | 'bad_syntax' | 'junk_domain' | 'no_mx'."""
+    """(ok, reason). Pre-send verification: valid syntax + a real MX on the
+    domain + (best-effort) the mailbox actually accepting mail. reason is
+    'ok' | 'bad_syntax' | 'junk_domain' | 'no_mx' | 'no_mailbox'."""
     e = (email or "").strip().lower()
     m = _EMAIL_RX.match(e)
     if not m:
@@ -67,4 +140,6 @@ def is_sendable(email: str) -> tuple[bool, str]:
         return False, "junk_domain"
     if not _MX_FN(dom):
         return False, "no_mx"
+    if mailbox_exists(e, dom) is False:   # only a hard rejection blocks
+        return False, "no_mailbox"
     return True, "ok"

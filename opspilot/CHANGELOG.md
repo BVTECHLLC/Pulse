@@ -1,5 +1,20 @@
 # BVTech OpsPilot — Changelog
 
+## v1.88.2 — Bounce-hardening: stop emailing dead mailboxes (Aug 2026)
+- **Scraper only trusts real published addresses.** _extract_email now takes
+  emails ONLY from clickable mailto: links (what a human deliberately put there),
+  never from bare email-shaped text loose in the markup — which is where stale
+  template info@ addresses and third-party/aggregator addresses hide. It also
+  prefers a real NAMED person on the business's own domain over a generic role
+  box, and uses a role box (info@/contact@/…) only as a same-domain last resort.
+  This kills the biggest source of "address not found" bounces.
+- **Mailbox verification before send.** deliverability.is_sendable now does a
+  best-effort SMTP RCPT probe after the MX check: if the mail server hard-rejects
+  the address (user unknown), the send is suppressed ('no_mailbox') and the lead
+  retired — so a dead info@ on a live domain no longer bounces. Fails OPEN
+  (undeterminable stays sendable) and self-disables after a few connect failures,
+  so a box with outbound port 25 blocked simply falls back to the MX-only guard.
+
 ## v1.88.1 — One-shot operator emails: merge-to-main as a remote control (Aug 2026)
 - **One-shot email runner.** New oneshot_email service: queue one-time sends in
   code, merge to main, and the box's next heartbeat delivers them — exactly

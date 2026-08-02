@@ -255,8 +255,8 @@ TASKS: list[dict] = [
              "dcdlaboard@gmail.com"),
     _support("aug2-tccdla", "Tarrant County Criminal Defense Lawyers "
              "Association", "info@tccdla.com"),
-    _support("aug2-nds-hays", "Neighborhood Defender Service — Hays County",
-             "hays@neighborhooddefender.org"),
+    # (Neighborhood Defender Service — Hays County removed: no verifiable
+    #  published email; reach by phone 512-749-0690 or their web form.)
     # --- Round 3: more NAACP branches + justice orgs (verified emails) ---
     _support("aug2-naacp-ftw", "NAACP Fort Worth-Tarrant County Branch #6178",
              "ftw.naacp.info@gmail.com"),
