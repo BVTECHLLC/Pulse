@@ -280,6 +280,8 @@ TASKS: list[dict] = [
     #     veterans clinics skipped as not applicable) ---
     _consult("aug2-turley", "Turley Law Firm", "turley@wturley.com"),
     _consult("aug2-elmazi", "Elmazi Law", "blerim@elmazilaw.com"),
+    _consult("aug2-kaplan", "Kaplan Law Firm (Austin)",
+             "mzschiesche@kaplanlawatx.com"),
     _support("aug2-tsu-crim", "TSU Thurgood Marshall Criminal Law Clinic",
              "crimlaw@tmslaw.tsu.edu"),
     _support("aug2-tsu-clinical", "TSU Clinical Legal Studies",
@@ -305,6 +307,11 @@ TASKS: list[dict] = [
              "info@crosswalkcenter.org"),
     _support("aug2-crisis-comal", "Crisis Center of Comal County",
              "crisiscenter@crisiscenternb.org"),
+    # --- Round 5: justice-advocacy orgs (prison/reentry ministries skipped as
+    #     off-target — they serve the already-incarcerated, not court support) ---
+    _support("aug2-hpjc", "Houston Peace & Justice Center", "info@hpjc.org"),
+    _support("aug2-txvoices", "Texas Voices for Reason and Justice",
+             "info@texasvoices.org"),
     # --- Implant dentists (verified emails) — evaluation + expert-opinion ask.
     #     Sugar Land / Richmond / Rosenberg first, then statewide + home area.
     _dentist("dds-rimes", "Rimes DDS (Sugar Land)", "info@rimesdds.com"),
@@ -390,6 +397,33 @@ TASKS: list[dict] = [
              "eagleriverdentalassoc@gmail.com"),
     _dentist("dds-cs-dental", "College Station Dental & Orthodontics",
              "CollegeStationDental@mb2dental.com"),
+    # --- Round 3 dentists: more implant/oral-surgery/perio (verified emails) ---
+    _dentist("dds-new-smiles", "New Smiles Texas (Bellaire/Houston)",
+             "implants@newsmilesbellaire.com"),
+    _dentist("dds-implant-dental-ctr", "Implant Dental Center (Houston)",
+             "impdentalcenter@gmail.com"),
+    _dentist("dds-aa-dental", "A&A Dental Implant and Cosmetic Center (Houston)",
+             "frontdesk@aadentalclinic.com"),
+    _dentist("dds-woodlands-dno", "Woodlands Dentistry and Orthodontics",
+             "woodlandsdno@gmail.com"),
+    _dentist("dds-pearland-implant", "Pearland Implant Center",
+             "info@myaccentdental.com"),
+    _dentist("dds-sa-perio", "San Antonio Periodontics and Implant Dentistry",
+             "question@sanantonioperio.com"),
+    _dentist("dds-alamo-heights", "Alamo Heights Implant Center (San Antonio)",
+             "info@alamoheightsimplant.com"),
+    _dentist("dds-cosmetic-sa", "Cosmetic Dentistry of San Antonio",
+             "info@cosmeticdentistryofsa.com"),
+    _dentist("dds-implant-place", "The Dental Implant Place (Fort Worth)",
+             "doc@thedentalimplantplace.com"),
+    _dentist("dds-rivertree", "Fort Worth Family & Implant Dentistry (Rivertree)",
+             "frontdesk@rivertreedentist.com"),
+    _dentist("dds-dallas-implant", "Dallas Dental Implant Center & Cosmetic "
+             "Dentistry", "dallasimplant@gmail.com"),
+    _dentist("dds-dallas-coms", "Dallas Center for Oral & Maxillofacial Surgery "
+             "(Plano)", "willowbend@oralsurgerydfw.com"),
+    _dentist("dds-implant-choice", "Implant Choice Center (Plano/Frisco)",
+             "info@implantchoicecenter.com"),
 ]
 
 # --- Scheduling: a first wave goes out now; the bulk holds until Monday 9am
