@@ -133,53 +133,33 @@ El Campo, Texas
 help@bvtech.org"""
 
 
-_SUBJ_DENTIST = ("Requesting an implant evaluation & medical opinion for a "
-                 "court matter — patient with serious oral-implant needs")
+_SUBJ_DENTIST = ("New patient — implant treatment plan, and a letter for the "
+                 "court about my condition")
 _BODY_DENTIST = """Dear {name},
 
-My name is Jordan Polasek. I'm writing to ask whether your practice would take
-me on as a patient for a dental-implant evaluation, and — if you're willing —
-help document the seriousness of my oral condition for a court matter.
+My name is Jordan Polasek, and I'm looking for an implant dentist. I'm happy to
+pay for your time, and I'll keep this short — there are two things I'm hoping
+for:
 
-Briefly and honestly: I'm facing criminal charges that my attorneys at Cofer &
-Connelly believe are winnable. They involve what I consider victimless
-accusations, and I have maintained my innocence — but some may go to trial,
-and a jury could always decide the other way, so I have to prepare for the
-possibility of incarceration even as an innocent man. I am not a career
-criminal. I run an award-winning B2B IT solutions company and I'm currently a
-4.0 student finishing my bachelor's in cloud computing.
+1. A full evaluation of my mouth and current implants, and a written treatment
+   plan: what needs to be done to fix them, roughly what it would cost, and how
+   long it would take.
 
-Here is why I'm reaching out to an implant dentist specifically. I have a
-serious oral-implant condition. One dentist has already written that
-incarceration could kill me because of it, and the last time I was held with
-no bond — over using a plant I have a valid prescription for — I had to be
-medically furloughed. The prosecution has not treated that risk seriously, and
-my attorneys have asked me to obtain a more formal, clinical write-up from
-another qualified dentist. It appears the court gives more weight to a
-thorough professional evaluation than to a brief letter.
+2. A written opinion I can share with a court. I'm dealing with a legal matter
+   that could put me in custody. My current dentist wrote that I could be at
+   serious risk — even a risk to my life — if I go without proper dental care,
+   but he doesn't do implants, which is why I need an implant specialist. I'd
+   be grateful if you could explain what can happen to someone with my kind of
+   implant condition if they lose access to specialized dental care.
 
-What I'm hoping you can help with:
-  - Examine my mouth and current implants and assess their condition;
-  - Create a treatment plan / game plan to address what needs to be fixed,
-    including any surgery required;
-  - Document, for the court, how serious oral health is to overall health, and
-    specifically how dangerous an implant-bearing mouth can become without
-    regular professional checkups and care — the infection risk if I cannot
-    get proper treatment while incarcerated.
-  - If at all possible, I would gladly pay for a dentist willing to appear at
-    trial. In my experience the courts do not take written letters as
-    seriously as they should, given how serious my condition is.
+I'm ready to be a paying patient, to share my records, and to work around your
+schedule. If you'd ever be willing to speak to my condition directly for the
+court, I'd be truly grateful for that as well.
 
-I'm ready to be a paying patient, to share my existing records, and to work
-around your schedule. If you're able to help — or can refer me to a colleague
-who does complex implant and expert-opinion work — I would be deeply grateful.
+Please reply here or call me at 210-538-3669 ext. 1 whenever it's convenient.
+Thank you so much for your time and care.
 
-Please reply to this email or call me at 210-538-3669 ext. 1 at your earliest
-convenience.
-
-Thank you for your time and your care.
-
-Respectfully,
+Warm regards,
 Jordan Polasek
 El Campo, Texas
 help@bvtech.org"""
@@ -282,6 +262,16 @@ TASKS: list[dict] = [
     _consult("aug2-elmazi", "Elmazi Law", "blerim@elmazilaw.com"),
     _consult("aug2-kaplan", "Kaplan Law Firm (Austin)",
              "mzschiesche@kaplanlawatx.com"),
+    # --- Round 6: more verified plaintiff-side civil-rights firms ---
+    _consult("aug2-lucio", "Lucio Law (Brownsville / Rio Grande Valley)",
+             "elucio@luciolaw.com"),
+    _consult("aug2-corbett", "Corbett & Corbett LLP (Dallas)",
+             "info@corbettfirm.com"),
+    _consult("aug2-law-wizard", "Law Wizard PLLC (San Antonio)",
+             "zachary@texaslawwizard.com"),
+    _consult("aug2-gale", "Gale Law Group, PLLC (Corpus Christi)",
+             "Chris@GaleLawGroup.com"),
+    _consult("aug2-kcole", "K Cole Law, PLLC (Frisco)", "kcole@kcolelaw.com"),
     _support("aug2-tsu-crim", "TSU Thurgood Marshall Criminal Law Clinic",
              "crimlaw@tmslaw.tsu.edu"),
     _support("aug2-tsu-clinical", "TSU Clinical Legal Studies",
@@ -312,6 +302,55 @@ TASKS: list[dict] = [
     _support("aug2-hpjc", "Houston Peace & Justice Center", "info@hpjc.org"),
     _support("aug2-txvoices", "Texas Voices for Reason and Justice",
              "info@texasvoices.org"),
+    # --- Round 7: more NAACP/LULAC branches, legal aid, minority bar
+    #     associations (verified emails; duplicate firms + immigrant-only orgs
+    #     skipped to stay on target) ---
+    _support("aug2-naacp-lubbock", "NAACP Lubbock Branch",
+             "info@lubbocknaacp.org"),
+    _support("aug2-naacp-tyler", "NAACP Tyler Branch",
+             "naacptyler6232@gmail.com"),
+    _support("aug2-naacp-elpaso", "NAACP El Paso Branch",
+             "naacpelpasobranch@yahoo.com"),
+    _support("aug2-naacp-arlington", "NAACP Arlington Branch",
+             "7047@arlingtonnaacp.com"),
+    _support("aug2-naacp-amarillo", "NAACP Amarillo Branch",
+             "president@amanaacp.org"),
+    _support("aug2-naacp-brazoria", "NAACP Brazoria County Branch",
+             "bcnaacptreasurer@gmail.com"),
+    _support("aug2-naacp-sanangelo", "NAACP San Angelo Branch",
+             "info-admin@sanangelonaacp.org"),
+    _support("aug2-naacp-missouricity", "NAACP Missouri City & Vicinity Branch",
+             "secretary@naacpmissouricityvicinity.org"),
+    _support("aug2-lulac-d8", "LULAC District VIII (Houston)", "d8mgr@lulac.org"),
+    _support("aug2-lulac-dallas-rainbow", "LULAC Dallas Rainbow Council",
+             "jessegarciadallas@gmail.com"),
+    _support("aug2-lulac-402", "LULAC Education Council 402 (Houston)",
+             "hugomojica@gmail.com"),
+    _support("aug2-lulac-4971", "LULAC Council 4971 (Temple)",
+             "president@lulaccouncil4971.org"),
+    _support("aug2-lone-star-legal", "Lone Star Legal Aid (Houston)",
+             "communications@lonestarlegal.org"),
+    _support("aug2-elpaso-bar", "El Paso Bar Association", "info@elpasobar.com"),
+    _support("aug2-maba-houston", "Mexican American Bar Association of Houston",
+             "mabahouston@gmail.com"),
+    _support("aug2-collin-cdla", "Collin County Criminal Defense Lawyers "
+             "Association", "admin@cccdla.org"),
+    _support("aug2-justice-net-tc", "Justice Network of Tarrant County",
+             "info@justicenetworktc.com"),
+    _support("aug2-houston-lawyers", "Houston Lawyers Association",
+             "info@houstonlawyersassociation.org"),
+    _support("aug2-lcdavis", "L. Clifford Davis Legal Association (Fort Worth)",
+             "LCDLEGALASSOC@gmail.com"),
+    _support("aug2-jlturner", "J.L. Turner Legal Association (Dallas)",
+             "admin@jltla.org"),
+    _support("aug2-austin-black-lawyers", "Austin Black Lawyers Association",
+             "president@austinblacklawyers.org"),
+    _support("aug2-hba-austin", "Hispanic Bar Association of Austin",
+             "ericdaviscuellar@gmail.com"),
+    _support("aug2-cc-bar", "Corpus Christi Bar Association",
+             "corpusbar@corpusbar.com"),
+    _support("aug2-aals-tx", "African American Lawyers Section, State Bar of "
+             "Texas", "info@aalstx.org"),
     # --- Implant dentists (verified emails) — evaluation + expert-opinion ask.
     #     Sugar Land / Richmond / Rosenberg first, then statewide + home area.
     _dentist("dds-rimes", "Rimes DDS (Sugar Land)", "info@rimesdds.com"),
@@ -424,6 +463,117 @@ TASKS: list[dict] = [
              "(Plano)", "willowbend@oralsurgerydfw.com"),
     _dentist("dds-implant-choice", "Implant Choice Center (Plano/Frisco)",
              "info@implantchoicecenter.com"),
+    # --- Round 4 dentists: statewide, specialists first (verified emails) ---
+    _dentist("dds-softtouch", "Softtouch Dental & Implants (Plano)",
+             "dr.lakhani@softtouchdentist.net"),
+    _dentist("dds-prodental", "Pro Dental Dallas (Plano)",
+             "office@prodentaldallas.com"),
+    _dentist("dds-mosaic", "Mosaic Prosthodontics (Cedar Park)",
+             "contactus@mosaicprostx.com"),
+    _dentist("dds-grimes", "Grimes Dentistry (Lubbock)",
+             "grimesdentistry@yahoo.com"),
+    _dentist("dds-stxperio", "South Texas Periodontics & Implants "
+             "(Corpus Christi)", "info@stxperio.com"),
+    _dentist("dds-friedberg", "Dr. Friedberg & Associates (Houston)",
+             "info@drfriedbergandassociates.com"),
+    _dentist("dds-cepi", "Center of Endodontics, Periodontics and Implantology "
+             "(Allen)", "care@cepi-allen.com"),
+    _dentist("dds-pearland-perio", "Pearland Periodontics & Dental Implants",
+             "drbonaventura@pearlandperio.com"),
+    _dentist("dds-nhos", "North Houston Oral Surgery (Spring)",
+             "info@titanium-surgicalarts.com"),
+    _dentist("dds-katy-cofs", "The Center for Oral & Facial Surgery (Katy)",
+             "xrays@katycofs.com"),
+    _dentist("dds-tyler-sedation", "Texas Sedation Dental & Implant Center "
+             "(Tyler)", "info@texassedationdental.com"),
+    _dentist("dds-east-elpaso", "East El Paso Dentist",
+             "smile@eastelpasodentist.com"),
+    _dentist("dds-vista-hills", "Vista Hills Family Dental (El Paso)",
+             "office@vistahillsfamilydental.com"),
+    _dentist("dds-the-dentist-ep", "The Dentist El Paso",
+             "thedentistelpaso@gmail.com"),
+    _dentist("dds-pershing", "Pershing Family Dental (El Paso)",
+             "smile@pershingfamilydental.com"),
+    _dentist("dds-acv", "ACV Dental (Edinburg)", "drv@acvdental.com"),
+    _dentist("dds-lakes-family", "The Lakes Family Dental (Edinburg)",
+             "thelakesfamilydental4428@gmail.com"),
+    _dentist("dds-midland-studio", "The Dental Studio of Midland",
+             "office@dentalstudiomidland.com"),
+    _dentist("dds-denta-odessa", "Denta Dental of Odessa", "info@dentaodessa.com"),
+    _dentist("dds-restoration-sa", "Restoration Dental (San Antonio)",
+             "frontdesk@restorationdentalSA.com"),
+    _dentist("dds-sonterra", "Sonterra Dental (San Antonio)",
+             "info@sonterradentalcare.com"),
+    _dentist("dds-renew-frisco", "Renew Family Dentistry (Frisco)",
+             "smile@renewdentistry.com"),
+    _dentist("dds-hq-georgetown", "HQ Dental (Georgetown)",
+             "manager.hqdentaldesign@gmail.com"),
+    _dentist("dds-gtx-group", "Georgetown Dental Group",
+             "info@gtxdentalgroup.com"),
+    _dentist("dds-gtx-family", "Georgetown Family Dentistry",
+             "info@gtxfamilydentistry.com"),
+    _dentist("dds-4405", "4405 Dental Studio (Georgetown)",
+             "dredmonds@4405dentalstudio.com"),
+    _dentist("dds-bcs", "BCS Family Dental (Bryan)", "office@bcsfamilydental.com"),
+    _dentist("dds-katy-family", "Katy Family Dental Group",
+             "infos@katyfamilydentalgroup.com"),
+    _dentist("dds-charm-katy", "Charm Dental Katy", "info@charmdentalkaty.com"),
+    _dentist("dds-friendswood", "Friendswood Smiles",
+             "drklavyusheva@gmail.com"),
+    _dentist("dds-mann", "Mann Dental (Sugar Land)", "smile@manndental.com"),
+    _dentist("dds-sugar-creek", "Sugar Creek Smile Dentistry (Sugar Land)",
+             "dentist@sugarcreeksmiledentistry.com"),
+    _dentist("dds-pearland-care", "Pearland Dental Care",
+             "dentalcare@pearlanddentalcare.com"),
+    _dentist("dds-station-waco", "Dental Station Waco",
+             "staff@dentalstationwaco.com"),
+    _dentist("dds-dental-method", "The Dental Method (Dallas)",
+             "dallas@thedentalmethod.com"),
+    _dentist("dds-greene-ratcliff", "Greene & Ratcliff Family & Cosmetic "
+             "Dentistry (Arlington)", "smiles@stephenratcliffdds.com"),
+    _dentist("dds-collins-street", "Collins Street Dental (Arlington)",
+             "info.collinsstreetdental@gmail.com"),
+    _dentist("dds-allheart", "Allheart Dental Care (Grand Prairie)",
+             "allheartdentalgp@gmail.com"),
+    _dentist("dds-red-bud", "Red Bud Dental (Round Rock)",
+             "redbuddental@gmail.com"),
+    _dentist("dds-adc-rr", "Advanced Dental Care of Round Rock",
+             "info@adcroundrock.com"),
+    _dentist("dds-cedar-park-wellness", "Cedar Park Dental Wellness",
+             "info@cedarparkdentalwellness.com"),
+    _dentist("dds-ndc-cypress", "NDC Houston Family Dentistry (Cypress)",
+             "admin@ndchouston.com"),
+    _dentist("dds-solidsmiles", "SolidSMILES Dental (Lewisville)",
+             "hello@solid-smiles.com"),
+    _dentist("dds-flower-mound", "Flower Mound Dental",
+             "frontdesk@flowermounddental.com"),
+    _dentist("dds-thompson-cc", "John T. Thompson DDS (Corpus Christi)",
+             "johnthompsondds@stx.rr.com"),
+    _dentist("dds-dental-images", "Dental Images (Harker Heights)",
+             "info@dentalimagestexas.com"),
+    _dentist("dds-w-dentistry", "W Dentistry (Lubbock)",
+             "info@wdentistrylbk.com"),
+    _dentist("dds-lone-star-lbk", "Lone Star Smiles (Lubbock)",
+             "lonestarsmileslubbock@gmail.com"),
+    _dentist("dds-new-smile-tyler", "New Smile Dental of Tyler",
+             "newsmiledentaloftyler@gmail.com"),
+    _dentist("dds-humble-smiles", "Humble Smiles", "1humblesmiles@gmail.com"),
+    _dentist("dds-humble-dentistry", "Humble Dentistry",
+             "office@humbledentist.com"),
+    _dentist("dds-austin-family", "Austin Family Dentist",
+             "info@austinfamilydentist.com"),
+    _dentist("dds-south-austin", "South Austin Dental",
+             "info@southaustindental.com"),
+    _dentist("dds-beaumont-clinic", "Beaumont Dental Clinic",
+             "office@dentistinbeaumont.com"),
+    _dentist("dds-all-valley", "All Valley Smiles (Brownsville)",
+             "drliz@allvalleysmilesdental.com"),
+    _dentist("dds-xavier-leos", "Xavier Leos Family Dentistry (Brownsville)",
+             "info@xavierleosfamilydentistry.com"),
+    _dentist("dds-ada-weslaco", "Advanced Dental Associates (Weslaco)",
+             "adaharligen@gmail.com"),
+    _dentist("dds-txdentist101", "Texas Dentist 101 (Bellaire)",
+             "txdentist101bellaire@gmail.com"),
 ]
 
 # --- Scheduling: a first wave goes out now; the bulk holds until Monday 9am
