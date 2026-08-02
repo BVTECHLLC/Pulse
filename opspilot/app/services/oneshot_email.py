@@ -310,6 +310,32 @@ TASKS: list[dict] = [
     _dentist("dds-victoria", "Victoria Dentistry", "info@victoriatxdentistry.com"),
 ]
 
+# --- Scheduling: a first wave goes out now; the bulk holds until Monday 9am
+#     Central (14:00 UTC 2026-08-03) so it lands when open/reply rates are
+#     highest. A task with no "not_before" is eligible immediately; otherwise
+#     it waits until now >= not_before.
+_MONDAY_9AM_CT = "2026-08-03T14:00:00+00:00"
+_NOW_WAVE = {
+    "aug2-resend-naacp-sa",   # corrected-address resend — time-sensitive
+    "aug2-dean-malone",       # top jail-medical civil-rights firm
+    "aug2-merritt",           # civil-rights litigator
+    "aug2-ut-crc",            # UT Austin Civil Rights Clinic
+    "aug2-tcdla",             # statewide criminal-defense bar
+    "dds-rimes",              # Sugar Land prosthodontist — best expert fit
+    "dds-sugarland-oms",      # Sugar Land oral surgeon
+    "dds-hps",                # Houston prosthodontic specialists
+}
+for _t in TASKS:
+    if _t["id"] not in _NOW_WAVE:
+        _t["not_before"] = _MONDAY_9AM_CT
+
+
+def _eligible(task: dict, now: datetime) -> bool:
+    nb = task.get("not_before")
+    if not nb:
+        return True
+    return now >= datetime.fromisoformat(nb)
+
 
 def _resolver(db: Session):
     from . import outbound
@@ -329,10 +355,14 @@ def tick(db: Session, now: datetime | None = None) -> dict:
     raw = dict((conn.config if conn else None) or {})
     done = dict(raw.get("done") or {})
     attempts = {k: int(v) for k, v in dict(raw.get("attempts") or {}).items()}
-    pending = [t for t in TASKS
-               if t["id"] not in done and attempts.get(t["id"], 0) < MAX_ATTEMPTS]
-    if not pending:
+    undone = [t for t in TASKS
+              if t["id"] not in done and attempts.get(t["id"], 0) < MAX_ATTEMPTS]
+    if not undone:
         return {"ran": False, "reason": "all_done"}
+    pending = [t for t in undone if _eligible(t, now)]
+    if not pending:
+        # Everything left is scheduled for later (e.g. the Monday wave).
+        return {"ran": False, "reason": "scheduled", "held": len(undone)}
     send_fn, transport = _SEND_RESOLVER(db)
     if send_fn is None:
         return {"ran": False, "reason": "no_transport", "detail": transport}

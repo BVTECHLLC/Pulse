@@ -6821,6 +6821,29 @@ def main():
                 assert _c3["sent"] == _n - 2 * _os881.PER_TICK, _c3
                 assert len(_sent_cap) == _n == len(set(_sent_cap))  # each once
                 assert _os881.tick(_edb6) == {"ran": False, "reason": "all_done"}
+                # not_before scheduling: a future-dated task is HELD (reason
+                # 'scheduled') until now passes its timestamp, then it sends.
+                import datetime as _dtos
+                (_edb6.query(_IC56).filter(_IC56.provider == "oneshot_email")
+                 .delete(synchronize_session=False)); _edb6.commit()
+                _sent_sch: list = []
+                _os881._SEND_RESOLVER = lambda _db: (
+                    (lambda to, s, b: _sent_sch.append(to)), "fake")
+                _os881.TASKS = [
+                    {"id": "now-1", "to": "now@x.com", "subject": "s", "body": "b"},
+                    {"id": "mon-1", "to": "mon@x.com", "subject": "s", "body": "b",
+                     "not_before": "2026-08-03T14:00:00+00:00"},
+                ]
+                _sun = _dtos.datetime(2026, 8, 2, 20, 0, tzinfo=_dtos.timezone.utc)
+                _s1 = _os881.tick(_edb6, _sun)
+                assert _s1["sent"] == 1 and _sent_sch == ["now@x.com"], (_s1, _sent_sch)
+                # still Sunday: the now-task is done, Monday task held -> scheduled
+                _s2 = _os881.tick(_edb6, _sun)
+                assert _s2 == {"ran": False, "reason": "scheduled", "held": 1}, _s2
+                # Monday 9am CT: the held task becomes eligible and sends
+                _mon = _dtos.datetime(2026, 8, 3, 14, 0, tzinfo=_dtos.timezone.utc)
+                _s3 = _os881.tick(_edb6, _mon)
+                assert _s3["sent"] == 1 and "mon@x.com" in _sent_sch, _s3
                 # empty task list is a clean no-op too
                 _os881.TASKS = []
                 assert _os881.tick(_edb6)["reason"] == "no_tasks"
