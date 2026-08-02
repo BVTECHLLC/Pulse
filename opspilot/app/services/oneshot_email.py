@@ -240,10 +240,9 @@ TASKS: list[dict] = [
     _consult("aug2-merritt", "Merritt Law Firm", "info@leemerrittesq.com"),
     _consult("aug2-stafford-moore", "Stafford Moore, PLLC",
              "info@staffordmoore.law"),
-    _consult("aug2-udashen-anton", "Udashen Anton", "ba@udashenanton.com"),
-    _consult("aug2-schaffer", "The Schaffer Firm", "noguilt@schafferfirm.com"),
-    _consult("aug2-josh-schaffer", "Josh Schaffer, Attorney at Law",
-             "josh@joshschafferlaw.com"),
+    # (Removed: The Schaffer Firm + Josh Schaffer + Udashen Anton — these are
+    #  criminal-appeals/habeas practices, not plaintiff-side civil rights. The
+    #  Schaffer Firm replied confirming criminal-only, so we stay on target.)
     # --- Round 3: Texas criminal-defense bar associations (referral reach) ---
     _support("aug2-tcdla", "Texas Criminal Defense Lawyers Association",
              "info@tcdla.com"),
