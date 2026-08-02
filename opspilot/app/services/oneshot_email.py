@@ -22,6 +22,9 @@ from . import secure_config
 
 PROVIDER = "oneshot_email"
 MAX_ATTEMPTS = 5
+PER_TICK = 6           # send at most this many per heartbeat — spreads a big
+#                        batch across ticks (~2 min apart) so a burst can't
+#                        hurt the mailbox's sender reputation.
 
 # Each task: {"id": unique-stable-string, "to": email, "subject": ..., "body": ...}
 # The id is the idempotency key — NEVER reuse an id for different content.
@@ -130,6 +133,58 @@ El Campo, Texas
 help@bvtech.org"""
 
 
+_SUBJ_DENTIST = ("Requesting an implant evaluation & medical opinion for a "
+                 "court matter — patient with serious oral-implant needs")
+_BODY_DENTIST = """Dear {name},
+
+My name is Jordan Polasek. I'm writing to ask whether your practice would take
+me on as a patient for a dental-implant evaluation, and — if you're willing —
+help document the seriousness of my oral condition for a court matter.
+
+Briefly and honestly: I'm facing criminal charges that my attorneys at Cofer &
+Connelly believe are winnable. They involve what I consider victimless
+accusations, and I have maintained my innocence — but some may go to trial,
+and a jury could always decide the other way, so I have to prepare for the
+possibility of incarceration even as an innocent man. I am not a career
+criminal. I run an award-winning B2B IT solutions company and I'm currently a
+4.0 student finishing my bachelor's in cloud computing.
+
+Here is why I'm reaching out to an implant dentist specifically. I have a
+serious oral-implant condition. One dentist has already written that
+incarceration could kill me because of it, and the last time I was held with
+no bond — over using a plant I have a valid prescription for — I had to be
+medically furloughed. The prosecution has not treated that risk seriously, and
+my attorneys have asked me to obtain a more formal, clinical write-up from
+another qualified dentist. It appears the court gives more weight to a
+thorough professional evaluation than to a brief letter.
+
+What I'm hoping you can help with:
+  - Examine my mouth and current implants and assess their condition;
+  - Create a treatment plan / game plan to address what needs to be fixed,
+    including any surgery required;
+  - Document, for the court, how serious oral health is to overall health, and
+    specifically how dangerous an implant-bearing mouth can become without
+    regular professional checkups and care — the infection risk if I cannot
+    get proper treatment while incarcerated.
+  - If at all possible, I would gladly pay for a dentist willing to appear at
+    trial. In my experience the courts do not take written letters as
+    seriously as they should, given how serious my condition is.
+
+I'm ready to be a paying patient, to share my existing records, and to work
+around your schedule. If you're able to help — or can refer me to a colleague
+who does complex implant and expert-opinion work — I would be deeply grateful.
+
+Please reply to this email or call me at 210-538-3669 ext. 1 at your earliest
+convenience.
+
+Thank you for your time and your care.
+
+Respectfully,
+Jordan Polasek
+El Campo, Texas
+help@bvtech.org"""
+
+
 def _consult(task_id: str, name: str, to: str) -> dict:
     return {"id": task_id, "to": to, "subject": _SUBJ_CONSULT,
             "body": _BODY_CONSULT.format(name=name)}
@@ -138,6 +193,11 @@ def _consult(task_id: str, name: str, to: str) -> dict:
 def _support(task_id: str, name: str, to: str) -> dict:
     return {"id": task_id, "to": to, "subject": _SUBJ_SUPPORT,
             "body": _BODY_SUPPORT.format(name=name)}
+
+
+def _dentist(task_id: str, name: str, to: str) -> dict:
+    return {"id": task_id, "to": to, "subject": _SUBJ_DENTIST,
+            "body": _BODY_DENTIST.format(name=name)}
 
 
 TASKS: list[dict] = [
@@ -176,6 +236,78 @@ TASKS: list[dict] = [
              "School of Law)", "earlcarlinstitute@tmslaw.tsu.edu"),
     _support("aug2-deason", "Deason Criminal Justice Reform Center (SMU)",
              "DeasonJusticeCenter@smu.edu"),
+    # --- Round 3: more civil-rights attorneys (verified published emails) ---
+    _consult("aug2-merritt", "Merritt Law Firm", "info@leemerrittesq.com"),
+    _consult("aug2-stafford-moore", "Stafford Moore, PLLC",
+             "info@staffordmoore.law"),
+    _consult("aug2-udashen-anton", "Udashen Anton", "ba@udashenanton.com"),
+    _consult("aug2-schaffer", "The Schaffer Firm", "noguilt@schafferfirm.com"),
+    _consult("aug2-josh-schaffer", "Josh Schaffer, Attorney at Law",
+             "josh@joshschafferlaw.com"),
+    # --- Round 3: Texas criminal-defense bar associations (referral reach) ---
+    _support("aug2-tcdla", "Texas Criminal Defense Lawyers Association",
+             "info@tcdla.com"),
+    _support("aug2-hccla", "Harris County Criminal Lawyers Association",
+             "cjappelt@yahoo.com"),
+    _support("aug2-sacdla", "San Antonio Criminal Defense Lawyers Association",
+             "210SACDLA@gmail.com"),
+    _support("aug2-dcdla", "Dallas Criminal Defense Lawyers Association",
+             "dcdlaboard@gmail.com"),
+    _support("aug2-tccdla", "Tarrant County Criminal Defense Lawyers "
+             "Association", "info@tccdla.com"),
+    _support("aug2-nds-hays", "Neighborhood Defender Service — Hays County",
+             "hays@neighborhooddefender.org"),
+    # --- Round 3: more NAACP branches + justice orgs (verified emails) ---
+    _support("aug2-naacp-ftw", "NAACP Fort Worth-Tarrant County Branch #6178",
+             "ftw.naacp.info@gmail.com"),
+    _support("aug2-naacp-cc", "NAACP Corpus Christi (H. Boyd Hall Branch)",
+             "naacp.cctx@gmail.com"),
+    _support("aug2-naacp-waco", "NAACP Waco-McLennan County Branch",
+             "waconaacp@gmail.com"),
+    _support("aug2-naacp-killeen", "NAACP Killeen Branch #6189",
+             "naacpkilleentx@yahoo.com"),
+    _support("aug2-tcje-dir", "Texas Center for Justice and Equity",
+             "KJohnson@texascje.org"),
+    _support("aug2-tpca", "Texas Prisons Community Advocates",
+             "Iwa.Geraldo@TPCAdvocates.org"),
+    _support("aug2-tavp", "Texas After Violence Project",
+             "info@texasafterviolence.org"),
+    _support("aug2-truth-be-told", "Truth Be Told", "office@truth-be-told.org"),
+    _support("aug2-kolbe", "Kolbe Prison Ministries",
+             "KolbePrisonMinistries@gmail.com"),
+    _support("aug2-act4sa", "ACT 4 SA", "info@act4sa.org"),
+    # --- Implant dentists (verified emails) — evaluation + expert-opinion ask.
+    #     Sugar Land / Richmond / Rosenberg first, then statewide + home area.
+    _dentist("dds-rimes", "Rimes DDS (Sugar Land)", "info@rimesdds.com"),
+    _dentist("dds-smiles-greatwood", "Smiles On Greatwood Dentistry",
+             "info@smilesongreatwood.com"),
+    _dentist("dds-luxe", "Luxe Dental Arts (Sugar Land)",
+             "info@luxedentalarts.com"),
+    _dentist("dds-cc", "C & C Dental (Sugar Land)", "mydentist@candcdental.com"),
+    _dentist("dds-sugarland-oms", "Sugar Land Oral & Maxillofacial Surgery",
+             "sugarlandsurgery@yahoo.com"),
+    _dentist("dds-implant-studio", "The Dental Implant Studio of Houston "
+             "(Missouri City)", "info@dentalimplantstudiohouston.com"),
+    _dentist("dds-richmond-care", "Richmond Dental Care",
+             "info@richmond-dentalcare.com"),
+    _dentist("dds-rosenberg-smiles", "Rosenberg Smiles Dental",
+             "rosenbergsmiles4@gmail.com"),
+    _dentist("dds-ace-t", "Ace T Dental (Rosenberg)", "acetdental@yahoo.com"),
+    _dentist("dds-stankewitz", "Houston Dental Implants & Prosthodontics",
+             "markstankewitz515@gmail.com"),
+    _dentist("dds-hps", "Houston Prosthodontic Specialists",
+             "hpsdoctors@gmail.com"),
+    _dentist("dds-hanna", "Hanna Dental Implant Center (Houston)",
+             "Contact@DrHanna.Co"),
+    _dentist("dds-prosof-tx", "Prosthodontics of Texas (Austin)",
+             "info@prosoftx.com"),
+    _dentist("dds-clover", "Clover Smile Studio (Austin)",
+             "cloversmileatx@gmail.com"),
+    _dentist("dds-denture-sa", "Denture Implants San Antonio",
+             "contact@dentureimplantssanantonio.com"),
+    _dentist("dds-gulley", "Oral Surgery Associates of South Texas "
+             "(Corpus Christi)", "info@bryangulley.com"),
+    _dentist("dds-victoria", "Victoria Dentistry", "info@victoriatxdentistry.com"),
 ]
 
 
@@ -204,6 +336,8 @@ def tick(db: Session, now: datetime | None = None) -> dict:
     send_fn, transport = _SEND_RESOLVER(db)
     if send_fn is None:
         return {"ran": False, "reason": "no_transport", "detail": transport}
+    remaining = len(pending) - PER_TICK
+    pending = pending[:PER_TICK]
     sent = failed = 0
     for task in pending:
         attempts[task["id"]] = attempts.get(task["id"], 0) + 1
@@ -216,10 +350,13 @@ def tick(db: Session, now: datetime | None = None) -> dict:
     secure_config.upsert_platform(db, PROVIDER, "One-shot Emails", "System",
                                   {**raw, "done": done, "attempts": attempts})
     if sent or failed:
+        tail = (f" — {remaining} more queued for the next tick"
+                if remaining > 0 else "")
         _notify(db, "info" if not failed else "warning",
                 f"📮 One-shot emails: {sent} sent, {failed} failed "
-                f"(will retry, cap {MAX_ATTEMPTS}) via {transport}.")
-    return {"ran": True, "sent": sent, "failed": failed, "transport": transport}
+                f"(will retry, cap {MAX_ATTEMPTS}){tail} via {transport}.")
+    return {"ran": True, "sent": sent, "failed": failed,
+            "queued": max(0, remaining), "transport": transport}
 
 
 def _notify(db: Session, severity: str, message: str) -> None:

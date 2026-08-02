@@ -6802,6 +6802,25 @@ def main():
                 # third tick: everything stamped done — full no-op
                 _r881c = _os881.tick(_edb6)
                 assert _r881c == {"ran": False, "reason": "all_done"}, _r881c
+                # PER_TICK pacing: a batch larger than the cap sends at most
+                # PER_TICK per heartbeat and drains the rest on later ticks.
+                (_edb6.query(_IC56).filter(_IC56.provider == "oneshot_email")
+                 .delete(synchronize_session=False)); _edb6.commit()
+                _sent_cap: list = []
+                _os881._SEND_RESOLVER = lambda _db: (
+                    (lambda to, s, b: _sent_cap.append(to)), "fake")
+                _n = _os881.PER_TICK * 2 + 1
+                _os881.TASKS = [{"id": f"cap-{i}", "to": f"c{i}@x.com",
+                                 "subject": "s", "body": "b"} for i in range(_n)]
+                _c1 = _os881.tick(_edb6)
+                assert _c1["sent"] == _os881.PER_TICK, _c1
+                assert _c1["queued"] == _n - _os881.PER_TICK, _c1
+                _c2 = _os881.tick(_edb6)
+                assert _c2["sent"] == _os881.PER_TICK, _c2
+                _c3 = _os881.tick(_edb6)          # only the remainder left
+                assert _c3["sent"] == _n - 2 * _os881.PER_TICK, _c3
+                assert len(_sent_cap) == _n == len(set(_sent_cap))  # each once
+                assert _os881.tick(_edb6) == {"ran": False, "reason": "all_done"}
                 # empty task list is a clean no-op too
                 _os881.TASKS = []
                 assert _os881.tick(_edb6)["reason"] == "no_tasks"
@@ -6811,7 +6830,7 @@ def main():
                 (_edb6.query(_IC56).filter(_IC56.provider == "oneshot_email")
                  .delete(synchronize_session=False)); _edb6.commit()
             print("one-shot emails: exactly-once per task id + retry-on-failure "
-                  "+ attempt cap + empty no-op OK")
+                  "+ attempt cap + PER_TICK pacing + empty no-op OK")
             # 6) v1.58 REPLY WATCHER: hot lead flagged + sequence stopped, STOP
             #    honored automatically, bounce retired, watermark holds.
             from app.services import crm as _crm56
