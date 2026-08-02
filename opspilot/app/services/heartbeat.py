@@ -284,6 +284,16 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         db.rollback()
 
+    # 13.566) v1.88.1 ONE-SHOT operator emails — tasks shipped in code send
+    #         exactly once (DB-stamped by id), so merging to main is a remote
+    #         control for one-off sends. No-op while TASKS is empty.
+    from . import oneshot_email
+    oneshot = {"ran": False}
+    try:
+        oneshot = oneshot_email.tick(db, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
     # 13.57) v1.40 FLOOD GUARD self-heal — collapse duplicate queued social
     #        drafts and sweep same-day duplicate posts off the live sites
     #        (hourly per site). Only while the autopilot is enabled, so the
@@ -326,4 +336,6 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
                                   (content.get("results") or {}).items()},
             "outbound": {k: outb.get(k) for k in
                          ("ran", "mode", "reason", "sent", "eligible") if k in outb},
+            "oneshot_email": {k: oneshot.get(k) for k in
+                              ("ran", "reason", "sent", "failed") if k in oneshot},
             "jp_builds_checked": len(jp_verified)}

@@ -1,5 +1,13 @@
 # BVTech OpsPilot — Changelog
 
+## v1.88.1 — One-shot operator emails: merge-to-main as a remote control (Aug 2026)
+- **One-shot email runner.** New oneshot_email service: queue one-time sends in
+  code, merge to main, and the box's next heartbeat delivers them — exactly
+  once per task id (DB-stamped), transport failures retried with an attempt
+  cap, confirmation posted to Notifications. Because the box self-deploys
+  CI-green main, this turns the repo into a safe remote control for one-off
+  operator sends (address corrections, resends) with zero SSH.
+
 ## v1.88.0 — Godlike scraper + self-cleaning HubSpot list (Aug 2026)
 - **Scraper reaches statewide.** Prospecting now sweeps 12 Texas metros (added
   New Braunfels, The Woodlands, Round Rock, Dallas, Fort Worth, Corpus Christi,

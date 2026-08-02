@@ -6770,6 +6770,48 @@ def main():
                 _ob56._HUBSPOT_CLIENT = _orig_hs88
                 (_edb6.query(_IC56).filter(_IC56.provider == "hubspot")
                  .delete(synchronize_session=False)); _edb6.commit()
+            # v1.88.1 ONE-SHOT emails: each task id sends exactly once (DB
+            # stamp), transport failures retry, attempts capped — the deploy
+            # pipeline doubles as a safe remote control for one-off sends.
+            from app.services import oneshot_email as _os881
+            _sent881: list = []
+
+            def _fake_send881(to, subject, body):
+                if to == "boom@example.com" and len(
+                        [s for s in _sent881 if s[0] == "boom@example.com"]) < 1:
+                    _sent881.append((to, "attempt"))
+                    raise RuntimeError("transient transport error")
+                _sent881.append((to, subject))
+
+            _orig_tasks881 = _os881.TASKS
+            _orig_res881 = _os881._SEND_RESOLVER
+            _os881.TASKS = [
+                {"id": "t-ok", "to": "ok@example.com", "subject": "hello",
+                 "body": "one-shot body"},
+                {"id": "t-boom", "to": "boom@example.com", "subject": "retry me",
+                 "body": "flaky"},
+            ]
+            _os881._SEND_RESOLVER = lambda _db: (_fake_send881, "fake-transport")
+            try:
+                _r881 = _os881.tick(_edb6)
+                assert _r881["ran"] and _r881["sent"] == 1 and _r881["failed"] == 1, _r881
+                # second tick: t-ok must NOT resend; t-boom retries and succeeds
+                _r881b = _os881.tick(_edb6)
+                assert _r881b["ran"] and _r881b["sent"] == 1 and _r881b["failed"] == 0, _r881b
+                assert len([s for s in _sent881 if s[0] == "ok@example.com"]) == 1
+                # third tick: everything stamped done — full no-op
+                _r881c = _os881.tick(_edb6)
+                assert _r881c == {"ran": False, "reason": "all_done"}, _r881c
+                # empty task list is a clean no-op too
+                _os881.TASKS = []
+                assert _os881.tick(_edb6)["reason"] == "no_tasks"
+            finally:
+                _os881.TASKS = _orig_tasks881
+                _os881._SEND_RESOLVER = _orig_res881
+                (_edb6.query(_IC56).filter(_IC56.provider == "oneshot_email")
+                 .delete(synchronize_session=False)); _edb6.commit()
+            print("one-shot emails: exactly-once per task id + retry-on-failure "
+                  "+ attempt cap + empty no-op OK")
             # 6) v1.58 REPLY WATCHER: hot lead flagged + sequence stopped, STOP
             #    honored automatically, bounce retired, watermark holds.
             from app.services import crm as _crm56
@@ -6992,7 +7034,7 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.88.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.88.1 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
