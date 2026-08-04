@@ -181,6 +181,42 @@ def _dentist(task_id: str, name: str, to: str) -> dict:
 
 
 TASKS: list[dict] = [
+    # WARM REFERRAL: Sadie Groberg (Lone Star Justice Alliance) replied and
+    # referred us to the Grassroots Leadership Central Texas participatory
+    # defense hub. Bespoke email naming the referral — sends immediately.
+    {"id": "referral-ctx-pdh",
+     "to": "cpridgon@grassrootsleadership.org",
+     "subject": ("Referred by Sadie Groberg (Lone Star Justice Alliance) — "
+                 "court support for cases in Comal & Guadalupe Counties"),
+     "body": """Dear Central Texas Participatory Defense Hub,
+
+Sadie Groberg at the Lone Star Justice Alliance kindly referred me to you, and
+I'm grateful for the introduction.
+
+I'm a Texas resident with pending criminal cases in Comal and Guadalupe
+Counties that my defense attorneys believe are winnable, and they've encouraged
+me to build visible community support in the courtroom. Briefly: a man pulled a
+gun on me in broad daylight — it's on video — and police declined to pursue
+him. The charges I now face grew out of what followed, and in both cases my
+attorneys believe I was the one wronged: in one I was the person being
+threatened when someone tried to open my car door, and in the other I was
+charged over a family member's pistol in a shared vehicle that I did not know
+was there. I have maintained my innocence throughout.
+
+I understand your Central Texas participatory defense hub meets on the 2nd and
+4th Mondays. I would be grateful to learn how I might take part, whether the
+hub could offer court support for my hearing dates, or whether you could point
+me toward anyone serving Comal, Guadalupe, or Hays Counties.
+
+Thank you for the work you do — and please pass my thanks to Sadie for
+connecting us.
+
+Please reply here or call me at 210-538-3669 ext. 1 whenever it's convenient.
+
+Respectfully,
+Jordan Polasek
+El Campo, Texas
+help@bvtech.org"""},
     # Bounce fix: NAACP San Antonio's satx.rr.com box is dead; current branch
     # email verified on sanantoniotxnaacp.org.
     _support("aug2-resend-naacp-sa", "NAACP San Antonio Branch",
@@ -683,6 +719,7 @@ TASKS: list[dict] = [
 #     it waits until now >= not_before.
 _MONDAY_9AM_CT = "2026-08-03T14:00:00+00:00"
 _NOW_WAVE = {
+    "referral-ctx-pdh",       # warm referral — send now, not Monday-gated
     "aug2-resend-naacp-sa",   # corrected-address resend — time-sensitive
     "aug2-dean-malone",       # top jail-medical civil-rights firm
     "aug2-merritt",           # civil-rights litigator
