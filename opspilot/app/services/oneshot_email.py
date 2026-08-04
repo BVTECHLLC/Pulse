@@ -243,6 +243,10 @@ Respectfully,
 Jordan Polasek
 El Campo, Texas
 help@bvtech.org"""},
+    # Contingency feeler: JW Zepeda Law Firm — verified plaintiff police-
+    # misconduct practice that explicitly takes civil-rights cases on
+    # contingency ("you don't pay unless we win"). Short yes/no ask.
+    _feeler("feeler-jwzepeda", "JW Zepeda Law Firm", "contact@jwzlawfirm.com"),
     # Bounce fix: NAACP San Antonio's satx.rr.com box is dead; current branch
     # email verified on sanantoniotxnaacp.org.
     _support("aug2-resend-naacp-sa", "NAACP San Antonio Branch",
@@ -746,6 +750,7 @@ help@bvtech.org"""},
 _MONDAY_9AM_CT = "2026-08-03T14:00:00+00:00"
 _NOW_WAVE = {
     "referral-ctx-pdh",       # warm referral — send now, not Monday-gated
+    "feeler-jwzepeda",        # contingency feeler — send now
     "aug2-resend-naacp-sa",   # corrected-address resend — time-sensitive
     "aug2-dean-malone",       # top jail-medical civil-rights firm
     "aug2-merritt",           # civil-rights litigator
