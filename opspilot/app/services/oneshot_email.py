@@ -180,6 +180,32 @@ def _dentist(task_id: str, name: str, to: str) -> dict:
             "body": _BODY_DENTIST.format(name=name)}
 
 
+# Short "feeler" to civil-rights firms — no story, just: do you take
+# color-of-law / Section 1983 cases in Texas on contingency? Quick yes/no.
+_SUBJ_FEELER = ("Do you take Texas color-of-law / civil-rights cases on "
+                "contingency?")
+_BODY_FEELER = """Hello,
+
+I'm looking for a Texas civil-rights attorney who handles color-of-law /
+Section 1983 claims (police or government misconduct) on a contingency basis —
+no fee unless we win.
+
+I believe I have strong civil claims and documentation to back them up. Before
+I share details, could you tell me whether your firm takes these cases on
+contingency and would be open to a brief consultation?
+
+You can reply here or call me at 210-538-3669 ext. 1. Thank you.
+
+Jordan Polasek
+El Campo, Texas
+help@bvtech.org"""
+
+
+def _feeler(task_id: str, name: str, to: str) -> dict:
+    return {"id": task_id, "to": to, "subject": _SUBJ_FEELER,
+            "body": _BODY_FEELER}
+
+
 TASKS: list[dict] = [
     # WARM REFERRAL: Sadie Groberg (Lone Star Justice Alliance) replied and
     # referred us to the Grassroots Leadership Central Texas participatory
