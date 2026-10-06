@@ -152,20 +152,26 @@ def build_llms_txt(site: str, now: datetime) -> str:
 
 def build_robots_txt(site: str, existing: str | None) -> str:
     """Keep robots.txt open to answer-engine crawlers + point at the sitemap.
-    Never tightens an existing allow — only ensures AI bots aren't blocked and
-    the Sitemap line is present."""
+    APPEND-ONLY: never removes or rewrites existing rules — only adds a Sitemap
+    line and an AI-crawler allow block when they are missing, so a site owner's
+    custom Disallow rules are always preserved."""
     from . import jp_site
     base = jp_site.SITES[site]["site"].rstrip("/")
     sitemap_line = f"Sitemap: {base}/sitemap.xml"
-    if existing and "Sitemap:" in existing and all(
-            b in existing for b in ("GPTBot", "PerplexityBot", "ClaudeBot")):
-        return existing  # already welcoming — leave it as the owner has it
-    blocks = ["# Managed by BVTech OpsPilot — welcomes search + AI answer engines"]
-    for bot in AI_CRAWLERS:
-        blocks.append(f"User-agent: {bot}\nAllow: /")
-    blocks.append("User-agent: *\nAllow: /")
-    blocks.append(sitemap_line)
-    return "\n\n".join(blocks) + "\n"
+    cur = (existing or "").rstrip()
+    additions = []
+    # AI-crawler allow block — only if those bots aren't already named
+    if not all(b in cur for b in ("GPTBot", "PerplexityBot", "ClaudeBot")):
+        block = ["# Welcomes search + AI answer engines (added by BVTech OpsPilot)"]
+        for bot in AI_CRAWLERS:
+            block.append(f"User-agent: {bot}\nAllow: /")
+        additions.append("\n\n".join(block))
+    if "Sitemap:" not in cur:
+        additions.append(sitemap_line)
+    if not additions:
+        return existing if existing is not None else cur + "\n"
+    base_txt = (cur + "\n\n") if cur else ""
+    return base_txt + "\n\n".join(additions) + "\n"
 
 
 # --------------------------------------------------------------------------- #
