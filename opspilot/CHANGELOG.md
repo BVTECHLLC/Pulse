@@ -1,5 +1,13 @@
 # BVTech OpsPilot — Changelog
 
+## v1.89.1 — OAuth credential guard (fixes Google "invalid_client") (Oct 2026)
+- A credential field holding placeholder/instruction text (e.g. "# paste
+  GOOGLE_CLIENT_ID value again") no longer registers a broken Connect button —
+  the guard rejects placeholder-shaped values (markers, spaces, too short), so
+  the Google tile shows "needs credentials" instead of bouncing to a Google
+  "Access blocked: invalid_client" page. Applies to both the env and vault
+  Google SSO paths.
+
 ## v1.89.0 — SEO / AEO / GEO daily autopilot (Oct 2026)
 - **Instant indexing (IndexNow).** Every day, per connected site, Pulse pings
   IndexNow with the day's new post URLs — so Bing, Yandex, and (through Bing)

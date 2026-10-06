@@ -5327,7 +5327,7 @@ def main():
         # --- v0.52.1 SSO settings: vault-driven sign-in providers + redirect URIs ---
         ss = c.get("/api/oauth/sso-settings").json()
         assert "redirect_uris" in ss and ss["redirect_uris"]["microsoft"].endswith("/api/oauth/microsoft/callback")
-        sv = c.put("/api/oauth/sso-settings", json={"google_client_id": "gid.apps", "google_client_secret": "gsec"})
+        sv = c.put("/api/oauth/sso-settings", json={"google_client_id": "123456789012-abcdef.apps.googleusercontent.com", "google_client_secret": "GOCSPX-testsecretvalue123"})
         assert sv.status_code == 200 and "google" in sv.json()["providers_active"], sv.text
         # the login page's provider list now includes google (vault-driven SSO)
         provs = {p["key"] for p in c.get("/api/oauth/providers").json()["providers"]}
@@ -7167,7 +7167,18 @@ def main():
     print("SEO/AEO/GEO autopilot: IndexNow key+ping, llms.txt (GEO), robots.txt "
           "(answer-engine crawlers), once/day + disconnected no-op OK")
 
-    print("\n=== OpsPilot v1.89.0 SMOKE TEST PASSED ===")
+    # ==== v1.89.1: OAuth credential guard — placeholder text can't register a
+    #      broken Connect button (fixes Google "invalid_client" from pasted
+    #      instruction text). ====
+    from app.services.oauth import _is_real_cred as _irc
+    assert _irc("# paste GOOGLE_CLIENT_ID value again") is False
+    assert _irc("your_client_id") is False and _irc("") is False and _irc(None) is False
+    assert _irc("has spaces in it here") is False
+    assert _irc("123456789012-abcdefg.apps.googleusercontent.com") is True
+    assert _irc("GOCSPX-realsecretvalue12345") is True
+    print("oauth credential guard: rejects placeholder/instruction text, accepts real creds OK")
+
+    print("\n=== OpsPilot v1.89.1 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

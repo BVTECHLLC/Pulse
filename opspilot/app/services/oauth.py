@@ -20,6 +20,24 @@ from urllib.parse import urlencode
 from ..core.config import get_settings
 
 
+# Reject placeholder/instruction text accidentally saved in a credential field
+# (e.g. "# paste GOOGLE_CLIENT_ID value again") so a bogus value can never
+# register a broken OAuth button — the tile simply shows "needs credentials".
+_PLACEHOLDER_MARKERS = ("paste", "client_id", "client_secret", "your_", "your-",
+                        "example", "xxxx", "<", ">", "#", "value again",
+                        "replace", "todo")
+
+
+def _is_real_cred(v) -> bool:
+    if not v:
+        return False
+    s = str(v).strip()
+    if len(s) < 12 or " " in s:        # real OAuth creds have no spaces
+        return False
+    low = s.lower()
+    return not any(m in low for m in _PLACEHOLDER_MARKERS)
+
+
 # --- PKCE ------------------------------------------------------------------- #
 def gen_verifier() -> str:
     return secrets.token_urlsafe(64)[:96]
@@ -77,7 +95,7 @@ def _seed() -> None:
         _register_microsoft(client_id=s.M365_CLIENT_ID, client_secret=s.M365_CLIENT_SECRET,
                             tenant=s.MS_OAUTH_TENANT, login_base=s.M365_LOGIN_BASE,
                             graph_base=s.M365_GRAPH_BASE)
-    if s.google_oauth_enabled:
+    if s.google_oauth_enabled and _is_real_cred(s.GOOGLE_CLIENT_ID) and _is_real_cred(s.GOOGLE_CLIENT_SECRET):
         register_provider("google", {
             "name": "Google",
             "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
@@ -135,7 +153,7 @@ def sync_vault_providers(db) -> None:
     # --- Google ---
     g_id = secure_config.get_secret(sso_cfg, "google_client_id") or sso_cfg.get("google_client_id")
     g_secret = secure_config.get_secret(sso_cfg, "google_client_secret")
-    if g_id and g_secret:
+    if _is_real_cred(g_id) and _is_real_cred(g_secret):
         register_provider("google", {
             "name": "Google",
             "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
