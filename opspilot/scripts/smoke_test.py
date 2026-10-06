@@ -7119,7 +7119,55 @@ def main():
         print("tunnel watchdog: script parses, restarts cloudflared (systemd/docker) + "
               "app stack, installs a 2-min timer, disk-safe prune (no volumes) OK")
 
-    print("\n=== OpsPilot v1.88.2 SMOKE TEST PASSED ===")
+    # ==== v1.89.0: SEO / AEO / GEO daily autopilot ====
+    from app.services import seo_boost as _seo
+    from app.services import jp_site as _jpseo
+    import datetime as _dtseo
+    _nowseo = _dtseo.datetime(2026, 10, 6, tzinfo=_dtseo.timezone.utc)
+    # deterministic builders — no LLM, no paid tokens
+    _llms = _seo.build_llms_txt("bvtech", _nowseo)
+    assert "BVTech" in _llms and "/sitemap.xml" in _llms, _llms[:120]
+    _rob = _seo.build_robots_txt("bvtech", None)
+    for _b in ("GPTBot", "PerplexityBot", "ClaudeBot", "Googlebot", "Sitemap:"):
+        assert _b in _rob, _b
+    assert _seo.build_robots_txt("bvtech", _rob) == _rob  # already-welcoming: untouched
+    from app.core.db import SessionLocal as _SLseo
+    _seodb = _SLseo()
+    _files, _pings = {}, []
+    _fake_ops = {"tree": lambda p="": [], "fetch": lambda p: _files.get(p),
+                 "commit": lambda p, c, m, u: (_files.__setitem__(p, c) or "sha1")}
+    _ocfg, _oops, _ohttp = _jpseo.get_config, _jpseo._repo_ops, _seo._HTTP_FN
+    _jpseo._repo_ops = lambda cfg: _fake_ops
+    _seo._HTTP_FN = lambda url, payload: (_pings.append(payload) or 200)
+    try:
+        _jpseo.get_config = lambda db, site="jp": {
+            "configured": True, "forge": "gitlab", "site": _jpseo.SITES[site]["site"],
+            "token": "t", "branch": "main", "project": "x", "base": "https://gitlab.com"}
+        _r = _seo.run_for_site(_seodb, "bvtech", _nowseo,
+                               ["https://bvtech.org/blog/new-post.html"])
+        assert _r["ran"] and _r["llms_txt"] == "created" and _r["robots_txt"] == "created", _r
+        assert "llms.txt" in _files and "robots.txt" in _files
+        assert [k for k in _files if k.endswith(".txt") and len(k) == 36], list(_files)
+        assert _pings[-1]["host"] == "bvtech.org"
+        assert any("new-post" in u for u in _pings[-1]["urlList"])
+        assert "https://bvtech.org/" in _pings[-1]["urlList"]
+        assert _r["indexnow_ping"]["ok"] is True
+        # re-run same content -> files unchanged (no commit churn)
+        assert _seo.run_for_site(_seodb, "bvtech", _nowseo)["llms_txt"] == "unchanged"
+        # run_daily: only connected sites run; disconnected ones no-op cleanly
+        _jpseo.get_config = lambda db, site="jp": {
+            "configured": site == "bvtech", "forge": "gitlab",
+            "site": _jpseo.SITES[site]["site"], "token": "t", "branch": "main",
+            "project": "x", "base": "https://gitlab.com"}
+        _rd = _seo.run_daily(_seodb, _nowseo, force=True)["results"]
+        assert _rd["bvtech"]["ran"] and _rd["jp"]["reason"] == "not_connected", _rd
+    finally:
+        _jpseo.get_config, _jpseo._repo_ops, _seo._HTTP_FN = _ocfg, _oops, _ohttp
+        _seodb.close()
+    print("SEO/AEO/GEO autopilot: IndexNow key+ping, llms.txt (GEO), robots.txt "
+          "(answer-engine crawlers), once/day + disconnected no-op OK")
+
+    print("\n=== OpsPilot v1.89.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

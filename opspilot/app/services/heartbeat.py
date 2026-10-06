@@ -240,6 +240,28 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         db.rollback()
 
+    # 13.555) v1.89 SEO/AEO/GEO autopilot — once/day per connected site: ping
+    #         IndexNow with the day's new URLs (instant Bing/Copilot/ChatGPT
+    #         indexing), keep robots.txt open to answer-engine crawlers, and
+    #         refresh llms.txt (the GEO summary AI engines read first). No-ops
+    #         cleanly while a site is disconnected; never breaks the tick.
+    seo = {"ran": False}
+    try:
+        import re as _re_seo
+        new_urls: dict = {}
+        _chan_site = {"bvtech": "bvtech", "news": "bvtech", "jp": "jp",
+                      "txplants": "txplants"}
+        for _ch, _r in (content.get("results") or {}).items():
+            _site = _chan_site.get(_ch)
+            if not _site or not _r.get("ok"):
+                continue
+            for _u in _re_seo.findall(r"https?://[^\s|]+", str(_r.get("detail") or "")):
+                new_urls.setdefault(_site, []).append(_u.rstrip(".,"))
+        from . import seo_boost
+        seo = seo_boost.run_daily(db, now, new_urls)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
     # 13.56) jordanpolasek.com build verification (v1.20) — watch the deploy
     #        pipeline for commits Pulse pushed; auto-revert + notify on failure.
     from . import jp_site
@@ -334,6 +356,8 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
             "incidents_resolved": len(incidents_resolved),
             "content_autopilot": {k: v.get("ok") for k, v in
                                   (content.get("results") or {}).items()},
+            "seo_boost": {k: (v.get("ran") if isinstance(v, dict) else v)
+                          for k, v in (seo.get("results") or {}).items()},
             "outbound": {k: outb.get(k) for k in
                          ("ran", "mode", "reason", "sent", "eligible") if k in outb},
             "oneshot_email": {k: oneshot.get(k) for k in

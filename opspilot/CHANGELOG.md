@@ -1,5 +1,21 @@
 # BVTech OpsPilot — Changelog
 
+## v1.89.0 — SEO / AEO / GEO daily autopilot (Oct 2026)
+- **Instant indexing (IndexNow).** Every day, per connected site, Pulse pings
+  IndexNow with the day's new post URLs — so Bing, Yandex, and (through Bing)
+  Copilot and ChatGPT search crawl new content in minutes instead of days. A
+  one-time key file is auto-placed at the site root.
+- **Answer-engine ready (AEO).** robots.txt is kept open to the AI answer-engine
+  crawlers (GPTBot, OAI-SearchBot, PerplexityBot, ClaudeBot, Google-Extended, …)
+  and points at the sitemap, so the sites are eligible to be quoted in AI answers.
+- **Generative-engine summary (GEO).** An llms.txt file — the emerging standard
+  AI crawlers read first — is maintained at each site root: a clean, link-rich
+  summary of what the business does and its best pages, so ChatGPT/Perplexity/
+  Claude describe it accurately.
+- Deterministic and $0 LLM cost; runs inside the daily heartbeat, fail-safe, and
+  no-ops cleanly while a site is disconnected (activates the moment the GitLab
+  token is restored).
+
 ## v1.88.2 — Bounce-hardening: stop emailing dead mailboxes (Aug 2026)
 - **Scraper only trusts real published addresses.** _extract_email now takes
   emails ONLY from clickable mailto: links (what a human deliberately put there),
