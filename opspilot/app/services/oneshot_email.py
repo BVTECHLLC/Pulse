@@ -348,6 +348,39 @@ def _overreach(task_id: str, name: str, to: str) -> dict:
             "body": _BODY_OVERREACH.format(name=name), "cc": list(_CC_SELF)}
 
 
+_SUBJ_LEG = ("Constituent prosecuted for following Texas gun law — black-powder "
+             "antique firearm, jury trial April 26, 2027")
+_BODY_LEG = """Dear {name},
+
+I'm a law-abiding Texan, and I'm writing to make you aware of my situation.
+
+My attorneys at Cofer & Connelly have confirmed I face a jury trial on April 26,
+2027, in the 25th Judicial District Court of Guadalupe County. The issue: I
+lawfully owned a black-powder antique firearm — legal in Texas and under federal
+law without a license. A detective disagrees with that law, calls my compliance
+a "loophole," and is seeking to send me to prison for following the statute as
+written. The officers on the scene agreed I had the legal right to own it and
+that I acted in self-defense, and they let me go. The only reason I face a jury
+is one detective's disagreement with a Texas gun law I was obeying.
+
+I am not asking you to intervene in a pending court case. I am asking you to be
+aware that a Texan is being prosecuted for following the very gun laws this
+state enacted — and, if you believe the antique-firearm statute is being
+misapplied, to consider whether it needs clarifying so no other law-abiding
+Texan faces this.
+
+You can reach me at help@bvtech.org or my law firm at
+Jaiden.Dumas@coferconnelly.com.
+
+Respectfully,
+Jordan Polasek"""
+
+
+def _legislator(task_id: str, name: str, to: str) -> dict:
+    return {"id": task_id, "to": to, "subject": _SUBJ_LEG,
+            "body": _BODY_LEG.format(name=name), "cc": list(_CC_SELF)}
+
+
 TASKS: list[dict] = [
     # WARM REFERRAL: Sadie Groberg (Lone Star Justice Alliance) replied and
     # referred us to the Grassroots Leadership Central Texas participatory
@@ -995,7 +1028,7 @@ _NOW_WAVE = {
 }
 for _t in TASKS:
     if _t["id"] not in _NOW_WAVE and not _t["id"].startswith(
-            ("gun-", "trial-", "media-", "over-")):
+            ("gun-", "trial-", "media-", "over-", "leg-")):
         _t["not_before"] = _MONDAY_9AM_CT
 
 
