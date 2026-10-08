@@ -523,16 +523,18 @@ def resolve_send_fn(db: Session):
         # v1.83: resolve the operator's real signature once per send-fn build.
         custom_sig = (get_config(db).get("signature_html") or "").strip()
 
-        def _send_graph(to: str, subject: str, body: str) -> None:
+        def _send_graph(to: str, subject: str, body: str,
+                        cc: list[str] | None = None) -> None:
             graph.send_mail(mailbox, [to], subject,
-                            _text_to_html(body, custom_sig), html=True)
+                            _text_to_html(body, custom_sig), html=True, cc=cc)
 
         return _send_graph, f"M365 Graph as {mailbox}"
     from ..core.config import get_settings
     if get_settings().email_enabled:
         from . import email as email_svc
 
-        def _send_smtp(to: str, subject: str, body: str) -> None:
+        def _send_smtp(to: str, subject: str, body: str,
+                       cc: list[str] | None = None) -> None:
             if not email_svc.send(to, subject, body):
                 raise RuntimeError("SMTP send failed")
 

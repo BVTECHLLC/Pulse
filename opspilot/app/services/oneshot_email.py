@@ -206,6 +206,82 @@ def _feeler(task_id: str, name: str, to: str) -> dict:
             "body": _BODY_FEELER}
 
 
+# --- v1.90 Trial outreach (CC help@bvtech.org on every send) ---------------- #
+_CC_SELF = ["help@bvtech.org"]
+
+_SUBJ_GUN = ("Texas gun owner facing a jury trial for lawfully owning a "
+             "black-powder antique firearm — seeking your support")
+_BODY_GUN = """Dear {name},
+
+I'm a law-abiding Texan, and I'm asking for your help.
+
+My attorneys at Cofer & Connelly — Roland Rivera and Mark Pryor — have confirmed
+I face a jury trial on April 26, 2027, in the 25th Judicial District Court of
+Guadalupe County, Texas, at 8:30 AM.
+
+Here is why they took my case. I lawfully owned a black-powder antique firearm —
+legal to own in Texas and under federal law without a license. A detective
+disagrees with that law. He claims I used the antique as a "loophole to carry a
+gun," and he is seeking to send me to prison for following the law exactly as it
+is written. Both officers on the scene sided with me: they agreed I had the legal
+right to own the black-powder antique and that I acted in self-defense, and they
+let me go. The only reason this reached a jury is one detective's personal
+disagreement with a gun law I was obeying.
+
+My attorneys took this case specifically because of that — a citizen prosecuted
+for following the law on antique firearms. I'm reaching out to ask whether your
+organization can help, advocate, or point me toward anyone who defends gun
+owners in situations like mine.
+
+You can reach me at help@bvtech.org (cc'd here) or my law firm at
+Jaiden.Dumas@coferconnelly.com.
+
+Thank you for reading, and for the work you do defending our rights. Please help
+me, or point me in the right direction.
+
+Respectfully,
+Jordan Polasek"""
+
+_SUBJ_TRIAL = ("Seeking courtroom support — jury trial April 26, 2027, "
+               "Guadalupe County (25th District Court)")
+_BODY_TRIAL = """Dear {name},
+
+I'm a Texas resident asking for community court support.
+
+My attorneys at Cofer & Connelly have confirmed I face a jury trial on April 26,
+2027, in the 25th Judicial District Court of Guadalupe County, at 8:30 AM, and
+I'm looking for supporters willing to be present in the courtroom.
+
+Briefly: I lawfully owned a black-powder antique firearm — legal in Texas
+without a license. The officers on the scene agreed I had the legal right to own
+it and that I acted in self-defense, and they let me go. The only reason I face a
+jury is that a detective disagrees with the antique-firearm law I was following
+and calls it a "loophole." My attorneys, Roland Rivera and Mark Pryor, took the
+case for exactly that reason.
+
+If your organization offers court support, courtwatch, or participatory defense —
+or can connect me with people who do near Guadalupe County — I would be deeply
+grateful.
+
+You can reach me at help@bvtech.org (cc'd here) or my law firm at
+Jaiden.Dumas@coferconnelly.com.
+
+Thank you for reading. Please help me, or point me in the right direction.
+
+Respectfully,
+Jordan Polasek"""
+
+
+def _gun(task_id: str, name: str, to: str) -> dict:
+    return {"id": task_id, "to": to, "subject": _SUBJ_GUN,
+            "body": _BODY_GUN.format(name=name), "cc": list(_CC_SELF)}
+
+
+def _trial(task_id: str, name: str, to: str) -> dict:
+    return {"id": task_id, "to": to, "subject": _SUBJ_TRIAL,
+            "body": _BODY_TRIAL.format(name=name), "cc": list(_CC_SELF)}
+
+
 TASKS: list[dict] = [
     # WARM REFERRAL: Sadie Groberg (Lone Star Justice Alliance) replied and
     # referred us to the Grassroots Leadership Central Texas participatory
@@ -807,7 +883,10 @@ def tick(db: Session, now: datetime | None = None) -> dict:
     for task in pending:
         attempts[task["id"]] = attempts.get(task["id"], 0) + 1
         try:
-            send_fn(task["to"], task["subject"], task["body"])
+            if task.get("cc"):
+                send_fn(task["to"], task["subject"], task["body"], cc=task["cc"])
+            else:
+                send_fn(task["to"], task["subject"], task["body"])
             done[task["id"]] = now.date().isoformat()
             sent += 1
         except Exception:  # noqa: BLE001 — transport hiccup: retry next tick

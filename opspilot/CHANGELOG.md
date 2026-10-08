@@ -1,5 +1,11 @@
 # BVTech OpsPilot — Changelog
 
+## v1.90.0 — One-shot emails support CC (operator self-copy) (Oct 2026)
+- The M365 send path and the one-shot email runner now thread an optional CC
+  list, so a task can copy the operator (help@bvtech.org) on every send. Added
+  trial-outreach templates (gun-rights + court-support) that CC help@ by default.
+  Backward compatible — tasks without a cc behave exactly as before.
+
 ## v1.89.1 — OAuth credential guard (fixes Google "invalid_client") (Oct 2026)
 - A credential field holding placeholder/instruction text (e.g. "# paste
   GOOGLE_CLIENT_ID value again") no longer registers a broken Connect button —

@@ -6799,13 +6799,15 @@ def main():
             from app.services import oneshot_email as _os881
             _sent881: list = []
 
-            def _fake_send881(to, subject, body):
+            def _fake_send881(to, subject, body, cc=None):
+                _cc_seen881.append((to, tuple(cc or ())))
                 if to == "boom@example.com" and len(
                         [s for s in _sent881 if s[0] == "boom@example.com"]) < 1:
                     _sent881.append((to, "attempt"))
                     raise RuntimeError("transient transport error")
                 _sent881.append((to, subject))
 
+            _cc_seen881: list = []
             _orig_tasks881 = _os881.TASKS
             _orig_res881 = _os881._SEND_RESOLVER
             _os881.TASKS = [
@@ -6870,13 +6872,29 @@ def main():
                 # empty task list is a clean no-op too
                 _os881.TASKS = []
                 assert _os881.tick(_edb6)["reason"] == "no_tasks"
+                # v1.90 CC: a task's cc list is threaded to the send fn
+                (_edb6.query(_IC56).filter(_IC56.provider == "oneshot_email")
+                 .delete(synchronize_session=False)); _edb6.commit()
+                _cc_seen881.clear()
+                _os881._SEND_RESOLVER = lambda _db: (_fake_send881, "fake")
+                _os881.TASKS = [{"id": "cc-1", "to": "grp@example.com",
+                                 "subject": "s", "body": "b",
+                                 "cc": ["help@bvtech.org"]}]
+                _os881.tick(_edb6)
+                assert _cc_seen881[-1] == ("grp@example.com", ("help@bvtech.org",)), _cc_seen881
+                # the _gun/_trial builders stamp the cc + fill {name}
+                _gt = _os881._gun("g1", "Gun Owners of America", "x@goa.org")
+                assert _gt["cc"] == ["help@bvtech.org"] and "Gun Owners of America" in _gt["body"]
+                assert "April 26, 2027" in _gt["body"] and "Cofer & Connelly" in _gt["body"]
+                _tt = _os881._trial("t1", "Mano Amiga", "x@m.org")
+                assert _tt["cc"] == ["help@bvtech.org"] and "Guadalupe County" in _tt["body"]
             finally:
                 _os881.TASKS = _orig_tasks881
                 _os881._SEND_RESOLVER = _orig_res881
                 (_edb6.query(_IC56).filter(_IC56.provider == "oneshot_email")
                  .delete(synchronize_session=False)); _edb6.commit()
             print("one-shot emails: exactly-once per task id + retry-on-failure "
-                  "+ attempt cap + PER_TICK pacing + empty no-op OK")
+                  "+ attempt cap + PER_TICK pacing + CC threading + empty no-op OK")
             # 6) v1.58 REPLY WATCHER: hot lead flagged + sequence stopped, STOP
             #    honored automatically, bounce retired, watermark holds.
             from app.services import crm as _crm56
@@ -7178,7 +7196,7 @@ def main():
     assert _irc("GOCSPX-realsecretvalue12345") is True
     print("oauth credential guard: rejects placeholder/instruction text, accepts real creds OK")
 
-    print("\n=== OpsPilot v1.89.1 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.90.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
