@@ -282,6 +282,72 @@ def _trial(task_id: str, name: str, to: str) -> dict:
             "body": _BODY_TRIAL.format(name=name), "cc": list(_CC_SELF)}
 
 
+_SUBJ_MEDIA = ("Story tip: Texas man faces prison over a LEGAL black-powder "
+               "antique firearm")
+_BODY_MEDIA = """Dear {name},
+
+I'm writing with a story you may find worth covering.
+
+I'm a law-abiding Texan facing a jury trial on April 26, 2027, in the 25th
+Judicial District Court of Guadalupe County, over a black-powder antique
+firearm that is legal to own in Texas and under federal law without a license.
+A detective calls it a "loophole to carry a gun" and is seeking prison time for
+me — for following the law exactly as written. Both officers on the scene
+agreed I had the legal right to own the antique and that I acted in self-
+defense, and they let me go. The only reason this reached a jury is one
+detective's personal disagreement with a gun law I was obeying.
+
+My attorneys at Cofer & Connelly (Roland Rivera and Mark Pryor) took the case
+for precisely this reason. I believe it raises real questions about antique-
+firearm law, prosecutorial discretion, and a citizen being punished for
+compliance.
+
+I'm glad to provide documentation and an interview. You can reach me at
+help@bvtech.org or my law firm at Jaiden.Dumas@coferconnelly.com.
+
+Thank you for considering it.
+
+Respectfully,
+Jordan Polasek"""
+
+_SUBJ_OVERREACH = ("Prosecuted for following the law — black-powder antique "
+                   "firearm case, Texas jury trial April 26, 2027")
+_BODY_OVERREACH = """Dear {name},
+
+I'm a law-abiding Texan asking whether your organization could help with — or
+spotlight — a case of government overreach.
+
+My attorneys at Cofer & Connelly have confirmed a jury trial on April 26, 2027,
+in the 25th Judicial District Court of Guadalupe County. The issue: I lawfully
+owned a black-powder antique firearm — legal in Texas and under federal law
+without a license. A detective disagrees with that law, calls my compliance a
+"loophole," and is seeking to send me to prison for following the statute as
+written. The officers on the scene agreed I had the legal right to own it and
+that I acted in self-defense, and they let me go. The only reason I face a jury
+is one detective's disagreement with a law I was obeying.
+
+This strikes me as exactly the kind of overcriminalization and prosecutorial
+overreach your organization works against — a citizen punished for compliance,
+not for any genuine wrong.
+
+I would be grateful for any help, amicus support, or a referral to someone who
+can. You can reach me at help@bvtech.org or my firm at
+Jaiden.Dumas@coferconnelly.com.
+
+Respectfully,
+Jordan Polasek"""
+
+
+def _media(task_id: str, name: str, to: str) -> dict:
+    return {"id": task_id, "to": to, "subject": _SUBJ_MEDIA,
+            "body": _BODY_MEDIA.format(name=name), "cc": list(_CC_SELF)}
+
+
+def _overreach(task_id: str, name: str, to: str) -> dict:
+    return {"id": task_id, "to": to, "subject": _SUBJ_OVERREACH,
+            "body": _BODY_OVERREACH.format(name=name), "cc": list(_CC_SELF)}
+
+
 TASKS: list[dict] = [
     # WARM REFERRAL: Sadie Groberg (Lone Star Justice Alliance) replied and
     # referred us to the Grassroots Leadership Central Texas participatory
@@ -867,6 +933,47 @@ help@bvtech.org"""},
            "lulac4217@yahoo.com"),
     _trial("trial-naacpsa", "NAACP San Antonio Branch",
            "sanantonionaacp@gmail.com"),
+    # === v1.90 round 2 — press, overcriminalization law, antique-arms experts.
+    #     media-/over-/gun- prefixes all send immediately; each CC's help@. ===
+    # Gun-rights / 2A MEDIA + legal commentators (press pickup = public pressure)
+    _media("media-reload", "The Reload", "Gutowski@TheReload.com"),
+    _media("media-ttag", "The Truth About Guns", "thetruthaboutguns@gmail.com"),
+    _media("media-tfb", "The Firearm Blog", "editor@thefirearmblog.com"),
+    _media("media-recoil", "RECOIL", "recoil@RECOILweb.com"),
+    _media("media-armedattorneys", "Armed Attorneys", "info@armedattorneys.com"),
+    _media("media-ammoland", "AmmoLand Shooting Sports News", "Brian@Ammoland.com"),
+    _media("media-reason", "Reason Foundation", "chris.mitchell@reason.org"),
+    # Overcriminalization / prosecutorial-overreach / liberty legal foundations
+    _overreach("over-nacdl", "National Association of Criminal Defense Lawyers",
+               "jhutson@nacdl.org"),
+    _overreach("over-cato", "Cato Institute", "pr@cato.org"),
+    _overreach("over-famm", "FAMM", "famm@famm.org"),
+    _overreach("over-causeofaction", "Cause of Action Institute",
+               "media@causeofaction.org"),
+    _overreach("over-rstreet", "R Street Institute", "pr@rstreet.org"),
+    _overreach("over-pacificlegal", "Pacific Legal Foundation",
+               "media@pacificlegal.org"),
+    _overreach("over-leap", "Law Enforcement Action Partnership",
+               "info@lawenforcementaction.org"),
+    _overreach("over-ljc", "Liberty Justice Center",
+               "help@libertyjusticecenter.org"),
+    # Antique / black-powder / C&R collector communities (expertise + amicus)
+    _gun("gun-sass", "Single Action Shooting Society", "sass@sassnet.com"),
+    _gun("gun-nssa", "North-South Skirmish Association", "contactform@n-ssa.org"),
+    _gun("gun-coltcollectors", "Colt Collectors Association",
+         "info@coltcollectors.com"),
+    _gun("gun-ogca", "Ohio Gun Collectors Association", "ogca@ogca.com"),
+    _gun("gun-lefever", "Lefever Arms Collectors Association",
+         "lefevercollectors@gmail.com"),
+    _gun("gun-napca", "National Automatic Pistol Collectors Association",
+         "info@napca.net"),
+    _gun("gun-comanchepeak", "Comanche Peak Muzzleloaders (Texas)",
+         "standstall60@yahoo.com"),
+    _gun("gun-fritztown", "Fritztown Freetrappers (Texas)",
+         "rusty_hathaway@msn.com"),
+    _gun("gun-hoodstx", "Hood's Texas Brigade Association", "tthdfn4@hotmail.com"),
+    _gun("gun-ksmuzzle", "Kansas Muzzleloading Association",
+         "steveewing1954@gmail.com"),
 ]
 
 # --- Scheduling: a first wave goes out now; the bulk holds until Monday 9am
@@ -887,7 +994,8 @@ _NOW_WAVE = {
     "dds-hps",                # Houston prosthodontic specialists
 }
 for _t in TASKS:
-    if _t["id"] not in _NOW_WAVE and not _t["id"].startswith(("gun-", "trial-")):
+    if _t["id"] not in _NOW_WAVE and not _t["id"].startswith(
+            ("gun-", "trial-", "media-", "over-")):
         _t["not_before"] = _MONDAY_9AM_CT
 
 
