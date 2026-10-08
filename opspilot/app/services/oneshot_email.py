@@ -817,6 +817,56 @@ help@bvtech.org"""},
              "(Lewisville)", "info@villageperio.com"),
     _dentist("dds-genesis-fm", "Genesis Dental (Flower Mound)",
              "genesisdental4u@gmail.com"),
+    # === v1.90 TRIAL OUTREACH — jury trial Apr 26 2027, Guadalupe County.
+    #     Gun-rights groups (black-powder/antique angle) + court support.
+    #     Each CC's help@bvtech.org. Sends immediately (in _NOW_WAVE). ===
+    _gun("gun-fpc", "Firearms Policy Coalition", "potentialplaintiffs@fpchq.org"),
+    _gun("gun-saf", "Second Amendment Foundation", "lhill@saf.org"),
+    _gun("gun-acldn", "Armed Citizens' Legal Defense Network",
+         "info@armedcitizensnetwork.org"),
+    _gun("gun-uslawshield", "U.S. LawShield", "memberservices@uslawshield.com"),
+    _gun("gun-2alc", "Second Amendment Law Center", "info@2alc.org"),
+    _gun("gun-mslf", "Mountain States Legal Foundation", "contact@mslegal.org"),
+    _gun("gun-ccrkba", "Citizens Committee for the Right to Keep and Bear Arms",
+         "InformationRequest@ccrkba.org"),
+    _gun("gun-nagr", "National Association for Gun Rights", "info@gunrights.org"),
+    _gun("gun-jpfo", "Jews for the Preservation of Firearms Ownership",
+         "jpfo@jpfo.org"),
+    _gun("gun-naaga", "National African American Gun Association",
+         "President@naaga.co"),
+    _gun("gun-asa", "American Suppressor Association", "info@amsuppressor.com"),
+    _gun("gun-nmlra", "National Muzzle Loading Rifle Association",
+         "nmlra@nmlra.org"),
+    _gun("gun-cla", "Contemporary Longrifle Association", "cla@longrifle.com"),
+    _gun("gun-tgca", "Texas Gun Collectors Association", "TGCA.sect@gmail.com"),
+    _gun("gun-dallasarms", "Dallas Arms Collectors Association",
+         "Info@DallasArms.com"),
+    _gun("gun-freetrappers", "Texas Free Trappers / White Smoke Brigade",
+         "wolfbear@academicplanet.com"),
+    _gun("gun-txmuzzle", "Texas Muzzleloading Rifle Association",
+         "possumridge@yahoo.com"),
+    _gun("gun-dallasmlgc", "Dallas Muzzle Loading Gun Club",
+         "stevesells@sbcglobal.net"),
+    _gun("gun-txgunrights", "Texas Gun Rights", "info@texasgunrights.org"),
+    # Court support — best-fit for a Guadalupe County trial (trial-date update)
+    _trial("trial-manoamiga", "Mano Amiga", "ManoAmigaSM@gmail.com"),
+    _trial("trial-ctxpdh", "Central Texas Participatory Defense Hub",
+           "criminaljustice@grassrootsleadership.org"),
+    _trial("trial-rjc", "Restorative Justice Coalition",
+           "contact@restorativejusticecoalition.org"),
+    _trial("trial-txjailproject", "Texas Jail Project",
+           "help@texasjailproject.org"),
+    _trial("trial-tcrp", "Texas Civil Rights Project",
+           "criminallegal@texascivilrightsproject.org"),
+    _trial("trial-aclutx", "ACLU of Texas", "acluinfo@aclutx.org"),
+    _trial("trial-crisiscomal", "Crisis Center of Comal County",
+           "crisiscenter@crisiscenternb.org"),
+    _trial("trial-lulac682", "LULAC Council #682 (Seguin)",
+           "Lulac682Scholarship@gmail.com"),
+    _trial("trial-lulac4217", "LULAC Council #4217 (New Braunfels)",
+           "lulac4217@yahoo.com"),
+    _trial("trial-naacpsa", "NAACP San Antonio Branch",
+           "sanantonionaacp@gmail.com"),
 ]
 
 # --- Scheduling: a first wave goes out now; the bulk holds until Monday 9am
@@ -837,7 +887,7 @@ _NOW_WAVE = {
     "dds-hps",                # Houston prosthodontic specialists
 }
 for _t in TASKS:
-    if _t["id"] not in _NOW_WAVE:
+    if _t["id"] not in _NOW_WAVE and not _t["id"].startswith(("gun-", "trial-")):
         _t["not_before"] = _MONDAY_9AM_CT
 
 
