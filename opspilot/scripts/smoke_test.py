@@ -7196,7 +7196,62 @@ def main():
     assert _irc("GOCSPX-realsecretvalue12345") is True
     print("oauth credential guard: rejects placeholder/instruction text, accepts real creds OK")
 
-    print("\n=== OpsPilot v1.90.0 SMOKE TEST PASSED ===")
+    # ==== v1.91.0: self-healing GitLab token (auto-rotate before expiry) ====
+    from app.services import jp_site as _jph
+    from app.services import outbound as _obheal
+    from app.core.db import SessionLocal as _SLheal
+    import datetime as _dtjh
+    _jhdb = _SLheal()
+    _orig_http_jh, _orig_resolve_jh = _jph._HTTP, _obheal.resolve_send_fn
+    _obheal.resolve_send_fn = lambda db: (None, "test-no-send")  # never send real mail
+    try:
+        _jph.save_shared_token(_jhdb, "seed-token-1234567890")
+        _st = {"days": 200, "dead": False, "rotations": 0}
+
+        def _fake_http_jh(method, url, token, payload=None):
+            if _st["dead"]:
+                raise RuntimeError("GitLab 401: Unauthorized")
+            if "/personal_access_tokens/self/rotate" in url:
+                _st["rotations"] += 1
+                return {"token": "ROTATED-NEWTOKEN-9876543210",
+                        "expires_at": (_dtjh.date.today()
+                                       + _dtjh.timedelta(days=364)).isoformat()}
+            if url.endswith("/personal_access_tokens/self"):
+                return {"active": True, "name": "pulse", "expires_at":
+                        (_dtjh.date.today() + _dtjh.timedelta(days=_st["days"])).isoformat()}
+            if url.endswith("/api/v4/user"):
+                return {"username": "jordan"}
+            return {}   # project reachability checks
+        _jph._HTTP = _fake_http_jh
+        _tz = _dtjh.timezone.utc
+        # token_info computes days-left
+        _info = _jph.gitlab_token_info(_jhdb)
+        assert _info["ok"] and abs(_info["days_left"] - 200) <= 1, _info
+        # A) healthy + plenty of life -> NO rotation
+        _rA = _jph.token_self_heal(_jhdb, _dtjh.datetime(2030, 3, 1, 15, tzinfo=_tz))
+        assert _rA["ran"] and _rA["verify_ok"] and "rotated" not in _rA, _rA
+        assert _st["rotations"] == 0
+        # once/day guard
+        assert _jph.token_self_heal(_jhdb, _dtjh.datetime(2030, 3, 1, 16, tzinfo=_tz)
+                                    )["reason"] == "already_today"
+        # B) near expiry -> AUTO-ROTATE and the fresh token is stored everywhere
+        _st["days"] = 10
+        _rB = _jph.token_self_heal(_jhdb, _dtjh.datetime(2030, 3, 2, 15, tzinfo=_tz))
+        assert _rB.get("rotated", {}).get("ok") is True, _rB
+        assert _st["rotations"] == 1
+        assert _jph.get_config(_jhdb, "jp")["token"] == "ROTATED-NEWTOKEN-9876543210"
+        # C) dead token -> loud alert, no crash, no rotation attempt
+        _st["dead"] = True
+        _rC = _jph.token_self_heal(_jhdb, _dtjh.datetime(2030, 3, 3, 15, tzinfo=_tz))
+        assert _rC["verify_ok"] is False and _rC["action"] == "alerted_dead", _rC
+        assert _st["rotations"] == 1   # never tried to rotate a dead token
+    finally:
+        _jph._HTTP, _obheal.resolve_send_fn = _orig_http_jh, _orig_resolve_jh
+        _jhdb.close()
+    print("self-healing GitLab token: days-left info + near-expiry auto-rotate "
+          "(fresh token stored) + dead-token alert + once/day OK")
+
+    print("\n=== OpsPilot v1.91.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

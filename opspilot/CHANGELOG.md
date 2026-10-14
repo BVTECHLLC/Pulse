@@ -1,5 +1,19 @@
 # BVTech OpsPilot — Changelog
 
+## v1.91.0 — Self-healing GitLab token: paste once, never break again (Oct 2026)
+- **The recurring "GitLab 401" outage is now self-healing.** GitLab personal
+  access tokens expire, and when they do every site stops posting. GitLab
+  supports token SELF-ROTATION, so the daily heartbeat now (before any
+  publishing) checks the token's remaining life and, once it's within 21 days
+  of expiry, auto-rotates it — GitLab mints a fresh 364-day token, Pulse stores
+  it everywhere, and posting never breaks. The operator pastes a token exactly
+  once (scope: api); from then on it renews hands-free.
+- **Loud, specific alerts (never silent).** If the token is already dead and
+  can't self-rotate, Pulse emails help@ and raises a dashboard alert with the
+  exact one-paste fix. On a successful auto-rotation it emails a confirmation so
+  the operator knows it happened. New: jp_site.gitlab_token_info /
+  rotate_gitlab_token / token_self_heal.
+
 ## v1.90.0 — One-shot emails support CC (operator self-copy) (Oct 2026)
 - The M365 send path and the one-shot email runner now thread an optional CC
   list, so a task can copy the operator (help@bvtech.org) on every send. Added

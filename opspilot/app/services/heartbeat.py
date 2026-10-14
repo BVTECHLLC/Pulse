@@ -233,6 +233,15 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
     #        (bvtech.org, jordanpolasek.com, LinkedIn, Google Business). Failures
     #        notify + retry next tick; success is the only thing that marks a
     #        channel done. Off by default.
+    # 13.549) v1.91 SELF-HEALING GitLab token — BEFORE any publishing: keep the
+    #         token alive hands-free (auto-rotate before expiry; loud alert if
+    #         dead). This is what stops the recurring "GitLab 401" outages.
+    try:
+        from . import jp_site as _jp_heal
+        _jp_heal.token_self_heal(db, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
     from . import content_autopilot
     content = {"ran": False}
     try:

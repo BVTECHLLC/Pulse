@@ -277,8 +277,146 @@ def save_shared_token(db: Session, token: str) -> dict:
     return {"jp": configured(db, "jp"), "bvtech": configured(db, "bvtech")}
 
 
+# --------------------------------------------------------------------------- #
+# v1.91 SELF-HEALING GitLab token — paste once, Pulse keeps it alive forever.
+#
+# GitLab personal access tokens expire, and when they do EVERY site stops
+# posting with 401 Unauthorized. GitLab supports SELF-ROTATION: a token with
+# the `api` scope can mint its own replacement before it expires. So the daily
+# heartbeat checks the token's remaining life and, well before expiry, rotates
+# it automatically and stores the fresh one everywhere. The operator pastes a
+# token exactly once; from then on it renews hands-free. If the token is already
+# dead (can't self-rotate), Pulse raises a LOUD, specific alert with the fix.
+# --------------------------------------------------------------------------- #
+TOKEN_ROTATE_THRESHOLD_DAYS = 21     # rotate when <= this many days remain
+TOKEN_ROTATE_EXPIRES_DAYS = 364      # new token life (GitLab caps PATs at 365)
+
+
+def gitlab_token_info(db: Session) -> dict:
+    """What GitLab says about the token we're using: active? expiry? Returns
+    {ok, active, expires_at, days_left, name}."""
+    cfg = get_config(db, "jp")
+    token = cfg["token"]
+    if not token:
+        return {"ok": False, "detail": "No GitLab token stored."}
+    try:
+        info = _HTTP("GET", f"{cfg['base']}/api/v4/personal_access_tokens/self", token)
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "detail": str(e)[:160]}
+    exp = info.get("expires_at")
+    days_left = None
+    if exp:
+        try:
+            from datetime import date
+            y, m, d = (int(x) for x in str(exp).split("-")[:3])
+            days_left = (date(y, m, d) - date.today()).days
+        except Exception:  # noqa: BLE001
+            pass
+    return {"ok": True, "active": bool(info.get("active", True)),
+            "expires_at": exp, "days_left": days_left, "name": info.get("name")}
+
+
+def rotate_gitlab_token(db: Session, *, expires_days: int = TOKEN_ROTATE_EXPIRES_DAYS) -> dict:
+    """Self-rotate the GitLab token: GitLab mints a fresh one, revokes the old,
+    and we store the new everywhere the resolver looks. Returns {ok, expires_at,
+    detail}. Requires the current token to be valid and have the `api` scope."""
+    cfg = get_config(db, "jp")
+    token = cfg["token"]
+    if not token:
+        return {"ok": False, "detail": "No GitLab token to rotate."}
+    from datetime import date, timedelta
+    new_exp = (date.today() + timedelta(days=expires_days)).isoformat()
+    try:
+        out = _HTTP("POST", f"{cfg['base']}/api/v4/personal_access_tokens/self/"
+                    f"rotate?expires_at={new_exp}", token)
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "detail": f"rotate failed: {e}"[:180]}
+    new_token = out.get("token")
+    if not new_token:
+        return {"ok": False, "detail": "rotate returned no token"}
+    save_shared_token(db, str(new_token))
+    for prov, nm in (("jp_site", "JordanPolasek.com Site"),
+                     ("bvtech_site", "BVTech.org Site"),
+                     ("txplants_site", "TX-Plants.com Site")):
+        conn = secure_config.get_platform(db, prov)
+        raw = dict((conn.config if conn else None) or {})
+        raw["token"] = str(new_token)
+        secure_config.upsert_platform(db, prov, nm, "Publishing", raw)
+    return {"ok": True, "expires_at": out.get("expires_at") or new_exp,
+            "detail": "rotated"}
+
+
+def _token_alert(db: Session, msg: str, *, warn: bool = True) -> None:
+    """Loud, never-silent: a Notification + best-effort email to the shop inbox."""
+    try:
+        from ..models import Notification
+        db.add(Notification(client_id=None, target_user_id=None, kind="system",
+                            severity="warning" if warn else "info",
+                            message=msg[:1000]))
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+    try:
+        from . import outbound
+        fn, _ = outbound.resolve_send_fn(db)
+        if fn:
+            fn("help@bvtech.org", "Pulse — GitLab publishing token", msg)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def token_self_heal(db: Session, now: "datetime | None" = None) -> dict:
+    """Daily heartbeat step. Keeps the GitLab token alive hands-free:
+      * valid + expiring soon  -> auto-rotate, confirm by email.
+      * valid + plenty of life -> nothing to do.
+      * dead/revoked           -> LOUD alert with the exact one-paste fix.
+    Stamped once/day; never raises."""
+    now = now or datetime.now(timezone.utc)
+    conn = secure_config.get_platform(db, "gitlab")
+    raw = dict((conn.config if conn else None) or {})
+    today = now.date().isoformat()
+    if raw.get("heal_on") == today:
+        return {"ran": False, "reason": "already_today"}
+    out: dict = {"ran": True}
+    v = verify_token(db)
+    out["verify_ok"] = v.get("ok")
+    if not v.get("ok"):
+        # Only re-alert once/day (the stamp below handles that).
+        _token_alert(db, "🔴 ACTION NEEDED — your GitLab publishing token is "
+                     "DEAD, so bvtech.org, jordanpolasek.com and tx-plants.com "
+                     "have stopped posting. " + str(v.get("detail", "")) +
+                     " Fix: create a new token at gitlab.com (scope: api) and "
+                     "paste it once — Pulse will then auto-rotate it before it "
+                     "ever expires again.")
+        out["action"] = "alerted_dead"
+    else:
+        info = gitlab_token_info(db)
+        dl = info.get("days_left")
+        out["days_left"] = dl
+        if dl is not None and dl <= TOKEN_ROTATE_THRESHOLD_DAYS:
+            rot = rotate_gitlab_token(db)
+            out["rotated"] = rot
+            if rot.get("ok"):
+                _token_alert(db, f"✅ Pulse auto-rotated your GitLab token — a "
+                             f"fresh one is now good through {rot['expires_at']}. "
+                             "No action needed; your sites keep posting.",
+                             warn=False)
+            else:
+                _token_alert(db, f"🟠 Heads up — your GitLab token expires in "
+                             f"{dl} day(s) and auto-rotation failed "
+                             f"({rot.get('detail')}). Paste a fresh token "
+                             "(scope: api) soon to avoid an outage.")
+        else:
+            out["note"] = ("healthy" if dl is None else f"{dl}d left")
+    # stamp once/day WITHOUT touching the token (partial-update keeps it)
+    secure_config.upsert_platform(db, "gitlab", "GitLab", "Publishing",
+                                  {"heal_on": today})
+    return out
+
+
 def configured(db: Session, site: str = "jp") -> bool:
     return get_config(db, site)["configured"]
+
 
 
 def _proj_url(cfg: dict) -> str:
