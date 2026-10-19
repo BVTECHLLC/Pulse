@@ -1,5 +1,28 @@
 # BVTech OpsPilot — Changelog
 
+## v1.92.0 — Un-freeze the blogs: listing repair runs free + self-heals daily (Oct 2026)
+- **Root cause of the frozen blogs.** New posts were going live at their URLs
+  but never appearing in the blog index — jordanpolasek.com's homepage, tx-
+  plants.com's Field Notes and bvtech.org/blog all drifted ~2 months behind
+  while the daily report still read "OK". The culprit: when a listing page's
+  custom card markup can't be cloned deterministically, Pulse falls back to an
+  LLM to clone the card — but that fallback was gated on an **Anthropic** key.
+  Turning Claude OFF to keep the bill low silently killed it, so those pages
+  stopped updating. bvtech.org/news kept working only because its markup IS
+  deterministically parseable.
+- **The fix: the repair fallback now runs on the FREE LLM (Groq).** ai.complete
+  already routes single-shot calls to the free model first; only the gate was
+  wrong. It now accepts EITHER engine, so listing repair never again depends on
+  a paid balance — at zero Claude cost.
+- **New daily self-heal + alarm (jp_site.listings_self_heal).** Once a day the
+  heartbeat backfills every configured site's blog index with any published-
+  but-unlisted post (sync_listings) and, if it had to fix anything, raises a
+  NOT-silent notice naming the sites and counts — because needing a backfill
+  means same-day injection was failing. This closes the "looks OK but isn't"
+  gap that let the drift pile up unnoticed.
+- Added scripts/diag_listings.py — a read-only probe that shows, per site/page,
+  whether each listing recognizes its own card markup (deterministic vs LLM).
+
 ## v1.91.0 — Self-healing GitLab token: paste once, never break again (Oct 2026)
 - **The recurring "GitLab 401" outage is now self-healing.** GitLab personal
   access tokens expire, and when they do every site stops posting. GitLab

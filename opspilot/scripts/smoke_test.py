@@ -7251,7 +7251,80 @@ def main():
     print("self-healing GitLab token: days-left info + near-expiry auto-rotate "
           "(fresh token stored) + dead-token alert + once/day OK")
 
-    print("\n=== OpsPilot v1.91.0 SMOKE TEST PASSED ===")
+    # ==== v1.92.0: listing-repair fallback runs on the FREE LLM (root-cause of
+    #      the frozen blogs) + daily listings self-heal backfill/alarm ====
+    from app.services import jp_site as _jp92
+    from app.services import ai as _ai92
+    # A page whose card markup the deterministic finder canNOT parse: a post
+    # link with NO heading anywhere near it and no recognizable card container.
+    # An EXISTING (different) post link sitting in markup with no heading near
+    # it, so the deterministic finder can't build a card -> AI fallback needed.
+    _page92 = ('<html><body><main>'
+               '<p>just a link <a href="/some-old-article/">read</a> in prose</p>'
+               '</main></body></html>')
+    _o_en, _o_fe, _o_cp = _ai92.enabled, _ai92.free_llm_enabled, _ai92.complete
+    try:
+        # Simulate: Anthropic OFF (cost-saving), free LLM (Groq) ON.
+        _ai92.enabled = lambda: False
+        _ai92.free_llm_enabled = lambda: True
+        # Before v1.92 the gate was `ai.enabled()` only -> this returned
+        # unchanged, which is exactly how the blogs froze. Now the free LLM is
+        # accepted. The model clones a card naming an anchor that exists verbatim.
+        def _fake_complete92(system, user, *, smart=False, max_tokens=1024):
+            return ('ANCHOR: <p>just a link <a href="/some-old-article/">\n'
+                    'CARD_START\n'
+                    '<article><h3>Fresh Title Here</h3>'
+                    '<a href="/my-brand-new-post/">read</a></article>\n'
+                    'CARD_END')
+        _ai92.complete = _fake_complete92
+        _new92, _chg92 = _jp92._inject_listing(
+            _page92, title="Fresh Title Here", url="/my-brand-new-post/",
+            excerpt="x", date_str="October 19, 2026", style="slug-folder")
+        assert _chg92 is True, "free-LLM listing repair should inject the card"
+        assert "Fresh Title Here" in _new92 and "/my-brand-new-post/" in _new92
+        # And with BOTH engines off, it must still no-op safely (never raise).
+        _ai92.free_llm_enabled = lambda: False
+        _n2, _c2 = _jp92._inject_listing(
+            _page92, title="Fresh Title Here", url="/my-brand-new-post/",
+            excerpt="x", date_str="October 19, 2026", style="slug-folder")
+        assert _c2 is False, "no engine -> unchanged, no crash"
+    finally:
+        _ai92.enabled, _ai92.free_llm_enabled, _ai92.complete = _o_en, _o_fe, _o_cp
+    print("listing repair fallback accepts the FREE LLM (frozen-blog root cause) "
+          "+ safe no-op when every engine is off OK")
+
+    # listings_self_heal: once/day, backfills every configured site, alerts only
+    # when it actually had to fix something; stamp blocks a second run same day.
+    _jhdb2 = _SLheal()
+    _o_sync, _o_cfg, _o_alert = _jp92.sync_listings, _jp92.get_config, _jp92._listing_alert
+    import datetime as _dt92
+    _alerts92 = []
+    try:
+        _jp92.get_config = lambda db, site="jp": {"configured": True, "style": "blog-file"}
+        # jp had 2 orphaned posts; the others were already in sync.
+        _jp92.sync_listings = lambda db, site: (
+            {"ok": True, "added": [{"x": 1}, {"x": 2}]} if site == "jp"
+            else {"ok": True, "added": []})
+        _jp92._listing_alert = lambda db, msg: _alerts92.append(msg)
+        _tz92 = _dt92.timezone.utc
+        _rh = _jp92.listings_self_heal(_jhdb2, _dt92.datetime(2031, 5, 1, 15, tzinfo=_tz92))
+        assert _rh["ran"] and _rh["sites"]["jp"]["added"] == 2, _rh
+        assert _rh.get("healed") and len(_alerts92) == 1, (_rh, _alerts92)
+        # once/day guard — no second alert
+        _rh2 = _jp92.listings_self_heal(_jhdb2, _dt92.datetime(2031, 5, 1, 18, tzinfo=_tz92))
+        assert _rh2["ran"] is False and _rh2["reason"] == "already_today", _rh2
+        assert len(_alerts92) == 1, "must not re-alert the same day"
+        # next day, nothing orphaned -> runs but no alert
+        _jp92.sync_listings = lambda db, site: {"ok": True, "added": []}
+        _rh3 = _jp92.listings_self_heal(_jhdb2, _dt92.datetime(2031, 5, 2, 15, tzinfo=_tz92))
+        assert _rh3["ran"] and "healed" not in _rh3 and len(_alerts92) == 1, _rh3
+    finally:
+        _jp92.sync_listings, _jp92.get_config, _jp92._listing_alert = _o_sync, _o_cfg, _o_alert
+        _jhdb2.close()
+    print("daily listings self-heal: backfills all sites, alerts only on real "
+          "fixes, once/day stamp, quiet when nothing orphaned OK")
+
+    print("\n=== OpsPilot v1.92.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

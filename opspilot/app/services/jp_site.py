@@ -414,6 +414,73 @@ def token_self_heal(db: Session, now: "datetime | None" = None) -> dict:
     return out
 
 
+def listings_self_heal(db: Session, now: "datetime | None" = None) -> dict:
+    """Daily heartbeat step (v1.92). BACKFILL + ALARM for frozen blog listings.
+
+    The daily publisher injects each new post's card into its site's listing
+    pages. When that injection silently fails — a page whose custom markup the
+    deterministic finder can't clone, with the LLM repair fallback unavailable —
+    posts go live at their URLs but never appear in the blog index. That's
+    exactly how jordanpolasek.com, tx-plants.com and bvtech.org/blog drifted ~2
+    months behind while the daily report still read 'OK'.
+
+    This runs sync_listings for every configured site once/day: it injects any
+    published-but-unlisted post into the /blog archive pages (capped homepage
+    previews are left to the daily publisher) and purges the edge cache. If it
+    had to add ANYTHING, that means same-day injection has been failing, so it
+    raises a NOT-silent notice naming the sites and counts. Never raises."""
+    now = now or datetime.now(timezone.utc)
+    conn = secure_config.get_platform(db, "listings_meta")
+    raw = dict((conn.config if conn else None) or {})
+    today = now.date().isoformat()
+    if raw.get("heal_on") == today:
+        return {"ran": False, "reason": "already_today"}
+    out: dict = {"ran": True, "sites": {}}
+    healed: list[str] = []
+    for site in ("jp", "bvtech", "txplants"):
+        try:
+            if not get_config(db, site)["configured"]:
+                out["sites"][site] = {"skipped": "not configured"}
+                continue
+            res = sync_listings(db, site)
+            n = len(res.get("added") or [])
+            out["sites"][site] = {"ok": res.get("ok"), "added": n,
+                                  "error": res.get("error")}
+            if n:
+                healed.append(f"{SITES[site]['site']} (+{n})")
+        except Exception as e:  # noqa: BLE001
+            db.rollback()
+            out["sites"][site] = {"error": str(e)[:200]}
+    if healed:
+        _listing_alert(db, "🩹 Pulse backfilled blog posts that had gone live but "
+                       "were missing from the site index: " + ", ".join(healed) +
+                       ". Same-day listing injection had been failing — now "
+                       "repaired, and this check runs every day so it can't "
+                       "silently pile up again.")
+        out["healed"] = healed
+    secure_config.upsert_platform(db, "listings_meta", "Blog Listings",
+                                  "Publishing", {"heal_on": today})
+    return out
+
+
+def _listing_alert(db: Session, msg: str) -> None:
+    """Never-silent notice for the listings self-heal: Notification + email."""
+    try:
+        from ..models import Notification
+        db.add(Notification(client_id=None, target_user_id=None, kind="system",
+                            severity="info", message=msg[:1000]))
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+    try:
+        from . import outbound
+        fn, _ = outbound.resolve_send_fn(db)
+        if fn:
+            fn("help@bvtech.org", "Pulse — blog listings backfilled", msg)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def configured(db: Session, site: str = "jp") -> bool:
     return get_config(db, site)["configured"]
 
@@ -631,15 +698,24 @@ def _link_pat_for(style: str, file_dir: str = "blog") -> str:
 def _ai_inject_listing(html_text: str, *, title: str, url: str, excerpt: str,
                        date_str: str, link_pat: str) -> tuple[str, bool]:
     """v1.39 last resort: when the deterministic card-finder can't parse the
-    page's markup, have Claude clone the page's OWN newest card for the new
+    page's markup, have an LLM clone the page's OWN newest card for the new
     post. The model only AUTHORS the card + names an anchor; the splice itself
     is deterministic and validated hard (the anchor must exist verbatim near
     the first post link, the card must link the new URL and carry its title) —
-    a wrong answer changes NOTHING, exactly like an unrecognized listing today."""
+    a wrong answer changes NOTHING, exactly like an unrecognized listing today.
+
+    v1.92: this runs on the FREE LLM (Groq) when one is configured — ai.complete
+    routes single-shot calls there first. Gating this on ai.enabled() (an
+    Anthropic key) was a silent trap: turning Claude OFF to save cost killed
+    this fallback, which froze every listing whose custom markup the
+    deterministic finder can't clone (jordanpolasek.com's homepage, tx-plants'
+    Field Notes, bvtech.org's /blog/) while /news/ — deterministically parseable
+    — kept updating. Accept EITHER engine so the repair never depends on a paid
+    balance again."""
     import html as _html
     import re as _re
     from . import ai as ai_svc
-    if not ai_svc.enabled():
+    if not (ai_svc.enabled() or ai_svc.free_llm_enabled()):
         return html_text, False
     m = _re.search(link_pat, html_text)
     if not m:

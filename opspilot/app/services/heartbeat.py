@@ -271,6 +271,18 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         db.rollback()
 
+    # 13.557) v1.92 LISTINGS SELF-HEAL — once/day, backfill any published-but-
+    #         unlisted posts into every site's blog index and alert if it had to.
+    #         This is the safety net for the silent-injection-failure class of
+    #         bug that let jordanpolasek.com / tx-plants.com / bvtech.org/blog
+    #         drift ~2 months behind while the daily report still read OK.
+    listings_heal = {"ran": False}
+    try:
+        from . import jp_site as _jp_lh
+        listings_heal = _jp_lh.listings_self_heal(db, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
     # 13.56) jordanpolasek.com build verification (v1.20) — watch the deploy
     #        pipeline for commits Pulse pushed; auto-revert + notify on failure.
     from . import jp_site
@@ -371,4 +383,6 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
                          ("ran", "mode", "reason", "sent", "eligible") if k in outb},
             "oneshot_email": {k: oneshot.get(k) for k in
                               ("ran", "reason", "sent", "failed") if k in oneshot},
-            "jp_builds_checked": len(jp_verified)}
+            "jp_builds_checked": len(jp_verified),
+            "listings_heal": {"ran": listings_heal.get("ran"),
+                              "healed": listings_heal.get("healed", [])}}
