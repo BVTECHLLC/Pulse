@@ -444,10 +444,16 @@ def listings_self_heal(db: Session, now: "datetime | None" = None) -> dict:
                 continue
             res = sync_listings(db, site)
             n = len(res.get("added") or [])
-            out["sites"][site] = {"ok": res.get("ok"), "added": n,
-                                  "error": res.get("error")}
-            if n:
-                healed.append(f"{SITES[site]['site']} (+{n})")
+            # v1.93: after backfilling missing posts, re-stamp every card's date
+            # to its post's true date (fixes the ALL-CAPS frozen-date class that
+            # the narrow repair pass missed). Idempotent; a no-op when correct.
+            red = redate_listings(db, site)
+            rd = len(red.get("restamped") or [])
+            out["sites"][site] = {"ok": res.get("ok") and red.get("ok"),
+                                  "added": n, "restamped": rd,
+                                  "error": res.get("error") or red.get("error")}
+            if n or rd:
+                healed.append(f"{SITES[site]['site']} (+{n} listed, {rd} re-dated)")
         except Exception as e:  # noqa: BLE001
             db.rollback()
             out["sites"][site] = {"error": str(e)[:200]}
@@ -568,6 +574,71 @@ def listings_freshness_audit(db: Session, now: "datetime | None" = None) -> dict
     return out
 
 
+def redate_listings(db: Session, site: str) -> dict:
+    """v1.93 ROBUST RE-DATER. Walk EVERY card on EVERY listing page (homepage
+    previews included) and re-stamp its visible date to its post's TRUE date.
+
+    Unlike the old repair pass this does not depend on post ordering, a 40-post
+    cap, or skipping capped pages — it reads the cards that are actually on the
+    page, looks each one's post up by slug, and swaps the date in place with the
+    shared _swap_card_date (any case, ISO, or year-less). One commit per changed
+    page + a cache purge. Idempotent: a card already showing the right date is
+    left untouched, so re-running is a no-op. Never raises."""
+    meta = SITES[site]
+    cfg = get_config(db, site)
+    if not cfg["configured"]:
+        return {"ok": False, "error": f"{meta['site']} not connected (GitLab token needed)"}
+    if detect_layout(cfg)["format"] == "markdown":
+        return {"ok": True, "restamped": [], "detail": "generated site - its build owns dates"}
+    style = cfg["style"]
+    fdir = cfg.get("file_dir", "blog")
+    lp_pat = _link_pat_for(style, fdir)
+    try:
+        ops = _repo_ops(cfg)
+        date_cache: dict[str, str] = {}
+        restamped: list[str] = []
+        purge: list[str] = []
+        for lp in meta.get("index_paths", ()):
+            h = _fetch_file(cfg, lp)
+            if not h:
+                continue
+            out_h = h
+            n_page = 0
+            # Process cards right-to-left so each in-place splice leaves the
+            # offsets of the not-yet-processed (lower) cards valid.
+            for a, b in sorted(_all_card_spans(h, lp_pat), reverse=True):
+                card = out_h[a:b]
+                lm = re.search(lp_pat, card)
+                if not lm:
+                    continue
+                slug = _slug_of(lm.group(0)[6:-1])         # strip href=" … "
+                if slug == "index" or any(slug.startswith(p) for p in _PAGE_SLUGS):
+                    continue
+                if slug not in date_cache:
+                    ppath = (f"{fdir}/{slug}.html" if style == "blog-file"
+                             else f"{slug}/index.html")
+                    date_cache[slug] = _post_date_label(cfg, ppath, _fetch_file(cfg, ppath) or "")
+                dlbl = date_cache[slug]
+                if not dlbl:
+                    continue                                # unknown true date -> leave it
+                new_card, nd = _swap_card_date(card, dlbl)
+                if nd and new_card != card:
+                    out_h = out_h[:a] + new_card + out_h[b:]
+                    n_page += 1
+            if n_page and out_h != h:
+                ops["commit"](lp, out_h, f"blog: re-stamp {n_page} card date(s) to "
+                              f"true post dates (via Pulse)", True)
+                restamped.append(f"{lp} ({n_page})")
+                purge.append(f"{meta['site']}/{lp}".replace("/index.html", "/"))
+        if purge:
+            from . import cloudflare
+            cloudflare.purge_urls(db, site, purge + [meta["site"] + "/"])
+        return {"ok": True, "restamped": restamped}
+    except Exception as e:  # noqa: BLE001
+        db.rollback()
+        return {"ok": False, "error": str(e)[:300]}
+
+
 def configured(db: Session, site: str = "jp") -> bool:
     return get_config(db, site)["configured"]
 
@@ -670,6 +741,45 @@ def _find_card_at(html_text: str, link_pos: int) -> tuple[int, int] | None:
     return p.best
 
 
+def _swap_card_date(card: str, date_str: str) -> tuple[str, int]:
+    """Replace the visible date in a single card with `date_str` ("October 19,
+    2026"), matching the card's own case and format. Handles full dates after a
+    '>' or a middot separator in ANY case (Titlecase or ALL-CAPS), ISO dates,
+    and — only if no full date matched — a year-less badge ("· August 22").
+    Returns (new_card, n_swapped). Shared by _rewrite_card (new posts) and
+    redate_listings (re-stamping an existing card to its post's true date)."""
+    import re as _re
+    if not date_str:
+        return card, 0
+    n = 0
+    _mid = r"·|&middot;|&#0*183;|&#x0*[bB]7;|&bull;"
+
+    def _dated(m):
+        return m.group(1) + (date_str.upper() if m.group(2).split()[0].isupper()
+                             else date_str) + m.group(3)
+    card, _n = _re.subn(r"(>\s*)([A-Za-z]+ \d{1,2}, \d{4})(\s*(?:<|" + _mid + r"))",
+                        _dated, card, count=1); n += _n
+    card, _n = _re.subn(r"(>\s*)(\d{4}-\d{2}-\d{2})(\s*<)",
+                        lambda m: m.group(1) + date_str + m.group(3), card, count=1); n += _n
+    card, _n = _re.subn(r"((?:" + _mid + r")\s*)([A-Za-z]+ \d{1,2}, \d{4})(\s*)",
+                        lambda m: m.group(1) + (date_str.upper()
+                                                if m.group(2).split()[0].isupper()
+                                                else date_str) + m.group(3),
+                        card, count=1); n += _n
+    if not n:
+        # Year-less badge ("NEW · JUNE 22", "· August 22") — swap month+day,
+        # keep the badge text. Only when NO full date matched (a card with a
+        # full date has no bare month-day, so this can't hit prose).
+        _md = date_str.rsplit(",", 1)[0]          # "October 19, 2026" -> "October 19"
+        card, _n = _re.subn(r"\b(JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|"
+                            r"SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER) \d{1,2}\b(?!, \d{4})",
+                            _md.upper(), card, count=1); n += _n
+        card, _n = _re.subn(r"\b(January|February|March|April|May|June|July|August|"
+                            r"September|October|November|December) \d{1,2}\b(?!, \d{4})",
+                            _md, card, count=1); n += _n
+    return card, n
+
+
 def _rewrite_card(card: str, *, title: str, url: str, excerpt: str,
                   date_str: str, link_pat: str) -> str:
     """Turn a cloned card into the new post's card (links, heading, excerpt, date)."""
@@ -700,49 +810,10 @@ def _rewrite_card(card: str, *, title: str, url: str, excerpt: str,
         card = _re.sub(r"(<p[^>]*>)([^<]{40,}?)(</p>)",
                        lambda m: m.group(1) + _SENT + m.group(3),
                        card, count=1)
-    if date_str:      # v1.41: empty date_str means "leave the card's date alone"
-        n_dated = 0
-        # A dateline's separator can be a tag (<), a literal middot (\u00b7), or ANY
-        # HTML-entity form of it. v1.79: the v8 tx-plants / bvtech "Field Notes"
-        # cards write the ENTITY (`&middot;`), which the old literal-\u00b7-only
-        # pattern missed \u2014 so every cloned card kept the template's frozen date
-        # ("July 28, 2026 &middot; Field Notes") and the sites looked stale.
-        _mid = r"\u00b7|&middot;|&#0*183;|&#x0*[bB]7;|&bull;"
-        # v1.93: match the month name in ANY case ([A-Za-z]+, not [A-Z][a-z]+)
-        # AND tolerate whitespace after the '>' \u2014 bvtech's news cards write the
-        # date ALL-CAPS with a leading space ("> AUGUST 16, 2026"), which the old
-        # Titlecase/no-space patterns silently skipped, so every cloned card kept
-        # the template's frozen August date and the whole blog looked stuck.
-        # The replacement mirrors the original's case (uppercase stays uppercase).
-        def _dated(m):
-            orig = m.group(2)
-            month = orig.split()[0]
-            d = date_str.upper() if month.isupper() else date_str
-            return m.group(1) + d + m.group(3)
-        card, _n = _re.subn(r"(>\s*)([A-Za-z]+ \d{1,2}, \d{4})(\s*(?:<|" + _mid + r"))",
-                            _dated, card, count=1)
-        n_dated += _n
-        card, _n = _re.subn(r"(>\s*)(\d{4}-\d{2}-\d{2})(\s*<)",
-                            lambda m: m.group(1) + date_str + m.group(3), card, count=1)
-        n_dated += _n
-        card, _n = _re.subn(r"((?:" + _mid + r")\s*)([A-Za-z]+ \d{1,2}, \d{4})",
-                            lambda m: m.group(1) + (date_str.upper()
-                                                    if m.group(2).split()[0].isupper()
-                                                    else date_str), card, count=1)
-        n_dated += _n
-        # v1.40: badge-style dates without a year ("NEW · JUNE 22 WEEKLY REPORT",
-        # "June 22") also cloned verbatim — swap month+day, keep the badge text.
-        # v1.47.6: only when NO full date matched above - a card that already
-        # shows a full date has no year-less badge, so this loose pattern could
-        # only ever hit innocent prose (a month-day inside a title or caption).
-        if not n_dated:
-            _md = date_str.rsplit(",", 1)[0]          # "July 14, 2026" -> "July 14"
-            card = _re.sub(r"\b(JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|"
-                           r"OCTOBER|NOVEMBER|DECEMBER) \d{1,2}\b(?!, \d{4})",
-                           _md.upper(), card, count=1)
-            card = _re.sub(r"\b(January|February|March|April|May|June|July|August|September|"
-                           r"October|November|December) \d{1,2}\b(?!, \d{4})",
-                           _md, card, count=1)
+    # v1.93: all date-swap logic (any-case, ISO, year-less badge) now lives
+    # in the shared _swap_card_date so re-stamping an existing card to its
+    # post's true date uses the exact same rules. Empty date_str leaves it.
+    card, _ = _swap_card_date(card, date_str)
     return card.replace(_SENT, _html.escape(excerpt))
 
 
@@ -1562,11 +1633,12 @@ def _post_date_from_html(page_html: str):
             return _date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
         except ValueError:
             return None
-    m = re.search(r">([A-Z][a-z]+) (\d{1,2}), (\d{4})<", page_html)
-    if m and m.group(1) in _MONTH_NAMES:
+    # v1.93: any-case month (post pages can carry the date ALL-CAPS too), and
+    # tolerate whitespace after '>'.
+    m = re.search(r">\s*([A-Za-z]+) (\d{1,2}), (\d{4})\s*<", page_html)
+    if m and m.group(1).lower() in _MONTHS:
         try:
-            return _date(int(m.group(3)), _MONTH_NAMES.index(m.group(1)) + 1,
-                         int(m.group(2)))
+            return _date(int(m.group(3)), _MONTHS[m.group(1).lower()], int(m.group(2)))
         except ValueError:
             return None
     return None

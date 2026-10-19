@@ -1,5 +1,22 @@
 # BVTech OpsPilot — Changelog
 
+## v1.93.1 — Robust re-dater: fix the ~2-month backlog of mis-dated cards (Oct 2026)
+- The v1.93.0 fix corrected FUTURE posts, but the existing backlog stayed stale
+  because the old repair pass processed posts in alphabetical order, capped at
+  40, and skipped capped homepage previews — so bvtech's news cards (and jp's
+  homepage) were never reached. Confirmed on the box: tx-plants re-dated fine,
+  bvtech + jp did not.
+- **New jp_site.redate_listings(db, site):** walks EVERY card on EVERY listing
+  page (homepage previews included), looks each post up by slug, and re-stamps
+  its visible date to the post's TRUE date via the shared `_swap_card_date`
+  (any case, ISO, or year-less). One commit per changed page + cache purge.
+  Idempotent — a card already showing the right date is left alone. The daily
+  self-heal now runs it after the backfill, and it's exposed for a manual
+  catch-up run.
+- Factored all date-swap logic into `_swap_card_date` (used by both new-post
+  cloning and re-stamping) and made `_post_date_from_html` read any-case dates,
+  so a post page that prints its date ALL-CAPS still yields a true date.
+
 ## v1.93.0 — The REAL frozen-blog cause: ALL-CAPS dates never got re-stamped (Oct 2026)
 - **Found the actual freeze.** A box diagnostic showed injection was fine
   everywhere (every page: cards recognized, newest post listed) — yet bvtech.org

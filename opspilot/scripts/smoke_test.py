@@ -7396,6 +7396,50 @@ def main():
     print("freshness tripwire: parses ALL-CAPS/Titlecase/ISO top-card dates, "
           "alarms on stale sites, quiet on fresh, once/day OK")
 
+    # redate_listings: walk every card, re-stamp its date to the post's true
+    # date, commit once per changed page. Here a listing with one stale ALL-CAPS
+    # card must be re-stamped to the post's real (October) date.
+    from app.services import jp_site as _jpR
+    from app.services import cloudflare as _cfR
+    _listing = ('<div class="blog-grid">'
+                '<a href="/blog/fresh-post.html" class="blog-card">'
+                '<div class="meta"> AUGUST 16, 2026</div><h3>Fresh</h3><p>x body text here</p></a>'
+                '<a href="/blog/old-post.html" class="blog-card">'
+                '<div class="meta"> JANUARY 1, 2020</div><h3>Old</h3><p>y body text here</p></a>'
+                '</div>')
+    _postpages = {"blog/fresh-post.html": '<time datetime="2026-10-05">Oct 5</time>',
+                  "blog/old-post.html": '<time datetime="2020-01-01">Jan 1</time>'}
+    _committed = {}
+    _oR = {k: getattr(_jpR, k) for k in ("get_config", "detect_layout", "_repo_ops", "_fetch_file")}
+    _oPurge = _cfR.purge_urls
+    try:
+        _jpR.get_config = lambda db, site="jp": {"configured": True, "style": "blog-file",
+                                                 "file_dir": "blog"}
+        _jpR.detect_layout = lambda cfg: {"format": "html"}
+        _jpR._repo_ops = lambda cfg: {"commit": (lambda path, content, msg, upd:
+                                                 _committed.__setitem__(path, content) or "sha1")}
+        _jpR._fetch_file = lambda cfg, path: (_listing if path == "blog/index.html"
+                                              else _postpages.get(path))
+        _cfR.purge_urls = lambda db, site, urls: {"ok": True}
+        _rr = _jpR.redate_listings(db=_SLheal(), site="txplants")
+        assert _rr["ok"] and _rr["restamped"], _rr
+        _got = _committed.get("blog/index.html", "")
+        assert "OCTOBER 5, 2026" in _got, _got        # fresh card re-stamped (case kept)
+        assert "AUGUST 16, 2026" not in _got, _got     # stale date gone
+        assert "JANUARY 1, 2020" in _got, _got         # old post keeps its true date
+        # idempotent: a second pass over the now-correct page changes nothing.
+        _committed.clear()
+        _jpR._fetch_file = lambda cfg, path: (_got if path == "blog/index.html"
+                                              else _postpages.get(path))
+        _rr2 = _jpR.redate_listings(db=_SLheal(), site="txplants")
+        assert not _rr2.get("restamped"), _rr2
+    finally:
+        for k, v in _oR.items():
+            setattr(_jpR, k, v)
+        _cfR.purge_urls = _oPurge
+    print("redate_listings: re-stamps every card to its post's true date "
+          "(case preserved), leaves correct cards alone, idempotent OK")
+
     print("\n=== OpsPilot v1.93.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
