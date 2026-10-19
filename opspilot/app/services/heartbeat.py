@@ -277,9 +277,18 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
     #         bug that let jordanpolasek.com / tx-plants.com / bvtech.org/blog
     #         drift ~2 months behind while the daily report still read OK.
     listings_heal = {"ran": False}
+    listings_fresh = {"ran": False}
     try:
         from . import jp_site as _jp_lh
         listings_heal = _jp_lh.listings_self_heal(db, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+    # 13.558) v1.93 FRESHNESS TRIPWIRE — read-only daily check that alarms if any
+    #         site's newest VISIBLE post is older than it should be, whatever the
+    #         cause. The independent safety net behind the self-heal.
+    try:
+        from . import jp_site as _jp_fr
+        listings_fresh = _jp_fr.listings_freshness_audit(db, now)
     except Exception:  # noqa: BLE001
         db.rollback()
 
@@ -385,4 +394,6 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
                               ("ran", "reason", "sent", "failed") if k in oneshot},
             "jp_builds_checked": len(jp_verified),
             "listings_heal": {"ran": listings_heal.get("ran"),
-                              "healed": listings_heal.get("healed", [])}}
+                              "healed": listings_heal.get("healed", [])},
+            "listings_fresh": {"ran": listings_fresh.get("ran"),
+                               "stale": listings_fresh.get("stale", [])}}

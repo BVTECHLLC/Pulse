@@ -7324,7 +7324,79 @@ def main():
     print("daily listings self-heal: backfills all sites, alerts only on real "
           "fixes, once/day stamp, quiet when nothing orphaned OK")
 
-    print("\n=== OpsPilot v1.92.0 SMOKE TEST PASSED ===")
+    # ==== v1.93.0: cloned-card date swap handles ALL-CAPS dates + leading
+    #      space (bvtech news cards froze every listing at "AUGUST 16, 2026") ====
+    from app.services.jp_site import _rewrite_card as _rc93, _link_pat_for as _lp93
+    _pat93 = _lp93("blog-file", "blog")
+    # ALL-CAPS month with a leading space after '>' — the exact bvtech markup.
+    _upper = ('<a href="https://bvtech.org/blog/old-octob.html" class="blog-card">'
+              '<div class="meta" style="color:#EB6F24"> AUGUST 16, 2026</div>'
+              '<h3>Old</h3><p>Boost soil health.</p></a>')
+    _o93 = _rc93(_upper, title="New", url="/blog/new.html", excerpt="fresh",
+                 date_str="October 19, 2026", link_pat=_pat93)
+    assert "OCTOBER 19, 2026" in _o93 and "AUGUST" not in _o93, _o93
+    # Titlecase with &middot; (txplants/jp) must STILL swap correctly.
+    _title = ('<a href="/blog/old.html" class="blog-card"><div class="bc-date">'
+              'October 16, 2026 &middot; Field Notes</div><h3>Old</h3>'
+              '<p>Boost soil health in 10 minutes a day.</p></a>')
+    _o93b = _rc93(_title, title="New", url="/blog/new2.html", excerpt="fresh",
+                  date_str="October 19, 2026", link_pat=_pat93)
+    assert "October 19, 2026" in _o93b and "October 16" not in _o93b, _o93b
+    # The repair detector must now SEE an all-caps date as a date (so it repairs).
+    assert re.search(r"(>\s*|·\s*)[A-Za-z]+ \d{1,2}, \d{4}", "> AUGUST 16, 2026"), \
+        "repair detector must recognize ALL-CAPS dates"
+    print("cloned-card date swap: ALL-CAPS + leading-space dates re-stamped "
+          "(case preserved), Titlecase still works, repair detector case-aware OK")
+
+    # ==== v1.93.0: freshness tripwire — alarms when a site's newest VISIBLE
+    #      post is older than LISTING_STALE_DAYS, whatever the cause ====
+    from app.services import jp_site as _jp93f
+    import datetime as _dt93
+    # _newest_card_date parses the top card's date in every real format.
+    _grid = ('<div class="posts"><a href="/blog/a.html" class="blog-card">'
+             '<div class="meta"> %s</div><h3>Top</h3><p>x</p></a>'
+             '<a href="/blog/b.html" class="blog-card"><div class="meta">January 1, 2020</div>'
+             '<h3>Old</h3><p>y</p></a></div>')
+    _pat93f = _jp93f._link_pat_for("blog-file", "blog")
+    assert _jp93f._newest_card_date(_grid % "OCTOBER 18, 2026", _pat93f) == _dt93.date(2026, 10, 18)
+    assert _jp93f._newest_card_date(_grid % "October 18, 2026", _pat93f) == _dt93.date(2026, 10, 18)
+    assert _jp93f._newest_card_date(_grid % "2026-10-18", _pat93f) == _dt93.date(2026, 10, 18)
+    # audit: stale site -> alarm; fresh -> quiet; once/day stamp. get_config
+    # records which site is being read so _newest_card_date can answer per-site.
+    _jhdb3 = _SLheal()
+    _o_cfgf, _o_fetchf, _o_ncd, _o_alertf = (_jp93f.get_config, _jp93f._fetch_file,
+                                             _jp93f._newest_card_date, _jp93f._listing_alert)
+    _alerts93 = []
+    try:
+        _state = {"site": None}
+        def _cfg93(db, site="jp"):
+            _state["site"] = site
+            return {"configured": True, "style": "blog-file", "file_dir": "blog"}
+        # Far-future dates so a real heartbeat tick in the suite can't have
+        # stamped fresh_on for this test's day (same guard the token test uses).
+        _fresh = {"jp": _dt93.date(2031, 3, 1),           # ~65 days stale
+                  "bvtech": _dt93.date(2031, 5, 4),       # fresh (1d)
+                  "txplants": _dt93.date(2031, 5, 3)}     # fresh (2d)
+        _jp93f.get_config = _cfg93
+        _jp93f._fetch_file = lambda cfg, path: "PAGE"
+        _jp93f._newest_card_date = lambda h, pat: _fresh[_state["site"]]
+        _jp93f._listing_alert = lambda db, msg, **k: _alerts93.append(msg)
+        _tzf = _dt93.timezone.utc
+        _ra = _jp93f.listings_freshness_audit(_jhdb3, _dt93.datetime(2031, 5, 5, 15, tzinfo=_tzf))
+        assert _ra["ran"] and _ra["sites"]["jp"]["age_days"] >= 50, _ra
+        assert _ra["sites"]["bvtech"]["age_days"] <= 5, _ra
+        assert _ra.get("stale") and len(_alerts93) == 1, (_ra, _alerts93)
+        # once/day
+        _ra2 = _jp93f.listings_freshness_audit(_jhdb3, _dt93.datetime(2031, 5, 5, 18, tzinfo=_tzf))
+        assert _ra2["ran"] is False and len(_alerts93) == 1, _ra2
+    finally:
+        (_jp93f.get_config, _jp93f._fetch_file, _jp93f._newest_card_date,
+         _jp93f._listing_alert) = _o_cfgf, _o_fetchf, _o_ncd, _o_alertf
+        _jhdb3.close()
+    print("freshness tripwire: parses ALL-CAPS/Titlecase/ISO top-card dates, "
+          "alarms on stale sites, quiet on fresh, once/day OK")
+
+    print("\n=== OpsPilot v1.93.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

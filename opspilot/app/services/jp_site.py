@@ -463,12 +463,13 @@ def listings_self_heal(db: Session, now: "datetime | None" = None) -> dict:
     return out
 
 
-def _listing_alert(db: Session, msg: str) -> None:
+def _listing_alert(db: Session, msg: str, *, subject: str = "Pulse — blog listings backfilled",
+                   warn: bool = False) -> None:
     """Never-silent notice for the listings self-heal: Notification + email."""
     try:
         from ..models import Notification
         db.add(Notification(client_id=None, target_user_id=None, kind="system",
-                            severity="info", message=msg[:1000]))
+                            severity="warning" if warn else "info", message=msg[:1000]))
         db.commit()
     except Exception:  # noqa: BLE001
         db.rollback()
@@ -476,9 +477,95 @@ def _listing_alert(db: Session, msg: str) -> None:
         from . import outbound
         fn, _ = outbound.resolve_send_fn(db)
         if fn:
-            fn("help@bvtech.org", "Pulse — blog listings backfilled", msg)
+            fn("help@bvtech.org", subject, msg)
     except Exception:  # noqa: BLE001
         pass
+
+
+_MONTHS = {m.lower(): i for i, m in enumerate(
+    ("January", "February", "March", "April", "May", "June", "July", "August",
+     "September", "October", "November", "December"), start=1)}
+# How many days a site's newest VISIBLE post may age before the tripwire fires.
+# Posts are daily; this tolerates a weekend/stagger gap but catches a real stall.
+LISTING_STALE_DAYS = 5
+
+
+def _newest_card_date(h: str, link_pat: str):
+    """The date shown on the TOP (newest) card of a listing page, as a date, or
+    None. Reads what a VISITOR sees — the whole point of the freshness audit is
+    to judge the page by its visible dates, not by what's in the repo."""
+    import datetime as _dt
+    spans = _all_card_spans(h, link_pat)
+    if not spans:
+        return None
+    card = h[spans[0][0]:spans[0][1]]
+    m = re.search(r"([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})", card)
+    if m and m.group(1).lower() in _MONTHS:
+        try:
+            return _dt.date(int(m.group(3)), _MONTHS[m.group(1).lower()], int(m.group(2)))
+        except ValueError:
+            pass
+    m = re.search(r"(\d{4})-(\d{2})-(\d{2})", card)
+    if m:
+        try:
+            return _dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            pass
+    return None
+
+
+def listings_freshness_audit(db: Session, now: "datetime | None" = None) -> dict:
+    """Daily TRIPWIRE (v1.93). Independent of why a blog might stall, this reads
+    the newest VISIBLE card date on every site's listing pages and alarms if any
+    site's freshest post is older than LISTING_STALE_DAYS. It catches every
+    failure mode at once — publishing stopped, a date-stamp bug (the ALL-CAPS
+    freeze), a silent injection miss — so 'the report says OK but the blog is
+    old' can never go unnoticed again. Read-only; never raises; once/day."""
+    now = now or datetime.now(timezone.utc)
+    conn = secure_config.get_platform(db, "listings_meta")
+    raw = dict((conn.config if conn else None) or {})
+    today = now.date().isoformat()
+    if raw.get("fresh_on") == today:
+        return {"ran": False, "reason": "already_today"}
+    today_d = biz_now(now).date()
+    out: dict = {"ran": True, "sites": {}}
+    stale: list[str] = []
+    for site in ("jp", "bvtech", "txplants"):
+        try:
+            cfg = get_config(db, site)
+            if not cfg["configured"]:
+                out["sites"][site] = {"skipped": "not configured"}
+                continue
+            meta = SITES[site]
+            lp_pat = _link_pat_for(cfg["style"], cfg.get("file_dir", "blog"))
+            newest = None
+            for lp in meta.get("index_paths", ()):
+                h = _fetch_file(cfg, lp)
+                if not h:
+                    continue
+                d = _newest_card_date(h, lp_pat)
+                if d and (newest is None or d > newest):
+                    newest = d
+            if newest is None:
+                out["sites"][site] = {"newest": None}
+                continue
+            age = (today_d - newest).days
+            out["sites"][site] = {"newest": newest.isoformat(), "age_days": age}
+            if age > LISTING_STALE_DAYS:
+                stale.append(f"{meta['site']} (newest {newest.isoformat()}, {age}d old)")
+        except Exception as e:  # noqa: BLE001
+            db.rollback()
+            out["sites"][site] = {"error": str(e)[:200]}
+    if stale:
+        _listing_alert(db, "⚠️ A site blog looks STALE — the newest post visitors "
+                       "can see is older than it should be: " + "; ".join(stale) +
+                       ". The daily publisher and/or listing injection may be "
+                       "failing for that site; check the content autopilot.",
+                       subject="Pulse — blog freshness alert", warn=True)
+        out["stale"] = stale
+    secure_config.upsert_platform(db, "listings_meta", "Blog Listings",
+                                  "Publishing", {"fresh_on": today})
+    return out
 
 
 def configured(db: Session, site: str = "jp") -> bool:
@@ -621,14 +708,27 @@ def _rewrite_card(card: str, *, title: str, url: str, excerpt: str,
         # pattern missed \u2014 so every cloned card kept the template's frozen date
         # ("July 28, 2026 &middot; Field Notes") and the sites looked stale.
         _mid = r"\u00b7|&middot;|&#0*183;|&#x0*[bB]7;|&bull;"
-        card, _n = _re.subn(r"(>)([A-Z][a-z]+ \d{1,2}, \d{4})(\s*(?:<|" + _mid + r"))",
+        # v1.93: match the month name in ANY case ([A-Za-z]+, not [A-Z][a-z]+)
+        # AND tolerate whitespace after the '>' \u2014 bvtech's news cards write the
+        # date ALL-CAPS with a leading space ("> AUGUST 16, 2026"), which the old
+        # Titlecase/no-space patterns silently skipped, so every cloned card kept
+        # the template's frozen August date and the whole blog looked stuck.
+        # The replacement mirrors the original's case (uppercase stays uppercase).
+        def _dated(m):
+            orig = m.group(2)
+            month = orig.split()[0]
+            d = date_str.upper() if month.isupper() else date_str
+            return m.group(1) + d + m.group(3)
+        card, _n = _re.subn(r"(>\s*)([A-Za-z]+ \d{1,2}, \d{4})(\s*(?:<|" + _mid + r"))",
+                            _dated, card, count=1)
+        n_dated += _n
+        card, _n = _re.subn(r"(>\s*)(\d{4}-\d{2}-\d{2})(\s*<)",
                             lambda m: m.group(1) + date_str + m.group(3), card, count=1)
         n_dated += _n
-        card, _n = _re.subn(r"(>)(\d{4}-\d{2}-\d{2})(<)",
-                            lambda m: m.group(1) + date_str + m.group(3), card, count=1)
-        n_dated += _n
-        card, _n = _re.subn(r"((?:" + _mid + r")\s*)([A-Z][a-z]+ \d{1,2}, \d{4})",
-                            lambda m: m.group(1) + date_str, card, count=1)
+        card, _n = _re.subn(r"((?:" + _mid + r")\s*)([A-Za-z]+ \d{1,2}, \d{4})",
+                            lambda m: m.group(1) + (date_str.upper()
+                                                    if m.group(2).split()[0].isupper()
+                                                    else date_str), card, count=1)
         n_dated += _n
         # v1.40: badge-style dates without a year ("NEW · JUNE 22 WEEKLY REPORT",
         # "June 22") also cloned verbatim — swap month+day, keep the badge text.
@@ -1285,8 +1385,12 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
                 # v1.44: a card can have the RIGHT excerpt but the WRONG date
                 # (every JP card said "July 14" after the flood era) — repair
                 # whenever the visible date disagrees with the commit date too.
-                date_ok = (not date_lbl or date_lbl in card
-                           or not re.search(r"(>|\u00b7\s*)[A-Z][a-z]+ \d{1,2}, \d{4}",
+                # v1.93: detect the visible date in ANY case ([A-Za-z]+) and
+                # accept an upper-cased copy of the true date as already-correct,
+                # so ALL-CAPS cards ("AUGUST 16, 2026") are both recognized as
+                # wrong AND left alone once repaired (no re-commit churn).
+                date_ok = (not date_lbl or date_lbl in card or date_lbl.upper() in card
+                           or not re.search(r"(>\s*|\u00b7\s*)[A-Za-z]+ \d{1,2}, \d{4}",
                                             card))
                 if ex_ok and date_ok:
                     continue              # card already tells the truth

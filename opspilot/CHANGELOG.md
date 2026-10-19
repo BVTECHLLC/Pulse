@@ -1,5 +1,28 @@
 # BVTech OpsPilot — Changelog
 
+## v1.93.0 — The REAL frozen-blog cause: ALL-CAPS dates never got re-stamped (Oct 2026)
+- **Found the actual freeze.** A box diagnostic showed injection was fine
+  everywhere (every page: cards recognized, newest post listed) — yet bvtech.org
+  rendered an **October** post with the date **"AUGUST 16, 2026"**. The cloned-
+  card date-swap in `_rewrite_card` only matched Titlecase months with no
+  leading space (`[A-Z][a-z]+`, `(>)…`). bvtech's news cards write the date
+  ALL-CAPS with a leading space (`> AUGUST 16, 2026`), so the swap silently
+  skipped them and every cloned card kept the template's frozen August date —
+  the blog *looked* two months stale even though posts shipped daily. tx-plants
+  (Titlecase `&middot;` cards) swapped fine, which is why only it stayed current.
+- **Fix:** the date patterns now match months in ANY case and tolerate
+  whitespace after `>`, and the replacement mirrors the original's case
+  (uppercase stays uppercase). The repair pass's "is the date already right?"
+  detector was Titlecase-only too, so it thought the stale ALL-CAPS cards were
+  fine and never repaired them — now case-aware, so the daily self-heal re-dates
+  the ~2-month backlog automatically.
+- **New freshness tripwire (jp_site.listings_freshness_audit).** Independent of
+  cause, a daily read-only check parses the newest VISIBLE card date on every
+  site's listing pages and emails + flags help@ if any site's freshest post is
+  older than 5 days. Publishing stops, a date bug, a silent injection miss — any
+  of them now trips one alarm, so "report says OK but the blog is old" can't
+  recur.
+
 ## v1.92.0 — Un-freeze the blogs: listing repair runs free + self-heals daily (Oct 2026)
 - **Root cause of the frozen blogs.** New posts were going live at their URLs
   but never appearing in the blog index — jordanpolasek.com's homepage, tx-
