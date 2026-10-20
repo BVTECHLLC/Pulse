@@ -574,16 +574,33 @@ def listings_freshness_audit(db: Session, now: "datetime | None" = None) -> dict
     return out
 
 
-def redate_listings(db: Session, site: str) -> dict:
-    """v1.93 ROBUST RE-DATER. Walk EVERY card on EVERY listing page (homepage
-    previews included) and re-stamp its visible date to its post's TRUE date.
+def _clusters_of(spans: list, gap: int = 2500) -> list:
+    """Group card spans into sections by proximity — a homepage may hold a small
+    featured strip plus the big archive grid. Cards within `gap` chars of the
+    previous one are the same section."""
+    if not spans:
+        return []
+    spans = sorted(spans)
+    out = [[spans[0]]]
+    for sp in spans[1:]:
+        if sp[0] - out[-1][-1][1] < gap:
+            out[-1].append(sp)
+        else:
+            out.append([sp])
+    return out
 
-    Unlike the old repair pass this does not depend on post ordering, a 40-post
-    cap, or skipping capped pages — it reads the cards that are actually on the
-    page, looks each one's post up by slug, and swaps the date in place with the
-    shared _swap_card_date (any case, ISO, or year-less). One commit per changed
-    page + a cache purge. Idempotent: a card already showing the right date is
-    left untouched, so re-running is a no-op. Never raises."""
+
+def redate_listings(db: Session, site: str) -> dict:
+    """v1.93.2 ROBUST RE-DATER + RE-ORDERER. For every card on every listing
+    page (homepage previews included): re-stamp its visible date to the post's
+    TRUE date and put the cards newest-first.
+
+    True date comes from _true_post_date (title-embedded date → page date →
+    NEWEST commit), so the rename-poisoned first-commit date can't stamp a post
+    months early (bvtech news cards carry their real date in the title). Within
+    each card section the cards are then sorted newest-first, which fixes the
+    jumbled order re-dating alone leaves behind. One commit per changed page +
+    cache purge. Idempotent; never raises."""
     meta = SITES[site]
     cfg = get_config(db, site)
     if not cfg["configured"]:
@@ -595,7 +612,7 @@ def redate_listings(db: Session, site: str) -> dict:
     lp_pat = _link_pat_for(style, fdir)
     try:
         ops = _repo_ops(cfg)
-        date_cache: dict[str, str] = {}
+        date_cache: dict = {}
         restamped: list[str] = []
         purge: list[str] = []
         for lp in meta.get("index_paths", ()):
@@ -603,32 +620,40 @@ def redate_listings(db: Session, site: str) -> dict:
             if not h:
                 continue
             out_h = h
-            n_page = 0
-            # Process cards right-to-left so each in-place splice leaves the
-            # offsets of the not-yet-processed (lower) cards valid.
-            for a, b in sorted(_all_card_spans(h, lp_pat), reverse=True):
-                card = out_h[a:b]
-                lm = re.search(lp_pat, card)
-                if not lm:
-                    continue
-                slug = _slug_of(lm.group(0)[6:-1])         # strip href=" … "
-                if slug == "index" or any(slug.startswith(p) for p in _PAGE_SLUGS):
-                    continue
-                if slug not in date_cache:
-                    ppath = (f"{fdir}/{slug}.html" if style == "blog-file"
-                             else f"{slug}/index.html")
-                    date_cache[slug] = _post_date_label(cfg, ppath, _fetch_file(cfg, ppath) or "")
-                dlbl = date_cache[slug]
-                if not dlbl:
-                    continue                                # unknown true date -> leave it
-                new_card, nd = _swap_card_date(card, dlbl)
-                if nd and new_card != card:
-                    out_h = out_h[:a] + new_card + out_h[b:]
-                    n_page += 1
-            if n_page and out_h != h:
-                ops["commit"](lp, out_h, f"blog: re-stamp {n_page} card date(s) to "
-                              f"true post dates (via Pulse)", True)
-                restamped.append(f"{lp} ({n_page})")
+            changed = 0
+            # Rebuild each section in place, right-to-left so earlier offsets
+            # stay valid as higher regions are spliced.
+            for cluster in sorted(_clusters_of(_all_card_spans(h, lp_pat)), reverse=True):
+                entries = []          # (date_or_None, card_html) in page order
+                for a, b in cluster:
+                    card = h[a:b]
+                    lm = re.search(lp_pat, card)
+                    slug = _slug_of(lm.group(0)[6:-1]) if lm else ""
+                    if not slug or slug == "index" or any(
+                            slug.startswith(p) for p in _PAGE_SLUGS):
+                        entries.append((None, card))
+                        continue
+                    d = _true_post_date(cfg, card, slug, style, fdir, date_cache)
+                    if d:
+                        card2, _ = _swap_card_date(
+                            card, f"{_MONTH_NAMES[d.month - 1]} {d.day}, {d.year}")
+                        entries.append((d, card2))
+                    else:
+                        entries.append((None, card))
+                # Re-order newest-first only when EVERY card in the section has a
+                # known date (never shuffle undated cards into the wrong place).
+                ordered = entries
+                if entries and all(d for d, _ in entries):
+                    ordered = sorted(entries, key=lambda e: e[0], reverse=True)
+                region_a, region_b = cluster[0][0], cluster[-1][1]
+                new_region = "\n".join(c for _, c in ordered)
+                if new_region != h[region_a:region_b]:
+                    out_h = out_h[:region_a] + new_region + out_h[region_b:]
+                    changed += 1
+            if changed and out_h != h:
+                ops["commit"](lp, out_h, "blog: re-date + re-order cards to true "
+                              "post dates, newest-first (via Pulse)", True)
+                restamped.append(f"{lp} ({changed} section(s))")
                 purge.append(f"{meta['site']}/{lp}".replace("/index.html", "/"))
         if purge:
             from . import cloudflare
@@ -1622,6 +1647,52 @@ def _promote_featured(home: str, *, url: str, title: str, date_lbl: str,
                r"\1<span>CISA KEV</span><span>daily briefing</span>\2",
                f, count=1, flags=re.S)
     return home[:m.start()] + f + home[m.end():], True
+
+
+def _date_from_text(s: str):
+    """Parse the first "Month D, YYYY" (any case) in a string -> date | None.
+    Used to read a date embedded in a card's own TITLE (bvtech news cards end
+    with "… — October 17, 2026", the authoritative publish date)."""
+    from datetime import date as _date
+    m = re.search(r"([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})", s or "")
+    if m and m.group(1).lower() in _MONTHS:
+        try:
+            return _date(int(m.group(3)), _MONTHS[m.group(1).lower()], int(m.group(2)))
+        except ValueError:
+            return None
+    return None
+
+
+def _true_post_date(cfg: dict, card: str, slug: str, style: str, fdir: str,
+                    cache: dict):
+    """The most reliable publish date for a post, as datetime.date | None.
+    Priority: (1) a date embedded in the card's own title/heading, (2) the post
+    page's machine/visible date, (3) the NEWEST commit that touched the file
+    (the oldest is rename-poisoned on GitLab and stamps months-early dates).
+    Cached per slug so a page of 99 cards does a bounded number of lookups."""
+    from datetime import datetime as _dtm
+    # (1) title date — free, and exact for cards that print their own date.
+    t = re.search(r"<h[1-6][^>]*>(.*?)</h[1-6]>", card, re.S)
+    if t:
+        d = _date_from_text(re.sub(r"<[^>]+>", " ", t.group(1)))
+        if d:
+            return d
+    if slug in cache:
+        return cache[slug]
+    d = None
+    ppath = f"{fdir}/{slug}.html" if style == "blog-file" else f"{slug}/index.html"
+    page = _fetch_file(cfg, ppath)
+    if page:
+        d = _post_date_from_html(page)           # (2) page's own date
+    if d is None:                                 # (3) NEWEST commit, not oldest
+        try:
+            _old, newest = _commit_span(cfg, ppath)
+            if newest:
+                d = _dtm.fromisoformat(newest.replace("Z", "+00:00")).date()
+        except Exception:  # noqa: BLE001
+            d = None
+    cache[slug] = d
+    return d
 
 
 def _post_date_from_html(page_html: str):

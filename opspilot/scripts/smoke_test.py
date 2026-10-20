@@ -7440,7 +7440,42 @@ def main():
     print("redate_listings: re-stamps every card to its post's true date "
           "(case preserved), leaves correct cards alone, idempotent OK")
 
-    print("\n=== OpsPilot v1.93.0 SMOKE TEST PASSED ===")
+    # redate uses the TITLE-embedded date (bvtech news: "— October 17, 2026")
+    # over the rename-poisoned first commit, and re-orders cards newest-first.
+    def _bvcard(slug, metadate, titledate):
+        return ('<a href="https://bvtech.org/blog/%s.html" class="blog-card">'
+                '<div class="meta"> %s</div><h3>BVTech News — KEV — %s</h3>'
+                '<p>body text here now</p></a>' % (slug, metadate, titledate))
+    _bvpage = ('<div class="blog-grid">'
+               + _bvcard("a", "AUGUST 16, 2026", "October 15, 2026")
+               + _bvcard("b", "AUGUST 16, 2026", "October 17, 2026")
+               + _bvcard("c", "AUGUST 16, 2026", "October 16, 2026") + '</div>')
+    _bvcommit = {}
+    _oR2 = {k: getattr(_jpR, k) for k in ("get_config", "detect_layout", "_repo_ops", "_fetch_file")}
+    _oPurge2 = _cfR.purge_urls
+    try:
+        _jpR.get_config = lambda db, site="jp": {"configured": True, "style": "blog-file",
+                                                 "file_dir": "blog"}
+        _jpR.detect_layout = lambda cfg: {"format": "html"}
+        _jpR._repo_ops = lambda cfg: {"commit": (lambda p, c, m, u:
+                                                 _bvcommit.__setitem__(p, c) or "sha")}
+        # Post pages return None -> the ONLY date source is the title.
+        _jpR._fetch_file = lambda cfg, path: (_bvpage if path == "blog/index.html" else None)
+        _cfR.purge_urls = lambda db, site, urls: {"ok": True}
+        _rb = _jpR.redate_listings(db=_SLheal(), site="txplants")
+        assert _rb["ok"] and _rb["restamped"], _rb
+        _bo = _bvcommit.get("blog/index.html", "")
+        _seq = re.findall(r'<div class="meta"> ([A-Z]+ \d+, \d+)</div>', _bo)
+        assert _seq == ["OCTOBER 17, 2026", "OCTOBER 16, 2026", "OCTOBER 15, 2026"], _seq
+        assert "AUGUST 16, 2026" not in _bo
+    finally:
+        for k, v in _oR2.items():
+            setattr(_jpR, k, v)
+        _cfR.purge_urls = _oPurge2
+    print("redate from TITLE date (beats poisoned first-commit) + newest-first "
+          "re-order OK")
+
+    print("\n=== OpsPilot v1.93.2 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

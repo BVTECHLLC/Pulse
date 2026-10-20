@@ -1,5 +1,20 @@
 # BVTech OpsPilot — Changelog
 
+## v1.93.2 — Re-dater: read the TITLE date + put cards newest-first (Oct 2026)
+- The v1.93.1 re-dater got its date from `_post_date_label`, which for bvtech
+  news posts (whose pages carry NO machine date) fell back to GitLab's
+  rename-poisoned FIRST-commit date — stamping the whole /blog archive "April 5,
+  2026". Meanwhile the correct date sits right in each card's title
+  ("BVTech News — … — October 17, 2026").
+- **New `_true_post_date`:** title-embedded date → post-page date → NEWEST
+  commit (never the poisoned oldest). So bvtech's archive now re-dates to the
+  real October dates, and jp (whose pages DO carry a date) keeps working.
+- **Cards are now re-ordered newest-first** within each section — fixes the
+  jumbled jp order that re-dating alone left (Oct 15,14,19,18,17 → 19,18,17,…).
+  Re-ordering only happens when every card in a section has a known date, so an
+  undated card is never shuffled out of place. Sections are detected by
+  proximity, so a featured strip is never mixed into the archive grid.
+
 ## v1.93.1 — Robust re-dater: fix the ~2-month backlog of mis-dated cards (Oct 2026)
 - The v1.93.0 fix corrected FUTURE posts, but the existing backlog stayed stale
   because the old repair pass processed posts in alphabetical order, capped at
