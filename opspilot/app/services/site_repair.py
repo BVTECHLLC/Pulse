@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-REPAIR_EPOCH = "1.99.0"          # bump to re-run the one-time repair after a future fix
+REPAIR_EPOCH = "1.100.0"         # bump to re-run the one-time repair after a future fix
 MARKER = '<p class="meta">By '
 _PROVIDER = "site_repair"
 _lock = threading.Lock()
@@ -103,6 +103,129 @@ def repair_posts(db: Session, site: str = "bvtech", batch: int = 25) -> dict:
             "examples": fixed[:5]}
 
 
+def _page_title(page: str) -> str:
+    h1 = re.search(r"<h1[^>]*>(.*?)</h1>", page, re.S)
+    if h1:
+        return _html.unescape(re.sub(r"<[^>]+>", "", h1.group(1)).strip())
+    t = re.search(r"<title>(.*?)</title>", page, re.S)
+    return _html.unescape(t.group(1).split(" | ")[0].strip()) if t else ""
+
+
+def _page_date(page: str):
+    from datetime import date
+    m = re.search(r'"datePublished":\s*"(\d{4})-(\d{2})-(\d{2})', page)
+    if m:
+        try:
+            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            return None
+    return None
+
+
+def regenerate_posts(db: Session, site: str = "bvtech", batch: int = 25) -> dict:
+    """v1.100: rebuild pages whose body was NEVER inserted. bvtech.org posts were
+    cloned from an April 26 article whose markup had no content wrapper, so the
+    new body had nowhere to go: the page kept only the new title over the old
+    article - no Pulse marker, nothing to recover. The content is re-derived
+    instead, exactly as it was composed:
+      news editions (bvtech-news-*) - the deterministic KEV composer over the
+        CISA catalog AS OF the edition's own date (kev_as_of);
+      other posts - the article Pulse stored when it published (BlogPost by URL,
+        then title), else the evergreen library entry with that title.
+    Pages Pulse rendered successfully (marker) or already clean, and anything
+    whose content can't be re-derived (hand-written posts) are left alone."""
+    from . import content_autopilot as CA
+    from . import content_studio
+    from . import jp_site as J
+    from ..models import BlogPost
+    meta = J.SITES[site]
+    cfg = J.get_config(db, site)
+    if not cfg["configured"]:
+        return {"ok": False, "error": "not connected"}
+    chrome = J._fetch_file(cfg, meta.get("chrome_page", "blog/index.html"))
+    if not chrome:
+        return {"ok": False, "error": "no chrome page (blog/index.html)"}
+    fdir = cfg.get("file_dir", "blog")
+    feed = None
+    evergreen = {t["title"]: t for t in CA._BV_EVERGREEN}
+    files, rebuilt, skipped, title_changed = {}, [], 0, []
+    for path in J._list_post_paths(cfg, cfg["style"]):
+        page = J._fetch_file(cfg, path) or ""
+        if not page or MARKER in page or 'class="pulse-post"' in page:
+            skipped += 1
+            continue
+        slug = J._slug_of(path)
+        title = _page_title(page)
+        url = f"{meta['site']}/{fdir}/{slug}.html"
+        art = None
+        if slug.startswith("bvtech-news-"):
+            d = J._date_from_text(title)
+            if d:
+                if feed is None:
+                    feed = J._KEV_FEED()
+                # The 9:30 CT edition often predates CISA's same-day additions,
+                # so "as of D" is usually D-1. The published title records the
+                # exact lead vendors: pick the cutoff (D..D-3) that reproduces it.
+                from datetime import timedelta
+                now_d = datetime(d.year, d.month, d.day, 14, 30, tzinfo=timezone.utc)
+                core = lambda t: re.split(r" — [A-Z][a-z]+ \d{1,2}, \d{4}", t or "")[0]
+                art = None
+                for back in (0, 1, 2, 3):
+                    cand = CA._compose_news_deterministic(
+                        now_d, J.kev_as_of(feed, d - timedelta(days=back), 6))
+                    if cand and core(cand.get("title")) == core(title):
+                        art = cand
+                        break
+                if art is None:
+                    art = CA._compose_news_deterministic(
+                        now_d, J.kev_as_of(feed, d - timedelta(days=1), 6))
+                    if art:
+                        title_changed.append(slug)
+                if art:
+                    art["date"] = d.isoformat()
+        else:
+            row = (db.query(BlogPost).filter(BlogPost.url == url, BlogPost.html.isnot(None))
+                   .order_by(BlogPost.id.desc()).first()
+                   or db.query(BlogPost).filter(BlogPost.title == title,
+                                                BlogPost.html.isnot(None))
+                   .order_by(BlogPost.id.desc()).first())
+            pd = _page_date(page)
+            if row and len(re.sub(r"<[^>]+>", "", row.html or "")) >= 200:
+                art = {"title": title, "html": row.html, "excerpt": row.excerpt or ""}
+            elif title in evergreen:
+                art = CA._render_evergreen(evergreen[title], byline="BVTech LLC",
+                                           cta_html=CA._BV_CTA,
+                                           date_str=(pd.isoformat() if pd else ""))
+            if art:
+                art["date"] = pd.isoformat() if pd else None
+        if not art:
+            skipped += 1
+            continue
+        files[path] = content_studio.render_in_chrome(
+            {"title": title, "html": art["html"],
+             "description": (art.get("excerpt") or "")[:300], "date": art.get("date"),
+             "slug": slug, "site": meta["site"], "org": meta["org"],
+             "author_url": meta["author_url"]}, chrome)
+        rebuilt.append(slug)
+    commits = 0
+    paths = list(files)
+    for i in range(0, len(paths), batch):
+        chunk = paths[i:i + batch]
+        J._HTTP("POST", f"{J._proj_url(cfg)}/repository/commits", cfg["token"], {
+            "branch": cfg["branch"],
+            "commit_message": f"blog: rebuild {len(chunk)} post page(s) whose body was "
+                              "never inserted (via Pulse repair)",
+            "actions": [{"action": "update", "file_path": p, "content": files[p]}
+                        for p in chunk]})
+        commits += 1
+    if rebuilt:
+        from . import cloudflare
+        cloudflare.purge_urls(db, site, [f"{meta['site']}/{fdir}/{s}.html" for s in rebuilt[:30]]
+                              + [f"{meta['site']}/{fdir}/", f"{meta['site']}/news/"])
+    return {"ok": True, "rebuilt": len(rebuilt), "left_alone": skipped, "commits": commits,
+            "news_not_exact_match": len(title_changed), "examples": rebuilt[:5]}
+
+
 def run_full_repair(db: Session) -> str:
     """All four steps; never raises; returns the plain-text report it emails."""
     from . import ai, jp_site, outbound, site_audit
@@ -120,12 +243,14 @@ def run_full_repair(db: Session) -> str:
         return res
 
     st = step("1. AI writing self-test", ai.free_llm_selftest)
-    rp = step("2. Damaged post pages", lambda: repair_posts(db, "bvtech"))
+    rp = step("2. Damaged post pages (body recovered)", lambda: repair_posts(db, "bvtech"))
+    rg = step("2b. Post pages with NO body (rebuilt)", lambda: regenerate_posts(db, "bvtech"))
     step("3. Listings self-heal", lambda: jp_site.listings_self_heal(db, force=True))
     step("4. Audit", lambda: "\n" + site_audit.bvtech_report(db))
     ai_ok = isinstance(st, dict) and st.get("ok")
     headline = (f"AI writing {'WORKS' if ai_ok else 'FAILING: ' + str(st.get('error'))[:120]}; "
-                f"{rp.get('repaired', 0) if isinstance(rp, dict) else 0} damaged post page(s) re-rendered.")
+                f"{rp.get('repaired', 0) if isinstance(rp, dict) else 0} damaged post page(s) "
+                f"re-rendered, {rg.get('rebuilt', 0) if isinstance(rg, dict) else 0} rebuilt.")
     report = headline + "\n\n" + "\n".join(parts)
     try:
         db.add(Notification(client_id=None, target_user_id=None, kind="content",

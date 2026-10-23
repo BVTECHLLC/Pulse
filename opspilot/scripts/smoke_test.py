@@ -7857,7 +7857,64 @@ def main():
           "body cut fixed; damaged pages recovered exactly (hand-written untouched, batch "
           "commit); one-time repair gated OK")
 
-    print("\n=== OpsPilot v1.99.0 SMOKE TEST PASSED ===")
+    # ==== v1.100.0: rebuild bvtech pages whose body was never inserted ====
+    from app.services import site_repair as _sr100
+    from app.services import jp_site as _j100
+    from datetime import date as _d100
+    _feed100 = [{"cveID": f"CVE-2026-{i}", "vulnerabilityName": f"Flaw {i}",
+                 "vendorProject": v, "product": "P", "dateAdded": da, "dueDate": "2026-11-10"}
+                for i, (v, da) in enumerate([("Zeta", "2026-10-23"), ("Acme", "2026-10-22"),
+                                             ("Bolt", "2026-10-22"), ("Core", "2026-10-21"),
+                                             ("Dyno", "2026-10-20"), ("Echo", "2026-10-19"),
+                                             ("Flux", "2026-10-18"), ("Gale", "2026-09-01")])]
+    _k = _j100.kev_as_of(_feed100, _d100(2026, 10, 22), 6)
+    assert _k[0]["vendor"] in ("Acme", "Bolt") and all(x["added"] <= "2026-10-22" for x in _k)
+    assert all(x["added"] >= "2026-10-07" for x in _k)                   # 15-day window
+    _pub_title = _ca98._compose_news_deterministic(
+        _dt97.datetime(2026, 10, 23, 14, 30, tzinfo=_dt97.timezone.utc),
+        _j100.kev_as_of(_feed100, _d100(2026, 10, 22), 6))["title"]       # published at 9:30 CT = D-1
+    _clone = ('<html><head><title>x</title><script type="application/ld+json">{"datePublished": '
+              '"2026-10-23"}</script></head><body><header class="header">H</header>'
+              '<section class="page-hero"><div class="breadcrumb">Cisco Catalyst · April 26, 2026'
+              f'</div><h1>{_pub_title}</h1></section><section><p>A busy week at CISA. OLD APRIL '
+              'BODY</p></section><footer class="footer">F</footer></body></html>')
+    _ever_t = _ca98._BV_EVERGREEN[0]["title"]
+    _clone_smb = _clone.replace(_pub_title, _ever_t)
+    _repo100 = {"blog/index.html": '<html><head><title>Blog</title></head><body><header class="header">'
+                                   'H</header><section>grid</section><footer class="footer">F</footer></body></html>',
+                "blog/bvtech-news-10-new-kev-entries-x.html": _clone,
+                "blog/mfa-insurance.html": _clone_smb,
+                "blog/jordan-polasek-april-26-cisco.html": "<h1>Cisco Catalyst</h1><p>hand written</p>"}
+    _sent100 = []
+    _o100 = (_j100.get_config, _j100._fetch_file, _j100._list_post_paths, _j100._HTTP, _j100._KEV_FEED)
+    from app.services import cloudflare as _cf100
+    _opu100 = _cf100.purge_urls
+    try:
+        _j100.get_config = lambda db, site="jp": {"configured": True, "style": "blog-file",
+                                                  "file_dir": "blog", "base": "https://gitlab.com",
+                                                  "project": "x/y", "branch": "main", "token": "t"}
+        _j100._fetch_file = lambda cfg, p: _repo100.get(p)
+        _j100._list_post_paths = lambda cfg, st: [k for k in _repo100 if k != "blog/index.html"]
+        _j100._HTTP = lambda m, u, t, p=None: _sent100.append(p) or {"id": "c"}
+        _j100._KEV_FEED = lambda: _feed100
+        _cf100.purge_urls = lambda *a, **k: {"ok": True}
+        _rg = _sr100.regenerate_posts(_SLheal(), "bvtech")
+        assert _rg["rebuilt"] == 2 and _rg["left_alone"] == 1 and _rg["news_not_exact_match"] == 0, _rg
+        _acts100 = {a["file_path"]: a["content"] for a in _sent100[0]["actions"]}
+        _news_pg = _acts100["blog/bvtech-news-10-new-kev-entries-x.html"]
+        assert "OLD APRIL BODY" not in _news_pg and "April 26" not in _news_pg
+        assert "CVE-2026-1" in _news_pg and 'class="pulse-post"' in _news_pg and "October 23, 2026" in _news_pg
+        assert _ca98._BV_EVERGREEN[0]["intro"][:40] in _acts100["blog/mfa-insurance.html"]
+        assert "blog/jordan-polasek-april-26-cisco.html" not in _acts100        # hand-written untouched
+    finally:
+        (_j100.get_config, _j100._fetch_file, _j100._list_post_paths, _j100._HTTP,
+         _j100._KEV_FEED) = _o100
+        _cf100.purge_urls = _opu100
+    assert _sr100.REPAIR_EPOCH == "1.100.0"
+    print("v1.100: KEV as-of-date + title-guided cutoff rebuild news editions exactly; SMB "
+          "posts rebuilt from stored/evergreen text; hand-written posts untouched OK")
+
+    print("\n=== OpsPilot v1.100.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

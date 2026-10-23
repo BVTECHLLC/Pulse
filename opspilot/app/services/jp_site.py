@@ -2572,19 +2572,36 @@ KEV_FEED_URL = ("https://www.cisa.gov/sites/default/files/feeds/"
                 "known_exploited_vulnerabilities.json")
 
 
-def _fetch_kev(limit: int = 5) -> list[dict]:
+def _kev_feed() -> list[dict]:
+    """The raw CISA KEV catalog (every vulnerability)."""
     req = urllib.request.Request(KEV_FEED_URL, headers={"User-Agent": "BVTech-OpsPilot"})
     with urllib.request.urlopen(req, timeout=30) as r:
         data = json.loads(r.read().decode())
-    vulns = sorted(data.get("vulnerabilities", []),
+    return data.get("vulnerabilities", [])
+
+
+_KEV_FEED = _kev_feed      # test seam
+
+
+def kev_as_of(vulns: list[dict], as_of, limit: int = 5) -> list[dict]:
+    """The KEV entries a daily edition dated `as_of` would have covered: added
+    on/before that day, newest first, the 15-day window, same sizing rule. v1.100
+    uses it to REBUILD past news editions exactly as they were composed."""
+    from datetime import timedelta
+    day = as_of.isoformat()
+    vulns = sorted([v for v in vulns if (v.get("dateAdded") or "") <= day],
                    key=lambda v: v.get("dateAdded", ""), reverse=True)
-    from datetime import date, timedelta
-    cutoff = (date.today() - timedelta(days=15)).isoformat()
+    cutoff = (as_of - timedelta(days=15)).isoformat()
     recent = [v for v in vulns if (v.get("dateAdded") or "") >= cutoff]
     vulns = (recent or vulns)[:max(limit, len(recent[:10]))]
     return [{"cve": v.get("cveID"), "name": v.get("vulnerabilityName"),
              "vendor": v.get("vendorProject"), "product": v.get("product"),
              "added": v.get("dateAdded"), "due": v.get("dueDate")} for v in vulns]
+
+
+def _fetch_kev(limit: int = 5) -> list[dict]:
+    from datetime import date
+    return kev_as_of(_KEV_FEED(), date.today(), limit)
 
 
 _KEV_FETCH = _fetch_kev   # test seam

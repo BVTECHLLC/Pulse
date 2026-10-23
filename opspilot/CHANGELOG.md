@@ -1,5 +1,21 @@
 # BVTech OpsPilot — Changelog
 
+## v1.100.0 — Rebuild bvtech.org posts whose body was never written (Oct 2026)
+- Live check of bvtech.org (via a public reader, since Cloudflare blocks direct
+  fetches): Pulse-made posts carry only their new <title>/<h1> over a copy of an
+  April 26 Cisco KEV article. That skeleton has no article wrapper at all, so
+  the new body was never inserted: no marker, nothing to recover. jordanpolasek.com
+  and tx-plants.com posts are fine (verified the same way).
+- `site_repair.regenerate_posts` rebuilds those pages from the exact source
+  they were composed from: news editions via the deterministic KEV composer over
+  `kev_as_of(...)` (the CISA catalog as of the edition date; the 9:30 CT edition
+  usually predates CISA's same-day adds, so the cutoff D..D-3 that reproduces the
+  published title is used: 6/6 recent editions matched against the live feed);
+  other posts from the stored BlogPost article (by URL, then title) or the
+  evergreen library. Rendered clean in the site chrome. Hand-written posts are
+  never touched. REPAIR_EPOCH 1.100.0 re-runs the emailed one-time repair.
+- `jp_site.kev_as_of` / `_KEV_FEED` split out of `_fetch_kev` (same behaviour).
+
 ## v1.99.0 — Clean bvtech.org posts + a hands-off repair that emails its report (Oct 2026)
 - **Old content under new headlines.** New posts were built by cloning the
   alphabetically "newest" blog file (an April 26 Cisco KEV article) and only
