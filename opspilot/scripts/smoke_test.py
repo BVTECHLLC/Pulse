@@ -7475,7 +7475,63 @@ def main():
     print("redate from TITLE date (beats poisoned first-commit) + newest-first "
           "re-order OK")
 
-    print("\n=== OpsPilot v1.93.2 SMOKE TEST PASSED ===")
+    # ==== v1.94.0: PHP2Shell response — request guard, passive exposure check,
+    #      redirect-safe fetcher (SSRF re-validation on every hop) ====
+    with TestClient(app) as _g:
+        assert _g.get("/wp-login.php").status_code == 404
+        assert _g.post("/xmlrpc.php", json={}).status_code == 404
+        assert _g.get("/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php").status_code == 404
+        assert _g.post("/api/auth/login", files={"f": ("a.txt", b"x")}).status_code == 415
+        assert _g.post("/api/auth/login", content=b"{}", headers={
+            "content-length": str(50 * 1024 * 1024),
+            "content-type": "application/json"}).status_code == 413
+
+        def _chunks():
+            for _ in range(12):
+                yield b"x" * (1024 * 1024)
+        assert _g.post("/api/auth/login", content=_chunks(),
+                       headers={"content-type": "application/json"}).status_code == 413
+        # ordinary JSON still flows through to the app untouched
+        assert _g.post("/api/auth/login", json={"email": "a@b.co", "password": "x"}
+                       ).status_code not in (404, 413, 415)
+        assert _g.get("/api/health").status_code == 200
+    from app.services import php2shell as _p2s
+    _av = lambda *v: _p2s.assess_version(*v)["status"]
+    assert _av(8, 3, 20) == "vulnerable" and _av(8, 5, 11) == "vulnerable"
+    assert _av(8, 2, 35) == "patched" and _av(8, 3, 36) == "patched"
+    assert _av(8, 4, 27) == "patched" and _av(8, 5, 12) == "patched"
+    assert _av(8, 1, 2) == "vulnerable_eol" and _av(7, 4, 33) == "vulnerable_eol"
+    assert _p2s.report("x.com", {"x-powered-by": "PHP/8.2.10"}, "")["verdict"] == "vulnerable"
+    _hid = _p2s.report("x.com", {"set-cookie": ["PHPSESSID=a; path=/"], "cf-ray": "1"},
+                       '<meta name="generator" content="WordPress 6.6">')
+    assert _hid["verdict"] == "php_version_hidden" and "WordPress" in _hid["cms"]
+    assert _hid["behind_cloudflare"] and _hid["next_steps"]
+    assert _p2s.report("x.com", {"server": "cloudflare"}, "<p>static</p>")["verdict"] == "no_php_detected"
+    # redirect to an internal address must be refused even when hop 1 is public
+    from app.api.routes import public_tools as _pt94
+    import urllib.error as _ue94, io as _io94, email.message as _em94
+
+    class _Redir:
+        def open(self, req, timeout=8):
+            m = _em94.Message()
+            m["Location"] = "http://127.0.0.1:8000/api/health"
+            raise _ue94.HTTPError(req.full_url, 302, "Found", m, _io94.BytesIO(b""))
+    _o_op, _o_sh = _pt94._OPENER, _pt94._safe_host
+    try:
+        _pt94._OPENER = _Redir()
+        _pt94._safe_host = lambda h: h if h == "public.example" else _o_sh(h)
+        try:
+            _pt94._fetch_public("public.example")
+            raise AssertionError("redirect to 127.0.0.1 was followed")
+        except OSError as _e94:
+            assert "non-public" in str(_e94)
+    finally:
+        _pt94._OPENER, _pt94._safe_host = _o_op, _o_sh
+    print("PHP2Shell response: probe paths 404, multipart 415, oversized + chunked "
+          "bodies 413, JSON untouched; passive exposure verdicts; redirect-SSRF "
+          "re-validated per hop OK")
+
+    print("\n=== OpsPilot v1.94.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -1,5 +1,20 @@
 # BVTech OpsPilot — Changelog
 
+## v1.94.0 — PHP2Shell response: hardened intake + free exposure check (Oct 2026)
+- **Audit:** none of our stack runs PHP (portal = Python/FastAPI; the four
+  sites are static HTML on Cloudflare Pages), so CVE-2026-109618/109619 cannot
+  execute here. Full write-up: docs/PHP2SHELL_RESPONSE.md.
+- **RequestGuard (outermost ASGI layer):** 10 MB body cap (413, enforced on
+  declared AND chunked bodies), inbound multipart refused (415 — the portal has
+  no upload endpoints), PHP/WordPress probe paths answered 404 before audit,
+  rate-limit or DB work. Caddy mirrors the 10 MB cap.
+- **SSRF fix found during the audit:** `headers-check` let urllib follow
+  redirects, so only the first hostname passed the SSRF guard. New
+  `_fetch_public` follows redirects manually and re-validates every hop.
+- **New free tool:** `GET /api/public-tools/php2shell-check?host=` — passive
+  exposure verdict (advertised PHP version, PHPSESSID, CMS fingerprint) with
+  next steps. Never sends exploit payloads.
+
 ## v1.93.2 — Re-dater: read the TITLE date + put cards newest-first (Oct 2026)
 - The v1.93.1 re-dater got its date from `_post_date_label`, which for bvtech
   news posts (whose pages carry NO machine date) fell back to GitLab's

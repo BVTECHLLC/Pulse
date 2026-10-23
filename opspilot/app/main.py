@@ -99,6 +99,15 @@ async def basic_rate_limit(request: Request, call_next):
 
 
 # --------------------------------------------------------------------------- #
+# v1.94 Request guard (PHP2Shell response) — registered LAST so it is the
+# outermost layer: oversized bodies (413), inbound multipart (415) and PHP/
+# WordPress probe paths (404) are dropped before audit, rate limit or the DB.
+# --------------------------------------------------------------------------- #
+from .core.request_guard import RequestGuard  # noqa: E402
+app.add_middleware(RequestGuard)
+
+
+# --------------------------------------------------------------------------- #
 # Routes
 # --------------------------------------------------------------------------- #
 app.include_router(auth.router)

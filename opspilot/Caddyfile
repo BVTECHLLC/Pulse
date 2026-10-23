@@ -3,6 +3,11 @@
 # caddy service and point the tunnel at api:8000 directly.
 opspilot.bvtech.org {
     encode gzip
+    # v1.94 (PHP2Shell response): refuse oversized bodies at the proxy, before
+    # they reach the app. The app's RequestGuard enforces the same 10 MB cap.
+    request_body {
+        max_size 10MB
+    }
     reverse_proxy api:8000
     header {
         Strict-Transport-Security "max-age=63072000; includeSubDomains"

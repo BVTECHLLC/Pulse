@@ -10,6 +10,8 @@ import re
 import socket
 import ssl
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
@@ -60,6 +62,51 @@ def _safe_host(host: str) -> str | None:
                 or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
             return None
     return host
+
+
+class _NoAutoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None                      # surface 3xx to _fetch_public instead
+
+
+_OPENER = urllib.request.build_opener(_NoAutoRedirect)
+_UA = "BVTech-SiteCheck/1.1 (+https://bvtech.org/tools/)"
+
+
+def _fetch_public(host: str, *, max_bytes: int = 0, hops: int = 3):
+    """GET https://host/ -> (final_url, status, headers, body_bytes).
+
+    v1.94: redirects are followed MANUALLY and the SSRF guard re-runs on every
+    hop. urllib's default handler followed them silently, so a public site that
+    302'd to an internal address walked straight past _safe_host (which only
+    vetted the first hostname). Header names are lower-cased; Set-Cookie keeps
+    every value as a list."""
+    url = f"https://{host}/"
+    for _ in range(hops + 1):
+        req = urllib.request.Request(url, headers={"User-Agent": _UA})
+        try:
+            r = _OPENER.open(req, timeout=8)
+        except urllib.error.HTTPError as e:
+            if e.code in (301, 302, 303, 307, 308):
+                nxt = urllib.parse.urljoin(url, e.headers.get("Location") or "")
+                p = urllib.parse.urlsplit(nxt)
+                e.close()
+                if p.scheme not in ("http", "https") or not _safe_host(p.hostname or ""):
+                    raise OSError("redirect to a non-public address refused")
+                url = nxt
+                continue
+            r = e                        # 4xx/5xx still carry headers worth reading
+        with r:
+            hdrs: dict = {}
+            for k, v in r.headers.items():
+                k = k.lower()
+                if k == "set-cookie":
+                    hdrs.setdefault(k, []).append(v)
+                else:
+                    hdrs[k] = v
+            body = r.read(max_bytes) if max_bytes else b""
+            return url, r.getcode(), hdrs, body
+    raise OSError("too many redirects")
 
 
 def _guard(request: Request, resp: Response, host: str | None = None):
@@ -186,12 +233,7 @@ def headers_check(host: str, request: Request, resp: Response):
     h = _safe_host(host)
     try:
         t0 = time.time()
-        req = urllib.request.Request(
-            f"https://{h}/", method="GET",
-            headers={"User-Agent": "BVTech-HeaderCheck/1.0 (+https://bvtech.org/tools/)"})
-        with urllib.request.urlopen(req, timeout=8) as r:
-            got = {k.lower(): v for k, v in r.headers.items()}
-            status = r.status
+        _url, status, got, _ = _fetch_public(h)
         ms = int((time.time() - t0) * 1000)
     except OSError as e:
         return {"host": h, "error": f"could not fetch https://{h}/ ({e})"[:200]}
@@ -203,6 +245,26 @@ def headers_check(host: str, request: Request, resp: Response):
             "score": score, "out_of": len(checks),
             "grade": "A" if score >= 6 else "B" if score == 5 else
             "C" if score == 4 else "D" if score >= 2 else "F"}
+
+
+@router.get("/php2shell-check")
+def php2shell_check(host: str, request: Request, resp: Response):
+    """v1.94 Is this site exposed to PHP2Shell (CVE-2026-109618/109619)?
+    Passive: one ordinary homepage GET, the same request any browser makes —
+    reads the PHP version a site advertises (X-Powered-By/Server), PHP session
+    cookies and CMS fingerprints. Never sends an exploit payload."""
+    from ...services import php2shell
+    err = _guard(request, resp, host)
+    if err:
+        return err
+    h = _safe_host(host)
+    try:
+        final_url, status, got, body = _fetch_public(h, max_bytes=256 * 1024)
+    except OSError as e:
+        return {"host": h, "error": f"could not fetch https://{h}/ ({e})"[:200]}
+    out = php2shell.report(h, got, body.decode("utf-8", "replace"))
+    out.update(status=status, final_url=final_url[:200])
+    return out
 
 
 # --------------------------------------------------------------------------- #
