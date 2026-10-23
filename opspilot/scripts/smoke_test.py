@@ -7556,21 +7556,51 @@ def main():
     _commits = {}
     _o95 = (_jp95.get_config, _jp95._repo_ops, _cf95.purge_urls)
     try:
-        _jp95.get_config = lambda db, site="jp": {"configured": True, "style": "blog-file"}
+        _jp95.get_config = lambda db, site="jp": {"configured": True, "style": "blog-file",
+                                                  "base": "https://gitlab.com", "project": "x/y",
+                                                  "branch": "main", "token": "t"}
+        _repo95 = {"tools/index.html": _skel, ".assetsignore": "node_modules\n",
+                   "wrangler.jsonc": '{\n  "name": "bvtech-org",\n  "assets": {"directory": "./dist"}\n}\n'}
         _jp95._repo_ops = lambda cfg: {
             "tree": lambda p: [],
-            "fetch": lambda p: _skel if p == "tools/index.html" else _commits.get(p),
+            "fetch": lambda p: _commits.get(p, _repo95.get(p)),
             "commit": lambda p, c, m, u: _commits.__setitem__(p, c) or "sha"}
+        _o_http95 = _jp95._HTTP
+        _batches = []
+        def _h95(method, url, token, payload=None):
+            _batches.append(payload)
+            for a in payload["actions"]:
+                _commits[a["file_path"]] = a["content"]
+            return {"id": "sha1"}
+        _jp95._HTTP = _h95
         _cf95.purge_urls = lambda db, site, urls: {"ok": True}
         _pr = _tp.publish_php2shell_tool(_SLheal())
         assert _pr["ok"] and _pr["index_link"] == "card cloned", _pr
+        assert len(_batches) == 1, "everything must land in ONE commit"
         assert set(_commits) == {"tools/php2shell-check.html", "tools/php2shell-check.js",
-                                 "tools/index.html", "functions/tools-api/php2shell-check.js",
-                                 "functions/tools-api/lead.js"}, list(_commits)
-        assert "onRequestGet" in _commits["functions/tools-api/php2shell-check.js"]
-        assert "onRequestPost" in _commits["functions/tools-api/lead.js"]
+                                 "tools/index.html", "worker-tools/index.js",
+                                 "worker-tools/php2shell-check.js", "worker-tools/lead.js",
+                                 ".assetsignore", "wrangler.jsonc"}, sorted(_commits)
+        import json as _json95
+        _w = _json95.loads(_commits["wrangler.jsonc"])
+        assert _w["main"] == "worker-tools/index.js" and _w["assets"] == {
+            "directory": "./dist", "binding": "ASSETS"} and _w["name"] == "bvtech-org", _w
+        assert "env.ASSETS.fetch" in _commits["worker-tools/index.js"]
+        assert "worker-tools/" in _commits[".assetsignore"]
+        assert _pr["worker"] == "wired"
+        # idempotent: a second publish doesn't re-wire
+        _ops_now = _jp95._repo_ops(None)
+        assert _tp.plan_worker(_ops_now)[2] == "already wired"
+        # never overrides a different main; refuses commented configs
+        _alt = lambda txt: {"fetch": lambda p: txt if p == "wrangler.jsonc" else None}
+        assert "left alone" in _tp.plan_worker(_alt('{"main": "src/x.js"}'))[2]
+        assert "comments" in _tp.plan_worker(_alt('// hi\n{"name": "x"}'))[2]
+        # rollback drops main
+        _rb = _tp.rollback_worker(_SLheal())
+        assert _rb["ok"] and "main" not in _json95.loads(_commits["wrangler.jsonc"]), _rb
     finally:
         _jp95.get_config, _jp95._repo_ops, _cf95.purge_urls = _o95
+        _jp95._HTTP = _o_http95
     with TestClient(app) as _c95:
         _pf = _c95.options("/api/public-tools/lead", headers={
             "Origin": "https://bvtech.org", "Access-Control-Request-Method": "POST"})
@@ -7578,7 +7608,39 @@ def main():
     print("PHP2Shell checker page: skeleton reuse, external script, XSS-safe render, "
           "index card/callout link, publish commits page+js+index; preflight allows POST OK")
 
-    print("\n=== OpsPilot v1.96.0 SMOKE TEST PASSED ===")
+    # ==== v1.97.0: bvtech.org audit runs end-to-end against a simulated repo ====
+    from app.services import site_audit as _sa
+    from app.services import jp_site as _jp97
+    import datetime as _dt97
+    _today97 = _dt97.datetime.now(_dt97.timezone.utc)
+    _fake_commits = [
+        {"id": "c1", "created_at": _today97.isoformat(), "title": "blog: How MFA Stops Phishing (via Pulse)"},
+        {"id": "c2", "created_at": _today97.isoformat(), "title": "blog: BVTech News - 10 New KEV Entries"},
+        {"id": "c3", "created_at": _today97.isoformat(), "title": "homepage: refresh LIVE CISA KEV ticker (CVE-1, via Pulse)"}]
+    _home97 = ('<div class="intel-ticker-scroll"><span class="tk-item tk-crit">Oct 22 \u00b7 '
+               '<strong>CVE-2026-1</strong> Acme</span></div><div class="sg">'
+               '<a href="/blog/bvtech-news-a.html" class="sc"><h3>BVTech News - October 22, 2026</h3></a>'
+               '<a href="/blog/mfa-tips.html" class="sc"><h3>MFA tips</h3><div>October 21, 2026</div></a></div>')
+    _o97 = (_jp97.get_config, _jp97._HTTP, _jp97._fetch_file)
+    try:
+        _jp97.get_config = lambda db, site="jp": {"configured": True, "style": "blog-file",
+                                                  "file_dir": "blog", "branch": "main",
+                                                  "token": "t", "base": "https://gitlab.com",
+                                                  "project": "x/y"}
+        _jp97._HTTP = lambda m, u, t, p=None: (_fake_commits if "/repository/commits?" in u and "page=1" in u
+                                               else [] if "/repository/commits?" in u
+                                               else [{"status": "success"}])
+        _jp97._fetch_file = lambda cfg, p: _home97 if p == "index.html" else None
+        _rep = _sa.bvtech_report(_SLheal(), days=3)
+        assert "== AUTOPILOT" in _rep and "PUBLISHED PER DAY" in _rep, _rep
+        assert "KEV MARQUEE  items=1" in _rep and "newest-first? True" in _rep, _rep
+        assert "non-success builds: 0" in _rep and "missing SMB   : 2 day(s)" in _rep, _rep
+    finally:
+        _jp97.get_config, _jp97._HTTP, _jp97._fetch_file = _o97
+    print("v1.97: tool ships as a Workers route in ONE commit (wrangler wired, idempotent, "
+          "never overrides main, rollback); bvtech audit report end-to-end OK")
+
+    print("\n=== OpsPilot v1.97.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

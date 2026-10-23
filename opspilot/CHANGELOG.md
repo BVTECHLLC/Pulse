@@ -1,5 +1,21 @@
 # BVTech OpsPilot — Changelog
 
+## v1.97.0 — Checker served by a Workers route + bvtech.org audit (Oct 2026)
+- **Root cause of "Could not reach the checker":** bvtech.org is a Cloudflare
+  WORKERS static-assets site (`wrangler.jsonc`, builds report as "Workers Builds:
+  bvtech-org"), not Pages, so v1.96's `functions/` could never run there.
+- The tool API now ships as a tiny Worker (`worker-tools/index.js`) wired via
+  `wrangler.jsonc` (`main` + `assets.binding: ASSETS`). Static files are served
+  first, so the Worker only sees `/tools-api/*`; any other unmatched path goes to
+  `env.ASSETS.fetch`, unchanged. Verified under Node ESM and bundled with esbuild.
+- Publishing is ONE atomic GitLab commit (page, script, Worker files, wrangler,
+  tools-index link, .assetsignore) so no build ever sees a half-wired state.
+  `plan_worker` is idempotent, never overrides an existing `main`, refuses
+  commented configs; `tools_page.rollback_worker(db)` undoes the wiring.
+- New `site_audit.bvtech_report(db)`: per-day SMB / KEV-news / marquee coverage
+  from repo history, Workers build failures, autopilot last-ok/last-error,
+  failure notices, listing order/duplicates and the live marquee.
+
 ## v1.96.0 — PHP2Shell checker runs on bvtech.org itself (Oct 2026)
 - The v1.95 page said "Could not reach the checker": bvtech.org's `_headers`
   sets `default-src 'self'`, so the browser refused the cross-site call to

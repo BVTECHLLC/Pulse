@@ -14,6 +14,7 @@ controlled input. The checker itself is passive (see services/php2shell).
 from __future__ import annotations
 
 import html as _h
+import json
 import re
 from pathlib import Path
 
@@ -27,8 +28,75 @@ JS_URL = "/tools/php2shell-check.js"
 CHECK_URL = "/tools-api/php2shell-check"
 LEAD_URL = "/tools-api/lead"
 _EDGE_DIR = Path(__file__).with_name("edge_tools")
-EDGE_FILES = {"functions/tools-api/php2shell-check.js": "php2shell-check.js",
-              "functions/tools-api/lead.js": "lead.js"}
+# v1.97: bvtech.org is a Cloudflare WORKERS static-assets site (wrangler.jsonc),
+# which ignores Pages functions/. The tool API ships as a tiny Worker that only
+# sees paths matching no static file and hands everything else to the assets.
+WORKER_MAIN = "worker-tools/index.js"
+EDGE_FILES = {"worker-tools/index.js": "worker.js",
+              "worker-tools/php2shell-check.js": "php2shell-check.js",
+              "worker-tools/lead.js": "lead.js"}
+_WRANGLER = ("wrangler.jsonc", "wrangler.json")
+
+
+def _wrangler(ops) -> tuple[str | None, dict | None, str]:
+    """(file name, parsed config, note). Refuses configs with comments rather
+    than silently dropping them when re-serialised."""
+    for name in _WRANGLER:
+        raw = ops["fetch"](name)
+        if raw is None:
+            continue
+        if re.search(r"^\s*//|/\*", raw, re.M):
+            return name, None, "has comments - edit by hand"
+        try:
+            return name, json.loads(raw), "ok"
+        except ValueError as e:
+            return name, None, f"unparseable ({e})"
+    return None, None, "no wrangler config"
+
+
+def plan_worker(ops) -> tuple[str | None, str | None, str]:
+    """(config file, new content or None, status): point wrangler at the tool
+    Worker and bind the assets as ASSETS. Never overrides a different `main`."""
+    name, cfg, note = _wrangler(ops)
+    if cfg is None:
+        return name, None, f"not wired: {name or 'wrangler'} {note}"
+    if cfg.get("main") and cfg["main"] != WORKER_MAIN:
+        return name, None, f"not wired: existing main {cfg['main']} left alone"
+    assets = cfg.setdefault("assets", {})
+    if assets.get("binding") not in (None, "ASSETS"):
+        return name, None, f"not wired: assets binding is {assets['binding']}"
+    if cfg.get("main") == WORKER_MAIN and assets.get("binding") == "ASSETS":
+        return name, None, "already wired"
+    cfg["main"] = WORKER_MAIN
+    assets["binding"] = "ASSETS"
+    return name, json.dumps(cfg, indent=2) + "\n", "wired"
+
+
+def _commit_all(cfg: dict, ops, files: dict, message: str) -> None:
+    """ONE commit for every file on GitLab, so a build never sees the config
+    pointing at Worker files that haven't landed yet. Other forges: per file."""
+    from . import jp_site
+    if cfg.get("forge") == "github":
+        for path, content in files.items():
+            ops["commit"](path, content, message, ops["fetch"](path) is not None)
+        return
+    actions = [{"action": "update" if ops["fetch"](p) is not None else "create",
+                "file_path": p, "content": c} for p, c in files.items()]
+    jp_site._HTTP("POST", f"{jp_site._proj_url(cfg)}/repository/commits", cfg["token"],
+                  {"branch": cfg["branch"], "commit_message": message, "actions": actions})
+
+
+def rollback_worker(db: Session) -> dict:
+    """Undo wire_worker: drop `main` so bvtech.org is pure static assets again."""
+    from . import jp_site
+    ops = jp_site._repo_ops(jp_site.get_config(db, "bvtech"))
+    name, cfg, note = _wrangler(ops)
+    if cfg is None or cfg.get("main") != WORKER_MAIN:
+        return {"ok": True, "detail": "nothing to roll back"}
+    cfg.pop("main")
+    ops["commit"](name, json.dumps(cfg, indent=2) + "\n",
+                  "worker: roll back tool Worker (via Pulse)", True)
+    return {"ok": True, "detail": "rolled back - static assets only"}
 TITLE = "Free PHP2Shell Exposure Check | BVTech"
 DESC = ("Is your website exposed to PHP2Shell (CVE-2026-109618 / CVE-2026-109619)? "
         "Free, passive check from BVTech — no attack traffic, results in seconds.")
@@ -214,7 +282,8 @@ def link_into_index(index_html: str) -> tuple[str, bool, str]:
 
 
 def publish_php2shell_tool(db: Session) -> dict:
-    """Commit the checker page + its link on the tools index to bvtech.org."""
+    """Ship the checker to bvtech.org in ONE commit: the page, its script, the
+    tool Worker (+ wrangler wiring), the tools-index link and .assetsignore."""
     from . import cloudflare, jp_site
     cfg = jp_site.get_config(db, "bvtech")
     if not cfg["configured"]:
@@ -223,29 +292,27 @@ def publish_php2shell_tool(db: Session) -> dict:
     try:
         ops = jp_site._repo_ops(cfg)
         index_html = ops["fetch"]("tools/index.html")
-        skeleton = index_html or ops["fetch"]("index.html")
-        page = build_page(skeleton, tool_body(), site=site)
-        fn_dir_existed = bool(ops["tree"]("functions"))
-        for repo_path, local in EDGE_FILES.items():
-            ops["commit"](repo_path, (_EDGE_DIR / local).read_text(),
-                          f"tools: edge function {repo_path} (via Pulse)",
-                          ops["fetch"](repo_path) is not None)
-        js_exists = ops["fetch"](JS_PATH) is not None
-        ops["commit"](JS_PATH, tool_js(),
-                      "tools: PHP2Shell checker script (via Pulse)", js_exists)
-        exists = ops["fetch"](PAGE_PATH) is not None
-        ops["commit"](PAGE_PATH, page, "tools: PHP2Shell exposure check (via Pulse)", exists)
+        files = {repo_path: (_EDGE_DIR / local).read_text()
+                 for repo_path, local in EDGE_FILES.items()}
+        files[JS_PATH] = tool_js()
+        files[PAGE_PATH] = build_page(index_html or ops["fetch"]("index.html"),
+                                      tool_body(), site=site)
         how = "no tools index found"
         if index_html:
             new_index, changed, how = link_into_index(index_html)
             if changed:
-                ops["commit"]("tools/index.html", new_index,
-                              "tools: link the PHP2Shell exposure check (via Pulse)", True)
+                files["tools/index.html"] = new_index
+        ignore = ops["fetch"](".assetsignore")
+        if ignore is not None and "worker-tools" not in ignore:
+            files[".assetsignore"] = ignore.rstrip("\n") + "\nworker-tools/\n"
+        wname, wcontent, worker = plan_worker(ops)
+        if wcontent:
+            files[wname] = wcontent
+        _commit_all(cfg, ops, files, "tools: PHP2Shell checker + tool Worker (via Pulse)")
         purge = cloudflare.purge_urls(db, "bvtech", [f"{site}{PAGE_URL}", f"{site}{JS_URL}",
                                                      f"{site}/tools/"])
-        return {"ok": True, "url": f"{site}{PAGE_URL}", "page_updated": exists,
-                "index_link": how, "cache_purged": purge.get("ok"),
-                "functions_dir_existed": fn_dir_existed,
+        return {"ok": True, "url": f"{site}{PAGE_URL}", "files": sorted(files),
+                "index_link": how, "worker": worker, "cache_purged": purge.get("ok"),
                 "check_url": f"{site}{CHECK_URL}?host=wordpress.org"}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)[:300]}
