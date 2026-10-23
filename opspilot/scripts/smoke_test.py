@@ -7545,7 +7545,9 @@ def main():
     assert "NAV" in _pg and "FOOT" in _pg and "SSL Checker" not in _pg
     assert "<title>Free PHP2Shell Exposure Check | BVTech</title>" in _pg
     assert '<script src="/tools/php2shell-check.js" defer>' in _pg
-    assert "innerHTML" not in _tp.tool_js("https://portal.bvtech.org")   # XSS-safe render
+    _js95 = _tp.tool_js()
+    assert "innerHTML" not in _js95                                        # XSS-safe render
+    assert "/tools-api/php2shell-check" in _js95 and "portal.bvtech.org" not in _js95  # same-origin (site CSP)
     _ix, _ch, _how = _tp.link_into_index(_skel)
     assert _ch and _how == "card cloned" and 'href="/tools/php2shell-check.html"' in _ix
     assert _tp.link_into_index(_ix)[2] == "already linked"
@@ -7556,14 +7558,17 @@ def main():
     try:
         _jp95.get_config = lambda db, site="jp": {"configured": True, "style": "blog-file"}
         _jp95._repo_ops = lambda cfg: {
+            "tree": lambda p: [],
             "fetch": lambda p: _skel if p == "tools/index.html" else _commits.get(p),
             "commit": lambda p, c, m, u: _commits.__setitem__(p, c) or "sha"}
         _cf95.purge_urls = lambda db, site, urls: {"ok": True}
         _pr = _tp.publish_php2shell_tool(_SLheal())
         assert _pr["ok"] and _pr["index_link"] == "card cloned", _pr
         assert set(_commits) == {"tools/php2shell-check.html", "tools/php2shell-check.js",
-                                 "tools/index.html"}, list(_commits)
-        assert "portal.bvtech.org/api/public-tools" in _commits["tools/php2shell-check.js"]
+                                 "tools/index.html", "functions/tools-api/php2shell-check.js",
+                                 "functions/tools-api/lead.js"}, list(_commits)
+        assert "onRequestGet" in _commits["functions/tools-api/php2shell-check.js"]
+        assert "onRequestPost" in _commits["functions/tools-api/lead.js"]
     finally:
         _jp95.get_config, _jp95._repo_ops, _cf95.purge_urls = _o95
     with TestClient(app) as _c95:
@@ -7573,7 +7578,7 @@ def main():
     print("PHP2Shell checker page: skeleton reuse, external script, XSS-safe render, "
           "index card/callout link, publish commits page+js+index; preflight allows POST OK")
 
-    print("\n=== OpsPilot v1.95.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.96.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

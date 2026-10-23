@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import html as _h
 import re
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -22,6 +23,12 @@ PAGE_PATH = "tools/php2shell-check.html"
 PAGE_URL = "/tools/php2shell-check.html"
 JS_PATH = "tools/php2shell-check.js"
 JS_URL = "/tools/php2shell-check.js"
+# v1.96 same-origin Cloudflare Pages Functions (the site CSP only allows 'self')
+CHECK_URL = "/tools-api/php2shell-check"
+LEAD_URL = "/tools-api/lead"
+_EDGE_DIR = Path(__file__).with_name("edge_tools")
+EDGE_FILES = {"functions/tools-api/php2shell-check.js": "php2shell-check.js",
+              "functions/tools-api/lead.js": "lead.js"}
 TITLE = "Free PHP2Shell Exposure Check | BVTech"
 DESC = ("Is your website exposed to PHP2Shell (CVE-2026-109618 / CVE-2026-109619)? "
         "Free, passive check from BVTech — no attack traffic, results in seconds.")
@@ -85,12 +92,13 @@ or email <a href="mailto:help@bvtech.org">help@bvtech.org</a>.</p>
 """
 
 
-def tool_js(api_base: str) -> str:
+def tool_js() -> str:
     """The checker's script, served as its own file so a site CSP that bans
-    inline scripts can't silently disable the button."""
-    api = api_base.rstrip("/").replace('"', "")
+    inline scripts can't silently disable the button. v1.96: calls the
+    SAME-ORIGIN Pages Functions (/tools-api/*): bvtech.org's CSP is
+    default-src 'self', which blocked the old cross-site portal call."""
     return f"""(function(){{
-  var API = "{api}/api/public-tools";
+  var CHECK = "{CHECK_URL}", LEAD = "{LEAD_URL}";
   var form = document.getElementById("p2s-form"), out = document.getElementById("p2s-out"),
       btn = document.getElementById("p2s-go"), inp = document.getElementById("p2s-host");
   function el(tag, cls, text){{ var e = document.createElement(tag); if (cls) e.className = cls;
@@ -126,7 +134,7 @@ def tool_js(api_base: str) -> str:
     var note = el("p","p2s-muted",""); cta.appendChild(note);
     lf.addEventListener("submit", function(ev){{
       ev.preventDefault(); sb.disabled = true;
-      fetch(API + "/lead", {{method:"POST", headers:{{"Content-Type":"text/plain"}},
+      fetch(LEAD, {{method:"POST", headers:{{"Content-Type":"application/json"}},
         body: JSON.stringify({{email: em.value, tool: "PHP2Shell Check",
           result: (r.host + ": " + r.verdict + (r.version ? " (PHP " + r.version + ")" : "")).slice(0,380)}})}})
       .then(function(x){{ return x.json(); }})
@@ -144,7 +152,7 @@ def tool_js(api_base: str) -> str:
     if (!host) return;
     btn.disabled = true; btn.textContent = "Checking…";
     out.textContent = ""; out.appendChild(el("p","p2s-muted","Loading " + host + "…"));
-    fetch(API + "/php2shell-check?host=" + encodeURIComponent(host))
+    fetch(CHECK + "?host=" + encodeURIComponent(host))
       .then(function(x){{ return x.json(); }}).then(render)
       .catch(function(){{ render({{error:"Could not reach the checker. Try again in a minute."}}); }})
       .finally(function(){{ btn.disabled = false; btn.textContent = "Check my site"; }});
@@ -207,7 +215,6 @@ def link_into_index(index_html: str) -> tuple[str, bool, str]:
 
 def publish_php2shell_tool(db: Session) -> dict:
     """Commit the checker page + its link on the tools index to bvtech.org."""
-    from ..core.config import get_settings
     from . import cloudflare, jp_site
     cfg = jp_site.get_config(db, "bvtech")
     if not cfg["configured"]:
@@ -218,8 +225,13 @@ def publish_php2shell_tool(db: Session) -> dict:
         index_html = ops["fetch"]("tools/index.html")
         skeleton = index_html or ops["fetch"]("index.html")
         page = build_page(skeleton, tool_body(), site=site)
+        fn_dir_existed = bool(ops["tree"]("functions"))
+        for repo_path, local in EDGE_FILES.items():
+            ops["commit"](repo_path, (_EDGE_DIR / local).read_text(),
+                          f"tools: edge function {repo_path} (via Pulse)",
+                          ops["fetch"](repo_path) is not None)
         js_exists = ops["fetch"](JS_PATH) is not None
-        ops["commit"](JS_PATH, tool_js(get_settings().PUBLIC_BASE_URL),
+        ops["commit"](JS_PATH, tool_js(),
                       "tools: PHP2Shell checker script (via Pulse)", js_exists)
         exists = ops["fetch"](PAGE_PATH) is not None
         ops["commit"](PAGE_PATH, page, "tools: PHP2Shell exposure check (via Pulse)", exists)
@@ -232,6 +244,8 @@ def publish_php2shell_tool(db: Session) -> dict:
         purge = cloudflare.purge_urls(db, "bvtech", [f"{site}{PAGE_URL}", f"{site}{JS_URL}",
                                                      f"{site}/tools/"])
         return {"ok": True, "url": f"{site}{PAGE_URL}", "page_updated": exists,
-                "index_link": how, "cache_purged": purge.get("ok")}
+                "index_link": how, "cache_purged": purge.get("ok"),
+                "functions_dir_existed": fn_dir_existed,
+                "check_url": f"{site}{CHECK_URL}?host=wordpress.org"}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)[:300]}

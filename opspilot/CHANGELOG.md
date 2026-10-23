@@ -1,5 +1,19 @@
 # BVTech OpsPilot — Changelog
 
+## v1.96.0 — PHP2Shell checker runs on bvtech.org itself (Oct 2026)
+- The v1.95 page said "Could not reach the checker": bvtech.org's `_headers`
+  sets `default-src 'self'`, so the browser refused the cross-site call to
+  portal.bvtech.org (which Cloudflare also answers with a bot challenge).
+- The check now runs as a same-origin Cloudflare Pages Function,
+  `functions/tools-api/php2shell-check.js` → `bvtech.org/tools-api/php2shell-check`
+  (same verdict logic as services/php2shell.py, passive, public hostnames only,
+  redirects re-validated per hop, 256 KB body cap). `functions/tools-api/lead.js`
+  relays "send me the report" to the portal's /lead server-side, with an
+  "email help@bvtech.org" fallback if the portal is unreachable.
+- Sources live in `app/services/edge_tools/`; `publish_php2shell_tool` commits
+  them with the page. Verified under Node 22 (same web APIs as Workers) and in
+  headless Chromium under the site's real CSP: zero violations.
+
 ## v1.95.0 — Free PHP2Shell checker on bvtech.org/tools (Oct 2026)
 - New `services/tools_page.py`: builds `tools/php2shell-check.html` from the LIVE
   tools page's own skeleton (head, nav, footer) so it matches the site, plus
