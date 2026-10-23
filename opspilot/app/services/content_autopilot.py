@@ -317,6 +317,35 @@ def _mark(db: Session, channel: str, *, ok: bool, error: str | None = None,
     secure_config.upsert_platform(db, PROVIDER, "Content Autopilot", "Publishing", raw)
 
 
+def _llm_status(db: Session, channel: str, error: str | None, now: datetime) -> None:
+    """v1.98: record whether AI writing worked for a channel. A failure used to
+    be swallowed and the site quietly published a recycled evergreen post - all
+    three sites ran on their 6-7 post backup libraries for weeks while every
+    report said OK. Now the reason is stored and alerted once per day."""
+    conn = secure_config.get_platform(db, PROVIDER)
+    raw = dict((conn.config if conn else None) or {})
+    le = dict(raw.get("llm_error") or {})
+    if error is None:
+        if channel not in le:
+            return
+        le.pop(channel)
+    else:
+        first_today = (le.get(channel) or {}).get("date") != _today(now)
+        le[channel] = {"date": _today(now), "error": error[:300]}
+        if first_today:
+            try:
+                db.add(Notification(
+                    client_id=None, target_user_id=None, kind="content", severity="warning",
+                    message=(f"✍️ AI writing failed for {channel} — published a BACKUP "
+                             f"(evergreen) post instead. Reason: {error[:220]}. Run "
+                             "ai.free_llm_selftest() on the box for details.")[:1000]))
+                db.commit()
+            except Exception:  # noqa: BLE001
+                db.rollback()
+    raw["llm_error"] = le
+    secure_config.upsert_platform(db, PROVIDER, "Content Autopilot", "Publishing", raw)
+
+
 def _notify_fail(db: Session, channel: str, error: str) -> None:
     try:
         db.add(Notification(client_id=None, target_user_id=None, kind="content",
@@ -335,10 +364,12 @@ def _run_bvtech(db: Session, now: datetime) -> tuple[bool, str]:
     """bvtech.org is a static site in GitLab (deployed by Cloudflare) — publish
     there natively; WordPress only as a legacy fallback if someone connected it."""
     from . import blog_autopilot, jp_site, wordpress
+    llm_err = None
     try:
         article = blog_autopilot.generate_article(db, now, angle=bvtech_angle(now))
-    except Exception:  # noqa: BLE001 — LLM down/exhausted
-        article = None
+    except Exception as e:  # noqa: BLE001 — LLM down/exhausted
+        article, llm_err = None, str(e)
+    _llm_status(db, "bvtech", None if article else (llm_err or "AI reply could not be parsed"), now)
     if not article:
         # v1.50: zero-token evergreen floor — the blog publishes even when no
         # LLM (free or paid) is reachable, so a dead token balance never leaves
@@ -740,7 +771,7 @@ def _run_jp(db: Session, now: datetime) -> tuple[bool, str]:
     # the HTML) + JSON fallback + ONE corrective retry. v1.50: the whole LLM
     # path is wrapped — if it's down/exhausted/unparseable, fall to the
     # zero-token evergreen floor so JP publishes daily regardless.
-    post = None
+    post, llm_err = None, None
     try:
         raw = ai.complete(_JP_SYSTEM, prompt, smart=True, max_tokens=4000)
         post = ai.parse_article(raw)
@@ -750,8 +781,9 @@ def _run_jp(db: Session, now: datetime) -> tuple[bool, str]:
                               "no JSON, no code fences.",
                               smart=True, max_tokens=4000)
             post = ai.parse_article(raw)
-    except Exception:  # noqa: BLE001
-        post = None
+    except Exception as e:  # noqa: BLE001
+        post, llm_err = None, str(e)
+    _llm_status(db, "jp", None if post else (llm_err or "AI reply could not be parsed"), now)
     if not post:
         post = _compose_jp_deterministic(now)
     out = jp_site.publish(db, post)
@@ -783,7 +815,7 @@ def _run_txplants(db: Session, now: datetime) -> tuple[bool, str]:
     prompt = (f"Write today's tx-plants.com post about: {topic}. Make it specific and "
               f"actionable for Texas Gulf-Coast growers. Today's editorial style: "
               f"{day_angle(now)}. Date: {biz_now(now):%B %d, %Y}.")
-    post = None
+    post, llm_err = None, None
     try:
         raw = ai.complete(_TXP_SYSTEM, prompt, smart=False, max_tokens=3500)
         post = ai.parse_article(raw)
@@ -792,8 +824,9 @@ def _run_txplants(db: Session, now: datetime) -> tuple[bool, str]:
                               "TITLE:/EXCERPT:/HTML: format - nothing before TITLE:, "
                               "no JSON, no code fences.", smart=False, max_tokens=3500)
             post = ai.parse_article(raw)
-    except Exception:  # noqa: BLE001
-        post = None
+    except Exception as e:  # noqa: BLE001
+        post, llm_err = None, str(e)
+    _llm_status(db, "txplants", None if post else (llm_err or "AI reply could not be parsed"), now)
     if post:
         # Always append the sister-site/Scripture/remembrance block to LLM posts too.
         post["html"] = (post.get("html") or "") + "\n" + _TXP_CTA

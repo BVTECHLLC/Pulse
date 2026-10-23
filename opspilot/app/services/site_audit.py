@@ -87,6 +87,9 @@ def bvtech_report(db: Session, days: int = 31) -> str:
         L.append(f"   {ch:9} on={ap['channels'].get(ch, True)!s:5} last_ok={ap['last'].get(ch)}"
                  + (f"  LAST ERROR {err.get('date')}: {err.get('error', '')[:110]}" if err else ""))
 
+    for ch, e in (raw_ap.get("llm_error") or {}).items():
+        L.append(f"   AI WRITING FAILED {ch} {e.get('date')}: {e.get('error', '')[:120]}")
+
     since = datetime.combine(start, datetime.min.time(), CT).astimezone(timezone.utc)
     notes = (db.query(Notification).filter(Notification.created_at >= since)
              .order_by(Notification.created_at.desc()).limit(400).all())
@@ -116,6 +119,12 @@ def bvtech_report(db: Session, days: int = 31) -> str:
         d += timedelta(days=1)
     for key, ds in missing.items():
         L.append(f"   missing {key:6}: {len(ds)} day(s) {' '.join(ds) if ds else '-'}")
+    recent = [t for dd, k in per.items() if dd > today - timedelta(days=14)
+              for t in k.get("SMB", [])]
+    uniq = len({t.replace(" (via Pulse)", "") for t in recent})
+    L.append(f"   SMB titles last 14 days: {len(recent)} posts, {uniq} distinct"
+             + ("  <- RECYCLING backup posts (AI writing is failing)"
+                if recent and uniq <= len(recent) // 2 else ""))
 
     L.append("\n== CLOUDFLARE WORKERS BUILDS (last 25 commits)")
     fails = 0

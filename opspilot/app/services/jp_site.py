@@ -85,10 +85,15 @@ SITES = {
     # news page - the bvtech site entry already guards the blog dir itself.
     "bvtech_news": {"provider": "bvtech_site", "name": "BVTech.org News",
                     "default_project": "BVTECHLLC-group/bvtech-website-new",
-                    "style": "blog-file", "file_dir": "blog", "backfill": False,
+                    "style": "blog-file", "file_dir": "blog",
+                    # v1.98: backfill news editions ONLY (prefix) - news/index.html
+                    # had no backfill at all, so every edition whose listing
+                    # injection hit a GitLab error stayed off the news page.
+                    "backfill": True, "backfill_prefix": "bvtech-news-", "sweep": False,
                     "site": "https://bvtech.org", "org": "BVTech LLC",
                     "author_url": "https://bvtech.org", "content_classes": None,
-                    "index_paths": ("news/index.html", "blog/index.html", "index.html")},
+                    "index_paths": ("news/index.html", "blog/index.html", "index.html"),
+                    "preview_caps": {"index.html": 6}},
     # tx-plants.com — the plants/homesteading/survival blog. The v8 site source
     # lives at bvtechllc-group/tx-plants-site (pushed 2026-07-28) with a Pulse-
     # compatible /blog/ Field Notes section, so that repo is the default. The
@@ -110,26 +115,45 @@ _TOKEN_ALIASES = ("gitlab_token", "bv_gl_token", "gl_token", "gitlab_deploy_toke
 _BOX_FILES = ("/etc/bvtech/publisher.env", "/etc/bvtech/agent.env")
 
 
+_RETRY_STATUS = (429, 502, 503, 504)
+
+
 def _http(method: str, url: str, token: str, payload: dict | None = None) -> dict:
-    req = urllib.request.Request(url, method=method,
-                                 headers={"PRIVATE-TOKEN": token,
-                                          "Content-Type": "application/json"})
+    """GitLab API call. v1.98: rate limits (429) and transient 5xx are RETRIED
+    with Retry-After / backoff instead of failing the whole job — Pulse's own
+    hourly sweeps were tripping GitLab's limits and silently skipping listings."""
+    import time as _time
     data = json.dumps(payload).encode() if payload is not None else None
-    try:
-        with urllib.request.urlopen(req, data=data, timeout=30) as r:
-            body = r.read().decode()
-    except urllib.error.HTTPError as e:
-        # Surface GitLab's ACTUAL message ("A file with this name already
-        # exists", "branch not found", ...) instead of a bare "HTTP Error 400"
-        # that tells the operator nothing.
-        detail = ""
+    for attempt in range(4):
+        req = urllib.request.Request(url, method=method,
+                                     headers={"PRIVATE-TOKEN": token,
+                                              "Content-Type": "application/json"})
         try:
-            raw = e.read().decode()[:300]
-            detail = str(json.loads(raw).get("message", raw))[:200]
-        except Exception:  # noqa: BLE001
-            pass
-        raise RuntimeError(f"GitLab {e.code}: {detail or e.reason}") from e
+            with urllib.request.urlopen(req, data=data, timeout=30) as r:
+                body = r.read().decode()
+            break
+        except urllib.error.HTTPError as e:
+            if e.code in _RETRY_STATUS and attempt < 3:
+                try:
+                    wait = float(e.headers.get("Retry-After") or 0)
+                except (TypeError, ValueError):
+                    wait = 0
+                _time.sleep(min(max(wait, 2 ** attempt * 2), 20))
+                continue
+            _raise_gitlab(e)
     return json.loads(body) if body else {}
+
+
+def _raise_gitlab(e: "urllib.error.HTTPError") -> None:
+    """Surface GitLab's ACTUAL message ("A file with this name already exists",
+    "branch not found", ...) instead of a bare "HTTP Error 400"."""
+    detail = ""
+    try:
+        raw = e.read().decode()[:300]
+        detail = str(json.loads(raw).get("message", raw))[:200]
+    except Exception:  # noqa: BLE001
+        pass
+    raise RuntimeError(f"GitLab {e.code}: {detail or e.reason}") from e
 
 
 # Tests override this to script GitLab responses offline.
@@ -414,7 +438,8 @@ def token_self_heal(db: Session, now: "datetime | None" = None) -> dict:
     return out
 
 
-def listings_self_heal(db: Session, now: "datetime | None" = None) -> dict:
+def listings_self_heal(db: Session, now: "datetime | None" = None, *,
+                       force: bool = False) -> dict:
     """Daily heartbeat step (v1.92). BACKFILL + ALARM for frozen blog listings.
 
     The daily publisher injects each new post's card into its site's listing
@@ -433,11 +458,13 @@ def listings_self_heal(db: Session, now: "datetime | None" = None) -> dict:
     conn = secure_config.get_platform(db, "listings_meta")
     raw = dict((conn.config if conn else None) or {})
     today = now.date().isoformat()
-    if raw.get("heal_on") == today:
+    if raw.get("heal_on") == today and not force:
         return {"ran": False, "reason": "already_today"}
     out: dict = {"ran": True, "sites": {}}
     healed: list[str] = []
-    for site in ("jp", "bvtech", "txplants"):
+    # v1.98: bvtech_news too (news/index.html had no backfill at all), and the
+    # capped homepage previews are refreshed to the newest posts.
+    for site in ("jp", "bvtech", "bvtech_news", "txplants"):
         try:
             if not get_config(db, site)["configured"]:
                 out["sites"][site] = {"skipped": "not configured"}
@@ -445,15 +472,22 @@ def listings_self_heal(db: Session, now: "datetime | None" = None) -> dict:
             res = sync_listings(db, site)
             n = len(res.get("added") or [])
             # v1.93: after backfilling missing posts, re-stamp every card's date
-            # to its post's true date (fixes the ALL-CAPS frozen-date class that
-            # the narrow repair pass missed). Idempotent; a no-op when correct.
-            red = redate_listings(db, site)
+            # to its post's true date and sort newest-first. bvtech_news shares
+            # bvtech's repo, so it only re-dates its own news page.
+            red = redate_listings(db, site, paths=("news/index.html",)
+                                  if site == "bvtech_news" else None)
             rd = len(red.get("restamped") or [])
-            out["sites"][site] = {"ok": res.get("ok") and red.get("ok"),
-                                  "added": n, "restamped": rd,
-                                  "error": res.get("error") or red.get("error")}
-            if n or rd:
-                healed.append(f"{SITES[site]['site']} (+{n} listed, {rd} re-dated)")
+            prev = (refresh_preview(db, site) if site != "bvtech_news"
+                    else {"ok": True, "refreshed": []})
+            pv = len(prev.get("refreshed") or [])
+            out["sites"][site] = {"ok": bool(res.get("ok") and red.get("ok") and prev.get("ok")),
+                                  "added": n, "restamped": rd, "preview": pv,
+                                  "error": res.get("error") or red.get("error")
+                                  or prev.get("error")}
+            if n or rd or pv:
+                healed.append(f"{SITES[site]['site']}"
+                              f"{' news' if site == 'bvtech_news' else ''} "
+                              f"(+{n} listed, {rd} re-dated, {pv} preview)")
         except Exception as e:  # noqa: BLE001
             db.rollback()
             out["sites"][site] = {"error": str(e)[:200]}
@@ -590,17 +624,44 @@ def _clusters_of(spans: list, gap: int = 2500) -> list:
     return out
 
 
-def redate_listings(db: Session, site: str) -> dict:
-    """v1.93.2 ROBUST RE-DATER + RE-ORDERER. For every card on every listing
-    page (homepage previews included): re-stamp its visible date to the post's
-    TRUE date and put the cards newest-first.
+def _redate_html(h: str, cfg: dict, style: str, fdir: str, lp_pat: str,
+                 cache: dict) -> tuple[str, int]:
+    """Re-stamp every card in a listing page to its post's true date and sort
+    each card section newest-first. Returns (html, sections changed). Sections
+    split by proximity, so a featured strip never merges into the grid; a
+    section is re-ordered only when EVERY card in it has a known date."""
+    out_h, changed = h, 0
+    for cluster in sorted(_clusters_of(_all_card_spans(h, lp_pat)), reverse=True):
+        entries = []                      # (date_or_None, card_html) in page order
+        for a, b in cluster:
+            card = h[a:b]
+            lm = re.search(lp_pat, card)
+            slug = _slug_of(lm.group(0)[6:-1]) if lm else ""
+            if not slug or slug == "index" or any(slug.startswith(p) for p in _PAGE_SLUGS):
+                entries.append((None, card))
+                continue
+            d = _true_post_date(cfg, card, slug, style, fdir, cache)
+            if d:
+                card2, _ = _swap_card_date(card, f"{_MONTH_NAMES[d.month - 1]} {d.day}, {d.year}")
+                entries.append((d, card2))
+            else:
+                entries.append((None, card))
+        ordered = entries
+        if entries and all(d for d, _ in entries):
+            ordered = sorted(entries, key=lambda e: e[0], reverse=True)
+        ra, rb = cluster[0][0], cluster[-1][1]
+        region = "\n".join(c for _, c in ordered)
+        if region != h[ra:rb]:
+            out_h = out_h[:ra] + region + out_h[rb:]
+            changed += 1
+    return out_h, changed
 
-    True date comes from _true_post_date (title-embedded date → page date →
-    NEWEST commit), so the rename-poisoned first-commit date can't stamp a post
-    months early (bvtech news cards carry their real date in the title). Within
-    each card section the cards are then sorted newest-first, which fixes the
-    jumbled order re-dating alone leaves behind. One commit per changed page +
-    cache purge. Idempotent; never raises."""
+
+def redate_listings(db: Session, site: str, paths: tuple | None = None) -> dict:
+    """ROBUST RE-DATER + RE-ORDERER (v1.93.2; v1.98 `paths` to limit pages).
+    Every card on every listing page gets its post's TRUE date (title date ->
+    page date -> NEWEST commit) and each section is put newest-first. One
+    commit per changed page + cache purge. Idempotent; never raises."""
     meta = SITES[site]
     cfg = get_config(db, site)
     if not cfg["configured"]:
@@ -612,44 +673,14 @@ def redate_listings(db: Session, site: str) -> dict:
     lp_pat = _link_pat_for(style, fdir)
     try:
         ops = _repo_ops(cfg)
-        date_cache: dict = {}
+        cache: dict = {}
         restamped: list[str] = []
         purge: list[str] = []
-        for lp in meta.get("index_paths", ()):
+        for lp in (paths or meta.get("index_paths", ())):
             h = _fetch_file(cfg, lp)
             if not h:
                 continue
-            out_h = h
-            changed = 0
-            # Rebuild each section in place, right-to-left so earlier offsets
-            # stay valid as higher regions are spliced.
-            for cluster in sorted(_clusters_of(_all_card_spans(h, lp_pat)), reverse=True):
-                entries = []          # (date_or_None, card_html) in page order
-                for a, b in cluster:
-                    card = h[a:b]
-                    lm = re.search(lp_pat, card)
-                    slug = _slug_of(lm.group(0)[6:-1]) if lm else ""
-                    if not slug or slug == "index" or any(
-                            slug.startswith(p) for p in _PAGE_SLUGS):
-                        entries.append((None, card))
-                        continue
-                    d = _true_post_date(cfg, card, slug, style, fdir, date_cache)
-                    if d:
-                        card2, _ = _swap_card_date(
-                            card, f"{_MONTH_NAMES[d.month - 1]} {d.day}, {d.year}")
-                        entries.append((d, card2))
-                    else:
-                        entries.append((None, card))
-                # Re-order newest-first only when EVERY card in the section has a
-                # known date (never shuffle undated cards into the wrong place).
-                ordered = entries
-                if entries and all(d for d, _ in entries):
-                    ordered = sorted(entries, key=lambda e: e[0], reverse=True)
-                region_a, region_b = cluster[0][0], cluster[-1][1]
-                new_region = "\n".join(c for _, c in ordered)
-                if new_region != h[region_a:region_b]:
-                    out_h = out_h[:region_a] + new_region + out_h[region_b:]
-                    changed += 1
+            out_h, changed = _redate_html(h, cfg, style, fdir, lp_pat, cache)
             if changed and out_h != h:
                 ops["commit"](lp, out_h, "blog: re-date + re-order cards to true "
                               "post dates, newest-first (via Pulse)", True)
@@ -659,6 +690,71 @@ def redate_listings(db: Session, site: str) -> dict:
             from . import cloudflare
             cloudflare.purge_urls(db, site, purge + [meta["site"] + "/"])
         return {"ok": True, "restamped": restamped}
+    except Exception as e:  # noqa: BLE001
+        db.rollback()
+        return {"ok": False, "error": str(e)[:300]}
+
+
+def refresh_preview(db: Session, site: str) -> dict:
+    """v1.98: make each CAPPED homepage preview show the site's newest posts.
+    Backfill deliberately skips capped pages, so when a day's injection failed
+    the homepage just went stale (bvtech.org's 'Writing from the Workbench'
+    sat on old news editions). The archive page is the source of truth: take
+    its newest `cap` posts by true date, inject any the preview lacks (cloning
+    the preview's own card), re-date + sort, trim to cap, one commit."""
+    meta = SITES[site]
+    caps = meta.get("preview_caps") or {}
+    cfg = get_config(db, site)
+    if not caps or not cfg["configured"]:
+        return {"ok": True, "refreshed": []}
+    style, fdir = cfg["style"], cfg.get("file_dir", "blog")
+    lp_pat = _link_pat_for(style, fdir)
+    archive = next((lp for lp in meta.get("index_paths", ()) if lp not in caps), None)
+    try:
+        arch = _fetch_file(cfg, archive) if archive else None
+        if not arch:
+            return {"ok": True, "refreshed": [], "detail": "no archive page"}
+        cache: dict = {}
+        newest = []
+        for a, b in _all_card_spans(arch, lp_pat):
+            card = arch[a:b]
+            lm = re.search(lp_pat, card)
+            slug = _slug_of(lm.group(0)[6:-1]) if lm else ""
+            if not slug or any(slug.startswith(p) for p in _PAGE_SLUGS):
+                continue
+            d = _true_post_date(cfg, card, slug, style, fdir, cache)
+            if d:
+                newest.append((d, slug))
+        newest = sorted(set(newest), reverse=True)
+        ops = _repo_ops(cfg)
+        refreshed = []
+        for lp, cap in caps.items():
+            h = _fetch_file(cfg, lp)
+            if not h:
+                continue
+            want = [(d, sl) for d, sl in newest[:cap] if not _slug_listed(h, sl)]
+            if not want:
+                continue
+            new_h = h
+            for d, sl in reversed(want):          # oldest first -> newest on top
+                ppath = f"{fdir}/{sl}.html" if style == "blog-file" else f"{sl}/index.html"
+                page = _fetch_file(cfg, ppath) or ""
+                title, excerpt = _post_meta_from_html(page)
+                url = (f"/{fdir}/{sl}.html" if style == "blog-file" else f"/{sl}/")
+                new_h, _ = inject_post_into_listing(
+                    new_h, title=title, url=url, excerpt=excerpt,
+                    date_str=f"{_MONTH_NAMES[d.month - 1]} {d.day}, {d.year}",
+                    style=style, file_dir=fdir)
+            new_h, _ = _redate_html(new_h, cfg, style, fdir, lp_pat, cache)
+            new_h, _ = _trim_listing(new_h, style, cap, fdir)
+            if new_h != h:
+                ops["commit"](lp, new_h, f"blog: refresh {lp} preview with the newest "
+                              f"{cap} posts (via Pulse)", True)
+                refreshed.append(f"{lp} (+{len(want)})")
+        if refreshed:
+            from . import cloudflare
+            cloudflare.purge_urls(db, site, [meta["site"] + "/"])
+        return {"ok": True, "refreshed": refreshed}
     except Exception as e:  # noqa: BLE001
         db.rollback()
         return {"ok": False, "error": str(e)[:300]}
@@ -685,8 +781,16 @@ def _fetch_file(cfg: dict, path: str) -> str | None:
         f = _HTTP("GET", f"{_proj_url(cfg)}/repository/files/"
                   f"{urllib.parse.quote_plus(path)}?ref={cfg['branch']}", cfg["token"])
         return base64.b64decode(f["content"]).decode("utf-8", "replace")
-    except Exception:  # noqa: BLE001 — 404 (no such file) or transient
+    except Exception as e:  # noqa: BLE001
+        # v1.98: only a genuinely missing file is None. A rate limit or outage
+        # used to read as "missing", so publish skipped the listing silently.
+        if _TRANSIENT_RE.search(str(e)) or isinstance(e, (TimeoutError, OSError)) \
+                and not isinstance(e, RuntimeError):
+            raise
         return None
+
+
+_TRANSIENT_RE = re.compile(r"GitLab (429|5\d\d)\b")
 
 
 def _find_generic_card(html_text: str, link_pat: str) -> tuple[int, int] | None:
@@ -1341,17 +1445,29 @@ def _markdown_for(post: dict, slug: str, sample_md: str, excerpt: str) -> str:
     return "\n".join(out) + "\n\n" + body + "\n"
 
 
+def _tree_all(cfg: dict, path: str | None = None) -> list[dict]:
+    """Every entry of a repo directory. v1.98: paginated - the old single
+    per_page=100 call silently hid every post past the first 100 files."""
+    q = f"path={urllib.parse.quote(path)}&" if path else ""
+    out: list[dict] = []
+    for page in range(1, 21):
+        batch = _HTTP("GET", f"{_proj_url(cfg)}/repository/tree?{q}ref={cfg['branch']}"
+                      f"&per_page=100&page={page}", cfg["token"])
+        out += batch or []
+        if not batch or len(batch) < 100:
+            break
+    return out
+
+
 def _list_post_paths(cfg: dict, style: str) -> list[str]:
     """All post files in the repo for this site's layout, newest-ish first."""
     if style == "blog-file":
         _fd = cfg.get("file_dir", "blog")
-        tree = _HTTP("GET", f"{_proj_url(cfg)}/repository/tree?path={_fd}&ref={cfg['branch']}&per_page=100",
-                     cfg["token"])
+        tree = _tree_all(cfg, _fd)
         return sorted([t["path"] for t in tree if t.get("type") == "blob"
                        and t["path"].endswith(".html")
                        and not t["path"].endswith("index.html")], reverse=True)
-    tree = _HTTP("GET", f"{_proj_url(cfg)}/repository/tree?ref={cfg['branch']}&per_page=100",
-                 cfg["token"])
+    tree = _tree_all(cfg)
     dirs = [t["path"] for t in tree if t.get("type") == "tree"
             and not t["path"].startswith((".", "_", "assets", "static", "css", "js",
                                           "img", "images", "fonts", "blog", "book",
@@ -1396,7 +1512,11 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
         return {"ok": False, "error": "GitHub site with an unrecognized layout - run the "
                                       "Doctor for details"}
     try:
-        post_paths = _list_post_paths(cfg, cfg["style"])[:60]
+        all_paths = _list_post_paths(cfg, cfg["style"])
+        if meta.get("backfill_prefix"):
+            all_paths = [p for p in all_paths
+                         if _slug_of(p).startswith(meta["backfill_prefix"])]
+        post_paths = all_paths[:60]          # repair pass stays bounded
         listings = {lp: _fetch_file(cfg, lp) for lp in meta.get("index_paths", ())}
         listings = {lp: h for lp, h in listings.items() if h is not None}
         if not listings:
@@ -1404,7 +1524,10 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
         date_str = biz_now().strftime("%B %-d, %Y")
         added, actions, purge_urls = [], [], []
         ai_misses: dict[str, int] = {}
-        for path in (post_paths if meta.get("backfill", True) else []):
+        page_fetches = 0
+        # v1.98: backfill scans EVERY post (was the first 60 by name, which hid
+        # new posts); only missing ones cost an API call, capped per run.
+        for path in (all_paths if meta.get("backfill", True) else []):
             url = _post_url_for(meta, path, cfg["style"])
             rel = url.replace(meta["site"], "")            # href form used in listings
             slug = _slug_of(path)
@@ -1416,6 +1539,9 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
                        if lp not in caps and not _slug_listed(h, slug)]
             if not missing:
                 continue
+            if page_fetches >= 40:
+                break                        # bounded API use per run
+            page_fetches += 1
             page = _fetch_file(cfg, path)
             if not page:
                 continue
@@ -1717,20 +1843,22 @@ def _post_date_from_html(page_html: str):
 
 def _post_date_label(cfg: dict, path: str, page_html: str) -> str:
     """Truth hierarchy for a post's DISPLAY date -> "July 14, 2026" or "".
-    v1.47.6: the page's own machine date (datetime attr / datePublished — the
-    publisher refreshes these on every publish since v1.44) now outranks git.
-    GitLab's commits-by-path API follows renames, so a June post that resembles
-    a bulk-uploaded file 'first appeared' in April — every repaired card got
-    stamped with a date months before the post existed. Fall back to the
-    first-commit date only when the page itself carries no parseable date."""
-    d = _post_date_from_html(page_html or "")
+    v1.98: (1) a date in the post's own <title> (news editions end with
+    "— October 17, 2026"), (2) the page's machine/visible date, (3) the NEWEST
+    commit. The old fallback was the FIRST commit, which GitLab's rename-
+    following pins to an unrelated old file - the sync repair pass kept
+    re-stamping news cards "April 5, 2026", fighting the re-dater."""
+    t = re.search(r"<title>(.*?)</title>", page_html or "", re.S | re.I)
+    d = _date_from_text(re.sub(r"<[^>]+>", " ", t.group(1))) if t else None
     if d is None:
-        ts = _first_commit_iso(cfg, path)
-        if ts:
-            try:
-                d = datetime.fromisoformat(ts.replace("Z", "+00:00")).date()
-            except ValueError:
-                d = None
+        d = _post_date_from_html(page_html or "")
+    if d is None:
+        try:
+            _old, newest = _commit_span(cfg, path)
+            if newest:
+                d = datetime.fromisoformat(newest.replace("Z", "+00:00")).date()
+        except Exception:  # noqa: BLE001
+            d = None
     if d is None:
         return ""
     return f"{_MONTH_NAMES[d.month - 1]} {d.day}, {d.year}"
@@ -2109,6 +2237,11 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
         return {"ok": False, "error": str(e)[:300]}
 
 
+# v1.98: every 6 h (was hourly). Each sweep lists every post and asks GitLab
+# for per-file history; hourly runs on three sites tripped GitLab's rate limit.
+_SWEEP_EVERY_S = 6 * 3600
+
+
 def sweep_duplicates(db: Session, now: datetime | None = None) -> dict:
     """Heartbeat hook: self-healing content hygiene for both sites, at most
     once per hour per site — (1) delete same-day duplicate posts, then
@@ -2130,7 +2263,7 @@ def sweep_duplicates(db: Session, now: datetime | None = None) -> dict:
         last = raw.get("last_dupe_sweep")
         if raw.get("last_sweep_version") == ver:
             try:
-                if last and (now - datetime.fromisoformat(last)).total_seconds() < 3600:
+                if last and (now - datetime.fromisoformat(last)).total_seconds() < _SWEEP_EVERY_S:
                     continue
             except ValueError:
                 pass

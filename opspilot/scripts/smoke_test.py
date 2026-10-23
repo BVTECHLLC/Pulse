@@ -3877,16 +3877,23 @@ def main():
         assert len(_e476) <= 221 and _e476.endswith("word…"), repr(_e476[-20:])
         # (d) date truth: the page's own date OUTRANKS git first-commit (GitLab
         #     commits-by-path follows renames — June posts got stamped April 5).
-        _ofc476 = _jp40._first_commit_iso
-        _jp40._first_commit_iso = lambda cfg, path: "2026-04-05T15:17:51.000-05:00"
+        #     v1.98: the fallback is the NEWEST commit, never the poisoned oldest,
+        #     and a date in the post's own <title> outranks everything.
+        _ocs476 = _jp40._commit_span
+        _jp40._commit_span = lambda cfg, path: ("2026-04-05T15:17:51.000-05:00",
+                                                "2026-10-17T14:30:00Z")
         try:
             _lbl476 = _jp40._post_date_label(
                 {}, "blog/x.html", '<time datetime="2026-06-11T09:00:00Z">x</time>')
             assert _lbl476 == "June 11, 2026", _lbl476
             _lbl476b = _jp40._post_date_label({}, "blog/y.html", "<p>no date here</p>")
-            assert _lbl476b == "April 5, 2026", _lbl476b     # fallback still works
+            assert _lbl476b == "October 17, 2026", _lbl476b   # newest, never April 5
+            _lbl476c = _jp40._post_date_label(
+                {}, "blog/z.html", "<title>BVTech News - 10 New KEV Entries - October 3, 2026"
+                "</title><time datetime=\"2026-06-11\">x</time>")
+            assert _lbl476c == "October 3, 2026", _lbl476c    # title date wins
         finally:
-            _jp40._first_commit_iso = _ofc476
+            _jp40._commit_span = _ocs476
         print("v1.47.6: page date outranks rename-poisoned git first-commit + no-year "
               "swap never rewrites excerpt prose + word-boundary excerpts OK")
 
@@ -7640,7 +7647,135 @@ def main():
     print("v1.97: tool ships as a Workers route in ONE commit (wrangler wired, idempotent, "
           "never overrides main, rollback); bvtech audit report end-to-end OK")
 
-    print("\n=== OpsPilot v1.97.0 SMOKE TEST PASSED ===")
+    # ==== v1.98.0: rate-limit resilience, AI self-healing, listing completeness ====
+    import io as _io98, email.message as _em98, urllib.error as _ue98
+    from app.services import jp_site as _j98
+    from app.services import ai as _ai98
+    from app.services import content_autopilot as _ca98
+    # (1) GitLab 429 is retried (Retry-After honoured), not fatal.
+    _calls98 = {"n": 0}
+    class _R98:
+        def __init__(self, b): self.b = b
+        def read(self): return self.b
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+    def _urlopen98(req, data=None, timeout=30):
+        _calls98["n"] += 1
+        if _calls98["n"] < 3:
+            m = _em98.Message(); m["Retry-After"] = "0"
+            raise _ue98.HTTPError(req.full_url, 429, "Too Many", m, _io98.BytesIO(b'{"message":"slow"}'))
+        return _R98(b'{"ok": 1}')
+    import time as _t98, urllib.request as _ur98
+    _o_uo, _o_sl = _ur98.urlopen, _t98.sleep
+    try:
+        _ur98.urlopen, _t98.sleep = _urlopen98, (lambda s: None)
+        assert _j98._http("GET", "https://gitlab.com/api/v4/x", "t") == {"ok": 1}
+        assert _calls98["n"] == 3
+    finally:
+        _ur98.urlopen, _t98.sleep = _o_uo, _o_sl
+    # (2) a rate limit is NOT "file missing"; a 404 still is.
+    _o_h98 = _j98._HTTP
+    _cfg98 = {"base": "https://gitlab.com", "project": "x/y", "branch": "main", "token": "t",
+              "configured": True, "style": "blog-file", "file_dir": "blog"}
+    try:
+        def _h429(*a, **k): raise RuntimeError("GitLab 429: Too Many Requests")
+        _j98._HTTP = _h429
+        try:
+            _j98._fetch_file(_cfg98, "news/index.html")
+            raise AssertionError("429 must propagate, not read as a missing file")
+        except RuntimeError as _e:
+            assert "429" in str(_e)
+        def _h404(*a, **k): raise RuntimeError("GitLab 404: 404 File Not Found")
+        _j98._HTTP = _h404
+        assert _j98._fetch_file(_cfg98, "nope.html") is None
+        # (3) tree listing paginates past 100 entries.
+        def _htree(m, url, t, p=None):
+            page = int(url.split("page=")[-1])
+            n = 100 if page < 3 else 7
+            return [{"type": "blob", "path": f"blog/p{page}-{i}.html"} for i in range(n)]
+        _j98._HTTP = _htree
+        assert len(_j98._list_post_paths(_cfg98, "blog-file")) == 207
+    finally:
+        _j98._HTTP = _o_h98
+    # (4) retired free model -> provider's model list -> auto-switch; <think> stripped.
+    _o_post, _o_models, _o_ovr = _ai98._free_post, _ai98._free_models, _ai98._free_model_override
+    from app.core.config import get_settings as _gs98
+    _st98 = _gs98()
+    _o_key = _st98.FREE_LLM_KEY
+    _used98 = []
+    try:
+        _st98.FREE_LLM_KEY = "gsk_test"
+        _ai98._free_model_override = None
+        def _post98(model, system, user, max_tokens):
+            _used98.append(model)
+            if model == _st98.FREE_LLM_MODEL:
+                raise _ue98.HTTPError("u", 400, "bad", _em98.Message(), _io98.BytesIO(
+                    b'{"error":{"message":"The model has been decommissioned"}}'))
+            return {"choices": [{"message": {"content": "<think>hmm</think>TITLE: Hi"}}]}
+        _ai98._free_post = _post98
+        _ai98._free_models = lambda: ["whisper-large-v3", "openai/gpt-oss-120b"]
+        _txt98 = _ai98._free_llm_complete("s", "u", model="", max_tokens=100)
+        assert _txt98 == "TITLE: Hi" and _used98[-1] == "openai/gpt-oss-120b", (_txt98, _used98)
+        assert _ai98._free_model_override == "openai/gpt-oss-120b"
+    finally:
+        _ai98._free_post, _ai98._free_models, _ai98._free_model_override = _o_post, _o_models, _o_ovr
+        _st98.FREE_LLM_KEY = _o_key
+    # (5) an AI failure is recorded + alerted once per day, cleared on success.
+    from app.models import Notification as _N98
+    _db98 = _SLheal()
+    _t0 = _dt97.datetime(2032, 1, 5, 15, tzinfo=_dt97.timezone.utc)
+    _n0 = _db98.query(_N98).filter(_N98.message.like("%AI writing failed for jp%")).count()
+    _ca98._llm_status(_db98, "jp", "free LLM HTTP 401: invalid key", _t0)
+    _ca98._llm_status(_db98, "jp", "free LLM HTTP 401: invalid key", _t0)
+    _n1 = _db98.query(_N98).filter(_N98.message.like("%AI writing failed for jp%")).count()
+    assert _n1 == _n0 + 1, (_n0, _n1)
+    _raw98 = _ca98.secure_config.get_platform(_db98, _ca98.PROVIDER).config
+    assert "jp" in (_raw98.get("llm_error") or {})
+    _ca98._llm_status(_db98, "jp", None, _t0)
+    assert "jp" not in (_ca98.secure_config.get_platform(_db98, _ca98.PROVIDER).config
+                        .get("llm_error") or {})
+    _db98.close()
+    # (6) stale homepage preview is refreshed from the archive: newest posts in,
+    #     newest-first, trimmed to the cap.
+    def _cardh(slug, d):
+        return (f'<a href="/blog/{slug}.html" class="sc"><h3>{slug} — {d}</h3>'
+                f'<p>body text for {slug} goes here ok</p></a>')
+    _arch = '<div class="blog-grid">' + "".join(_cardh(f"post{i}", f"October {i}, 2026")
+                                                for i in (20, 19, 18, 3, 2, 1)) + "</div>"
+    _home = '<div class="sg">' + "".join(_cardh(f"post{i}", f"October {i}, 2026")
+                                         for i in (3, 2, 1)) + "</div>"
+    _files98 = {"blog/index.html": _arch, "index.html": _home}
+    _commits98 = {}
+    _o98 = (_j98.get_config, _j98._repo_ops, _j98._fetch_file)
+    from app.services import cloudflare as _cf98
+    _o_pu98 = _cf98.purge_urls
+    try:
+        _j98.get_config = lambda db, site="jp": dict(_cfg98)
+        _j98._fetch_file = lambda cfg, p: _commits98.get(p, _files98.get(p, "<title>t</title>"))
+        _j98._repo_ops = lambda cfg: {"commit": lambda p, c, m, u: _commits98.__setitem__(p, c)}
+        _cf98.purge_urls = lambda db, site, urls: {"ok": True}
+        _o_caps = _j98.SITES["bvtech"].get("preview_caps")
+        _j98.SITES["bvtech"]["preview_caps"] = {"index.html": 3}
+        _rp = _j98.refresh_preview(_SLheal(), "bvtech")
+        assert _rp["ok"] and _rp["refreshed"], _rp
+        _hh = _commits98["index.html"]
+        _order = re.findall(r'href="/blog/(post\d+)\.html"', _hh)
+        assert _order == ["post20", "post19", "post18"], _order
+        assert _j98.refresh_preview(_SLheal(), "bvtech")["refreshed"] == []   # idempotent
+    finally:
+        _j98.get_config, _j98._repo_ops, _j98._fetch_file = _o98
+        _cf98.purge_urls = _o_pu98
+        _j98.SITES["bvtech"]["preview_caps"] = _o_caps
+    # (7) news backfill config: news-only prefix, capped homepage, not swept.
+    _nm = _j98.SITES["bvtech_news"]
+    assert _nm["backfill"] and _nm["backfill_prefix"] == "bvtech-news-"
+    assert _nm["sweep"] is False and _nm["preview_caps"] == {"index.html": 6}
+    print("v1.98: GitLab 429 retried + never read as 'missing'; tree pagination past 100; "
+          "retired AI model auto-switch + <think> stripped; AI failures recorded/alerted "
+          "once/day; stale homepage preview refreshed newest-first + trimmed; news "
+          "backfill scoped OK")
+
+    print("\n=== OpsPilot v1.98.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

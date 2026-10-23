@@ -11,6 +11,7 @@ offline by swapping in a stub.
 from __future__ import annotations
 
 import json
+import re
 from urllib import error, request as urlrequest
 
 from ..core.config import get_settings
@@ -219,16 +220,44 @@ def free_llm_enabled() -> bool:
     return bool(get_settings().free_llm_enabled)
 
 
-def _free_llm_complete(system: str, user: str, *, model: str, max_tokens: int) -> str:
-    """Single-shot completion against an OpenAI-COMPATIBLE endpoint (Groq,
-    OpenRouter, Together, Google's OpenAI-compat layer, a local Ollama, ...).
-    `model` here is ignored in favor of the configured FREE_LLM_MODEL so callers
-    don't need to know which free provider is wired. Raises AIError on failure so
-    the caller can fall back to the deterministic composer."""
+# v1.98 SELF-HEALING free model. Groq retires models on a schedule; when the
+# configured one disappears every call failed and all three sites quietly fell
+# back to their 6-7 evergreen posts for weeks. On a model error we ask the
+# provider which models exist (GET /models) and switch to the best available.
+_FREE_MODEL_PREFS = ("llama-3.3-70b-versatile", "openai/gpt-oss-120b",
+                     "meta-llama/llama-4-maverick-17b-128e-instruct",
+                     "moonshotai/kimi-k2-instruct", "qwen/qwen3-32b",
+                     "openai/gpt-oss-20b", "llama-3.1-8b-instant")
+_free_model_override: str | None = None
+_UA = "BVTech-OpsPilot/1.0 (+https://bvtech.org)"
+
+
+def _free_models() -> list[str]:
+    """Model ids the free provider currently serves (OpenAI-compatible)."""
     s = get_settings()
-    if not s.FREE_LLM_KEY:
-        raise AIError("no free LLM configured")
-    payload = {"model": s.FREE_LLM_MODEL, "max_tokens": max_tokens,
+    req = urlrequest.Request(s.FREE_LLM_BASE.rstrip("/") + "/models", method="GET",
+                             headers={"authorization": f"Bearer {s.FREE_LLM_KEY}",
+                                      "user-agent": _UA})
+    with urlrequest.urlopen(req, timeout=20) as r:
+        data = json.loads(r.read().decode())
+    return [m.get("id") for m in (data.get("data") or []) if m.get("id")]
+
+
+def _pick_free_model(avoid: str) -> str | None:
+    ids = _free_models()
+    for m in (get_settings().FREE_LLM_MODEL,) + _FREE_MODEL_PREFS:
+        if m in ids and m != avoid:
+            return m
+    for m in ids:                                 # any general chat model
+        if m != avoid and re.search(r"llama|gpt-oss|qwen|kimi|mistral|gemma", m, re.I) \
+                and not re.search(r"guard|whisper|tts|embed|vision|prompt", m, re.I):
+            return m
+    return None
+
+
+def _free_post(model: str, system: str, user: str, max_tokens: int) -> dict:
+    s = get_settings()
+    payload = {"model": model, "max_tokens": max_tokens,
                "messages": [{"role": "system", "content": system},
                             {"role": "user", "content": user}]}
     req = urlrequest.Request(
@@ -238,22 +267,88 @@ def _free_llm_complete(system: str, user: str, *, model: str, max_tokens: int) -
         # Cloudflare, which blocks urllib's default "Python-urllib/x.y" signature
         # with HTTP 403 error 1010. Any normal UA sails through.
         headers={"authorization": f"Bearer {s.FREE_LLM_KEY}",
-                 "content-type": "application/json",
-                 "user-agent": "BVTech-OpsPilot/1.0 (+https://bvtech.org)"})
-    try:
-        with urlrequest.urlopen(req, timeout=90) as r:
-            data = json.loads(r.read().decode())
-    except error.HTTPError as e:
-        raise AIError(f"free LLM HTTP {e.code}: {e.read().decode(errors='replace')[:200]}")
-    except Exception as e:  # noqa: BLE001
-        raise AIError(f"free LLM request failed: {e}")
+                 "content-type": "application/json", "user-agent": _UA})
+    with urlrequest.urlopen(req, timeout=90) as r:
+        return json.loads(r.read().decode())
+
+
+def _free_llm_complete(system: str, user: str, *, model: str, max_tokens: int) -> str:
+    """Single-shot completion against an OpenAI-COMPATIBLE endpoint (Groq,
+    OpenRouter, Together, Google's OpenAI-compat layer, a local Ollama, ...).
+    `model` here is ignored in favor of the configured FREE_LLM_MODEL so callers
+    don't need to know which free provider is wired. Raises AIError on failure so
+    the caller can fall back to the deterministic composer.
+    v1.98: retired model -> auto-switch; rate limit / too large -> one retry."""
+    global _free_model_override
+    import time as _time
+    s = get_settings()
+    if not s.FREE_LLM_KEY:
+        raise AIError("no free LLM configured")
+    use = _free_model_override or s.FREE_LLM_MODEL
+    data = None
+    for attempt in range(3):
+        try:
+            data = _free_post(use, system, user, max_tokens)
+            break
+        except error.HTTPError as e:
+            body = e.read().decode(errors="replace")[:400]
+            if attempt < 2 and e.code in (400, 404) and re.search(
+                    r"model|decommission|deprecat|not.?found|does not exist", body, re.I):
+                try:
+                    alt = _pick_free_model(avoid=use)
+                except Exception:  # noqa: BLE001
+                    alt = None
+                if alt:
+                    _free_model_override = use = alt
+                    continue
+            if attempt < 2 and e.code in (413, 429):
+                if e.code == 413 or "token" in body.lower():
+                    max_tokens = max(1200, max_tokens // 2)
+                try:
+                    wait = float(e.headers.get("retry-after") or 5)
+                except (TypeError, ValueError):
+                    wait = 5
+                _time.sleep(min(wait, 20))
+                continue
+            raise AIError(f"free LLM HTTP {e.code} ({use}): {body[:200]}")
+        except AIError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            raise AIError(f"free LLM request failed ({use}): {e}")
+    if data is None:
+        raise AIError(f"free LLM gave no answer after retries ({use})")
     try:
         text = (data["choices"][0]["message"]["content"] or "").strip()
     except (KeyError, IndexError, TypeError):
         raise AIError("free LLM returned an unexpected shape")
+    # Reasoning models can prefix hidden thinking; never publish it.
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.S | re.I).strip()
     if not text:
         raise AIError("free LLM returned an empty response")
     return text
+
+
+def free_llm_selftest() -> dict:
+    """One-line health check for the box: key, models on offer, a real call."""
+    s = get_settings()
+    out = {"base": s.FREE_LLM_BASE, "configured_model": s.FREE_LLM_MODEL,
+           "key_set": bool(s.FREE_LLM_KEY), "free_llm_only": s.FREE_LLM_ONLY}
+    if not s.FREE_LLM_KEY:
+        return {**out, "ok": False, "error": "FREE_LLM_KEY is not set"}
+    try:
+        ids = _free_models()
+        out["configured_model_available"] = s.FREE_LLM_MODEL in ids
+        out["models"] = ids[:12]
+    except Exception as e:  # noqa: BLE001
+        out["models_error"] = str(e)[:200]
+    try:
+        reply = _free_llm_complete("Reply with exactly the word OK.", "ping",
+                                   model="", max_tokens=20)
+        out.update(ok=True, reply=reply[:40],
+                   model_used=_free_model_override or s.FREE_LLM_MODEL)
+    except AIError as e:
+        out.update(ok=False, error=str(e)[:300])
+    return out
 
 
 # Tests / offline runs override _CALLER to avoid real network I/O.

@@ -1,5 +1,38 @@
 # BVTech OpsPilot — Changelog
 
+## v1.98.0 — Why the blogs looked wonky: root causes fixed (Oct 2026)
+From the v1.97 audit of the live repo (Sep 23 - Oct 23):
+- **All three sites were recycling backup posts.** AI writing failed every day,
+  the exception was swallowed, and each site published its 6-7 post evergreen
+  library on rotation (bvtech's six titles repeat every 6 days since Sep 23;
+  same for jordanpolasek.com and tx-plants). Re-publishing an existing slug
+  creates no new card, so listings froze. Now: the free model self-heals (on a
+  retired-model error it reads the provider's /models and switches; one retry
+  on 413/429; reasoning `<think>` text stripped), every AI failure is recorded
+  per channel and alerted once/day, and `ai.free_llm_selftest()` gives the
+  exact reason in one line.
+- **GitLab 429s were silently dropping listings.** 272 failure notices this
+  month, mostly the hourly flood-guard tripping GitLab's rate limit, and
+  `_fetch_file` turned every error into "file missing", so publish skipped
+  news/index.html (Oct 18-20, 22, 23 editions shipped but were never listed).
+  Now: `_http` retries 429/5xx with Retry-After, a transient error is never read
+  as "missing", and the sweep runs every 6 h instead of hourly.
+- **Listings only saw the first 100 files.** Repo tree calls were never
+  paginated; `_tree_all` pages through everything. Backfill now scans every
+  post (fetches capped at 40/run).
+- **news/index.html had no backfill.** bvtech_news now backfills news editions
+  only (`backfill_prefix`), with a capped homepage and no extra sweep.
+- **The "April 5" cards were the repair pass fighting the re-dater.**
+  `_post_date_label` fell back to the rename-poisoned FIRST commit; it now uses
+  the title date, then the page date, then the NEWEST commit.
+- **Homepage previews go stale when an injection fails.** New
+  `refresh_preview` rebuilds each capped preview from the archive's newest
+  posts (newest-first, trimmed). The daily self-heal runs it, covers the news
+  page, and accepts `force=True`.
+- Audit flags recycling ("N posts, M distinct") and AI-writing errors.
+- Oct 7-13 gap = the expired GitLab token (fixed in v1.91); not back-filled with
+  invented dates.
+
 ## v1.97.0 — Checker served by a Workers route + bvtech.org audit (Oct 2026)
 - **Root cause of "Could not reach the checker":** bvtech.org is a Cloudflare
   WORKERS static-assets site (`wrangler.jsonc`, builds report as "Workers Builds:
