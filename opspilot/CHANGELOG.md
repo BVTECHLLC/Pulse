@@ -1,5 +1,24 @@
 # BVTech OpsPilot — Changelog
 
+## v1.99.0 — Clean bvtech.org posts + a hands-off repair that emails its report (Oct 2026)
+- **Old content under new headlines.** New posts were built by cloning the
+  alphabetically "newest" blog file (an April 26 Cisco KEV article) and only
+  swapping title/h1/body. Its breadcrumb, date and tags always leaked, and the
+  body swap matched the wrapper "up to the first </div>", so any nested box in
+  the old body left the REST of the old article on the page. bvtech.org and its
+  news section now render a clean article inside the site's own chrome
+  (blog/index.html head/nav/footer) via `content_studio.render_in_chrome`.
+- The skeleton cloner (still used by jordanpolasek.com / tx-plants) now swaps
+  the body with a real HTML parser (`element_inner_span`): balanced nested tags,
+  exact class tokens (no more "hero-content" matching "content").
+- **site_repair:** Pulse always inserted the real body after a
+  `<p class="meta">By ... · date</p>` marker, so every damaged page is
+  recovered exactly and re-rendered clean (hand-written posts are never touched;
+  batched commits). Once per REPAIR_EPOCH the heartbeat runs, in a background
+  thread: AI self-test -> post repair -> listings self-heal (force) -> audit,
+  then emails the report to help@bvtech.org and posts a dashboard notice. No
+  terminal commands needed.
+
 ## v1.98.0 — Why the blogs looked wonky: root causes fixed (Oct 2026)
 From the v1.97 audit of the live repo (Sep 23 - Oct 23):
 - **All three sites were recycling backup posts.** AI writing failed every day,

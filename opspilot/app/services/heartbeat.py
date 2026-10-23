@@ -283,6 +283,14 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
         listings_heal = _jp_lh.listings_self_heal(db, now)
     except Exception:  # noqa: BLE001
         db.rollback()
+    # 13.5575) v1.99 ONE-TIME SITE REPAIR - re-renders damaged bvtech.org post
+    #          pages, repairs every listing, runs the AI self-test and the audit,
+    #          then EMAILS the report. Background thread; never blocks the tick.
+    try:
+        from . import site_repair as _sr
+        _sr.maybe_start(db)
+    except Exception:  # noqa: BLE001
+        db.rollback()
     # 13.558) v1.93 FRESHNESS TRIPWIRE — read-only daily check that alarms if any
     #         site's newest VISIBLE post is older than it should be, whatever the
     #         cause. The independent safety net behind the self-heal.

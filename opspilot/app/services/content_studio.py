@@ -232,17 +232,77 @@ _CONTENT_CLASSES = ("article-body", "content", "post-content", "entry-content",
                     "single-content", "article-content", "post-body")
 
 
-def render_from_skeleton(skeleton_html: str, post: dict,
-                         content_classes: tuple[str, ...] | None = None) -> str:
-    """Produce a new post by transplanting content into a real blog page
-    (header/footer/CSS preserved verbatim). Robust to the exact markup:
-    we replace the <title>, description, canonical+OG urls, the schema JSON-LD
-    blocks, the <h1>, and the body — preferring a known content wrapper so the
-    page's own <h1>/byline survive; only falling back to the whole <article>."""
-    p = normalize_post(post)
-    h = skeleton_html
-    dateline = _date.fromisoformat(p["date"]).strftime("%B %-d, %Y")
+def element_inner_span(h: str, cls: str | None = None, marker: str | None = None
+                       ) -> tuple[int, int] | None:
+    """(start, end) of the INNER html of an element, found with a real parser so
+    nested tags are balanced. v1.99: the old regex matched a wrapper "up to the
+    first </div>", so any nested box inside an old post's body (a callout, a
+    figure) stopped the cut early and the rest of the OLD article stayed on the
+    new page; `\bcontent\b` also matched classes like "hero-content".
+      cls    - the first element whose class TOKENS include `cls` exactly,
+               skipping anything inside <header>/<nav>;
+      marker - else the element that DIRECTLY contains the text `marker`'s tag
+               (used to recover the body Pulse inserted into a damaged page)."""
+    from html.parser import HTMLParser
+    lines = h.split("\n")
+    offs = [0]
+    for ln in lines:
+        offs.append(offs[-1] + len(ln) + 1)
+    void = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link",
+            "meta", "source", "track", "wbr"}
+    mpos = h.find(marker) if marker else -1
 
+    class _P(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=False)
+            self.stack: list[list] = []          # [tag, inner_start, wanted]
+            self.found: tuple[int, int] | None = None
+            self.best_marker: tuple[int, int] | None = None
+
+        def _off(self):
+            ln, col = self.getpos()
+            return offs[ln - 1] + col
+
+        def handle_starttag(self, tag, attrs):
+            if self.found or tag in void:
+                return
+            start = self._off()
+            end_of_tag = h.find(">", start) + 1
+            toks = (dict(attrs).get("class") or "").split()
+            in_chrome = any(t[0] in ("header", "nav") for t in self.stack)
+            wanted = bool(cls) and cls in toks and not in_chrome
+            self.stack.append([tag, end_of_tag, wanted])
+
+        def handle_endtag(self, tag):
+            if self.found:
+                return
+            for i in range(len(self.stack) - 1, -1, -1):
+                if self.stack[i][0] == tag:
+                    t, inner_start, wanted = self.stack[i]
+                    inner_end = self._off()
+                    del self.stack[i:]
+                    if wanted:
+                        self.found = (inner_start, inner_end)
+                    elif mpos >= 0 and inner_start <= mpos < inner_end:
+                        # the smallest element containing the marker tag = the
+                        # wrapper Pulse inserted the body into
+                        if self.best_marker is None or (inner_end - inner_start) < \
+                                (self.best_marker[1] - self.best_marker[0]):
+                            self.best_marker = (inner_start, inner_end)
+                    return
+
+    pr = _P()
+    try:
+        pr.feed(h)
+        pr.close()
+    except Exception:  # noqa: BLE001
+        return None
+    return pr.found if cls else pr.best_marker
+
+
+def _retitle_head(h: str, p: dict) -> str:
+    """Point a page's <head> at post `p`: title, description, canonical, OG
+    tags, and fresh schema.org JSON-LD (all old ld+json blocks dropped)."""
     # <title>
     h = re.sub(r"<title>.*?</title>",
                f"<title>{html.escape(p['title'])} | {p['author']} | {html.escape(p['org'])}</title>",
@@ -265,6 +325,76 @@ def render_from_skeleton(skeleton_html: str, post: dict,
     # schema.org JSON-LD: drop ALL existing ld+json blocks, inject fresh ones in <head>
     h = re.sub(r'<script type="application/ld\+json">.*?</script>', "", h, flags=re.S)
     h = h.replace("</head>", _schema_blocks(p) + "\n</head>", 1)
+    return h
+
+
+def _swap_main(h: str, inner: str) -> str:
+    """Replace a page's main content area, keeping head/header/nav/footer."""
+    m = re.search(r"<main\b[^>]*>", h, re.I)
+    end = h.lower().rfind("</main>")
+    if m and end > m.end():
+        return h[:m.end()] + inner + h[end:]
+    hdr = re.search(r"</header>", h, re.I)
+    ftr = h.lower().rfind("<footer")
+    if hdr and ftr > hdr.end():
+        return h[:hdr.end()] + "<main>" + inner + "</main>" + h[ftr:]
+    b = re.search(r"<body\b[^>]*>", h, re.I)
+    bend = h.lower().rfind("</body>")
+    if b and bend > b.end():
+        return h[:b.end()] + "<main>" + inner + "</main>" + h[bend:]
+    return h + inner
+
+
+_CHROME_CSS = """<style>
+.pulse-post{max-width:800px;margin:0 auto;padding:48px 20px 72px;line-height:1.75}
+.pulse-post .pp-crumbs{font-size:.85rem;opacity:.75;margin-bottom:14px}
+.pulse-post .pp-crumbs a{color:inherit}
+.pulse-post h1{font-size:clamp(1.8rem,4vw,2.6rem);line-height:1.2;margin:.2em 0 .35em}
+.pulse-post .pp-meta{opacity:.75;font-size:.95rem;margin:0 0 28px}
+.pulse-post .pp-body h2{font-size:1.45rem;margin:1.8em 0 .5em;line-height:1.3}
+.pulse-post .pp-body h3{font-size:1.2rem;margin:1.5em 0 .4em}
+.pulse-post .pp-body p,.pulse-post .pp-body li{font-size:1.05rem}
+.pulse-post .pp-body ul,.pulse-post .pp-body ol{padding-left:1.3em}
+.pulse-post .pp-body a{color:#818cf8}
+.pulse-post .pp-body img{max-width:100%;height:auto}
+.pulse-post .pp-body table{width:100%;border-collapse:collapse;display:block;overflow-x:auto}
+.pulse-post .pp-body th,.pulse-post .pp-body td{border:1px solid rgba(127,127,160,.35);padding:8px 10px;text-align:left}
+.pulse-post .pp-body blockquote,.pulse-post .pp-body .callout{margin:1.4em 0;padding:16px 18px;border-left:3px solid #EB6F24;background:rgba(235,111,36,.08);border-radius:8px}
+.pulse-post .pp-body code{font-size:.92em}
+</style>"""
+
+
+def render_in_chrome(post: dict, chrome_html: str) -> str:
+    """v1.99 clean post page inside the site's OWN chrome (head, nav, footer of
+    a page such as blog/index.html). Unlike cloning the newest post, nothing of
+    any previous post can leak in - not its body, breadcrumb, date or tags (the
+    bug that put April 26's Cisco article under October's KEV headlines)."""
+    p = normalize_post(post)
+    dateline = _date.fromisoformat(p["date"]).strftime("%B %-d, %Y")
+    is_news = str(p.get("slug") or post.get("slug") or "").startswith("bvtech-news")
+    crumb = ('<a href="/news/">News</a>' if is_news else '<a href="/blog/">Blog</a>')
+    t = html.escape(p["title"])
+    article = (f'<section class="pulse-post">{_CHROME_CSS}'
+               f'<nav class="pp-crumbs" aria-label="Breadcrumb"><a href="/">Home</a> › {crumb} › '
+               f'<span>{html.escape(p["title"][:60])}</span></nav>'
+               f'<article><h1>{t}</h1>'
+               f'<p class="meta pp-meta">By {p["author"]} · {dateline}</p>'
+               f'<div class="article-body pp-body">\n{p["body_html"]}\n</div></article></section>')
+    return _swap_main(_retitle_head(chrome_html, p), article)
+
+
+def render_from_skeleton(skeleton_html: str, post: dict,
+                         content_classes: tuple[str, ...] | None = None) -> str:
+    """Produce a new post by transplanting content into a real blog page
+    (header/footer/CSS preserved verbatim). Robust to the exact markup:
+    we replace the <title>, description, canonical+OG urls, the schema JSON-LD
+    blocks, the <h1>, and the body — preferring a known content wrapper so the
+    page's own <h1>/byline survive; only falling back to the whole <article>."""
+    p = normalize_post(post)
+    h = skeleton_html
+    dateline = _date.fromisoformat(p["date"]).strftime("%B %-d, %Y")
+
+    h = _retitle_head(h, p)
     # <h1>
     h = re.sub(r"<h1[^>]*>.*?</h1>", f"<h1>{html.escape(p['title'])}</h1>",
                h, count=1, flags=re.S)
@@ -273,12 +403,11 @@ def render_from_skeleton(skeleton_html: str, post: dict,
     new_body = (f'<p class="meta">By {p["author"]} · {dateline}</p>\n{p["body_html"]}')
     done = False
     for cls in (content_classes or _CONTENT_CLASSES):
-        # Match an opening tag with class="...cls..." then its content up to the
-        # NEXT closing tag of the same element. We approximate by matching to the
-        # first </div> when the wrapper is a div (the common case for these sites).
-        pat = rf'(<div[^>]*class="[^"]*\b{re.escape(cls)}\b[^"]*"[^>]*>)(.*?)(</div>)'
-        if re.search(pat, h, flags=re.S):
-            h = re.sub(pat, lambda m: m.group(1) + new_body + m.group(3), h, count=1, flags=re.S)
+        # v1.99: balanced replacement of the wrapper's WHOLE interior (see
+        # element_inner_span) - never "up to the first </div>".
+        span = element_inner_span(h, cls=cls)
+        if span:
+            h = h[:span[0]] + new_body + h[span[1]:]
             done = True
             break
     if not done:

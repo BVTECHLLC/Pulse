@@ -74,6 +74,7 @@ SITES = {
                "style": "blog-file", "site": "https://bvtech.org",
                "org": "BVTech LLC", "author_url": "https://bvtech.org",
                "content_classes": None,
+               "render": "chrome", "chrome_page": "blog/index.html",
                "index_paths": ("blog/index.html", "index.html"),
                "preview_caps": {"index.html": 6}},
     # bvtech.org's SEPARATE news section ("This Week in Cybersecurity" KEV
@@ -92,6 +93,7 @@ SITES = {
                     "backfill": True, "backfill_prefix": "bvtech-news-", "sweep": False,
                     "site": "https://bvtech.org", "org": "BVTech LLC",
                     "author_url": "https://bvtech.org", "content_classes": None,
+                    "render": "chrome", "chrome_page": "blog/index.html",
                     "index_paths": ("news/index.html", "blog/index.html", "index.html"),
                     "preview_caps": {"index.html": 6}},
     # tx-plants.com — the plants/homesteading/survival blog. The v8 site source
@@ -1154,14 +1156,22 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
                     "content_path": md_path,
                     "cache_purged": purge.get("ok"), "cache_detail": purge.get("detail")}
 
-        skeleton = _newest_skeleton(cfg, cfg["style"])
-        rendered = content_studio.render(
-            {**post, "slug": slug, "site": meta["site"], "org": meta["org"],
-             "author_url": meta["author_url"]},
-            skeleton_html=skeleton, content_classes=meta["content_classes"])
-        # v1.41: the cloned skeleton carries the ORIGINAL post's visible date —
-        # swap that exact stale date for today's so the page tells the truth.
-        rendered = _refresh_cloned_date(rendered, skeleton)
+        _post = {**post, "slug": slug, "site": meta["site"], "org": meta["org"],
+                 "author_url": meta["author_url"]}
+        chrome = (_fetch_file(cfg, meta.get("chrome_page", "blog/index.html"))
+                  if meta.get("render") == "chrome" else None)
+        if chrome:
+            # v1.99: bvtech.org posts are a clean article inside the site's own
+            # chrome - cloning the "newest" post (alphabetically: an April 26
+            # Cisco article) leaked its breadcrumb, date, tags and body.
+            rendered = content_studio.render_in_chrome(_post, chrome)
+        else:
+            skeleton = _newest_skeleton(cfg, cfg["style"])
+            rendered = content_studio.render(
+                _post, skeleton_html=skeleton, content_classes=meta["content_classes"])
+            # v1.41: the cloned skeleton carries the ORIGINAL post's visible date
+            # - swap that exact stale date for today's so the page tells the truth.
+            rendered = _refresh_cloned_date(rendered, skeleton)
         # Idempotent: if this slug was already published (same-day re-run, retry
         # after a partial failure, deliberate re-publish), OVERWRITE it instead
         # of letting GitLab reject the commit with "file already exists".

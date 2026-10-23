@@ -11,6 +11,7 @@ isolation.
 import sys, os
 sys.path.insert(0, os.getcwd())
 os.environ["PULSE_DISABLE_KEV_TICKER"] = "1"
+os.environ["PULSE_DISABLE_SITE_REPAIR"] = "1"   # v1.99: no background repair in tests
 from fastapi.testclient import TestClient
 from app.main import app
 
@@ -7775,7 +7776,88 @@ def main():
           "once/day; stale homepage preview refreshed newest-first + trimmed; news "
           "backfill scoped OK")
 
-    print("\n=== OpsPilot v1.98.0 SMOKE TEST PASSED ===")
+    # ==== v1.99.0: clean posts in site chrome + hands-off damaged-page repair ====
+    from app.services import content_studio as _cs99
+    from app.services import site_repair as _sr99
+    from app.services import jp_site as _j99
+    _chrome = ('<!doctype html><html><head><title>Blog | BVTech</title><meta name="description" '
+               'content="x"><link rel="canonical" href="https://bvtech.org/blog/"></head><body>'
+               '<header><nav>NAV</nav></header><main><h2>Writing</h2><div class="blog-grid">'
+               '<a href="/blog/a.html" class="blog-card"><h3>OLD LISTING CARD</h3></a></div></main>'
+               '<footer>FOOT</footer></body></html>')
+    _art = {"title": "Fresh Post", "html": "<p>" + "Real new body text. " * 20 + "</p>",
+            "description": "desc here", "slug": "fresh-post", "site": "https://bvtech.org",
+            "org": "BVTech LLC", "author_url": "https://bvtech.org", "date": "2026-10-23"}
+    _pg99 = _cs99.render_in_chrome(_art, _chrome)
+    assert "NAV" in _pg99 and "FOOT" in _pg99 and "OLD LISTING CARD" not in _pg99
+    assert "<h1>Fresh Post</h1>" in _pg99 and "Real new body text." in _pg99
+    assert 'href="https://bvtech.org/blog/fresh-post.html"' in _pg99 and "October 23, 2026" in _pg99
+    _news99 = _cs99.render_in_chrome({**_art, "slug": "bvtech-news-x"}, _chrome)
+    assert '<a href="/news/">News</a>' in _news99
+    # nested callout in an old body: the cut takes the WHOLE wrapper now
+    _sk99 = ('<html><head><title>o</title></head><body><article><div class="article-body">'
+             '<p>OLD INTRO</p><div class="callout">OLD BOX</div><p>OLD TAIL</p></div>'
+             '</article></body></html>')
+    _r99 = _cs99.render_from_skeleton(_sk99, _art)
+    assert "OLD TAIL" not in _r99 and "OLD BOX" not in _r99 and "Real new body" in _r99
+    # damaged page -> real body recovered; hand-written / already-clean untouched
+    _dmg = ('<html><head><title>Fresh Post | BVTech LLC | BVTech LLC</title><meta name="description" '
+            'content="desc here"></head><body><nav class="crumbs">Cisco Catalyst · April 26, 2026'
+            '</nav><h1>Fresh Post</h1><div class="article-body"><p class="meta">By BVTech LLC · '
+            'October 21, 2026</p>' + _art["html"] + '<div class="c">REAL BOX</div></div>'
+            '<p>LEFTOVER APRIL ARTICLE</p></body></html>')
+    _rec = _sr99._recover(_dmg)
+    assert _rec and _rec["title"] == "Fresh Post" and _rec["date"] == "2026-10-21", _rec
+    assert "REAL BOX" in _rec["html"] and "LEFTOVER" not in _rec["html"], _rec["html"][-80:]
+    assert _sr99._recover("<h1>Hand written</h1><p>no marker</p>") is None
+    assert _sr99._recover(_pg99) is None                     # already clean
+    _repo99 = {"blog/index.html": _chrome, "blog/fresh-post.html": _dmg,
+               "blog/handwritten.html": "<h1>Mine</h1><p>keep me</p>"}
+    _batches99 = []
+    _o99 = (_j99.get_config, _j99._fetch_file, _j99._HTTP, _j99._list_post_paths)
+    from app.services import cloudflare as _cf99
+    _opu99 = _cf99.purge_urls
+    try:
+        _j99.get_config = lambda db, site="jp": {"configured": True, "style": "blog-file",
+                                                 "file_dir": "blog", "base": "https://gitlab.com",
+                                                 "project": "x/y", "branch": "main", "token": "t"}
+        _j99._fetch_file = lambda cfg, p: _repo99.get(p)
+        _j99._list_post_paths = lambda cfg, style: ["blog/fresh-post.html", "blog/handwritten.html"]
+        _j99._HTTP = lambda m, u, t, p=None: _batches99.append(p) or {"id": "c"}
+        _cf99.purge_urls = lambda db, site, urls: {"ok": True}
+        _rp99 = _sr99.repair_posts(_SLheal(), "bvtech")
+        assert _rp99["repaired"] == 1 and _rp99["untouched"] == 1 and _rp99["commits"] == 1, _rp99
+        _acts = _batches99[0]["actions"]
+        assert [a["file_path"] for a in _acts] == ["blog/fresh-post.html"]
+        _fixed = _acts[0]["content"]
+        assert "LEFTOVER APRIL" not in _fixed and "April 26" not in _fixed and "REAL BOX" in _fixed
+        assert 'class="pulse-post"' in _fixed and "NAV" in _fixed
+        # publish() for bvtech now renders in the chrome - never the newest-post clone
+        _o_skel, _o_dl = _j99._newest_skeleton, _j99.detect_layout
+        _j99._newest_skeleton = lambda *a, **k: (_ for _ in ()).throw(AssertionError("clone used"))
+        _j99.detect_layout = lambda cfg: {"format": "html"}
+        _batches99.clear()
+        _j99._HTTP = lambda m, u, t, p=None: (_batches99.append(p) or {"id": "c"}) if m == "POST" else []
+        try:
+            _pub99 = _j99.publish(_SLheal(), {"title": "Brand New Post", "html": _art["html"],
+                                              "description": "d"}, site="bvtech")
+        finally:
+            _j99._newest_skeleton, _j99.detect_layout = _o_skel, _o_dl
+        assert _pub99.get("ok"), _pub99
+        _post99 = [x for x in _batches99[0]["actions"]
+                   if x["file_path"] == "blog/brand-new-post.html"][0]["content"]
+        assert 'class="pulse-post"' in _post99 and "<h1>Brand New Post</h1>" in _post99
+        assert "NAV" in _post99 and "OLD LISTING CARD" not in _post99
+    finally:
+        _j99.get_config, _j99._fetch_file, _j99._HTTP, _j99._list_post_paths = _o99
+        _cf99.purge_urls = _opu99
+    # one-time background trigger: once per epoch, never in tests unless enabled
+    assert _sr99.maybe_start(_SLheal())["reason"] == "disabled"
+    print("v1.99: posts render clean in site chrome (no old breadcrumb/body leaks); nested-box "
+          "body cut fixed; damaged pages recovered exactly (hand-written untouched, batch "
+          "commit); one-time repair gated OK")
+
+    print("\n=== OpsPilot v1.99.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
