@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-REPAIR_EPOCH = "1.101.0"         # bump to re-run the one-time repair after a future fix
+REPAIR_EPOCH = "1.101.1"         # bump to re-run the one-time repair after a future fix
 MARKER = '<p class="meta">By '
 _PROVIDER = "site_repair"
 _lock = threading.Lock()
@@ -245,6 +245,48 @@ def regenerate_posts(db: Session, site: str = "bvtech", batch: int = 25) -> dict
             "news_not_exact_match": len(title_changed), "examples": rebuilt[:5]}
 
 
+def backfill_news(db: Session, days: int = 21, cap: int = 15, today=None) -> dict:
+    """v1.101.1: restore daily KEV editions that are missing from bvtech.org -
+    mostly ones overwritten by a later edition through the truncated-slug
+    collision. Each is composed exactly as the 9:30 CT run would have on that
+    day (CISA catalog as of D-1) and published under its own dated slug. Days
+    with no fresh KEV additions are skipped (no filler posts)."""
+    from datetime import timedelta
+    from . import content_autopilot as CA
+    from . import jp_site as J
+    cfg = J.get_config(db, "bvtech_news")
+    if not cfg["configured"]:
+        return {"ok": False, "error": "not connected"}
+    today = today or J.biz_now().date()
+    have = set()
+    for path in J._list_post_paths(cfg, cfg["style"]):
+        if not J._slug_of(path).startswith("bvtech-news-"):
+            continue
+        d = J._date_from_text(_page_title(J._fetch_file(cfg, path) or ""))
+        if d:
+            have.add(d)
+    feed = J._KEV_FEED()
+    restored, skipped_quiet = [], 0
+    for back in range(days, 0, -1):
+        d = today - timedelta(days=back)
+        if d in have or len(restored) >= cap:
+            continue
+        kev = J.kev_as_of(feed, d - timedelta(days=1), 6)
+        if not kev or max(k["added"] for k in kev) < (d - timedelta(days=3)).isoformat():
+            skipped_quiet += 1
+            continue
+        art = CA._compose_news_deterministic(
+            datetime(d.year, d.month, d.day, 14, 30, tzinfo=timezone.utc), kev)
+        if not art:
+            continue
+        res = J.publish(db, {**art, "date": d.isoformat(), "author": "Jordan Polasek"},
+                        "bvtech_news")
+        if res.get("ok"):
+            restored.append(f"{d.isoformat()} {res.get('slug')}")
+    return {"ok": True, "restored": restored, "quiet_days_skipped": skipped_quiet,
+            "already_present": len(have)}
+
+
 def run_full_repair(db: Session) -> str:
     """All steps; never raises; returns the plain-text report it emails."""
     from . import ai, jp_site, outbound, site_audit
@@ -267,6 +309,7 @@ def run_full_repair(db: Session) -> str:
     from . import feature_articles
     step("2c. Feature article (PHP2Shell, pinned on the homepage + /news/)",
          lambda: feature_articles.publish_php2shell(db))
+    step("2d. Missing daily news editions (restored)", lambda: backfill_news(db))
     step("3. Listings self-heal (+ homepage feature, schema, sitemap)",
          lambda: jp_site.listings_self_heal(db, force=True))
     step("4. Audit", lambda: "\n" + site_audit.bvtech_report(db))

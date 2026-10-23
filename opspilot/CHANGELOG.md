@@ -1,5 +1,17 @@
 # BVTech OpsPilot — Changelog
 
+## v1.101.1 — Stop daily editions overwriting each other; restore the lost ones (Oct 2026)
+- **Root cause of missing October editions.** Slugs were cut at 70 characters,
+  so "…plex-and-more-october-21-2026" became "…plex-and-more-o". The next
+  day's edition with the same lead vendors got the same filename, and
+  publish() (idempotent by design) overwrote it. Live proof: the Oct 21 URL now
+  serves the Oct 23 edition. `_slugify` now keeps a trailing date intact.
+- `site_repair.backfill_news` (repair step 2d) restores editions missing from
+  the last 21 days, at most 15 per run. Each one is composed exactly as that
+  day's 9:30 CT run would have been (CISA catalog as of D-1) and published under
+  its own dated slug. Days with no KEV additions in the 3 days before are
+  skipped, so no filler posts are created. REPAIR_EPOCH 1.101.1.
+
 ## v1.101.0 — bvtech.org blog overhaul: native posts, PHP2Shell feature, Google-safe (Oct 2026)
 - **Native post template.** bvtech.org posts now use the same layout as the
   hand-built ones: page hero (breadcrumb, headline, byline with real date and

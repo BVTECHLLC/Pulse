@@ -856,6 +856,13 @@ def _proj_url(cfg: dict) -> str:
 
 def _slugify(title: str) -> str:
     s = re.sub(r"[^a-z0-9]+", "-", (title or "post").lower()).strip("-")
+    if len(s) > 70:
+        # v1.101.1: keep a trailing date. Cutting "...-and-more-october-21-2026"
+        # to "...-and-more-o" gave consecutive daily editions with the same
+        # vendors the SAME file, so each one overwrote the day before.
+        m = re.search(r"-(?:" + "|".join(_MONTH_NAMES).lower() + r")-\d{1,2}-\d{4}$", s)
+        if m:
+            return s[:70 - len(m.group(0))].rstrip("-") + m.group(0)
     return s[:70] or "post"
 
 

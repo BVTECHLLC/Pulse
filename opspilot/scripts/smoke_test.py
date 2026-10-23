@@ -7937,7 +7937,7 @@ def main():
         (_j100.get_config, _j100._fetch_file, _j100._list_post_paths, _j100._HTTP,
          _j100._KEV_FEED) = _o100
         _cf100.purge_urls = _opu100
-    assert _sr100.REPAIR_EPOCH == "1.101.0"
+    assert _sr100.REPAIR_EPOCH == "1.101.1"
     print("v1.100: KEV as-of-date + title-guided cutoff rebuild news editions exactly; SMB "
           "posts rebuilt from stored/evergreen text; hand-written posts untouched OK")
 
@@ -8022,13 +8022,45 @@ def main():
     finally:
         _j101.get_config, _j101._fetch_file, _j101._list_post_paths, _j101._repo_ops = _o101
     assert "SKIPPED" in _ca98._SKIP_RECYCLED
+    # (8) v1.101.1: long dated titles keep their date in the slug (no overwrite)
+    _sa = _j101._slugify("BVTech News — 10 New KEV Entries Hit EG Secure Solutions, Plex, and more — October 21, 2026")
+    _sb = _j101._slugify("BVTech News — 10 New KEV Entries Hit EG Secure Solutions, Plex, and more — October 23, 2026")
+    assert _sa != _sb and _sa.endswith("-october-21-2026") and len(_sa) <= 70, _sa
+    assert _j101._slugify("Short Title") == "short-title"
+    # (9) missing daily editions are restored (dated), quiet days skipped, present days kept
+    from app.services import site_repair as _sr101
+    _feed101 = [{"cveID": f"CVE-2026-9{i}", "vulnerabilityName": f"Bug {i}", "vendorProject": v,
+                 "product": "P", "dateAdded": da, "dueDate": "2026-11-20"}
+                for i, (v, da) in enumerate([("Acme", "2026-10-20"), ("Bolt", "2026-10-18"),
+                                             ("Core", "2026-09-01")])]
+    _have_pg = ('<title>BVTech News — 2 New KEV Entries Hit Acme — October 21, 2026 | BVTech</title>')
+    _pubs = []
+    _o101b = (_j101.get_config, _j101._fetch_file, _j101._list_post_paths, _j101._KEV_FEED,
+              _j101.publish)
+    try:
+        _j101.get_config = lambda db, site="jp": {"configured": True, "style": "blog-file",
+                                                  "file_dir": "blog"}
+        _j101._list_post_paths = lambda cfg, st: ["blog/bvtech-news-a.html"]
+        _j101._fetch_file = lambda cfg, p: _have_pg
+        _j101._KEV_FEED = lambda: _feed101
+        _j101.publish = lambda db, post, site: (_pubs.append((post["date"], post["title"], site))
+                                                or {"ok": True, "slug": "x"})
+        _bf = _sr101.backfill_news(None, days=6, today=_d101(2026, 10, 23))
+        _days = [d for d, _, _ in _pubs]
+        assert "2026-10-21" not in _days and "2026-10-22" in _days and "2026-10-19" in _days, _pubs
+        assert "2026-10-17" not in _days and _bf["quiet_days_skipped"] >= 1, (_pubs, _bf)
+        assert all(site == "bvtech_news" and t.endswith(d[:0]) for d, t, site in _pubs)
+        assert any("October 22, 2026" in t for d, t, _ in _pubs if d == "2026-10-22"), _pubs
+    finally:
+        (_j101.get_config, _j101._fetch_file, _j101._list_post_paths, _j101._KEV_FEED,
+         _j101.publish) = _o101b
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.101.0"
+    assert _gs101().APP_VERSION == "1.101.1"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
 
-    print("\n=== OpsPilot v1.101.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.101.1 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
