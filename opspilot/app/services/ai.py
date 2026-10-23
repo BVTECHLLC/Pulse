@@ -220,86 +220,103 @@ def free_llm_enabled() -> bool:
     return bool(get_settings().free_llm_enabled)
 
 
-# v1.98 SELF-HEALING free model. Groq retires models on a schedule; when the
-# configured one disappears every call failed and all three sites quietly fell
-# back to their 6-7 evergreen posts for weeks. On a model error we ask the
-# provider which models exist (GET /models) and switch to the best available.
+# v1.98 SELF-HEALING free model + v1.101 PROVIDER REDUNDANCY. Groq retires
+# models on a schedule; when the configured one disappeared every call failed and
+# all three sites quietly fell back to their evergreen posts for weeks. Now: on a
+# model error ask the provider which models exist and switch; if a provider is
+# down entirely, try the next configured one (FREE_LLM2_*, FREE_LLM3_*).
 _FREE_MODEL_PREFS = ("llama-3.3-70b-versatile", "openai/gpt-oss-120b",
                      "meta-llama/llama-4-maverick-17b-128e-instruct",
                      "moonshotai/kimi-k2-instruct", "qwen/qwen3-32b",
+                     "gemini-2.5-flash", "gemini-2.0-flash",
                      "openai/gpt-oss-20b", "llama-3.1-8b-instant")
-_free_model_override: str | None = None
+_free_model_override: str | None = None          # primary provider's switched model
+_overrides: dict = {}                             # base -> switched model (backups)
 _UA = "BVTech-OpsPilot/1.0 (+https://bvtech.org)"
 
 
-def _free_models() -> list[str]:
-    """Model ids the free provider currently serves (OpenAI-compatible)."""
+def _providers() -> list[dict]:
     s = get_settings()
-    req = urlrequest.Request(s.FREE_LLM_BASE.rstrip("/") + "/models", method="GET",
-                             headers={"authorization": f"Bearer {s.FREE_LLM_KEY}",
+    out = []
+    for base, key, model in ((s.FREE_LLM_BASE, s.FREE_LLM_KEY, s.FREE_LLM_MODEL),
+                             (s.FREE_LLM2_BASE, s.FREE_LLM2_KEY, s.FREE_LLM2_MODEL),
+                             (s.FREE_LLM3_BASE, s.FREE_LLM3_KEY, s.FREE_LLM3_MODEL)):
+        if key and base:
+            out.append({"base": base.rstrip("/"), "key": key, "model": model or ""})
+    return out
+
+
+def _free_models(prov: dict | None = None) -> list[str]:
+    """Model ids a free provider currently serves (OpenAI-compatible)."""
+    prov = prov or _providers()[0]
+    req = urlrequest.Request(prov["base"] + "/models", method="GET",
+                             headers={"authorization": f"Bearer {prov['key']}",
                                       "user-agent": _UA})
     with urlrequest.urlopen(req, timeout=20) as r:
         data = json.loads(r.read().decode())
-    return [m.get("id") for m in (data.get("data") or []) if m.get("id")]
+    return [m.get("id", "").removeprefix("models/") for m in (data.get("data") or [])
+            if m.get("id")]
 
 
-def _pick_free_model(avoid: str) -> str | None:
-    ids = _free_models()
-    for m in (get_settings().FREE_LLM_MODEL,) + _FREE_MODEL_PREFS:
-        if m in ids and m != avoid:
+def _pick_free_model(avoid: str, prov: dict | None = None) -> str | None:
+    prov = prov or _providers()[0]
+    ids = _free_models(prov)
+    for m in (prov.get("model"),) + _FREE_MODEL_PREFS:
+        if m and m in ids and m != avoid:
             return m
     for m in ids:                                 # any general chat model
-        if m != avoid and re.search(r"llama|gpt-oss|qwen|kimi|mistral|gemma", m, re.I) \
-                and not re.search(r"guard|whisper|tts|embed|vision|prompt", m, re.I):
+        if m != avoid and re.search(r"llama|gpt-oss|qwen|kimi|mistral|gemma|gemini", m, re.I) \
+                and not re.search(r"guard|whisper|tts|embed|vision|prompt|image|audio", m, re.I):
             return m
     return None
 
 
-def _free_post(model: str, system: str, user: str, max_tokens: int) -> dict:
-    s = get_settings()
+def _free_post(model: str, system: str, user: str, max_tokens: int,
+               prov: dict | None = None) -> dict:
+    prov = prov or _providers()[0]
     payload = {"model": model, "max_tokens": max_tokens,
                "messages": [{"role": "system", "content": system},
                             {"role": "user", "content": user}]}
     req = urlrequest.Request(
-        s.FREE_LLM_BASE.rstrip("/") + "/chat/completions",
-        data=json.dumps(payload).encode(), method="POST",
+        prov["base"] + "/chat/completions", data=json.dumps(payload).encode(), method="POST",
         # A real User-Agent is REQUIRED: Groq (and most free LLM APIs) sit behind
         # Cloudflare, which blocks urllib's default "Python-urllib/x.y" signature
         # with HTTP 403 error 1010. Any normal UA sails through.
-        headers={"authorization": f"Bearer {s.FREE_LLM_KEY}",
+        headers={"authorization": f"Bearer {prov['key']}",
                  "content-type": "application/json", "user-agent": _UA})
     with urlrequest.urlopen(req, timeout=90) as r:
         return json.loads(r.read().decode())
 
 
-def _free_llm_complete(system: str, user: str, *, model: str, max_tokens: int) -> str:
-    """Single-shot completion against an OpenAI-COMPATIBLE endpoint (Groq,
-    OpenRouter, Together, Google's OpenAI-compat layer, a local Ollama, ...).
-    `model` here is ignored in favor of the configured FREE_LLM_MODEL so callers
-    don't need to know which free provider is wired. Raises AIError on failure so
-    the caller can fall back to the deterministic composer.
-    v1.98: retired model -> auto-switch; rate limit / too large -> one retry."""
+def _complete_one(prov: dict, primary: bool, system: str, user: str, max_tokens: int) -> str:
+    """One provider, with model auto-switch and one rate-limit retry."""
     global _free_model_override
     import time as _time
-    s = get_settings()
-    if not s.FREE_LLM_KEY:
-        raise AIError("no free LLM configured")
-    use = _free_model_override or s.FREE_LLM_MODEL
+    use = (_free_model_override if primary else _overrides.get(prov["base"])) or prov["model"]
+    if not use:
+        try:
+            use = _pick_free_model("", prov) or ""
+        except Exception:  # noqa: BLE001
+            use = ""
     data = None
     for attempt in range(3):
         try:
-            data = _free_post(use, system, user, max_tokens)
+            data = _free_post(use, system, user, max_tokens, prov)
             break
         except error.HTTPError as e:
             body = e.read().decode(errors="replace")[:400]
             if attempt < 2 and e.code in (400, 404) and re.search(
                     r"model|decommission|deprecat|not.?found|does not exist", body, re.I):
                 try:
-                    alt = _pick_free_model(avoid=use)
+                    alt = _pick_free_model(avoid=use, prov=prov)
                 except Exception:  # noqa: BLE001
                     alt = None
                 if alt:
-                    _free_model_override = use = alt
+                    use = alt
+                    if primary:
+                        _free_model_override = alt
+                    else:
+                        _overrides[prov["base"]] = alt
                     continue
             if attempt < 2 and e.code in (413, 429):
                 if e.code == 413 or "token" in body.lower():
@@ -310,44 +327,71 @@ def _free_llm_complete(system: str, user: str, *, model: str, max_tokens: int) -
                     wait = 5
                 _time.sleep(min(wait, 20))
                 continue
-            raise AIError(f"free LLM HTTP {e.code} ({use}): {body[:200]}")
+            raise AIError(f"HTTP {e.code} ({use} @ {prov['base']}): {body[:160]}")
         except AIError:
             raise
         except Exception as e:  # noqa: BLE001
-            raise AIError(f"free LLM request failed ({use}): {e}")
+            raise AIError(f"request failed ({use} @ {prov['base']}): {e}")
     if data is None:
-        raise AIError(f"free LLM gave no answer after retries ({use})")
+        raise AIError(f"no answer after retries ({use} @ {prov['base']})")
     try:
         text = (data["choices"][0]["message"]["content"] or "").strip()
     except (KeyError, IndexError, TypeError):
-        raise AIError("free LLM returned an unexpected shape")
+        raise AIError(f"unexpected reply shape ({prov['base']})")
     # Reasoning models can prefix hidden thinking; never publish it.
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.S | re.I).strip()
     if not text:
-        raise AIError("free LLM returned an empty response")
+        raise AIError(f"empty reply ({use} @ {prov['base']})")
     return text
 
 
+def _free_llm_complete(system: str, user: str, *, model: str, max_tokens: int) -> str:
+    """Single-shot completion across the configured free providers, in order.
+    `model` is ignored in favor of each provider's configured model. Raises
+    AIError (every provider's reason) so the caller can use its fallback."""
+    provs = _providers()
+    if not provs:
+        raise AIError("no free LLM configured")
+    errs = []
+    for i, prov in enumerate(provs):
+        try:
+            return _complete_one(prov, i == 0, system, user, max_tokens)
+        except AIError as e:
+            errs.append(str(e))
+    raise AIError("free LLM failed on every provider: " + " | ".join(errs)[:500])
+
+
 def free_llm_selftest() -> dict:
-    """One-line health check for the box: key, models on offer, a real call."""
+    """One-line health check for the box: each provider's key, models on offer
+    and a real tiny call."""
     s = get_settings()
-    out = {"base": s.FREE_LLM_BASE, "configured_model": s.FREE_LLM_MODEL,
-           "key_set": bool(s.FREE_LLM_KEY), "free_llm_only": s.FREE_LLM_ONLY}
-    if not s.FREE_LLM_KEY:
+    out = {"free_llm_only": s.FREE_LLM_ONLY, "providers": []}
+    provs = _providers()
+    if not provs:
         return {**out, "ok": False, "error": "FREE_LLM_KEY is not set"}
-    try:
-        ids = _free_models()
-        out["configured_model_available"] = s.FREE_LLM_MODEL in ids
-        out["models"] = ids[:12]
-    except Exception as e:  # noqa: BLE001
-        out["models_error"] = str(e)[:200]
-    try:
-        reply = _free_llm_complete("Reply with exactly the word OK.", "ping",
-                                   model="", max_tokens=20)
-        out.update(ok=True, reply=reply[:40],
-                   model_used=_free_model_override or s.FREE_LLM_MODEL)
-    except AIError as e:
-        out.update(ok=False, error=str(e)[:300])
+    for i, prov in enumerate(provs):
+        r = {"base": prov["base"], "configured_model": prov["model"]}
+        try:
+            ids = _free_models(prov)
+            r["configured_model_available"] = prov["model"] in ids
+            r["models"] = ids[:8]
+        except Exception as e:  # noqa: BLE001
+            r["models_error"] = str(e)[:160]
+        try:
+            r["reply"] = _complete_one(prov, i == 0, "Reply with exactly the word OK.",
+                                       "ping", 20)[:40]
+            r["ok"] = True
+            r["model_used"] = ((_free_model_override if i == 0 else _overrides.get(prov["base"]))
+                               or prov["model"])
+        except AIError as e:
+            r.update(ok=False, error=str(e)[:240])
+        out["providers"].append(r)
+    out["ok"] = any(p.get("ok") for p in out["providers"])
+    out["redundancy"] = sum(1 for p in out["providers"] if p.get("ok"))
+    if out["ok"]:
+        out["model_used"] = next(p.get("model_used") for p in out["providers"] if p.get("ok"))
+    else:
+        out["error"] = "; ".join(p.get("error", "") for p in out["providers"])[:300]
     return out
 
 

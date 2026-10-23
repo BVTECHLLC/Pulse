@@ -192,6 +192,8 @@ def normalize_post(post: dict) -> dict:
         "author_url": author_url,
         "og_image": og_image,
         "url": url,
+        "modified": post.get("modified"),
+        "faq": post.get("faq") or [],
     }
 
 
@@ -212,13 +214,20 @@ def _schema_blocks(p: dict) -> str:
                              "@id": f"{site}/#org",
                              "logo": {"@type": "ImageObject", "url": f"{site}/assets/img/logo.png"}},
                "url": p["url"], "mainEntityOfPage": p["url"],
-               "datePublished": p["date"], "dateModified": p["date"],
+               "datePublished": p["date"], "dateModified": p.get("modified") or p["date"],
                "image": p.get("og_image", OG_IMAGE), "inLanguage": "en",
                "description": p["description"]}
     if p["keywords"]:
         article["keywords"] = p["keywords"]
-    return ('<script type="application/ld+json">' + json.dumps(breadcrumb) + "</script>\n"
-            '<script type="application/ld+json">' + json.dumps(article) + "</script>")
+    out = ('<script type="application/ld+json">' + json.dumps(breadcrumb) + "</script>\n"
+           '<script type="application/ld+json">' + json.dumps(article) + "</script>")
+    if p.get("faq"):                     # v1.101: FAQPage for answer engines (AEO)
+        faq = {"@context": "https://schema.org", "@type": "FAQPage",
+               "mainEntity": [{"@type": "Question", "name": q,
+                               "acceptedAnswer": {"@type": "Answer", "text": a}}
+                              for q, a in p["faq"]]}
+        out += '\n<script type="application/ld+json">' + json.dumps(faq) + "</script>"
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -346,41 +355,85 @@ def _swap_main(h: str, inner: str) -> str:
 
 
 _CHROME_CSS = """<style>
-.pulse-post{max-width:800px;margin:0 auto;padding:48px 20px 72px;line-height:1.75}
-.pulse-post .pp-crumbs{font-size:.85rem;opacity:.75;margin-bottom:14px}
-.pulse-post .pp-crumbs a{color:inherit}
-.pulse-post h1{font-size:clamp(1.8rem,4vw,2.6rem);line-height:1.2;margin:.2em 0 .35em}
-.pulse-post .pp-meta{opacity:.75;font-size:.95rem;margin:0 0 28px}
-.pulse-post .pp-body h2{font-size:1.45rem;margin:1.8em 0 .5em;line-height:1.3}
-.pulse-post .pp-body h3{font-size:1.2rem;margin:1.5em 0 .4em}
-.pulse-post .pp-body p,.pulse-post .pp-body li{font-size:1.05rem}
-.pulse-post .pp-body ul,.pulse-post .pp-body ol{padding-left:1.3em}
-.pulse-post .pp-body a{color:#818cf8}
-.pulse-post .pp-body img{max-width:100%;height:auto}
-.pulse-post .pp-body table{width:100%;border-collapse:collapse;display:block;overflow-x:auto}
-.pulse-post .pp-body th,.pulse-post .pp-body td{border:1px solid rgba(127,127,160,.35);padding:8px 10px;text-align:left}
-.pulse-post .pp-body blockquote,.pulse-post .pp-body .callout{margin:1.4em 0;padding:16px 18px;border-left:3px solid #EB6F24;background:rgba(235,111,36,.08);border-radius:8px}
-.pulse-post .pp-body code{font-size:.92em}
+.pp-body p{color:var(--text,#d6d6e6);line-height:1.85;margin:0 0 22px}
+.pp-body h2{font-size:1.6rem;margin:48px 0 16px;color:var(--white,#fff);line-height:1.3}
+.pp-body h3{font-size:1.2rem;margin:32px 0 12px;color:var(--white,#fff);line-height:1.35}
+.pp-body ul,.pp-body ol{color:var(--text,#d6d6e6);line-height:1.8;margin:0 0 24px;padding-left:1.4em}
+.pp-body li{margin:0 0 8px}
+.pp-body a{color:#EB6F24;text-decoration:underline;text-underline-offset:3px}
+.pp-body strong{color:var(--white,#fff)}
+.pp-body img,.pp-body svg{max-width:100%;height:auto}
+.pp-body table{width:100%;border-collapse:collapse;margin:0 0 28px;font-size:.92rem;display:block;overflow-x:auto}
+.pp-body th{color:var(--white,#fff);text-align:left;font-weight:700;background:rgba(68,64,219,.12)}
+.pp-body th,.pp-body td{border:1px solid rgba(255,255,255,.12);padding:10px 12px;color:var(--text,#d6d6e6)}
+.pp-body blockquote,.pp-body .callout{background:rgba(235,111,36,.08);border:1px solid rgba(235,111,36,.25);border-left:4px solid #EB6F24;border-radius:8px;padding:18px 22px;margin:0 0 32px}
+.pp-body blockquote p:last-child,.pp-body .callout p:last-child{margin-bottom:0}
+.pp-body code{background:rgba(255,255,255,.07);padding:2px 6px;border-radius:4px;font-size:.9em}
+.pp-body>:last-child{margin-bottom:0}
+.pp-body:empty{display:none}
+.pp-tag{font-size:.72rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);padding:3px 10px;border-radius:4px;color:rgba(255,255,255,.7)}
+.pp-cta{margin:48px 0 0;padding:26px 28px;border-radius:12px;background:linear-gradient(135deg,rgba(235,111,36,.10),rgba(68,64,219,.08));border:1px solid rgba(235,111,36,.3)}
+.pp-cta h3{margin:0 0 8px;color:var(--white,#fff);font-size:1.2rem}
+.pp-cta p{margin:0 0 16px;color:var(--text,#d6d6e6);line-height:1.7}
+.pp-cta a.pp-btn{display:inline-block;padding:11px 20px;border-radius:8px;background:#EB6F24;color:#0E0D2C;font-weight:800;text-decoration:none;margin:0 10px 8px 0}
+.pp-cta a.pp-btn2{background:transparent;color:var(--white,#fff);border:1px solid rgba(255,255,255,.3)}
+.pp-author{display:flex;gap:16px;align-items:center;margin:32px 0 0;padding:20px 0 0;border-top:1px solid rgba(255,255,255,.1);color:var(--muted,#a3a3bd);font-size:.9rem;line-height:1.6}
+.pp-author strong{color:var(--white,#fff)}
+.pp-avatar{flex:0 0 52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#EB6F24,#4440DB);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800}
 </style>"""
+
+_CTA_HTML = ('<div class="pp-cta"><h3>Want a second set of eyes on your setup?</h3>'
+             '<p>BVTech has kept Texas businesses secure and running since 2013. Book a free '
+             'assessment or try one of our free security tools.</p>'
+             '<a class="pp-btn" href="/contact/">Book a Free Assessment</a>'
+             '<a class="pp-btn pp-btn2" href="/tools/">Free Security Tools</a></div>')
+
+
+def reading_minutes(body_html: str) -> int:
+    words = len(re.sub(r"<[^>]+>", " ", body_html or "").split())
+    return max(2, round(words / 220))
 
 
 def render_in_chrome(post: dict, chrome_html: str) -> str:
-    """v1.99 clean post page inside the site's OWN chrome (head, nav, footer of
-    a page such as blog/index.html). Unlike cloning the newest post, nothing of
-    any previous post can leak in - not its body, breadcrumb, date or tags (the
-    bug that put April 26's Cisco article under October's KEV headlines)."""
+    """Post page in the site's OWN chrome and NATIVE post layout (v1.101): the
+    same page-hero (breadcrumb, h1, byline, tag chips) + 780px content column
+    the hand-built bvtech.org posts use, styled with the site's CSS variables.
+    Nothing from any previous post can leak in (v1.99 bug: cloning the newest
+    post put April 26's Cisco article under October headlines)."""
     p = normalize_post(post)
     dateline = _date.fromisoformat(p["date"]).strftime("%B %-d, %Y")
-    is_news = str(p.get("slug") or post.get("slug") or "").startswith("bvtech-news")
-    crumb = ('<a href="/news/">News</a>' if is_news else '<a href="/blog/">Blog</a>')
+    is_news = str(p.get("slug") or "").startswith("bvtech-news")
     t = html.escape(p["title"])
-    article = (f'<section class="pulse-post">{_CHROME_CSS}'
-               f'<nav class="pp-crumbs" aria-label="Breadcrumb"><a href="/">Home</a> › {crumb} › '
-               f'<span>{html.escape(p["title"][:60])}</span></nav>'
-               f'<article><h1>{t}</h1>'
-               f'<p class="meta pp-meta">By {p["author"]} · {dateline}</p>'
-               f'<div class="article-body pp-body">\n{p["body_html"]}\n</div></article></section>')
-    return _swap_main(_retitle_head(chrome_html, p), article)
+    crumbs = ('<a href="/">Home</a> › <a href="/blog/">Blog</a>'
+              + (' › <a href="/news/">📰 News</a>' if is_news else "")
+              + f" › {html.escape(post.get('crumb') or p['title'][:48])}")
+    tags = list(post.get("tags") or (["CISA KEV", "Threat Intelligence"] if is_news
+                                     else ["Small Business IT", "Cybersecurity"]))[:8]
+    chips = "".join(f'<span class="pp-tag">{html.escape(str(x))}</span>' for x in tags)
+    mins = reading_minutes(p["body_html"])
+    author = p["author"]
+    if "bvtech" in author.lower():            # company byline -> the founder, as hand-built posts
+        author = "Jordan Polasek"
+    initials = "".join(w[0] for w in author.split()[:2]).upper() or "BV"
+    hero = ('<section class="page-hero"><div class="ctr">'
+            f'<div class="breadcrumb">{crumbs}</div>'
+            f'<h1>{t}</h1>'
+            '<p style="color:var(--muted);font-size:.9rem;margin-top:16px">'
+            f'<strong style="color:var(--accent2)">{html.escape(author)}</strong> · Founder, '
+            f'BVTech LLC · <time datetime="{p["date"]}">{dateline}</time> · {mins} min read</p>'
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;'
+            f'justify-content:center">{chips}</div></div></section>')
+    body = ('<section style="padding:40px 0 100px;background:var(--bg)">'
+            '<div class="ctr pulse-post" style="max-width:780px">' + _CHROME_CSS
+            + f'<!-- pulse:post date={p["date"]} -->'
+            + f'<div class="article-body pp-body">\n{p["body_html"]}\n</div>'
+            + (post.get("cta_html") if post.get("cta_html") is not None else _CTA_HTML)
+            + f'<div class="pp-author"><div class="pp-avatar">{initials}</div><div>'
+              f'<strong>{html.escape(author)}</strong> is the founder of BVTech LLC, an '
+              'El Campo, Texas managed IT and cybersecurity firm serving small and '
+              'mid-sized businesses since 2013.</div></div>'
+            + '</div></section>')
+    return _swap_main(_retitle_head(chrome_html, p), hero + body)
 
 
 def render_from_skeleton(skeleton_html: str, post: dict,

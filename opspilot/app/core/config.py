@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # --- Identity ---
     APP_NAME: str = "BVTech OpsPilot"
-    APP_VERSION: str = "1.100.0"
+    APP_VERSION: str = "1.101.0"
     ENV: str = "development"  # development | production
 
     # --- Security ---
@@ -131,6 +131,16 @@ class Settings(BaseSettings):
     # composer. Set FREE_LLM_ONLY=1 on the box so daily posting can never spend a
     # cent of Claude credit (keep Claude for interactive building instead).
     FREE_LLM_ONLY: bool = False
+    # v1.101 REDUNDANCY: up to two more OpenAI-compatible free providers, tried
+    # in order when the primary fails (e.g. Google Gemini's OpenAI endpoint
+    # https://generativelanguage.googleapis.com/v1beta/openai with model
+    # gemini-2.5-flash, or OpenRouter https://openrouter.ai/api/v1).
+    FREE_LLM2_BASE: str | None = None
+    FREE_LLM2_KEY: str | None = None
+    FREE_LLM2_MODEL: str | None = None
+    FREE_LLM3_BASE: str | None = None
+    FREE_LLM3_KEY: str | None = None
+    FREE_LLM3_MODEL: str | None = None
 
     # --- Cloudflare cache purge (v1.55). The daily publisher flushes the edge
     #     cache after every post so new content is visible IMMEDIATELY instead of

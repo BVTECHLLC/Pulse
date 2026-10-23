@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-REPAIR_EPOCH = "1.100.0"         # bump to re-run the one-time repair after a future fix
+REPAIR_EPOCH = "1.101.0"         # bump to re-run the one-time repair after a future fix
 MARKER = '<p class="meta">By '
 _PROVIDER = "site_repair"
 _lock = threading.Lock()
@@ -81,7 +81,8 @@ def repair_posts(db: Session, site: str = "bvtech", batch: int = 25) -> dict:
         slug = J._slug_of(path)
         out = content_studio.render_in_chrome(
             {**rec, "slug": slug, "site": meta["site"], "org": meta["org"],
-             "author_url": meta["author_url"]}, chrome)
+             "author_url": meta["author_url"],
+             "modified": datetime.now(timezone.utc).date().isoformat()}, chrome)
         files[path] = out
         fixed.append(slug)
     commits = 0
@@ -146,16 +147,33 @@ def regenerate_posts(db: Session, site: str = "bvtech", batch: int = 25) -> dict
     if not chrome:
         return {"ok": False, "error": "no chrome page (blog/index.html)"}
     fdir = cfg.get("file_dir", "blog")
+    today = datetime.now(timezone.utc).date().isoformat()   # honest dateModified
     feed = None
     evergreen = {t["title"]: t for t in CA._BV_EVERGREEN}
     files, rebuilt, skipped, title_changed = {}, [], 0, []
     for path in J._list_post_paths(cfg, cfg["style"]):
         page = J._fetch_file(cfg, path) or ""
-        if not page or MARKER in page or 'class="pulse-post"' in page:
-            skipped += 1
+        if not page or MARKER in page or "<!-- pulse:post" in page:
+            skipped += 1                          # recoverable elsewhere / already native
             continue
         slug = J._slug_of(path)
         title = _page_title(page)
+        if 'class="pulse-post"' in page:          # v1.99/1.100 clean page -> native layout
+            from .content_studio import element_inner_span
+            sp = element_inner_span(page, cls="pp-body")
+            pd = _page_date(page)
+            if sp and pd:
+                desc = re.search(r'<meta\s+name="description"\s+content="([^"]*)"', page)
+                files[path] = content_studio.render_in_chrome(
+                    {"title": title, "html": page[sp[0]:sp[1]].strip(),
+                     "description": _html.unescape(desc.group(1)) if desc else "",
+                     "date": pd.isoformat(), "modified": today, "slug": slug,
+                     "site": meta["site"], "org": meta["org"],
+                     "author_url": meta["author_url"]}, chrome)
+                rebuilt.append(slug)
+            else:
+                skipped += 1
+            continue
         url = f"{meta['site']}/{fdir}/{slug}.html"
         art = None
         if slug.startswith("bvtech-news-"):
@@ -204,6 +222,7 @@ def regenerate_posts(db: Session, site: str = "bvtech", batch: int = 25) -> dict
         files[path] = content_studio.render_in_chrome(
             {"title": title, "html": art["html"],
              "description": (art.get("excerpt") or "")[:300], "date": art.get("date"),
+             "modified": today, "tags": art.get("tags"), "crumb": art.get("crumb"),
              "slug": slug, "site": meta["site"], "org": meta["org"],
              "author_url": meta["author_url"]}, chrome)
         rebuilt.append(slug)
@@ -227,7 +246,7 @@ def regenerate_posts(db: Session, site: str = "bvtech", batch: int = 25) -> dict
 
 
 def run_full_repair(db: Session) -> str:
-    """All four steps; never raises; returns the plain-text report it emails."""
+    """All steps; never raises; returns the plain-text report it emails."""
     from . import ai, jp_site, outbound, site_audit
     from ..models import Notification
     started = datetime.now(timezone.utc)
@@ -245,7 +264,11 @@ def run_full_repair(db: Session) -> str:
     st = step("1. AI writing self-test", ai.free_llm_selftest)
     rp = step("2. Damaged post pages (body recovered)", lambda: repair_posts(db, "bvtech"))
     rg = step("2b. Post pages with NO body (rebuilt)", lambda: regenerate_posts(db, "bvtech"))
-    step("3. Listings self-heal", lambda: jp_site.listings_self_heal(db, force=True))
+    from . import feature_articles
+    step("2c. Feature article (PHP2Shell, pinned on the homepage + /news/)",
+         lambda: feature_articles.publish_php2shell(db))
+    step("3. Listings self-heal (+ homepage feature, schema, sitemap)",
+         lambda: jp_site.listings_self_heal(db, force=True))
     step("4. Audit", lambda: "\n" + site_audit.bvtech_report(db))
     ai_ok = isinstance(st, dict) and st.get("ok")
     headline = (f"AI writing {'WORKS' if ai_ok else 'FAILING: ' + str(st.get('error'))[:120]}; "

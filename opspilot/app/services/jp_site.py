@@ -481,6 +481,8 @@ def listings_self_heal(db: Session, now: "datetime | None" = None, *,
             rd = len(red.get("restamped") or [])
             prev = (refresh_preview(db, site) if site != "bvtech_news"
                     else {"ok": True, "refreshed": []})
+            if site != "bvtech_news":
+                out.setdefault("sitemap", {})[site] = sitemap_sync(db, site)
             pv = len(prev.get("refreshed") or [])
             out["sites"][site] = {"ok": bool(res.get("ok") and red.get("ok") and prev.get("ok")),
                                   "added": n, "restamped": rd, "preview": pv,
@@ -760,6 +762,87 @@ def refresh_preview(db: Session, site: str) -> dict:
     except Exception as e:  # noqa: BLE001
         db.rollback()
         return {"ok": False, "error": str(e)[:300]}
+
+
+def sitemap_sync(db: Session, site: str, extra: dict | None = None) -> dict:
+    """v1.101: keep sitemap.xml's POST entries in step with the repo - every
+    post listed with its real date as <lastmod>, deleted posts dropped (no dead
+    URLs for Google to crawl). Non-post URLs are left exactly as they are.
+    `extra` = {absolute_url: "YYYY-MM-DD"} for other pages to add/refresh."""
+    meta = SITES[site]
+    cfg = get_config(db, site)
+    if not cfg["configured"]:
+        return {"ok": False, "error": "not connected"}
+    try:
+        sm = _fetch_file(cfg, "sitemap.xml")
+        if not sm or "<urlset" not in sm:
+            return {"ok": True, "detail": "no sitemap.xml"}
+        style, fdir, base = cfg["style"], cfg.get("file_dir", "blog"), meta["site"]
+        pat = _link_pat_for(style, fdir)
+        caps = meta.get("preview_caps") or {}
+        archive = next((lp for lp in meta.get("index_paths", ()) if lp not in caps), None)
+        dates: dict = {}
+        arch = _fetch_file(cfg, archive) if archive else None
+        for a, b in (_all_card_spans(arch, pat) if arch else []):
+            card = arch[a:b]
+            lm = re.search(pat, card)
+            d = _date_from_text(re.sub(r"<[^>]+>", " ", card))
+            if lm and d:
+                dates[_slug_of(lm.group(0)[6:-1])] = d.isoformat()
+        want = {}
+        for path in _list_post_paths(cfg, style):
+            want[_post_url_for(meta, path, style)] = dates.get(_slug_of(path))
+        want.update(extra or {})
+        is_post = (lambda loc: loc.startswith(f"{base}/{fdir}/") and loc.endswith(".html")
+                   ) if style == "blog-file" else (lambda loc: loc in want)
+        head = sm[:sm.find("<url>")] if "<url>" in sm else sm[:sm.rfind("</urlset>")]
+        out, seen, dropped = [], set(), 0
+        for blk in re.findall(r"<url>.*?</url>", sm, re.S):
+            m = re.search(r"<loc>\s*(.*?)\s*</loc>", blk, re.S)
+            loc = m.group(1) if m else ""
+            if is_post(loc) and loc not in want:
+                dropped += 1
+                continue                              # post no longer exists
+            if loc in want and want[loc]:
+                if "<lastmod>" in blk:
+                    blk = re.sub(r"<lastmod>.*?</lastmod>", f"<lastmod>{want[loc]}</lastmod>", blk)
+                else:
+                    blk = blk.replace("</loc>", f"</loc><lastmod>{want[loc]}</lastmod>", 1)
+            seen.add(loc)
+            out.append(blk)
+        added = 0
+        for loc, d in want.items():
+            if loc not in seen:
+                out.append(f"<url><loc>{loc}</loc>" + (f"<lastmod>{d}</lastmod>" if d else "")
+                           + "</url>")
+                added += 1
+        n_posts = sum(1 for b in re.findall(r"<loc>\s*(.*?)\s*</loc>", sm) if is_post(b))
+        if dropped and (not want or dropped > max(5, n_posts // 4)):
+            # a short/failed repo listing must never wipe real URLs from Google
+            return {"ok": False, "error": f"refusing to drop {dropped} of {n_posts} post "
+                                          "URLs - repo listing looks incomplete"}
+        new_sm = head + "\n  ".join(out) + "\n</urlset>\n"
+        if new_sm.strip() == sm.strip():
+            return {"ok": True, "added": 0, "dropped": 0, "detail": "already current"}
+        _repo_ops(cfg)["commit"]("sitemap.xml", new_sm,
+                                 f"seo: sync sitemap.xml with posts (+{added}, -{dropped}, via Pulse)",
+                                 True)
+        return {"ok": True, "added": added, "dropped": dropped}
+    except Exception as e:  # noqa: BLE001
+        db.rollback()
+        return {"ok": False, "error": str(e)[:300]}
+
+
+def post_exists(db: Session, site: str, title: str) -> bool:
+    """Is a post with this title's slug already on the site? (v1.101: the
+    autopilot must never re-publish a backup article as if it were new.)"""
+    cfg = get_config(db, site)
+    if not cfg["configured"]:
+        return False
+    slug = _slugify(title)
+    fdir = SITES[site].get("file_dir", "blog")
+    path = f"{fdir}/{slug}.html" if cfg["style"] == "blog-file" else f"{slug}/index.html"
+    return _fetch_file(cfg, path) is not None
 
 
 def configured(db: Session, site: str = "jp") -> bool:
@@ -1639,67 +1722,18 @@ def sync_listings(db: Session, site: str, *, limit: int = 15) -> dict:
                 if n:
                     listings[lp] = new_h
                     repaired.append(f"{lp}: trimmed {n} extra preview card(s)")
-        # v1.47.8: the featured briefing follows the newest news edition.
-        if 'class="intel-featured"' in (listings.get("index.html") or ""):
-            _best48 = None
-            for _p48 in [p for p in post_paths
-                         if p.rsplit("/", 1)[-1].startswith("bvtech-news-")][:15]:
-                _pg48 = _fetch_file(cfg, _p48)
-                if not _pg48:
-                    continue
-                _d48 = _post_date_from_html(_pg48)
-                if _d48 and (_best48 is None or _d48 > _best48[0]):
-                    _best48 = (_d48, _p48, _pg48)
-            if _best48:
-                _d48, _p48, _pg48 = _best48
-                _t48, _ex48 = _post_meta_from_html(_pg48)
-                _t48 = re.sub(r"^BVTech News\s*[—-]+\s*", "", _t48)
-                _t48 = re.sub(r"\s*[—-]+\s*[A-Z][a-z]+ \d{1,2}, \d{4}$", "", _t48)
-                _lbl48 = f"{_MONTH_NAMES[_d48.month - 1]} {_d48.day}"
-                _nh48, _ch48 = _promote_featured(
-                    listings["index.html"],
-                    url=_post_url_for(meta, _p48, cfg["style"]).replace(meta["site"], ""),
-                    title=_t48, date_lbl=f"{_lbl48} \u00b7 daily briefing \u00b7 KEV alert",
-                    excerpt=_ex48)
-                if _ch48:
-                    listings["index.html"] = _nh48
-                    repaired.append("index.html: featured -> newest news edition")
-        # v1.55.2: keep the homepage "This Week in Cybersecurity" trio (the cards
-        # under the LIVE KEV ticker) pointed at the 3 NEWEST posts — and REBUILD
-        # the block if the duplicate-sweeper stripped it (its intel-mini cards
-        # mirror the main grid by design, so the de-spam pass used to delete them
-        # and leave the section empty). Source: the /blog/ listing (newest-first).
-        _home_ir = listings.get("index.html") or ""
-        _blog_ls = listings.get("blog/index.html") or _fetch_file(cfg, "blog/index.html") or ""
-        if '<div class="intel-grid">' in _home_ir and _blog_ls:
-            _hrefs = re.findall(r'<a href="(/blog/[^"]+\.html)"[^>]*class="blog-card"',
-                                _blog_ls)[:3]
-            _ir_cards = []
-            for _href in _hrefs:
-                _pg_ir = _fetch_file(cfg, _href.lstrip("/"))
-                if not _pg_ir:
-                    continue
-                _d_ir = _post_date_from_html(_pg_ir)
-                _t_ir, _ex_ir = _post_meta_from_html(_pg_ir)
-                _t_ir = re.sub(r"^BVTech News\s*[—-]+\s*", "", _t_ir).strip()
-                _lbl_ir = (f"{_MONTH_NAMES[_d_ir.month - 1]} {_d_ir.day}"
-                           if _d_ir else "Latest")
-                _ir_cards.append(_intel_mini_card(_href, _lbl_ir, _t_ir, _ex_ir))
-            if len(_ir_cards) == 3:
-                _newrec = ('<div class="intel-recent">\n' + "\n".join(_ir_cards)
-                           + "\n</div>")
-                if '<div class="intel-recent">' in _home_ir:      # replace in place
-                    _nhr = re.sub(r'<div class="intel-recent">.*?</a>\s*</div>',
-                                  lambda _m: _newrec, _home_ir, count=1, flags=re.S)
-                elif '<!-- Three recent cards -->' in _home_ir:   # rebuild after marker
-                    _nhr = _home_ir.replace('<!-- Three recent cards -->',
-                                            '<!-- Three recent cards -->\n' + _newrec, 1)
-                else:                                              # rebuild into grid
-                    _nhr = _home_ir.replace('<div class="intel-grid">',
-                                            '<div class="intel-grid">\n' + _newrec, 1)
-                if _nhr != _home_ir:
-                    listings["index.html"] = _nhr
-                    repaired.append("index.html: rebuilt/refreshed intel-recent -> 3 newest posts")
+        # v1.101: ONE deterministic builder for the homepage "This Week in
+        # Cybersecurity" block (pinned feature or newest edition + the 3 newest
+        # dated editions) and the /news/ special-report card. Replaces the
+        # v1.47.8 featured-promotion + v1.55.2 trio passes, which lost the
+        # featured card entirely and labelled cards "Latest · latest".
+        if "index.html" in listings or "news/index.html" in listings:
+            try:
+                for _lp101, _msg101 in apply_homepage_feature(db, cfg, meta, listings):
+                    repaired.append(_msg101)
+                    purge_urls.append(f"{meta['site']}/{_lp101}".replace("index.html", ""))
+            except Exception as _e101:  # noqa: BLE001 - never block the sync
+                repaired.append(f"homepage feature rebuild skipped: {_e101}"[:200])
         for lp in list(listings):
             new_h, _n45 = _strip_empty_shells(listings[lp])
             if _n45:
@@ -1749,12 +1783,262 @@ _PAGE_SLUGS = ("about", "contact", "certification", "service", "pricing", "portf
                "resume", "privacy", "terms", "book", "review", "case-stud", "academy")
 
 
+# v1.101 FEATURED PIN: the homepage feature card and the /news/ special-report
+# card point at a hand-picked article until `until`, then fall back to the
+# newest news edition. Override (or clear with {"url": ""}) from the
+# "bvtech_featured" platform config without a deploy.
+FEATURED_PIN = {
+    "url": "/blog/php2shell-explained-what-small-businesses-need-to-know.html",
+    "title": "PHP2Shell, Explained: What Happened, Who's at Risk, and How to Check Your Site",
+    "excerpt": ("Two PHP flaws took 4chan and parts of Wikimedia offline. How the attack "
+                "works in plain English, which setups are at risk, what to do this week, "
+                "and a free passive checker for your own site."),
+    "badge": "SPECIAL REPORT \u00b7 FREE TOOL",
+    "date": "2026-10-23",
+    "read": "9 min read",
+    "tags": ["PHP2Shell", "CVE-2026-109618", "CVE-2026-109619", "Free Checker"],
+    "cta": "Read the breakdown & check your site \u2192",
+    "until": "2027-01-31",
+}
+_DEMOTE_SPECIALS = ("/blog/jordan-polasek-june-4-2026-data-poisoning-ai-defense-free-report.html",)
+
+
+def featured_pin(db: Session | None, today=None) -> dict | None:
+    pin = dict(FEATURED_PIN)
+    if db is not None:
+        try:
+            conn = secure_config.get_platform(db, "bvtech_featured")
+            if conn and conn.config:
+                pin.update(conn.config)
+        except Exception:  # noqa: BLE001
+            pass
+    today = today or biz_now().date()
+    if not pin.get("url") or (pin.get("until") and today.isoformat() > pin["until"]):
+        return None
+    return pin
+
+
+def _long_date(d) -> str:
+    return f"{_MONTH_NAMES[d.month - 1]} {d.day}, {d.year}"
+
+
+def _news_editions(cfg: dict, listings: dict, n: int = 4) -> list[dict]:
+    """The n newest news editions, newest first, with their TRUE dates. Source:
+    the /news/ listing order, re-sorted by each page's own date."""
+    news = listings.get("news/index.html") or _fetch_file(cfg, "news/index.html") or ""
+    seen, out = set(), []
+    for href in re.findall(r'<a href="([^"]*/blog/bvtech-news-[^"]+\.html)"', news):
+        rel = re.sub(r"^https?://[^/]+", "", href)
+        slug = _slug_of(rel.strip("/"))
+        if slug in seen:
+            continue
+        seen.add(slug)
+        page = _fetch_file(cfg, rel.lstrip("/"))
+        if not page:
+            continue
+        t, ex = _post_meta_from_html(page)
+        d = _date_from_text(t) or _post_date_from_html(page)   # title date is authoritative
+        if not d:
+            continue
+        t = re.sub(r"^BVTech News\s*[\u2014-]+\s*", "", t).strip()
+        t = re.sub(r"\s*[\u2014-]+\s*[A-Za-z]+ \d{1,2}, \d{4}$", "", t).strip()
+        out.append({"url": rel, "date": d, "title": t, "excerpt": ex})
+        if len(seen) >= n + 6:
+            break
+    out.sort(key=lambda e: e["date"], reverse=True)
+    return out[:n]
+
+
+def _featured_card(*, url, title, excerpt, tag, date_lbl, tags) -> str:
+    import html as _h
+    return ('<a href="' + url + '" class="intel-featured">\n'
+            '<div class="intel-featured-tag">' + _h.escape(tag) + '</div>\n'
+            '<div class="intel-featured-date">' + _h.escape(date_lbl) + '</div>\n'
+            '<h3>' + _h.escape(title) + '</h3>\n'
+            '<p>' + _h.escape(excerpt) + '</p>\n'
+            '<div class="intel-tags">' + "".join(f"<span>{_h.escape(t)}</span>" for t in tags)
+            + '</div>\n</a>')
+
+
+def build_intel_block(pin: dict | None, editions: list[dict]) -> str | None:
+    """Inner HTML of the homepage intel-grid: featured card + 3 dated cards."""
+    from datetime import date as _date
+    if pin:
+        d = _date.fromisoformat(pin["date"])
+        feat = _featured_card(url=pin["url"], title=pin["title"], excerpt=pin["excerpt"],
+                              tag="\u2b50 " + pin.get("badge", "FEATURED"),
+                              date_lbl=f"{_long_date(d)} \u00b7 {pin.get('read', '')}".strip(" \u00b7"),
+                              tags=pin.get("tags") or [])
+        trio = editions[:3]
+    elif editions:
+        e = editions[0]
+        feat = _featured_card(url=e["url"], title=e["title"], excerpt=e["excerpt"],
+                              tag="\U0001f534 KEV ALERT \u00b7 DAILY BRIEFING",
+                              date_lbl=_long_date(e["date"]),
+                              tags=["CISA KEV", "Daily briefing"])
+        trio = editions[1:4]
+    else:
+        return None
+    if len(trio) < 3:
+        return None
+    cards = "\n".join(_intel_mini_card(e["url"], _long_date(e["date"]), e["title"], e["excerpt"])
+                      for e in trio)
+    return ("\n<!-- pulse:intel (rebuilt by Pulse; featured + 3 newest briefings) -->\n"
+            + feat + "\n<!-- Three recent cards -->\n<div class=\"intel-recent\">\n"
+            + cards + "\n</div>\n")
+
+
+def _special_news_card(pin: dict) -> str:
+    import html as _h
+    from datetime import date as _date
+    d = _date.fromisoformat(pin["date"])
+    chip = ('<span style="font-size:.72rem;background:rgba(255,255,255,.05);border:1px solid '
+            'var(--border);padding:3px 9px;border-radius:4px;color:var(--muted)">{}</span>')
+    return ('<a href="' + pin["url"] + '" class="blog-card" data-pulse="special" '
+            'style="border-left:4px solid #4440DB;background:linear-gradient(135deg,'
+            'rgba(235,111,36,0.08),rgba(68,64,219,0.10));padding:32px 36px;display:block">\n'
+            '  <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">\n'
+            '    <span style="background:rgba(68,64,219,0.22);color:#b9b7ff;border:1px solid '
+            'rgba(68,64,219,0.5);padding:4px 12px;border-radius:4px;font-size:.68rem;font-weight:800;'
+            'letter-spacing:.1em">\u2b50 ' + _h.escape(pin.get("badge", "SPECIAL REPORT")) + '</span>\n'
+            '    <span style="color:var(--muted);font-size:.78rem">' + _long_date(d) + " \u00b7 "
+            + _h.escape(pin.get("read", "")) + ' \u00b7 Jordan Polasek</span>\n  </div>\n'
+            '  <h3 style="font-size:1.35rem;margin-bottom:10px;font-weight:700;color:var(--white);'
+            'line-height:1.3">' + _h.escape(pin["title"]) + '</h3>\n'
+            '  <p style="color:var(--muted);margin-bottom:14px;line-height:1.7">'
+            + _h.escape(pin["excerpt"]) + '</p>\n'
+            '  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">'
+            + "".join(chip.format(_h.escape(t)) for t in pin.get("tags") or []) + '</div>\n'
+            '  <span class="arr" style="color:#EB6F24;font-weight:700">'
+            + _h.escape(pin.get("cta", "Read it \u2192")) + '</span>\n</a>')
+
+
+def apply_special_card(news: str, pin: dict | None) -> str:
+    """Put the pinned special-report card at the top of /news/ (idempotent) and
+    demote older special cards to regular ones."""
+    h = re.sub(r'<a [^>]*data-pulse="special".*?</a>\n?', "", news, flags=re.S)
+    for url in _DEMOTE_SPECIALS:
+        m = re.search(r'<a href="' + re.escape(url) + r'" class="blog-card" style="[^"]*"', h)
+        if m:
+            h = (h[:m.start()] + f'<a href="{url}" class="blog-card" '
+                 'style="padding:28px 32px;display:block"' + h[m.end():])
+        # its badge/date were stamped wrong by the flood era ("July 16" on a June 4 post)
+        h = h.replace("SPECIAL REPORT \u00b7 FREE PDF", "FREE PDF REPORT")
+        mm = re.search(r"(\w+)-(\d{1,2})-(\d{4})", url)
+        if m and mm and mm.group(1).lower() in _MONTHS:
+            seg = h[m.start():h.find("</a>", m.start())]
+            fixed = re.sub(r'(<span style="color:var\(--muted\);font-size:\.78rem">)'
+                           r"[A-Za-z]+ \d{1,2}( \u00b7)",
+                           lambda x: x.group(1) + f"{mm.group(1).capitalize()} {int(mm.group(2))}"
+                           + x.group(2), seg, count=1)
+            h = h.replace(seg, fixed, 1)
+    if pin:
+        # one card per article: drop a plain card the publish step may have added
+        h = re.sub(r'<a href="(?:https://bvtech\.org)?' + re.escape(pin["url"])
+                   + r'"[^>]*class="blog-card".*?</a>\s*', "", h, flags=re.S)
+        first = re.search(r'<a href="[^"]+" class="blog-card"', h)
+        if first:
+            h = h[:first.start()] + _special_news_card(pin) + "\n" + h[first.start():]
+    return h
+
+
+def refresh_itemlist_schema(h: str, items: list[dict]) -> str:
+    """Rewrite stale ItemList JSON-LD (homepage + /news/) with the real newest
+    entries: unique positions, true dates, honest description. Google flags
+    duplicate positions; the old blocks still said "through June 20"."""
+    import json as _json
+    if not items:
+        return h
+    site = "https://bvtech.org"
+    elems = [{"@type": "ListItem", "position": i + 1,
+              "url": (site + it["url"]) if it["url"].startswith("/") else it["url"],
+              "name": it["title"], "datePublished": it["date"].isoformat()}
+             for i, it in enumerate(items)]
+    desc = ("Daily CISA KEV briefings and special reports by Jordan Polasek, founder of "
+            "BVTech LLC, written for Texas small and medium businesses.")
+
+    def fix(obj):
+        if isinstance(obj, dict):
+            if obj.get("@type") == "ItemList" and "itemListElement" in obj:
+                obj["itemListElement"] = elems
+                obj["numberOfItems"] = len(elems)
+                if "description" in obj:
+                    obj["description"] = desc
+                if "Weekly" in str(obj.get("name", "")):
+                    obj["name"] = "BVTech News \u2014 Daily Cybersecurity Briefings"
+            if obj.get("@type") == "CollectionPage" and "description" in obj:
+                obj["description"] = desc
+            for v in obj.values():
+                fix(v)
+        elif isinstance(obj, list):
+            for v in obj:
+                fix(v)
+        return obj
+
+    def sub(m):
+        body = m.group(2)
+        if '"ItemList"' not in body:
+            return m.group(0)
+        try:
+            data = _json.loads(body)
+        except ValueError:
+            return m.group(0)
+        return m.group(1) + "\n" + _json.dumps(fix(data), ensure_ascii=False) + "\n" + m.group(3)
+    return re.sub(r'(<script type="application/ld\+json">)(.*?)(</script>)', sub, h, flags=re.S)
+
+
+def apply_homepage_feature(db, cfg: dict, meta: dict, listings: dict) -> list[tuple[str, str]]:
+    """Rebuild the homepage intel block and the /news/ special card in place."""
+    from . import content_studio
+    if meta.get("site") != "https://bvtech.org":
+        return []
+    pin = featured_pin(db)
+    done = []
+    home = listings.get("index.html")
+    editions = _news_editions(cfg, listings, 10)
+    from datetime import date as _date
+    schema_items = ([{"url": pin["url"], "title": pin["title"],
+                      "date": _date.fromisoformat(pin["date"])}] if pin else []) + editions
+    if home and 'class="intel-grid"' in home:
+        block = build_intel_block(pin, editions)
+        span = content_studio.element_inner_span(home, cls="intel-grid")
+        if block and span and home[span[0]:span[1]].strip() != block.strip():
+            nh = home[:span[0]] + block + "    " + home[span[1]:]
+            # honest section copy: daily, with Pulse's help - not "weekly, no AI"
+            nh = re.sub(r"\U0001f4f0 BVTech News \u2014 [a-z\- ]+ editions and counting",
+                        "\U0001f4f0 BVTech News \u2014 daily KEV briefings", nh)
+            nh = nh.replace(
+                "Weekly CISA KEV breakdowns researched and written in-house at BVTech. No AI "
+                "slop, no rewritten press releases \u2014 just actionable intelligence for Texas "
+                "small and medium businesses.",
+                "Daily CISA KEV briefings and in-depth special reports from BVTech: what was "
+                "exploited, who it affects, and exactly what to do \u2014 in plain English for "
+                "Texas small and medium businesses.")
+            nh = nh.replace("\U0001f4f0 View All Weekly Recaps", "\U0001f4f0 All News Briefings")
+            listings["index.html"] = nh
+            done.append(("index.html", "index.html: rebuilt intel block (featured + 3 dated)"))
+    if listings.get("index.html") and len(editions) >= 3:
+        nh = refresh_itemlist_schema(listings["index.html"], schema_items)
+        if nh != listings["index.html"]:
+            listings["index.html"] = nh
+            done.append(("index.html", "index.html: ItemList schema refreshed"))
+    news = listings.get("news/index.html")
+    if news:
+        nn = apply_special_card(news, pin)
+        if len(editions) >= 3:
+            nn = refresh_itemlist_schema(nn, schema_items)
+        if nn != news:
+            listings["news/index.html"] = nn
+            done.append(("news/index.html", "news/index.html: special-report card refreshed"))
+    return done
+
+
 def _intel_mini_card(url: str, date_lbl: str, title: str, excerpt: str) -> str:
     """One card for the homepage 'intel-recent' trio (under the KEV ticker)."""
     import html as _h
     ex = excerpt[:190].rsplit(" ", 1)[0].rstrip(" ,;:-") + "…" if len(excerpt) > 190 else excerpt
     return ('<a href="' + url + '" class="intel-mini">\n'
-            '<div class="intel-mini-date">' + _h.escape(date_lbl) + ' · latest</div>\n'
+            '<div class="intel-mini-date">' + _h.escape(date_lbl) + ' \u00b7 KEV briefing</div>\n'
             '<h4>' + _h.escape(title) + '</h4>\n'
             '<p>' + _h.escape(ex) + '</p>\n</a>')
 
@@ -1967,8 +2251,21 @@ def _remove_card(h: str, slug: str) -> tuple[str, bool]:
 
 
 def _all_card_spans(h: str, link_pat: str) -> list[tuple[int, int]]:
-    """Source spans of every post card on a listing page, in page order."""
+    """Source spans of every post card on a listing page, in page order.
+    v1.101: cards Pulse curates by hand-off rules - the homepage intel block
+    (featured + 3 briefings) and the /news/ pinned special card - are NOT
+    archive cards: re-dating sorted them out of their wrappers and the
+    homepage trim counted them against its cap, which is how the featured card
+    disappeared. They are skipped here, so every pass leaves them alone."""
     spans: list[tuple[int, int]] = []
+    keep_out = [(m.start(), m.end()) for m in re.finditer(
+        r'<a [^>]*data-pulse="special".*?</a>', h, re.S)]
+    gi = h.find('class="intel-grid"')
+    if gi != -1:
+        from .content_studio import element_inner_span
+        g = element_inner_span(h, cls="intel-grid")
+        if g:
+            keep_out.append(g)
     off = 0
     for _ in range(400):
         seg = h[off:]
@@ -1980,6 +2277,9 @@ def _all_card_spans(h: str, link_pat: str) -> list[tuple[int, int]]:
         # the homepage trim silently see zero cards (the wall stayed).
         slug = _slug_of(m.group(0)[6:-1])
         if slug == "index" or any(slug.startswith(p) for p in _PAGE_SLUGS):
+            off += m.end()
+            continue
+        if any(a <= off + m.start() < b for a, b in keep_out):
             off += m.end()
             continue
         span = _find_generic_card(seg, link_pat)
@@ -2120,15 +2420,21 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
         # intel-recent block, freezing the section. Stash it out of every listing
         # before the sweep and stitch it back verbatim afterwards; the sync pass
         # (rebuild-if-missing) owns keeping its contents current.
+        # v1.101: also shield the featured card (its pinned article is ALSO in
+        # the homepage preview wall - the sweep deleted it as a duplicate, which
+        # is how the homepage lost its featured card) and the /news/ special card.
         _shielded: dict = {}
+        _sh_pats = (r'<!-- pulse:intel .*?<div class="intel-recent">.*?</a>\s*</div>',
+                    r'<div class="intel-recent">.*?</a>\s*</div>',
+                    r'<a [^>]*data-pulse="special".*?</a>')
         for _lp_sh in list(listings):
-            _m_sh = re.search(r'<div class="intel-recent">.*?</a>\s*</div>',
-                              listings[_lp_sh], re.S)
-            if _m_sh:
-                _tok_sh = f"<!--PULSE_INTEL_SHIELD_{_lp_sh}-->"
-                _shielded[_lp_sh] = (_tok_sh, _m_sh.group(0))
-                listings[_lp_sh] = (listings[_lp_sh][:_m_sh.start()] + _tok_sh
-                                    + listings[_lp_sh][_m_sh.end():])
+            for _i_sh, _pat_sh in enumerate(_sh_pats):
+                _m_sh = re.search(_pat_sh, listings[_lp_sh], re.S)
+                if _m_sh:
+                    _tok_sh = f"<!--PULSE_INTEL_SHIELD_{_lp_sh}_{_i_sh}-->"
+                    _shielded[(_lp_sh, _i_sh)] = (_tok_sh, _m_sh.group(0))
+                    listings[_lp_sh] = (listings[_lp_sh][:_m_sh.start()] + _tok_sh
+                                        + listings[_lp_sh][_m_sh.end():])
         for (_ch48, d), paths in sorted(by_day.items()):
             if len(paths) <= 1:
                 continue
@@ -2193,7 +2499,7 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
                 cards_deduped += n
         # v1.55.2 SHIELD (restore): stitch the intel-recent trio back in exactly
         # where it was, now that the dedupe/ghost/trim passes are done.
-        for _lp_sh, (_tok_sh, _blk_sh) in _shielded.items():
+        for (_lp_sh, _i_sh), (_tok_sh, _blk_sh) in _shielded.items():
             if _lp_sh in listings and _tok_sh in listings[_lp_sh]:
                 listings[_lp_sh] = listings[_lp_sh].replace(_tok_sh, _blk_sh, 1)
         if not removed and not cards_deduped and not ghost_cards:

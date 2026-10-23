@@ -317,6 +317,13 @@ def _mark(db: Session, channel: str, *, ok: bool, error: str | None = None,
     secure_config.upsert_platform(db, PROVIDER, "Content Autopilot", "Publishing", raw)
 
 
+# v1.101: when AI writing is down and the day's backup article already exists,
+# skip the day instead of re-publishing an old post under a new date.
+_SKIP_RECYCLED = ("SKIPPED: AI writing is unavailable and today's backup article is "
+                  "already on the site - not re-publishing an old post as new "
+                  "(duplicate / fake-fresh content hurts Google rankings)")
+
+
 def _llm_status(db: Session, channel: str, error: str | None, now: datetime) -> None:
     """v1.98: record whether AI writing worked for a channel. A failure used to
     be swallowed and the site quietly published a recycled evergreen post - all
@@ -375,6 +382,8 @@ def _run_bvtech(db: Session, now: datetime) -> tuple[bool, str]:
         # LLM (free or paid) is reachable, so a dead token balance never leaves
         # bvtech.org without a post.
         article = _compose_bvtech_deterministic(now)
+        if jp_site.post_exists(db, "bvtech", article["title"]):
+            return True, _SKIP_RECYCLED
     if jp_site.configured(db, "bvtech"):
         out = jp_site.publish(db, article, site="bvtech")
         if not out.get("ok"):
@@ -507,7 +516,10 @@ def _compose_news_deterministic(now: datetime, kev: list[dict]) -> dict | None:
         "software is in your environment, that's exactly the question we answer "
         'for Texas businesses every day. <a href="/contact/">Ask us</a>.</p>')
     return {"title": title, "excerpt": excerpt, "html": "\n".join(parts),
-            "date": now.date().isoformat()}
+            "date": now.date().isoformat(),
+            # v1.101: hero tag chips + crumb, like the hand-built editions
+            "tags": (vendors[:6] + ["CISA KEV"]),
+            "crumb": f"{n} New KEV {'Entry' if n == 1 else 'Entries'} · {biz_now(now):%B %-d, %Y}"}
 
 
 # --------------------------------------------------------------------------- #
@@ -786,6 +798,8 @@ def _run_jp(db: Session, now: datetime) -> tuple[bool, str]:
     _llm_status(db, "jp", None if post else (llm_err or "AI reply could not be parsed"), now)
     if not post:
         post = _compose_jp_deterministic(now)
+        if jp_site.post_exists(db, "jp", post["title"]):
+            return True, _SKIP_RECYCLED
     out = jp_site.publish(db, post)
     if not out.get("ok"):
         return False, out.get("error") or "publish failed"
@@ -832,6 +846,8 @@ def _run_txplants(db: Session, now: datetime) -> tuple[bool, str]:
         post["html"] = (post.get("html") or "") + "\n" + _TXP_CTA
     else:
         post = _compose_txplants_deterministic(now)
+        if jp_site.post_exists(db, "txplants", post["title"]):
+            return True, _SKIP_RECYCLED
     out = jp_site.publish(db, post, site="txplants")
     if not out.get("ok"):
         return False, out.get("error") or "publish failed"

@@ -1,5 +1,46 @@
 # BVTech OpsPilot — Changelog
 
+## v1.101.0 — bvtech.org blog overhaul: native posts, PHP2Shell feature, Google-safe (Oct 2026)
+- **Native post template.** bvtech.org posts now use the same layout as the
+  hand-built ones: page hero (breadcrumb, headline, byline with real date and
+  reading time, topic chips), a 780px article column styled with the site's own
+  colors, a CTA box and an author box. `dateModified` is honest, and FAQPage
+  JSON-LD is added when a post has an FAQ. Pages from v1.99/v1.100 are upgraded
+  in place by the one-time repair.
+- **PHP2Shell deep-dive** (`feature_articles.py`): the long-form site version
+  of the LinkedIn writeup. It has built-in graphics in pure HTML/CSS/inline SVG
+  (stats strip, worker memory diagram, 3-step attack flow, timeline, risk bars by
+  setup, fixed-versions table, numbered checklist, checker callout, FAQ with
+  schema, sources). It is published by the repair job.
+- **Featured pin.** `jp_site.FEATURED_PIN` makes the PHP2Shell article the
+  homepage feature and the top `/news/` SPECIAL REPORT card until 2027-01-31
+  (overridable via the `bvtech_featured` platform config). The data-poisoning
+  card is demoted to a normal card, with its wrong "July 16" date corrected to
+  June 4.
+- **Homepage "This Week in Cybersecurity" rebuilt deterministically:** the
+  featured card plus the 3 newest briefings with full dates ("October 22, 2026 ·
+  KEV briefing"). Previously the featured card was missing and the cards read
+  "Latest · latest". **Root cause:** the card scanner treated these cards as
+  archive cards, so re-dating sorted them out of their wrapper and the homepage
+  trim counted them against the cap. Curated cards are now skipped by every
+  scanning pass and shielded from the duplicate sweep. The section copy is
+  honest now: daily briefings, not "weekly, no AI".
+- **Google-safe:**
+  - `sitemap_sync` keeps sitemap.xml's post URLs current, with true
+    `<lastmod>` values. Deleted posts are dropped, and it refuses to drop URLs
+    when the repo listing looks incomplete.
+  - Stale ItemList JSON-LD (duplicate positions, "through June 20") is rebuilt
+    from the real newest entries.
+  - The autopilot skips, rather than re-publishes, a backup (evergreen) article
+    that is already on the site (`post_exists`, `_SKIP_RECYCLED`).
+- **AI redundancy.** `FREE_LLM2_*` / `FREE_LLM3_*` add up to two more
+  OpenAI-compatible free providers (e.g. Google Gemini's OpenAI endpoint,
+  OpenRouter), tried in order when Groq fails. Each provider still gets model
+  auto-switch and rate-limit retry. `free_llm_selftest()` reports every provider
+  plus a `redundancy` count.
+- REPAIR_EPOCH 1.101.0: the emailed one-time job re-runs with the feature
+  publish and the homepage/news/schema/sitemap heal.
+
 ## v1.100.0 — Rebuild bvtech.org posts whose body was never written (Oct 2026)
 - Live check of bvtech.org (via a public reader, since Cloudflare blocks direct
   fetches): Pulse-made posts carry only their new <title>/<h1> over a copy of an

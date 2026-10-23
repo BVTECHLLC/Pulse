@@ -6341,7 +6341,7 @@ def main():
         from app.services import jp_site as _jps
         _mini = _jps._intel_mini_card("/blog/new.html", "July 27",
                                       "10 New KEV Entries", "CISA added ten new vulns this week.")
-        assert 'href="/blog/new.html"' in _mini and "July 27 · latest" in _mini \
+        assert 'href="/blog/new.html"' in _mini and "July 27 · KEV briefing" in _mini and "latest" not in _mini \
             and "<h4>10 New KEV Entries</h4>" in _mini, _mini
         _frozen = ('<div class="intel-grid"><div class="intel-recent">'
                    '<a href="/blog/june-old.html" class="intel-mini"><div class="intel-mini-date">'
@@ -7707,17 +7707,44 @@ def main():
     try:
         _st98.FREE_LLM_KEY = "gsk_test"
         _ai98._free_model_override = None
-        def _post98(model, system, user, max_tokens):
+        def _post98(model, system, user, max_tokens, prov=None):
             _used98.append(model)
             if model == _st98.FREE_LLM_MODEL:
                 raise _ue98.HTTPError("u", 400, "bad", _em98.Message(), _io98.BytesIO(
                     b'{"error":{"message":"The model has been decommissioned"}}'))
             return {"choices": [{"message": {"content": "<think>hmm</think>TITLE: Hi"}}]}
         _ai98._free_post = _post98
-        _ai98._free_models = lambda: ["whisper-large-v3", "openai/gpt-oss-120b"]
+        _ai98._free_models = lambda prov=None: ["whisper-large-v3", "openai/gpt-oss-120b"]
         _txt98 = _ai98._free_llm_complete("s", "u", model="", max_tokens=100)
         assert _txt98 == "TITLE: Hi" and _used98[-1] == "openai/gpt-oss-120b", (_txt98, _used98)
         assert _ai98._free_model_override == "openai/gpt-oss-120b"
+        # (4b) v1.101 redundancy: primary provider down -> backup provider answers.
+        _o2 = (_st98.FREE_LLM2_BASE, _st98.FREE_LLM2_KEY, _st98.FREE_LLM2_MODEL)
+        try:
+            _st98.FREE_LLM2_BASE, _st98.FREE_LLM2_KEY, _st98.FREE_LLM2_MODEL = (
+                "https://backup.example/v1", "bk_test", "gemini-2.5-flash")
+            _hits = []
+            def _post101(model, system, user, max_tokens, prov=None):
+                _hits.append(prov["base"])
+                if "backup" not in prov["base"]:
+                    raise _ue98.HTTPError("u", 503, "down", _em98.Message(), _io98.BytesIO(b"down"))
+                return {"choices": [{"message": {"content": "OK from backup"}}]}
+            _ai98._free_post = _post101
+            assert _ai98._free_llm_complete("s", "u", model="", max_tokens=50) == "OK from backup"
+            assert _hits[-1] == "https://backup.example/v1", _hits
+            _st101 = _ai98.free_llm_selftest()
+            assert _st101["ok"] and _st101["redundancy"] == 1 and len(_st101["providers"]) == 2, _st101
+            def _dead(model, system, user, max_tokens, prov=None):
+                raise _ue98.HTTPError("u", 503, "down", _em98.Message(), _io98.BytesIO(b"down"))
+            _ai98._free_post = _dead
+            try:
+                _ai98._free_llm_complete("s", "u", model="", max_tokens=50)
+                raise AssertionError("expected AIError")
+            except _ai98.AIError as _e101:
+                assert "every provider" in str(_e101) and "backup.example" in str(_e101)
+        finally:
+            _st98.FREE_LLM2_BASE, _st98.FREE_LLM2_KEY, _st98.FREE_LLM2_MODEL = _o2
+            _ai98._overrides.clear()
     finally:
         _ai98._free_post, _ai98._free_models, _ai98._free_model_override = _o_post, _o_models, _o_ovr
         _st98.FREE_LLM_KEY = _o_key
@@ -7793,7 +7820,7 @@ def main():
     assert "<h1>Fresh Post</h1>" in _pg99 and "Real new body text." in _pg99
     assert 'href="https://bvtech.org/blog/fresh-post.html"' in _pg99 and "October 23, 2026" in _pg99
     _news99 = _cs99.render_in_chrome({**_art, "slug": "bvtech-news-x"}, _chrome)
-    assert '<a href="/news/">News</a>' in _news99
+    assert '<a href="/news/">📰 News</a>' in _news99
     # nested callout in an old body: the cut takes the WHOLE wrapper now
     _sk99 = ('<html><head><title>o</title></head><body><article><div class="article-body">'
              '<p>OLD INTRO</p><div class="callout">OLD BOX</div><p>OLD TAIL</p></div>'
@@ -7831,7 +7858,7 @@ def main():
         assert [a["file_path"] for a in _acts] == ["blog/fresh-post.html"]
         _fixed = _acts[0]["content"]
         assert "LEFTOVER APRIL" not in _fixed and "April 26" not in _fixed and "REAL BOX" in _fixed
-        assert 'class="pulse-post"' in _fixed and "NAV" in _fixed
+        assert 'pulse-post' in _fixed and "NAV" in _fixed
         # publish() for bvtech now renders in the chrome - never the newest-post clone
         _o_skel, _o_dl = _j99._newest_skeleton, _j99.detect_layout
         _j99._newest_skeleton = lambda *a, **k: (_ for _ in ()).throw(AssertionError("clone used"))
@@ -7846,7 +7873,7 @@ def main():
         assert _pub99.get("ok"), _pub99
         _post99 = [x for x in _batches99[0]["actions"]
                    if x["file_path"] == "blog/brand-new-post.html"][0]["content"]
-        assert 'class="pulse-post"' in _post99 and "<h1>Brand New Post</h1>" in _post99
+        assert 'pulse-post' in _post99 and "<h1>Brand New Post</h1>" in _post99
         assert "NAV" in _post99 and "OLD LISTING CARD" not in _post99
     finally:
         _j99.get_config, _j99._fetch_file, _j99._HTTP, _j99._list_post_paths = _o99
@@ -7903,18 +7930,105 @@ def main():
         _acts100 = {a["file_path"]: a["content"] for a in _sent100[0]["actions"]}
         _news_pg = _acts100["blog/bvtech-news-10-new-kev-entries-x.html"]
         assert "OLD APRIL BODY" not in _news_pg and "April 26" not in _news_pg
-        assert "CVE-2026-1" in _news_pg and 'class="pulse-post"' in _news_pg and "October 23, 2026" in _news_pg
+        assert "CVE-2026-1" in _news_pg and "pulse-post" in _news_pg and "October 23, 2026" in _news_pg
         assert _ca98._BV_EVERGREEN[0]["intro"][:40] in _acts100["blog/mfa-insurance.html"]
         assert "blog/jordan-polasek-april-26-cisco.html" not in _acts100        # hand-written untouched
     finally:
         (_j100.get_config, _j100._fetch_file, _j100._list_post_paths, _j100._HTTP,
          _j100._KEV_FEED) = _o100
         _cf100.purge_urls = _opu100
-    assert _sr100.REPAIR_EPOCH == "1.100.0"
+    assert _sr100.REPAIR_EPOCH == "1.101.0"
     print("v1.100: KEV as-of-date + title-guided cutoff rebuild news editions exactly; SMB "
           "posts rebuilt from stored/evergreen text; hand-written posts untouched OK")
 
-    print("\n=== OpsPilot v1.100.0 SMOKE TEST PASSED ===")
+    # ==== v1.101.0: site overhaul - native posts, feature pin, sitemap, no recycling ====
+    import json as _js101
+    import re
+    from app.services import jp_site as _j101, content_studio as _cs101
+    from app.services import feature_articles as _fa101
+    from datetime import date as _d101
+    # (1) the PHP2Shell feature renders natively with FAQ schema + checker CTA
+    _chrome101 = ('<html><head><title>Blog</title></head><body><header class="header">H</header>'
+                  '<main><section>grid</section></main><footer class="footer">F</footer></body></html>')
+    _fp = _fa101.php2shell_post()
+    _pg101 = _cs101.render_in_chrome({**_fp, "site": "https://bvtech.org"}, _chrome101)
+    assert '"FAQPage"' in _pg101 and "/tools/php2shell-check.html" in _pg101
+    assert "<!-- pulse:post date=2026-10-23 -->" in _pg101 and 'class="px-flow"' in _pg101
+    assert "Special Report" in _pg101 and "Jordan Polasek" in _pg101 and "<section>grid</section>" not in _pg101
+    assert _fp["slug"] in _j101.FEATURED_PIN["url"]
+    assert "claude" not in _pg101.lower() and "opus" not in _pg101.lower()
+    # (2) pin expires; homepage block = featured + 3 DATED briefings, no "latest"
+    assert _j101.featured_pin(None, _d101(2026, 10, 23)) and \
+        _j101.featured_pin(None, _d101(2027, 3, 1)) is None
+    _eds = [{"url": f"/blog/bvtech-news-e{i}.html", "date": _d101(2026, 10, 22 - i),
+             "title": f"10 New KEV Entries {i}", "excerpt": "CISA added ten."} for i in range(4)]
+    _blk = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
+    assert _blk.count('class="intel-featured"') == 1 and _blk.count('class="intel-mini"') == 3
+    assert "October 22, 2026 · KEV briefing" in _blk and "latest" not in _blk.lower()
+    _blk2 = _j101.build_intel_block(None, _eds)               # no pin -> newest edition featured
+    assert 'href="/blog/bvtech-news-e0.html" class="intel-featured"' in _blk2
+    # (3) card scanners skip the curated intel block + the special card
+    _home101 = ('<div class="intel-grid">' + _blk + '</div><div class="wall">'
+                '<a href="/blog/a.html" class="blog-card"><h3>A</h3><p>x</p></a></div>')
+    _sp101 = _j101._all_card_spans(_home101, _j101._link_pat_for("blog-file", "blog"))
+    assert len(_sp101) == 1 and "/blog/a.html" in _home101[_sp101[0][0]:_sp101[0][1]], _sp101
+    # (4) /news/: pinned special card on top (once), old special demoted + re-dated
+    _old_sp = ('<a href="/blog/jordan-polasek-june-4-2026-data-poisoning-ai-defense-free-report.html" '
+               'class="blog-card" style="border-left:4px solid #4440DB;padding:32px 36px;display:block">'
+               '<span>SPECIAL REPORT · FREE PDF</span><span style="color:var(--muted);'
+               'font-size:.78rem">July 16 · 14 min read</span><h3>Data</h3></a>')
+    _news101 = ('<div class="g"><a href="/blog/bvtech-news-e0.html" class="blog-card"><h3>E0</h3></a>'
+                + _old_sp + '</div>')
+    _pin = _j101.featured_pin(None, _d101(2026, 10, 23))
+    _n1 = _j101.apply_special_card(_news101, _pin)
+    assert _n1.count('data-pulse="special"') == 1 and _n1.index("php2shell") < _n1.index("e0.html")
+    assert "SPECIAL REPORT · FREE PDF" not in _n1 and "June 4 · 14 min read" in _n1
+    assert "border-left:4px solid #4440DB;padding" not in _n1
+    assert _j101.apply_special_card(_n1, _pin) == _n1                       # idempotent
+    # (5) stale ItemList JSON-LD -> unique positions, true dates
+    _ld = ('<script type="application/ld+json">{"@type":"ItemList","description":"Thirteen editions '
+           'through June 20","itemListElement":[{"position":1},{"position":1}]}</script>')
+    _ld2 = _j101.refresh_itemlist_schema(_ld, _eds)
+    _obj = _js101.loads(re.search(r'json">(.*?)</script>', _ld2, re.S).group(1))
+    assert [e["position"] for e in _obj["itemListElement"]] == [1, 2, 3, 4]
+    assert _obj["itemListElement"][0]["datePublished"] == "2026-10-22" and "June 20" not in _ld2
+    # (6) sitemap: posts get true <lastmod>, deleted posts dropped, pages kept;
+    #     a suspiciously short repo listing never wipes URLs
+    _sm = ('<?xml version="1.0"?>\n<urlset xmlns="x">\n  <url><loc>https://bvtech.org/</loc></url>\n'
+           '  <url><loc>https://bvtech.org/blog/gone.html</loc></url>\n'
+           '  <url><loc>https://bvtech.org/blog/a.html</loc><lastmod>2026-06-01</lastmod></url>\n</urlset>\n')
+    _repo101 = {"sitemap.xml": _sm, "blog/index.html":
+                '<a href="/blog/a.html" class="blog-card"><h3>A</h3><span>October 2, 2026</span></a>'
+                '<a href="/blog/b.html" class="blog-card"><h3>B</h3><span>October 3, 2026</span></a>',
+                "blog/a.html": "x", "blog/b.html": "y"}
+    _com101 = []
+    _o101 = (_j101.get_config, _j101._fetch_file, _j101._list_post_paths, _j101._repo_ops)
+    try:
+        _j101.get_config = lambda db, site="jp": {"configured": True, "style": "blog-file",
+                                                  "file_dir": "blog"}
+        _j101._fetch_file = lambda cfg, p: _repo101.get(p)
+        _j101._list_post_paths = lambda cfg, st: ["blog/a.html", "blog/b.html"]
+        _j101._repo_ops = lambda cfg: {"commit": lambda p, c, m, e: _com101.append((p, c))}
+        _r101 = _j101.sitemap_sync(None, "bvtech")
+        assert _r101["ok"] and _r101["added"] == 1 and _r101["dropped"] == 1, _r101
+        _new = _com101[0][1]
+        assert "gone.html" not in _new and "<loc>https://bvtech.org/</loc>" in _new
+        assert "blog/a.html</loc><lastmod>2026-10-02</lastmod>" in _new
+        assert "blog/b.html</loc><lastmod>2026-10-03</lastmod>" in _new
+        _j101._list_post_paths = lambda cfg, st: []                       # GitLab hiccup
+        assert _j101.sitemap_sync(None, "bvtech")["ok"] is False and len(_com101) == 1
+        # (7) recycled-article guard: an existing title is detected
+        assert _j101.post_exists(None, "bvtech", "A") and not _j101.post_exists(None, "bvtech", "Zed")
+    finally:
+        _j101.get_config, _j101._fetch_file, _j101._list_post_paths, _j101._repo_ops = _o101
+    assert "SKIPPED" in _ca98._SKIP_RECYCLED
+    from app.core.config import get_settings as _gs101
+    assert _gs101().APP_VERSION == "1.101.0"
+    print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
+          "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
+          "no recycled posts, multi-provider AI OK")
+
+    print("\n=== OpsPilot v1.101.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
