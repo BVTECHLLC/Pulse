@@ -1,5 +1,19 @@
 # BVTech OpsPilot — Changelog
 
+## v1.95.0 — Free PHP2Shell checker on bvtech.org/tools (Oct 2026)
+- New `services/tools_page.py`: builds `tools/php2shell-check.html` from the LIVE
+  tools page's own skeleton (head, nav, footer) so it matches the site, plus
+  `tools/php2shell-check.js` as a separate file (a site CSP that bans inline
+  scripts can't disable it). `publish_php2shell_tool(db)` commits both and links
+  the tool on `tools/index.html` by cloning an existing card (callout fallback),
+  then purges the Cloudflare cache.
+- The page calls the passive `/php2shell-check` endpoint and offers "send me the
+  report", which lands visitors in the CRM via `/lead` with their result attached.
+  Every value from a checked site renders via textContent (verified in a headless
+  browser against a hostile `<img onerror>` / `<script>` payload).
+- Fix: the public-tools CORS preflight allowed only GET, so a JSON POST to
+  `/lead` from bvtech.org was blocked by the browser. Now GET, POST, OPTIONS.
+
 ## v1.94.0 — PHP2Shell response: hardened intake + free exposure check (Oct 2026)
 - **Audit:** none of our stack runs PHP (portal = Python/FastAPI; the four
   sites are static HTML on Cloudflare Pages), so CVE-2026-109618/109619 cannot

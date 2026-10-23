@@ -7531,7 +7531,49 @@ def main():
           "bodies 413, JSON untouched; passive exposure verdicts; redirect-SSRF "
           "re-validated per hop OK")
 
-    print("\n=== OpsPilot v1.94.0 SMOKE TEST PASSED ===")
+    # ==== v1.95.0: PHP2Shell checker page on bvtech.org/tools ====
+    from app.services import tools_page as _tp
+    from app.services import jp_site as _jp95
+    from app.services import cloudflare as _cf95
+    _skel = ('<!doctype html><html><head><title>Free Tools</title>'
+             '<meta name="description" content="tools"></head><body><header>NAV</header>'
+             '<main><h1>Free Tools</h1><div class="grid">'
+             '<a href="/tools/ssl-check.html" class="tool-card"><h3>SSL Checker</h3>'
+             '<p>Check any site certificate expiry and chain in seconds today.</p></a>'
+             '</div></main><footer>FOOT</footer></body></html>')
+    _pg = _tp.build_page(_skel, _tp.tool_body(), site="https://bvtech.org")
+    assert "NAV" in _pg and "FOOT" in _pg and "SSL Checker" not in _pg
+    assert "<title>Free PHP2Shell Exposure Check | BVTech</title>" in _pg
+    assert '<script src="/tools/php2shell-check.js" defer>' in _pg
+    assert "innerHTML" not in _tp.tool_js("https://portal.bvtech.org")   # XSS-safe render
+    _ix, _ch, _how = _tp.link_into_index(_skel)
+    assert _ch and _how == "card cloned" and 'href="/tools/php2shell-check.html"' in _ix
+    assert _tp.link_into_index(_ix)[2] == "already linked"
+    _ix2, _ch2, _how2 = _tp.link_into_index("<main><h1>Tools</h1><div>w</div></main>")
+    assert _ch2 and _how2 == "callout"
+    _commits = {}
+    _o95 = (_jp95.get_config, _jp95._repo_ops, _cf95.purge_urls)
+    try:
+        _jp95.get_config = lambda db, site="jp": {"configured": True, "style": "blog-file"}
+        _jp95._repo_ops = lambda cfg: {
+            "fetch": lambda p: _skel if p == "tools/index.html" else _commits.get(p),
+            "commit": lambda p, c, m, u: _commits.__setitem__(p, c) or "sha"}
+        _cf95.purge_urls = lambda db, site, urls: {"ok": True}
+        _pr = _tp.publish_php2shell_tool(_SLheal())
+        assert _pr["ok"] and _pr["index_link"] == "card cloned", _pr
+        assert set(_commits) == {"tools/php2shell-check.html", "tools/php2shell-check.js",
+                                 "tools/index.html"}, list(_commits)
+        assert "portal.bvtech.org/api/public-tools" in _commits["tools/php2shell-check.js"]
+    finally:
+        _jp95.get_config, _jp95._repo_ops, _cf95.purge_urls = _o95
+    with TestClient(app) as _c95:
+        _pf = _c95.options("/api/public-tools/lead", headers={
+            "Origin": "https://bvtech.org", "Access-Control-Request-Method": "POST"})
+        assert "POST" in _pf.headers.get("access-control-allow-methods", ""), _pf.headers
+    print("PHP2Shell checker page: skeleton reuse, external script, XSS-safe render, "
+          "index card/callout link, publish commits page+js+index; preflight allows POST OK")
+
+    print("\n=== OpsPilot v1.95.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

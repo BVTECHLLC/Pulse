@@ -122,7 +122,9 @@ def _guard(request: Request, resp: Response, host: str | None = None):
 @router.options("/{rest:path}", include_in_schema=False)
 def _preflight(rest: str, request: Request, resp: Response):
     _cors(request, resp)
-    resp.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    # v1.95: POST too — /lead is a POST, and a JSON POST from bvtech.org is
+    # preflighted; with only GET allowed the browser blocked it.
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     resp.headers["Access-Control-Allow-Headers"] = "content-type"
     resp.headers["Access-Control-Max-Age"] = "86400"
     return {}
