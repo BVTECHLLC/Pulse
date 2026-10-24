@@ -426,6 +426,7 @@ def render_in_chrome(post: dict, chrome_html: str) -> str:
     body = ('<section style="padding:40px 0 100px;background:var(--bg)">'
             '<div class="ctr pulse-post" style="max-width:780px">' + _CHROME_CSS
             + f'<!-- pulse:post date={p["date"]} -->'
+            + ("<!-- pulse:feature -->" if post.get("feature") else "")
             + f'<div class="article-body pp-body">\n{p["body_html"]}\n</div>'
             + (post.get("cta_html") if post.get("cta_html") is not None else _CTA_HTML)
             + f'<div class="pp-author"><div class="pp-avatar">{initials}</div><div>'

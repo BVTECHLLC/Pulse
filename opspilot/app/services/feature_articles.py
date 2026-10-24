@@ -261,6 +261,7 @@ def php2shell_post() -> dict:
         "crumb": "PHP2Shell Explained",
         "faq": PHP2SHELL_FAQ,
         "cta_html": PHP2SHELL_CTA,
+        "feature": True,          # never swept as same-day "flood"
     }
 
 

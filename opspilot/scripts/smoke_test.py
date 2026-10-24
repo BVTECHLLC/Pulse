@@ -3584,6 +3584,9 @@ def main():
             "dupe-b-today/index.html": _page40("July 14, 2026", "Extra B."),
             "old-post/index.html": _page40("July 10, 2026", "Old one."),
             "about-jordan/index.html": _page40("July 14, 2026", "Bio page."),
+            # v1.101.2: a same-day FEATURE article is never flood
+            "feature-today/index.html": _page40("July 14, 2026", "Feature.").replace(
+                "<body>", "<body><!-- pulse:feature -->"),
         }
         def _card40(slug, title):
             return (f'<article class="post-card"><h2><a href="/{slug}/">{title}</a></h2>'
@@ -3596,7 +3599,8 @@ def main():
                       "dupe-a-today": "2026-07-14T15:00:00Z",
                       "dupe-b-today": "2026-07-14T16:00:00Z",
                       "old-post": "2026-07-10T14:00:00Z",
-                      "about-jordan": "2026-07-14T13:00:00Z"}
+                      "about-jordan": "2026-07-14T13:00:00Z",
+                      "feature-today": "2026-07-14T17:00:00Z"}
         def _http40d(method, url, token, payload=None):
             import urllib.parse as _u40
             if method == "GET" and "/repository/tree" in url:
@@ -3630,6 +3634,7 @@ def main():
             assert _rm40 == {"dupe-a-today", "dupe-b-today"}, res40
             assert "keep-today/index.html" in _repo40 and "old-post/index.html" in _repo40
             assert "about-jordan/index.html" in _repo40, "pages must NEVER be swept"
+            assert "feature-today/index.html" in _repo40, "feature articles must NEVER be swept"
             assert "/dupe-a-today/" not in _state40["blog/index.html"]
             assert "/dupe-b-today/" not in _state40["index.html"]
             assert "/keep-today/" in _state40["blog/index.html"]
@@ -7937,7 +7942,7 @@ def main():
         (_j100.get_config, _j100._fetch_file, _j100._list_post_paths, _j100._HTTP,
          _j100._KEV_FEED) = _o100
         _cf100.purge_urls = _opu100
-    assert _sr100.REPAIR_EPOCH == "1.101.1"
+    assert _sr100.REPAIR_EPOCH == "1.101.2"
     print("v1.100: KEV as-of-date + title-guided cutoff rebuild news editions exactly; SMB "
           "posts rebuilt from stored/evergreen text; hand-written posts untouched OK")
 
@@ -8054,13 +8059,30 @@ def main():
     finally:
         (_j101.get_config, _j101._fetch_file, _j101._list_post_paths, _j101._KEV_FEED,
          _j101.publish) = _o101b
+    # (10) v1.101.2: the pinned feature is marked, protected and self-healing
+    assert "<!-- pulse:feature -->" in _pg101
+    assert _fa101.PHP2SHELL_SLUG in _j101._protected_slugs()
+    _rep = []
+    _o102 = (_j101.get_config, _j101._fetch_file, _fa101.publish_php2shell)
+    try:
+        _j101.get_config = lambda db, site="jp": {"configured": True, "style": "blog-file",
+                                                  "file_dir": "blog"}
+        _j101._fetch_file = lambda cfg, p: None                     # article deleted
+        _fa101.publish_php2shell = lambda db: _rep.append(1) or {"ok": True}
+        assert _j101.ensure_feature_published(None)["republished"] and _rep == [1]
+        _j101._fetch_file = lambda cfg, p: "<html>"                 # present -> no-op
+        assert _j101.ensure_feature_published(None)["present"] and _rep == [1]
+    finally:
+        _j101.get_config, _j101._fetch_file, _fa101.publish_php2shell = _o102
+    _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
+    assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.101.1"
+    assert _gs101().APP_VERSION == "1.101.2"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
 
-    print("\n=== OpsPilot v1.101.1 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.101.2 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

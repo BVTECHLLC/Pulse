@@ -1,5 +1,18 @@
 # BVTech OpsPilot — Changelog
 
+## v1.101.2 — The flood guard deleted the PHP2Shell feature; protect + self-heal (Oct 2026)
+- The same-day duplicate sweeper ("one post per day, keep the earliest")
+  deleted the PHP2Shell article because it went live on the same day as the
+  daily post. The homepage feature and /news/ special card (shielded from the
+  sweep) then pointed at a 404.
+- Feature articles now carry `<!-- pulse:feature -->`, and pinned/feature slugs
+  are protected: the sweeper never treats them as flood.
+- `ensure_feature_published` runs in the daily listings self-heal and
+  republishes the pinned feature if its file is ever missing. REPAIR_EPOCH
+  1.101.2 republishes it now.
+- The homepage briefing trio skips an edition that repeats the previous
+  headline. The featured card gets a clear call to action line.
+
 ## v1.101.1 — Stop daily editions overwriting each other; restore the lost ones (Oct 2026)
 - **Root cause of missing October editions.** Slugs were cut at 70 characters,
   so "…plex-and-more-october-21-2026" became "…plex-and-more-o". The next

@@ -466,6 +466,11 @@ def listings_self_heal(db: Session, now: "datetime | None" = None, *,
     healed: list[str] = []
     # v1.98: bvtech_news too (news/index.html had no backfill at all), and the
     # capped homepage previews are refreshed to the newest posts.
+    try:
+        out["feature"] = ensure_feature_published(db)
+    except Exception as e:  # noqa: BLE001
+        db.rollback()
+        out["feature"] = {"ok": False, "error": str(e)[:200]}
     for site in ("jp", "bvtech", "bvtech_news", "txplants"):
         try:
             if not get_config(db, site)["configured"]:
@@ -1810,6 +1815,23 @@ FEATURED_PIN = {
 _DEMOTE_SPECIALS = ("/blog/jordan-polasek-june-4-2026-data-poisoning-ai-defense-free-report.html",)
 
 
+def _protected_slugs() -> set:
+    from . import feature_articles
+    return {_slug_of(FEATURED_PIN["url"].strip("/")), feature_articles.PHP2SHELL_SLUG}
+
+
+def ensure_feature_published(db: Session) -> dict:
+    """Self-heal: the pinned feature article must exist - republish it if not."""
+    from . import feature_articles
+    cfg = get_config(db, "bvtech")
+    if not cfg["configured"]:
+        return {"ok": False, "error": "not connected"}
+    if _fetch_file(cfg, f"blog/{feature_articles.PHP2SHELL_SLUG}.html"):
+        return {"ok": True, "present": True}
+    res = feature_articles.publish_php2shell(db)
+    return {"ok": bool(res.get("ok")), "republished": True, "error": res.get("error")}
+
+
 def featured_pin(db: Session | None, today=None) -> dict | None:
     pin = dict(FEATURED_PIN)
     if db is not None:
@@ -1850,13 +1872,18 @@ def _news_editions(cfg: dict, listings: dict, n: int = 4) -> list[dict]:
         t = re.sub(r"^BVTech News\s*[\u2014-]+\s*", "", t).strip()
         t = re.sub(r"\s*[\u2014-]+\s*[A-Za-z]+ \d{1,2}, \d{4}$", "", t).strip()
         out.append({"url": rel, "date": d, "title": t, "excerpt": ex})
-        if len(seen) >= n + 6:
+        if len(seen) >= n + 10:
             break
     out.sort(key=lambda e: e["date"], reverse=True)
-    return out[:n]
+    uniq = []
+    for e in out:                 # same lead vendors two days running -> show one
+        if uniq and uniq[-1]["title"] == e["title"]:
+            continue
+        uniq.append(e)
+    return uniq[:n]
 
 
-def _featured_card(*, url, title, excerpt, tag, date_lbl, tags) -> str:
+def _featured_card(*, url, title, excerpt, tag, date_lbl, tags, cta="") -> str:
     import html as _h
     return ('<a href="' + url + '" class="intel-featured">\n'
             '<div class="intel-featured-tag">' + _h.escape(tag) + '</div>\n'
@@ -1864,7 +1891,10 @@ def _featured_card(*, url, title, excerpt, tag, date_lbl, tags) -> str:
             '<h3>' + _h.escape(title) + '</h3>\n'
             '<p>' + _h.escape(excerpt) + '</p>\n'
             '<div class="intel-tags">' + "".join(f"<span>{_h.escape(t)}</span>" for t in tags)
-            + '</div>\n</a>')
+            + '</div>\n'
+            + ('<span style="display:inline-block;margin-top:26px;color:#EB6F24;font-weight:700">'
+               + _h.escape(cta) + '</span>\n' if cta else "")
+            + '</a>')
 
 
 def build_intel_block(pin: dict | None, editions: list[dict]) -> str | None:
@@ -1875,14 +1905,15 @@ def build_intel_block(pin: dict | None, editions: list[dict]) -> str | None:
         feat = _featured_card(url=pin["url"], title=pin["title"], excerpt=pin["excerpt"],
                               tag="\u2b50 " + pin.get("badge", "FEATURED"),
                               date_lbl=f"{_long_date(d)} \u00b7 {pin.get('read', '')}".strip(" \u00b7"),
-                              tags=pin.get("tags") or [])
+                              tags=pin.get("tags") or [], cta=pin.get("cta", ""))
         trio = editions[:3]
     elif editions:
         e = editions[0]
         feat = _featured_card(url=e["url"], title=e["title"], excerpt=e["excerpt"],
                               tag="\U0001f534 KEV ALERT \u00b7 DAILY BRIEFING",
                               date_lbl=_long_date(e["date"]),
-                              tags=["CISA KEV", "Daily briefing"])
+                              tags=["CISA KEV", "Daily briefing"],
+                              cta="Read today's briefing \u2192")
         trio = editions[1:4]
     else:
         return None
@@ -2407,6 +2438,11 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
                 scan.append(f"{path} -> {first_d.isoformat()} (untouched, outside window)")
                 continue                      # floods are recent; skip the page fetch
             page = _fetch_file(cfg, path) or ""
+            if "<!-- pulse:feature -->" in page or _slug_of(path) in _protected_slugs():
+                # v1.101.2: a hand-written feature published the same day as the
+                # daily post is NOT flood - the sweep deleted the PHP2Shell report.
+                scan.append(f"{path} -> feature article (protected)")
+                continue
             pd = _post_date_from_html(page)
             d = pd or first_d
             scan.append(f"{path} -> {d.isoformat()}"
