@@ -15,3 +15,4 @@ cryptography==44.0.0
 dnspython==2.6.1
 fpdf2==2.8.7
 tzdata
+httpx==0.28.1

@@ -1,0 +1,15 @@
+{
+  "name": "signal-199x",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Original self-hosted WebGL2 retro-tech MMORPG alpha with co-op games, survival, houses, cosmetics and safer quick chat",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs",
+    "test": "node --test tests/smoke.mjs"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

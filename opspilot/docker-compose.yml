@@ -34,6 +34,28 @@ services:
     expose:
       - "8000"
 
+  # Signal 199X — the self-hosted Node game (v1.104). Pure-stdlib Node 24
+  # (node:sqlite), source mounted read-only, SQLite in a writable volume. Not
+  # publicly exposed: the portal reverse-proxies it at /signal/ (see
+  # app/api/routes/game_proxy.py), so no extra DNS/TLS/tunnel is needed.
+  game:
+    image: node:24-alpine
+    restart: unless-stopped
+    working_dir: /game
+    command: ["node", "server.mjs"]
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3000"
+      TRUST_PROXY: "true"
+      ALLOWED_ORIGINS: "https://portal.bvtech.org"
+      DATA_DIR: /data
+    volumes:
+      - ./games/signal199x:/game:ro
+      - gamedata:/data
+    expose:
+      - "3000"
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -52,3 +74,4 @@ volumes:
   redisdata:
   caddydata:
   caddyconfig:
+  gamedata:

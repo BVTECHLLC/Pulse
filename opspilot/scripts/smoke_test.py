@@ -7947,7 +7947,7 @@ def main():
         (_j100.get_config, _j100._fetch_file, _j100._list_post_paths, _j100._HTTP,
          _j100._KEV_FEED) = _o100
         _cf100.purge_urls = _opu100
-    assert _sr100.REPAIR_EPOCH == "1.103.0"
+    assert _sr100.REPAIR_EPOCH == "1.104.0"
     print("v1.100: KEV as-of-date + title-guided cutoff rebuild news editions exactly; SMB "
           "posts rebuilt from stored/evergreen text; hand-written posts untouched OK")
 
@@ -8082,7 +8082,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.103.0"
+    assert _gs101().APP_VERSION == "1.104.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8191,7 +8191,7 @@ def main():
     finally:
         (_J102.get_config, _J102._fetch_file, _J102._HTTP, _CF102.purge_urls) = _o102b
     # (5) wired into the one-time repair at the new epoch
-    assert _sr100.REPAIR_EPOCH == "1.103.0"
+    assert _sr100.REPAIR_EPOCH == "1.104.0"
     import inspect as _insp102
     assert "destination" in _insp102.getsource(_sr100.run_full_repair)
     print("v1.102: Explore hub, Lightning Labs (edge-graded), 4 new tools, edge API, "
@@ -8263,7 +8263,29 @@ def main():
     print("v1.103: moderation blocks evasions (clean near-misses pass); BVTech Answers "
           "end-to-end (moderation gate, rate limits, votes, ranks, best answer, public feed) OK")
 
-    print("\n=== OpsPilot v1.103.0 SMOKE TEST PASSED ===")
+    # ==== v1.104.0: Signal 199X game reverse-proxy ====
+    from app.api.routes import game_proxy as _GP
+    from pathlib import Path as _P104
+    _gsrc = _P104(__file__).resolve().parent.parent / "games" / "signal199x"
+    assert (_gsrc / "server.mjs").exists() and (_gsrc / "public" / "index.html").exists()
+    # game client was patched to subpath-relative paths (no root-absolute /api,/ws)
+    _gjs = (_gsrc / "public" / "game.js").read_text()
+    assert "fetch('/api/" not in _gjs and "${location.host}/ws`" not in _gjs
+    assert "location.pathname.replace" in _gjs            # path-aware WS
+    _gidx = (_gsrc / "public" / "index.html").read_text()
+    assert 'src="/game.js"' not in _gidx and 'href="/style.css"' not in _gidx
+    # proxy routes are registered on the app
+    _rp = {r.path for r in app.routes}
+    assert "/signal" in _rp and "/signal/{path:path}" in _rp and "/signal/ws" in _rp, _rp
+    assert _GP.GAME_WS.startswith("ws://") and _GP.PUBLIC_ORIGIN.startswith("https://")
+    # bvtech.org link-outs present (Explore + site-wide nav edit)
+    from app.services import pages_explore as _PEx, destination as _DEx
+    assert "portal.bvtech.org/signal/" in _PEx.body()
+    assert any("portal.bvtech.org/signal" in _m[0] for _m in _DEx.NAV_EDITS)
+    print("v1.104: Signal 199X game vendored + patched for subpath; portal HTTP+WS "
+          "reverse-proxy at /signal/; linked from Explore + site-wide nav OK")
+
+    print("\n=== OpsPilot v1.104.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

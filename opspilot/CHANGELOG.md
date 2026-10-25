@@ -1,5 +1,26 @@
 # BVTech OpsPilot — Changelog
 
+## v1.104.0 — Signal 199X game live on BVTech + game reverse-proxy (Oct 2026)
+- **Signal 199X** — the original retro-tech multiplayer browser game — is now
+  hosted by us and live at **portal.bvtech.org/signal/**, linked from bvtech.org
+  (a prominent "Play Free" card on Explore + a site-wide nav link).
+- It runs as its own Node 24 service in the compose stack (pure stdlib,
+  `node:sqlite`; source mounted read-only, SQLite in a writable volume), not
+  publicly exposed. The portal **reverse-proxies `/signal/`** — HTTP *and* the
+  realtime WebSocket (`app/api/routes/game_proxy.py`) — forwarding the game's own
+  `lv_session` cookie and a fixed Origin, so accounts and live play work with
+  **zero DNS / TLS / tunnel changes**.
+- The game client was patched to use relative asset/API paths and a path-aware
+  WebSocket URL so everything maps cleanly under `/signal/`. Verified end-to-end
+  locally: assets, account register/login, and live `snapshot` streaming over the
+  proxied socket; the game's own 4 integration test suites pass.
+- `deploy.sh` brings the game service up on each deploy (idempotent). Safe
+  defaults kept from the source: 13+ self-attestation, quick-chat only (free-text
+  off), server-authoritative scoring, report/block tools.
+- NOTE: the 3D WebGL2 view couldn't be verified in this headless environment
+  (WebGL2 is denied); the 2D fallback is always available. Give the 3D mode a
+  look on a real browser once it's live.
+
 ## v1.103.0 — Explore leveled up + BVTech Answers community (moderated) (Oct 2026)
 - **Explore polish:**
   - Fixed the hero/weather getting clipped under the sticky site header.
