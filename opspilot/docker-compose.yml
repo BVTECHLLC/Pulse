@@ -39,7 +39,7 @@ services:
   # publicly exposed: the portal reverse-proxies it at /signal/ (see
   # app/api/routes/game_proxy.py), so no extra DNS/TLS/tunnel is needed.
   game:
-    image: node:24-alpine
+    image: node:24
     restart: unless-stopped
     working_dir: /game
     command: ["node", "server.mjs"]
