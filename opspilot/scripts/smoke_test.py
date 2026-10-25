@@ -7593,6 +7593,11 @@ def main():
         assert set(_commits) == {"tools/php2shell-check.html", "tools/php2shell-check.js",
                                  "tools/index.html", "worker-tools/index.js",
                                  "worker-tools/php2shell-check.js", "worker-tools/lead.js",
+                                 # v1.102: the Worker entry imports these, so every
+                                 # worker commit carries them (else the build breaks).
+                                 "worker-tools/feeds.js", "worker-tools/explore.js",
+                                 "worker-tools/netinfo.js", "worker-tools/labs.js",
+                                 "worker-tools/daily.js",
                                  ".assetsignore", "wrangler.jsonc"}, sorted(_commits)
         import json as _json95
         _w = _json95.loads(_commits["wrangler.jsonc"])
@@ -7942,7 +7947,7 @@ def main():
         (_j100.get_config, _j100._fetch_file, _j100._list_post_paths, _j100._HTTP,
          _j100._KEV_FEED) = _o100
         _cf100.purge_urls = _opu100
-    assert _sr100.REPAIR_EPOCH == "1.101.2"
+    assert _sr100.REPAIR_EPOCH == "1.102.0"
     print("v1.100: KEV as-of-date + title-guided cutoff rebuild news editions exactly; SMB "
           "posts rebuilt from stored/evergreen text; hand-written posts untouched OK")
 
@@ -8077,12 +8082,118 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.101.2"
+    assert _gs101().APP_VERSION == "1.102.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
 
-    print("\n=== OpsPilot v1.101.2 SMOKE TEST PASSED ===")
+    # ==== v1.102.0: BVTech as a destination - Explore, Lightning Labs, tools, edge API ====
+    from app.services import destination as _D102, jp_site as _J102, cloudflare as _CF102
+    from app.services import pages_explore as _PE, pages_labs as _PL, pages_tools as _PT
+    # (1) pages build standalone (titles/desc/bodies present, Jordan Polasek authored)
+    assert "Explore" in _PE.TITLE and "Jordan Polasek" in _PE.body()
+    assert "Lightning Labs" in _PL.TITLE and len(_PT.all_tools()) == 4
+    for _t in _PT.all_tools():
+        assert _t["slug"] and _t["title"] and _t["body"] and _t["card_excerpt"]
+    assert "/tools-api/net/whoami" in _PT.whats_my_ip()["body"]
+    assert "/tools-api/net/speedtest" in _PT.speed_test()["body"]
+    assert "ev-savings-calculator" == _PT.ev_savings()["slug"]
+    # (2) nav injection: additive + idempotent, top-level + dropdown distinct
+    _nav = ('<ul><li><a href="/blog/">Blog</a></li>'
+            '<li><a href="/tools/">🧰 Free Tools (all)</a></li>'
+            '<li><a href="/academy/labs/">🧪 Hands-On Labs</a></li></ul>')
+    _n1, _c1 = _D102.apply_nav(_nav)
+    _n2, _c2 = _D102.apply_top_nav(_n1)
+    assert _c1 and _c2
+    assert '<li><a href="/explore/">🧭 Explore</a></li>' in _n2            # dropdown
+    assert '<li><a href="/explore/">Explore</a></li>' in _n2               # top level
+    assert '/academy/lightning-labs/' in _n2
+    _n3, _c3 = _D102.apply_nav(_n2); _n4, _c4 = _D102.apply_top_nav(_n3)
+    assert not _c3 and not _c4 and _n4 == _n2                              # idempotent
+    assert _n2.count('href="/explore/">Explore</a>') == 1                  # no top dup
+    # (3) 404 telemetry wiring + link existence resolver
+    _p404, _w404 = _D102._wire_404("<html><body>x</body></html>")
+    assert _w404 and "pulse-404-ping" in _p404 and "/tools-api/notfound" in _p404
+    assert _D102._wire_404(_p404)[1] is False                             # idempotent
+    _files = {"a/index.html", "b.html", "assets/x.png"}; _dirs = {"a", "assets"}
+    assert _D102._exists("/a/", _files, _dirs) and _D102._exists("/b.html", _files, _dirs)
+    assert _D102._exists("/a", _files, _dirs) and _D102._exists("/", _files, _dirs)
+    assert not _D102._exists("/missing/", _files, _dirs) and not _D102._exists("/x.html", _files, _dirs)
+    # (4) full publish + scan against a mock repo
+    _chrome = ('<!doctype html><html><head><title>Blog | BVTech</title><meta name="description" '
+               'content="x"><link rel="canonical" href="https://bvtech.org/blog/"></head><body>'
+               '<header class="header"><nav><ul><li><a href="/blog/">Blog</a></li>'
+               '<li><a href="/tools/">🧰 Free Tools (all)</a></li>'
+               '<li><a href="/academy/labs/">🧪 Hands-On Labs</a></li></ul></nav></header>'
+               '<main><h2>W</h2></main><footer class="footer">F</footer></body></html>')
+    _repo102 = {"blog/index.html": _chrome,
+                "tools/index.html": '<html><body><main><h1>Tools</h1>'
+                    '<a href="/tools/php2shell-check.html" class="blog-card"><h3>P</h3><p>x</p></a>'
+                    '</main></body></html>',
+                "404.html": "<html><body>x</body></html>",
+                "sitemap.xml": '<?xml version="1.0"?>\n<urlset xmlns="x">\n'
+                    '  <url><loc>https://bvtech.org/</loc></url>\n</urlset>\n',
+                "wrangler.jsonc": '{"name":"bvtech","compatibility_date":"2026-01-01"}',
+                ".assetsignore": "node_modules/\n",
+                "about/index.html": _chrome.replace("Blog | BVTech", "About")}
+    _sent102 = {}
+    def _http102(method, url, token, payload=None):
+        if method == "GET" and "/repository/tree" in url and "recursive=true" in url:
+            return ([{"type": "blob", "path": p} for p in _repo102]
+                    + [{"type": "tree", "path": d} for d in ("tools", "about", "explore")]
+                    ) if "page=1" in url else []
+        if method == "POST" and "/repository/commits" in url:
+            for _a in payload["actions"]:
+                _sent102[_a["file_path"]] = _a["content"]
+            return {"id": "sha"}
+        return {}
+    _o102b = (_J102.get_config, _J102._fetch_file, _J102._HTTP, _CF102.purge_urls)
+    try:
+        _J102.get_config = lambda db, site="jp": {"configured": True, "style": "blog-file",
+            "file_dir": "blog", "base": "https://gitlab.com", "project": "x/y",
+            "branch": "main", "token": "t"}
+        _J102._fetch_file = lambda cfg, p: _repo102.get(p)
+        _J102._HTTP = _http102
+        _CF102.purge_urls = lambda *a, **k: {"ok": True}
+        _rp = _D102.publish(None)
+        assert _rp["ok"] and len(_rp["pages"]) == 6, _rp
+        assert "explore/index.html" in _sent102 and "academy/lightning-labs/index.html" in _sent102
+        assert "tools/whats-my-ip/index.html" in _sent102 and "tools/speed-test/index.html" in _sent102
+        for _w in ("index", "feeds", "explore", "netinfo", "labs", "daily"):
+            assert f"worker-tools/{_w}.js" in _sent102, _w
+        _exp = _sent102["explore/index.html"]
+        import html as _h102
+        assert '<title>' + _h102.escape(_PE.TITLE) + '</title>' in _exp   # & escaped
+        assert 'canonical" href="https://bvtech.org/explore/"' in _exp
+        assert '"WebPage"' in _exp and "Jordan Polasek" in _exp and "<footer" in _exp
+        assert '/explore/' in _sent102["blog/index.html"] and '/explore/' in _sent102["about/index.html"]
+        assert 'pulse-404-ping' in _sent102["404.html"]
+        assert '"main"' in _sent102.get("wrangler.jsonc", "")
+        assert "worker-tools/" in _sent102.get(".assetsignore", "")
+        assert "/tools/whats-my-ip/" in _sent102["tools/index.html"] and "🧭 New" in _sent102["tools/index.html"]
+        # scan the just-published repo: no broken internal links in the NEW pages
+        for _p, _c in _sent102.items():
+            _repo102[_p] = _c
+        class _C404:
+            config = {"hits": {"/dead/": {"count": 9, "ref": "https://g.com"}}}
+        import app.services.secure_config as _SC102
+        _osc = _SC102.get_platform
+        _SC102.get_platform = lambda db, prov: _C404() if prov == "bvtech_404" else None
+        try:
+            _sc = _D102.scan_links(None)
+            assert _sc["ok"] and _sc["live_404s"][0]["path"] == "/dead/", _sc
+        finally:
+            _SC102.get_platform = _osc
+    finally:
+        (_J102.get_config, _J102._fetch_file, _J102._HTTP, _CF102.purge_urls) = _o102b
+    # (5) wired into the one-time repair at the new epoch
+    assert _sr100.REPAIR_EPOCH == "1.102.0"
+    import inspect as _insp102
+    assert "destination" in _insp102.getsource(_sr100.run_full_repair)
+    print("v1.102: Explore hub, Lightning Labs (edge-graded), 4 new tools, edge API, "
+          "additive idempotent nav, 404 telemetry + broken-link scan, one-commit publish OK")
+
+    print("\n=== OpsPilot v1.102.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

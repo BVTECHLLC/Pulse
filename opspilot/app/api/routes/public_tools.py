@@ -302,6 +302,48 @@ def _lead_limited(request: Request) -> bool:
     return win[1] > _LEAD_MAX
 
 
+@router.post("/notfound")
+async def report_notfound(request: Request, resp: Response):
+    """The bvtech.org 404 page reports the path it couldn't find here (relayed
+    by the site Worker). We aggregate counts per path so Pulse's site scan can
+    see which links are broken in the wild and 301 or fix them. Fire-and-forget,
+    bounded, never trusts the body beyond short strings."""
+    _cors(request, resp)
+    if _limited(request):
+        return {"ok": True}                       # silently drop floods
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return {"ok": True}
+    path = str(body.get("path") or "").strip()[:200]
+    if not path.startswith("/") or re.search(r"""[<>"'`]""", path):
+        return {"ok": True}
+    ref = str(body.get("ref") or "").strip()[:200]
+    from ...core.db import SessionLocal
+    from ...services import secure_config
+    db = SessionLocal()
+    try:
+        conn = secure_config.get_platform(db, "bvtech_404")
+        raw = dict((conn.config if conn else None) or {})
+        hits = dict(raw.get("hits") or {})
+        row = hits.get(path) or {"count": 0, "ref": ref}
+        row["count"] = int(row.get("count", 0)) + 1
+        row["last"] = datetime.now(timezone.utc).isoformat()
+        if ref:
+            row["ref"] = ref
+        hits[path] = row
+        if len(hits) > 500:                       # keep the busiest 500 paths
+            hits = dict(sorted(hits.items(), key=lambda kv: kv[1].get("count", 0),
+                               reverse=True)[:500])
+        secure_config.upsert_platform(db, "bvtech_404", "bvtech.org 404s", "Telemetry",
+                                      {"hits": hits})
+    except Exception:  # noqa: BLE001
+        db.rollback()
+    finally:
+        db.close()
+    return {"ok": True}
+
+
 @router.post("/lead")
 async def capture_lead(request: Request, resp: Response):
     """Public lead intake from the free tools. Body: {email, name?, company?,

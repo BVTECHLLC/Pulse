@@ -34,7 +34,14 @@ _EDGE_DIR = Path(__file__).with_name("edge_tools")
 WORKER_MAIN = "worker-tools/index.js"
 EDGE_FILES = {"worker-tools/index.js": "worker.js",
               "worker-tools/php2shell-check.js": "php2shell-check.js",
-              "worker-tools/lead.js": "lead.js"}
+              "worker-tools/lead.js": "lead.js",
+              # v1.102 destination release - the Worker entry imports these, so
+              # every worker commit must carry them or the build breaks.
+              "worker-tools/feeds.js": "feeds.js",
+              "worker-tools/explore.js": "explore.js",
+              "worker-tools/netinfo.js": "netinfo.js",
+              "worker-tools/labs.js": "labs.js",
+              "worker-tools/daily.js": "daily.js"}
 _WRANGLER = ("wrangler.jsonc", "wrangler.json")
 
 

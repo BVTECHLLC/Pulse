@@ -1564,6 +1564,20 @@ def _tree_all(cfg: dict, path: str | None = None) -> list[dict]:
     return out
 
 
+def _list_all_html(cfg: dict) -> list[str]:
+    """Every .html file in the repo (recursive), for site-wide passes like the
+    nav sweep and the broken-link scan. Paginated; bounded to 30 pages."""
+    q = urllib.parse.quote
+    out: list[str] = []
+    for page in range(1, 31):
+        batch = _HTTP("GET", f"{_proj_url(cfg)}/repository/tree?recursive=true&per_page=100"
+                      f"&page={page}&ref={cfg['branch']}", cfg["token"])
+        out += batch or []
+        if not batch or len(batch) < 100:
+            break
+    return [t["path"] for t in out if t.get("type") == "blob" and t["path"].endswith(".html")]
+
+
 def _list_post_paths(cfg: dict, style: str) -> list[str]:
     """All post files in the repo for this site's layout, newest-ish first."""
     if style == "blog-file":

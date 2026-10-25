@@ -1,5 +1,36 @@
 # BVTech OpsPilot — Changelog
 
+## v1.102.0 — BVTech.org becomes a destination: Explore hub, Lightning Labs, more tools (Oct 2026)
+- **Explore (/explore/)** — a friendly "front page of the internet" for bvtech.org:
+  curated positive headlines (tech, Tesla/EVs, space, AI, science, gadgets, gaming,
+  security, good news), a NASA photo of the day, upcoming rocket launches, local
+  weather, "on this day in tech", a daily trivia game and a tip. Headlines link OUT
+  to publishers (no copied text, so Google sees a curated link hub). A keyword
+  filter keeps politics and tragedy off the page.
+- **Lightning Labs (/academy/lightning-labs/)** — free, self-paced, interactive
+  classes inspired by the live "lightning class" format, but on-demand: Tracing
+  Identity Attacks in Azure & Microsoft 365, Demystifying Active Directory, and
+  Break the Bot: AI Purple Teaming. Each is graded at the edge (answers never reach
+  the browser). Authored by Jordan Polasek.
+- **Four new free tools:** What's My IP (what any site can see about you), Internet
+  Speed Test (real download/upload/ping via a same-origin Worker endpoint — no third
+  party), Is It Down (website status from Cloudflare's network), and an EV Savings
+  Calculator (gas vs electric, Tesla-friendly).
+- **Edge API (worker-tools/):** new Worker modules power all of the above
+  (feeds, explore widgets, netinfo + speed test, labs grading, daily game, 404
+  telemetry). Every data source is free/keyless and cached at the edge, so upstreams
+  see a trickle. All answers for graded content stay server-side.
+- **Site-wide discoverability:** Explore and Lightning Labs are added to the nav
+  (top-level + dropdowns) across every page — additive and idempotent, never
+  removing anything. New tool cards + an Explore banner on /tools/. Sitemap updated.
+- **Site health:** the 404 page now reports missing paths to the Worker, which
+  forwards them to the portal; `destination.scan_links` reads the whole repo for
+  broken internal links and surfaces the real 404s visitors hit — both in the daily
+  repair report. Nothing auto-deletes; it reports what to fix.
+- Everything ships in ONE GitLab commit (so a build never sees pages whose edge
+  endpoints haven't landed). Idempotent + self-healing via the repair job
+  (REPAIR_EPOCH 1.102.0): missing pieces are rebuilt automatically.
+
 ## v1.101.2 — The flood guard deleted the PHP2Shell feature; protect + self-heal (Oct 2026)
 - The same-day duplicate sweeper ("one post per day, keep the earliest")
   deleted the PHP2Shell article because it went live on the same day as the

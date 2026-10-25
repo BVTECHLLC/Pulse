@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-REPAIR_EPOCH = "1.101.2"         # bump to re-run the one-time repair after a future fix
+REPAIR_EPOCH = "1.102.0"         # bump to re-run the one-time repair after a future fix
 MARKER = '<p class="meta">By '
 _PROVIDER = "site_repair"
 _lock = threading.Lock()
@@ -310,6 +310,10 @@ def run_full_repair(db: Session) -> str:
     step("2c. Feature article (PHP2Shell, pinned on the homepage + /news/)",
          lambda: feature_articles.publish_php2shell(db))
     step("2d. Missing daily news editions (restored)", lambda: backfill_news(db))
+    from . import destination
+    step("2e. Destination release (Explore, Lightning Labs, new tools, edge API)",
+         lambda: destination.publish(db))
+    step("2f. Broken-link + 404 scan", lambda: destination.scan_links(db))
     step("3. Listings self-heal (+ homepage feature, schema, sitemap)",
          lambda: jp_site.listings_self_heal(db, force=True))
     step("4. Audit", lambda: "\n" + site_audit.bvtech_report(db))
