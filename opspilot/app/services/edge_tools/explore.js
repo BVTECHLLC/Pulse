@@ -46,9 +46,15 @@ const WMO = { 0: ["Clear", "☀️"], 1: ["Mostly clear", "🌤️"], 2: ["Partl
   96: ["Storms", "⛈️"], 99: ["Storms", "⛈️"] };
 export const sky = (c) => WMO[c] || ["—", "🌡️"];
 
-export async function weather(lat, lon) {
-  lat = Math.round(Math.max(-60, Math.min(70, +lat || 29.2)) * 10) / 10;
-  lon = Math.round(Math.max(-180, Math.min(180, +lon || -96.3)) * 10) / 10;
+export async function weather(lat, lon, cf) {
+  // Default to the VISITOR'S location (Cloudflare IP geo), not a fixed city, so
+  // the forecast matches where the reader actually is. GPS (if allowed) refines it.
+  cf = cf || {};
+  const dLat = cf.latitude != null ? +cf.latitude : 29.2;
+  const dLon = cf.longitude != null ? +cf.longitude : -96.3;
+  const place = [cf.city, cf.region].filter(Boolean).join(", ");
+  lat = Math.round(Math.max(-60, Math.min(70, +lat || dLat)) * 10) / 10;
+  lon = Math.round(Math.max(-180, Math.min(180, +lon || dLon)) * 10) / 10;
   return cached(`explore-v1-wx-${lat}-${lon}`, 900, async () => {
     const r = JSON.parse(await getText("https://api.open-meteo.com/v1/forecast?latitude=" + lat
       + "&longitude=" + lon + "&current=temperature_2m,apparent_temperature,weather_code,"
@@ -57,7 +63,7 @@ export async function weather(lat, lon) {
       + "&wind_speed_unit=mph&timezone=auto&forecast_days=4"));
     const c = r.current || {}, d = r.daily || {};
     return {
-      lat, lon, now: { temp: Math.round(c.temperature_2m), feels: Math.round(c.apparent_temperature),
+      lat, lon, place: place || "", now: { temp: Math.round(c.temperature_2m), feels: Math.round(c.apparent_temperature),
         wind: Math.round(c.wind_speed_10m), humidity: c.relative_humidity_2m,
         sky: sky(c.weather_code) },
       days: (d.time || []).map((t, i) => ({ day: t, hi: Math.round(d.temperature_2m_max[i]),
@@ -105,7 +111,8 @@ export async function onRequestGet({ request }) {
     if (what === "photos") return json(await photos(), 200, 1800);
     if (what === "launches") return json(await launches(), 200, 900);
     if (what === "weather")
-      return json(await weather(url.searchParams.get("lat"), url.searchParams.get("lon")), 200, 600);
+      return json(await weather(url.searchParams.get("lat"), url.searchParams.get("lon"),
+                                request.cf), 200, 600);
     if (what === "onthisday") return json(await onThisDay(), 200, 3600);
   } catch (e) {
     return json({ items: [], error: "temporarily unavailable" }, 200, 60);

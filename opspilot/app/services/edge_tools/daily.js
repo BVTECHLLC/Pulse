@@ -8,36 +8,77 @@ import { json } from "./feeds.js";
 // Everyone gets the SAME question each day (so people can compare), rotating
 // through the pool by day number. Answers live here, never in the page.
 export const TRIVIA = [
-  { q: "What does the 'S' in HTTPS stand for?", o: ["Secure", "Server", "Standard", "Simple"], a: 0,
-    why: "HTTPS = HTTP Secure: the padlock means traffic is encrypted in transit." },
-  { q: "A 'phishing' email tries to do what?", o: ["Trick you into giving up info or clicking a bad link", "Catch actual fish", "Speed up your PC", "Back up your files"], a: 0,
-    why: "Phishing baits you into revealing passwords or installing malware. Slow down and verify." },
-  { q: "Which is the STRONGEST passphrase?", o: ["correct-horse-battery-staple-2026", "P@ss1", "qwerty", "your pet's name"], a: 0,
-    why: "Length beats complexity. Four random words are far harder to crack than 'P@ss1'." },
-  { q: "What's the safest way to store many passwords?", o: ["A reputable password manager", "A sticky note on the monitor", "The same password everywhere", "A text file named passwords.txt"], a: 0,
-    why: "A password manager makes every login long, unique and remembered for you." },
-  { q: "MFA (multi-factor authentication) protects you by...", o: ["Requiring a second proof beyond your password", "Making your password longer", "Hiding your IP address", "Blocking all email"], a: 0,
-    why: "Even if your password leaks, the attacker still can't pass the second factor." },
-  { q: "Roughly how many miles above Earth does the ISS orbit?", o: ["~250 miles", "~25 miles", "~2,500 miles", "~25,000 miles"], a: 0,
-    why: "The International Space Station orbits in 'low Earth orbit', about 250 miles up." },
-  { q: "What company makes the 'Cybertruck'?", o: ["Tesla", "Ford", "Rivian", "Toyota"], a: 0,
+  // category: sec | tech | space | ev | history | net | ai ; diff: Easy|Med|Hard
+  { c: "sec", d: "Easy", q: "What does the 'S' in HTTPS stand for?", o: ["Secure", "Server", "Standard", "System"], a: 0,
+    why: "HTTPS = HTTP Secure: the padlock means the connection is encrypted in transit." },
+  { c: "sec", d: "Easy", q: "Which of these is the STRONGEST passphrase?", o: ["correct-horse-battery-staple", "P@ssw0rd!", "Summer2026", "qwerty123"], a: 0,
+    why: "Length beats complexity. Four random words crush a short 'complex' password." },
+  { c: "sec", d: "Med", q: "A 'zero-day' vulnerability is one that is...", o: ["Exploited before a fix exists", "Older than a day", "Impossible to exploit", "Only in old software"], a: 0,
+    why: "Defenders have had zero days to patch it - which is why fast updates matter." },
+  { c: "sec", d: "Med", q: "What does MFA protect against even if your password leaks?", o: ["Account takeover", "Slow internet", "Viruses on your PC", "Spam email"], a: 0,
+    why: "A stolen password alone isn't enough - the attacker still can't pass the second factor." },
+  { c: "sec", d: "Hard", q: "In an 'AiTM' phishing attack, what does the attacker actually steal?", o: ["Your logged-in session token", "Your monitor", "Your Wi-Fi password", "Your CPU"], a: 0,
+    why: "Adversary-in-the-Middle proxies the real login and steals the session cookie - sailing past MFA." },
+  { c: "sec", d: "Hard", q: "What is 'salting' a password hash for?", o: ["So identical passwords hash differently", "To make it taste better", "To speed up logins", "To shorten the hash"], a: 0,
+    why: "A unique salt per user means two people with the same password get different hashes, defeating rainbow tables." },
+  { c: "sec", d: "Med", q: "Ransomware's single best countermeasure is...", o: ["Tested offline backups", "A faster CPU", "More RAM", "A louder alarm"], a: 0,
+    why: "If you can restore clean data, the extortion loses its leverage. Backups must be offline and tested." },
+  { c: "tech", d: "Easy", q: "'The cloud' really means...", o: ["Someone else's computers you reach over the internet", "Water vapor", "Your hard drive", "A kind of Wi-Fi"], a: 0,
+    why: "Cloud services run on data-center servers you access over the internet." },
+  { c: "tech", d: "Med", q: "What does a CPU's 'core' let it do?", o: ["Work on multiple tasks at once", "Store files permanently", "Connect to Wi-Fi", "Cool itself down"], a: 0,
+    why: "Each core is an independent worker; more cores = more true multitasking." },
+  { c: "tech", d: "Med", q: "RAM is different from storage (SSD/HDD) because RAM...", o: ["Is cleared when power is off", "Holds files forever", "Is where the OS is installed", "Is slower"], a: 0,
+    why: "RAM is fast, temporary working memory; storage keeps your files when the power's off." },
+  { c: "tech", d: "Hard", q: "What does 'open source' software guarantee?", o: ["Anyone can read and audit the code", "It's bug-free", "It's always free of charge", "It only runs on Linux"], a: 0,
+    why: "Open source means the source code is public and inspectable - not that it's free or flawless." },
+  { c: "net", d: "Easy", q: "What does a router mainly do at home?", o: ["Shares one internet line among your devices", "Stores your photos", "Charges your phone", "Blocks all ads"], a: 0,
+    why: "A router directs traffic between your devices and the internet (and usually serves your Wi-Fi)." },
+  { c: "net", d: "Med", q: "What is an IP address?", o: ["A device's address on a network", "A password", "A type of cable", "A website's logo"], a: 0,
+    why: "Every device on a network has an IP address so data knows where to go." },
+  { c: "net", d: "Hard", q: "Why was IPv6 created?", o: ["The world ran out of IPv4 addresses", "To make Wi-Fi faster", "To replace HTTPS", "To block hackers"], a: 0,
+    why: "IPv4's ~4.3 billion addresses weren't enough for a connected planet; IPv6 is vastly larger." },
+  { c: "net", d: "Med", q: "What does DNS do?", o: ["Turns a domain name into an IP address", "Encrypts your email", "Speeds up downloads", "Stores passwords"], a: 0,
+    why: "DNS is the internet's phone book: it resolves names like bvtech.org to the server's IP." },
+  { c: "space", d: "Easy", q: "Roughly how high does the ISS orbit?", o: ["~250 miles up", "~25 miles up", "~2,500 miles up", "~25,000 miles up"], a: 0,
+    why: "The International Space Station orbits in low Earth orbit, about 250 miles (400 km) up." },
+  { c: "space", d: "Med", q: "Which rover is hunting for ancient life on Mars in Jezero Crater?", o: ["Perseverance", "Curiosity", "Opportunity", "Sojourner"], a: 0,
+    why: "Perseverance landed in Jezero - a dried-up river delta - in 2021 to cache samples for return." },
+  { c: "space", d: "Hard", q: "What makes SpaceX's Falcon 9 booster special?", o: ["It lands and is reused", "It's the biggest ever", "It uses no fuel", "It's single-use"], a: 0,
+    why: "Falcon 9 first stages fly back and land, then launch again - slashing the cost to orbit." },
+  { c: "space", d: "Hard", q: "The James Webb telescope mainly observes in which light?", o: ["Infrared", "X-ray", "Visible only", "Radio"], a: 0,
+    why: "Webb's infrared eyes peer through dust and see the earliest, most distant galaxies." },
+  { c: "ev", d: "Easy", q: "Which company makes the Cybertruck?", o: ["Tesla", "Ford", "Rivian", "Toyota"], a: 0,
     why: "Tesla's stainless-steel Cybertruck is one of the most recognizable EVs on the road." },
-  { q: "'The cloud' really means...", o: ["Someone else's computers you access over the internet", "Water vapor", "Your local hard drive", "A type of Wi-Fi"], a: 0,
-    why: "Cloud services run on data-center servers you reach over the internet." },
-  { q: "A VPN mainly does what?", o: ["Encrypts your connection and hides your IP from sites", "Makes internet faster everywhere", "Removes all viruses", "Gives free Wi-Fi"], a: 0,
-    why: "A VPN tunnels your traffic through an encrypted link - good on public Wi-Fi." },
-  { q: "Ransomware is malware that...", o: ["Locks your files and demands payment", "Speeds up your PC", "Blocks spam", "Backs up your data"], a: 0,
-    why: "Ransomware encrypts your data and extorts you. Offline backups are the cure." },
-  { q: "What does 'open source' software mean?", o: ["Its code is public and anyone can inspect it", "It's always free of bugs", "It only runs on Linux", "It has no license"], a: 0,
-    why: "Open-source code can be read and audited by anyone - Linux and Firefox are examples." },
-  { q: "Which planet is NASA's Perseverance rover exploring?", o: ["Mars", "Venus", "The Moon", "Jupiter"], a: 0,
-    why: "Perseverance has been hunting for ancient life in Mars' Jezero Crater since 2021." },
-  { q: "A 'zero-day' vulnerability is one that...", o: ["Is exploited before a fix exists", "Takes zero days to fix", "Only affects old PCs", "Can't be exploited"], a: 0,
-    why: "Defenders have had 'zero days' to patch it - which is why fast updates matter." },
-  { q: "What makes a website address trustworthy?", o: ["Carefully reading the exact domain name", "A padlock icon alone", "It looks professional", "It loads fast"], a: 0,
-    why: "The padlock only means encryption - scammers have it too. Read the domain letter by letter." },
-  { q: "Who should you call first if your business is hit by a cyberattack?", o: ["Your IT/security provider", "The software vendor's sales line", "A random forum", "Nobody - wait it out"], a: 0,
-    why: "Speed limits the damage. Have your IT partner's number before you ever need it." },
+  { c: "ev", d: "Med", q: "An EV's range is mostly set by the size of its...", o: ["Battery pack (kWh)", "Touchscreen", "Wheels", "Trunk"], a: 0,
+    why: "More kilowatt-hours of battery = more miles, roughly 3-4 miles per kWh for most EVs." },
+  { c: "ev", d: "Hard", q: "What does 'regenerative braking' do in an EV?", o: ["Recovers energy back into the battery", "Makes brakes louder", "Heats the cabin", "Cleans the air"], a: 0,
+    why: "Slowing down turns the motor into a generator, feeding energy back and extending range." },
+  { c: "ai", d: "Easy", q: "What is a 'prompt' when using an AI chatbot?", o: ["The instruction you give it", "Its error message", "Its logo", "Its price"], a: 0,
+    why: "A prompt is the text you give the model; clearer prompts get better answers." },
+  { c: "ai", d: "Med", q: "Why can AI chatbots sometimes 'hallucinate'?", o: ["They predict plausible text, not verified facts", "They get tired", "They run out of memory", "They're offline"], a: 0,
+    why: "LLMs generate likely-sounding words; without grounding they can state false things confidently. Verify." },
+  { c: "ai", d: "Hard", q: "What is 'prompt injection' in AI security?", o: ["User input that overrides the app's instructions", "Typing too fast", "A hardware fault", "A kind of virus scan"], a: 0,
+    why: "Attackers smuggle instructions into input the model treats as commands - #1 on the OWASP LLM Top 10." },
+  { c: "history", d: "Med", q: "What year did Microsoft release Windows XP?", o: ["2001", "1995", "2007", "2010"], a: 0,
+    why: "Windows XP shipped October 25, 2001 - one of the longest-lived, most popular Windows versions." },
+  { c: "history", d: "Hard", q: "What was ARPANET, launched in 1969?", o: ["The ancestor of the internet", "The first smartphone", "An early video game", "A NASA rocket"], a: 0,
+    why: "ARPANET first linked a handful of university computers - the network that grew into the internet." },
+  { c: "history", d: "Hard", q: "Who is credited with inventing the World Wide Web in 1989?", o: ["Tim Berners-Lee", "Bill Gates", "Steve Jobs", "Elon Musk"], a: 0,
+    why: "Tim Berners-Lee proposed the Web - URLs, HTTP and HTML - while at CERN in 1989." },
+  { c: "history", d: "Med", q: "What does the 'www' you see in web addresses stand for?", o: ["World Wide Web", "World Web Works", "Wide World Web", "Web Within Web"], a: 0,
+    why: "It's the World Wide Web - the system of linked pages Tim Berners-Lee created." },
+  { c: "tech", d: "Easy", q: "What's the safest place to keep many passwords?", o: ["A reputable password manager", "A sticky note", "One password everywhere", "passwords.txt on your desktop"], a: 0,
+    why: "A password manager makes every login long, unique and remembered for you." },
+  { c: "sec", d: "Med", q: "A website shows a padlock. Is it automatically safe?", o: ["No - the padlock only means encrypted, read the domain", "Yes, always", "Only on phones", "Only for banks"], a: 0,
+    why: "Scammers use HTTPS too. The padlock means private, not trustworthy - check the exact domain name." },
+  { c: "tech", d: "Hard", q: "What does a 'firewall' actually do?", o: ["Filters network traffic by rules", "Puts out server fires", "Speeds up Wi-Fi", "Backs up files"], a: 0,
+    why: "A firewall allows or blocks traffic based on rules - one layer of defense, not the whole plan." },
+  { c: "net", d: "Med", q: "Public Wi-Fi is risky mainly because...", o: ["Others on it may snoop unencrypted traffic", "It's always slow", "It drains your battery", "It costs money"], a: 0,
+    why: "On open Wi-Fi, use HTTPS sites and a VPN so nobody on the same network can read your traffic." },
+  { c: "ai", d: "Med", q: "A 'deepfake' is...", o: ["AI-generated fake audio or video of a real person", "A deep-sea camera", "A password type", "A kind of backup"], a: 0,
+    why: "Deepfakes clone voices and faces - verify unusual requests by a trusted second channel." },
+  { c: "space", d: "Easy", q: "What is a light-year a measure of?", o: ["Distance", "Time", "Brightness", "Temperature"], a: 0,
+    why: "A light-year is how far light travels in a year - about 5.9 trillion miles." },
 ];
 
 export const TIPS = [
@@ -53,28 +94,58 @@ export const TIPS = [
   "If an offer or a warning rushes you, slow down - urgency is the scammer's favorite tool.",
 ];
 
+
+// Deterministic daily shuffle of a question's options, so the correct answer
+// moves around but everyone sees the same order on the same day. Returns the
+// shuffled options and where the correct answer landed.
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function shuffleFor(q, seed) {
+  const idx = q.o.map((_, i) => i);
+  const rnd = mulberry32((seed * 2654435761) >>> 0);
+  for (let i = idx.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    const t = idx[i]; idx[i] = idx[j]; idx[j] = t;
+  }
+  return { options: idx.map((i) => q.o[i]), correct: idx.indexOf(q.a) };
+}
+
 function dayNumber(now = new Date()) {
   const ct = new Date(now.toLocaleString("en-US", { timeZone: "America/Chicago" }));
   return Math.floor(Date.UTC(ct.getFullYear(), ct.getMonth(), ct.getDate()) / 86400000);
 }
 
+const CATS = { sec: "🛡️ Security", tech: "💻 Tech", space: "🚀 Space", ev: "⚡ EVs",
+  history: "📜 Tech History", net: "🌐 Networking", ai: "🤖 AI" };
+
 export function today(now = new Date()) {
   const n = dayNumber(now);
   const q = TRIVIA[n % TRIVIA.length];
+  const sh = shuffleFor(q, n + 1);
   return {
     day: n,
     date: new Date(now.toLocaleString("en-US", { timeZone: "America/Chicago" }))
       .toISOString().slice(0, 10),
     tip: TIPS[n % TIPS.length],
-    question: { q: q.q, options: q.o },
-    total: TRIVIA.length,
+    category: CATS[q.c] || "💡 Tech", difficulty: q.d || "Med",
+    question: { q: q.q, options: sh.options },
+    index: (n % TRIVIA.length) + 1, total: TRIVIA.length,
   };
 }
 
 export function gradeToday(choice, now = new Date()) {
-  const q = TRIVIA[dayNumber(now) % TRIVIA.length];
-  const correct = Number(choice) === q.a;
-  return { correct, answer: q.a, why: q.why };
+  const n = dayNumber(now);
+  const q = TRIVIA[n % TRIVIA.length];
+  const sh = shuffleFor(q, n + 1);
+  const correct = Number(choice) === sh.correct;
+  return { correct, answer: sh.correct, why: q.why };
 }
 
 // The site's 404 page pings this with the path it couldn't find. We forward it

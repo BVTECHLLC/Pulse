@@ -36,7 +36,8 @@ NEW_EDGE = {"worker-tools/feeds.js": "feeds.js",
             "worker-tools/explore.js": "explore.js",
             "worker-tools/netinfo.js": "netinfo.js",
             "worker-tools/labs.js": "labs.js",
-            "worker-tools/daily.js": "daily.js"}
+            "worker-tools/daily.js": "daily.js",
+            "worker-tools/answers.js": "answers.js"}
 
 # Pages to publish: (repo_path, title, description, body, author). Folder-style
 # URLs (…/index.html) to match the site's /tools/<slug>/ convention.
@@ -99,6 +100,8 @@ NAV_EDITS = [
      '\n<li><a href="/explore/">🧭 Explore</a></li>'),
     ('href="/academy/lightning-labs/"', '<li><a href="/academy/labs/">🧪 Hands-On Labs</a></li>',
      '\n<li><a href="/academy/lightning-labs/">⚡ Lightning Labs</a></li>'),
+    ('portal.bvtech.org/answers', '<li><a href="/academy/">🎓 Academy Home</a></li>',
+     '\n<li><a href="https://portal.bvtech.org/answers">💬 BVTech Answers</a></li>'),
 ]
 
 
@@ -118,14 +121,22 @@ def apply_nav(h: str) -> tuple[str, bool]:
 
 # Top-level nav: add an Explore item next to Blog (most visible). Tolerant: only
 # where a top-level Blog link exists and Explore isn't already top-level.
-_TOP_EXPLORE = '<li><a href="/explore/">Explore</a></li>'
+# The top-level Explore link carries a small "NEW" badge so visitors notice it.
+# Inline-styled so it looks right regardless of the page's own nav CSS.
+_NEW_BADGE = ('<span style="display:inline-block;margin-left:5px;padding:1px 6px;border-radius:999px;'
+              'background:linear-gradient(135deg,#EB6F24,#F5BE58);color:#0E0D2C;font-size:.6rem;'
+              'font-weight:800;letter-spacing:.06em;vertical-align:middle">NEW</span>')
+_TOP_EXPLORE = '<li><a href="/explore/">🧭 Explore' + _NEW_BADGE + '</a></li>'
+_TOP_EXPLORE_OLD = '<li><a href="/explore/">Explore</a></li>'
 
 
 def apply_top_nav(h: str) -> tuple[str, bool]:
-    # Only skip if the TOP-LEVEL item already exists (the dropdown's "🧭 Explore"
-    # link must not count, or the most-clickable nav spot never gets added).
+    # Only skip if the badged TOP-LEVEL item already exists (the dropdown's
+    # "🧭 Explore" link must not count, or the most-clickable spot never gets it).
     if _TOP_EXPLORE in h:
         return h, False
+    if _TOP_EXPLORE_OLD in h:                      # migrate v1.102 plain link -> badged
+        return h.replace(_TOP_EXPLORE_OLD, _TOP_EXPLORE, 1), True
     m = re.search(r'(<li[^>]*>\s*<a href="/blog/"[^>]*>\s*Blog\s*</a>\s*</li>)', h)
     if not m:
         return h, False

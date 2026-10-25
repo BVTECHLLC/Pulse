@@ -12,6 +12,7 @@ import { onRequestGet as exploreGet } from "./explore.js";
 import { onRequestGet as netGet, onRequestPost as netPost } from "./netinfo.js";
 import { onRequestGet as labGet, onRequestPost as labPost } from "./labs.js";
 import { onRequestGet as dailyGet, onRequestPost as dailyPost } from "./daily.js";
+import { onRequestGet as answersGet } from "./answers.js";
 
 const CORS = { "access-control-allow-origin": "https://bvtech.org",
   "access-control-allow-methods": "GET,POST,OPTIONS",
@@ -36,6 +37,7 @@ export default {
         else if (pathname === "/tools-api/lab" && m === "GET") resp = await labGet(r);
         else if (pathname === "/tools-api/lab/grade" && m === "POST") resp = await labPost(r);
         else if (pathname === "/tools-api/daily" && m === "GET") resp = await dailyGet(r);
+        else if (pathname === "/tools-api/answers" && m === "GET") resp = await answersGet(r);
         else if ((pathname === "/tools-api/daily/grade" || pathname === "/tools-api/notfound")
                  && m === "POST") resp = await dailyPost(r);
       } catch (e) {

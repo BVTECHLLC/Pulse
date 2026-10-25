@@ -23,7 +23,7 @@ from .api.routes import (
     campaigns, remote, quickbooks, gbp, hubspot, docs, payments, dialer, posture,
     remediation, inventory, autopost, setup, ai, branding, practice, status, users,
     library, academy, website, patching, copilot, psa, vcio, autonomy, incidents,
-    content_autopilot, browser, public_tools, onboarding,
+    content_autopilot, browser, public_tools, onboarding, answers,
 )
 
 _s = get_settings()
@@ -182,6 +182,24 @@ app.include_router(website.router)
 app.include_router(patching.router)
 app.include_router(copilot.router)
 app.include_router(public_tools.router)
+app.include_router(answers.router)
+
+
+# --- BVTech Answers community pages (server-rendered, same-origin session auth) ---
+from fastapi.responses import HTMLResponse as _HTMLResp
+from .services import pages_answers as _pa
+
+
+@app.get("/answers", response_class=_HTMLResp)
+def answers_home():
+    return _HTMLResp(_pa.page())
+
+
+@app.get("/answers/{qid}", response_class=_HTMLResp)
+def answers_question(qid: int):
+    return _HTMLResp(_pa.page(initial_qid=qid))
+
+
 app.include_router(ui.router)
 
 

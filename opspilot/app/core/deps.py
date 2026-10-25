@@ -71,6 +71,21 @@ def current_user(
     return user
 
 
+def optional_user(
+    db: Session = Depends(get_db),
+    access_token: str | None = Cookie(default=None),
+    authorization: str | None = Header(default=None),
+    x_api_key: str | None = Header(default=None),
+) -> User | None:
+    """Like current_user, but returns None instead of 401 when nobody is signed
+    in — for pages that are public to read but need the viewer when present."""
+    try:
+        return current_user(db=db, access_token=access_token,
+                            authorization=authorization, x_api_key=x_api_key)
+    except HTTPException:
+        return None
+
+
 def require_roles(*roles: Role):
     allowed = set(roles)
 

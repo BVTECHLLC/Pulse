@@ -41,7 +41,8 @@ EDGE_FILES = {"worker-tools/index.js": "worker.js",
               "worker-tools/explore.js": "explore.js",
               "worker-tools/netinfo.js": "netinfo.js",
               "worker-tools/labs.js": "labs.js",
-              "worker-tools/daily.js": "daily.js"}
+              "worker-tools/daily.js": "daily.js",
+              "worker-tools/answers.js": "answers.js"}
 _WRANGLER = ("wrangler.jsonc", "wrangler.json")
 
 

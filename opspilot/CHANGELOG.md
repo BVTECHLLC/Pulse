@@ -1,5 +1,38 @@
 # BVTech OpsPilot — Changelog
 
+## v1.103.0 — Explore leveled up + BVTech Answers community (moderated) (Oct 2026)
+- **Explore polish:**
+  - Fixed the hero/weather getting clipped under the sticky site header.
+  - Weather now matches the **visitor's own location** (Cloudflare IP geo),
+    refined by browser GPS if they allow it, with the place name shown.
+  - A scrolling **"Latest in Tech"** headline ticker across the top.
+  - The **Daily Byte** game is bigger (35 questions) and harder, with topic +
+    difficulty labels, a question number, and a local day-streak. Fixed a flaw
+    where the correct answer was always the first option (now deterministically
+    shuffled per day, verified even across positions).
+  - A **BVTech Answers** widget showing trending community questions.
+- **"New" Explore button:** the top-level nav Explore link now carries a NEW
+  badge site-wide (migrates the plain v1.102 link in place; idempotent).
+- **Moderation engine** (`moderation.py`): a bulletproof, server-side filter for
+  all user content — profanity, slurs, politics/off-topic, hate/harassment/
+  self-harm, spam, gibberish and contact-fishing. Defeats common evasions
+  (f*ck, sh1t, f u c k, f.u.c.k, x_fuck_x, leetspeak, ph→f) while leaving clean
+  near-misses alone (class, assess, configure, mississippi, snake_case). Pure
+  and exhaustively tested.
+- **BVTech Answers** — a Yahoo!-Answers-style, tech-only Q&A tied to the existing
+  Academy accounts:
+  - Served by the portal at `/answers` (same-origin session auth); people join
+    and sign in right on the page. Ask, answer, up/down vote, mark best answer.
+  - Topic categories, **reputation → ranks** (Newcomer → Legend) with small
+    privileges (downvoting needs a little standing), and a clean dark UI.
+  - **Every post is moderated** before it is stored; clean posts publish
+    instantly, bad ones are rejected with a clear reason. Rate-limited, vote-
+    abuse-resistant, and **never auto-posts** — only real signed-in humans.
+  - A public, read-only trending feed powers the Explore widget (edge-cached via
+    the site Worker); all posting stays on the portal.
+- REPAIR_EPOCH 1.103.0 — the one-time job republishes Explore, the Answers
+  widget/nav and the edge API, and self-heals them if anything goes missing.
+
 ## v1.102.0 — BVTech.org becomes a destination: Explore hub, Lightning Labs, more tools (Oct 2026)
 - **Explore (/explore/)** — a friendly "front page of the internet" for bvtech.org:
   curated positive headlines (tech, Tesla/EVs, space, AI, science, gadgets, gaming,

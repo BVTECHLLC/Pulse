@@ -302,6 +302,27 @@ def _lead_limited(request: Request) -> bool:
     return win[1] > _LEAD_MAX
 
 
+@router.get("/answers-trending")
+def answers_trending(request: Request, resp: Response):
+    """PUBLIC, read-only feed of trending BVTech Answers questions for the
+    Explore widget (proxied same-origin by the site Worker). Moderated content
+    only; no bodies, just titles + links into the portal."""
+    _cors(request, resp)
+    if _limited(request):
+        return {"items": [], "ask_url": "https://portal.bvtech.org/answers"}
+    from ...core.db import SessionLocal
+    from ...services import answers as _ans
+    db = SessionLocal()
+    try:
+        out = _ans.public_trending(db, limit=6)
+    except Exception:  # noqa: BLE001
+        out = {"items": [], "ask_url": "https://portal.bvtech.org/answers", "total": 0}
+    finally:
+        db.close()
+    resp.headers["Cache-Control"] = "public, max-age=120"
+    return out
+
+
 @router.post("/notfound")
 async def report_notfound(request: Request, resp: Response):
     """The bvtech.org 404 page reports the path it couldn't find here (relayed

@@ -1354,6 +1354,9 @@ class AcademyProfile(Base):
     last_active_on: Mapped[date | None] = mapped_column(Date)
     last_reminder_on: Mapped[date | None] = mapped_column(Date)   # streak-saver email dedupe
     badges: Mapped[str | None] = mapped_column(Text, default="[]")
+    # v1.103 community reputation (BVTech Answers), separate from learning XP.
+    rep: Mapped[int] = mapped_column(Integer, default=0)
+    handle: Mapped[str | None] = mapped_column(String(40))        # public display name on Answers
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
@@ -1385,6 +1388,52 @@ class AcademyAiQuestion(Base):
     explain: Mapped[str | None] = mapped_column(Text)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class AnswersQuestion(Base):
+    """BVTech Answers (v1.103) — a Yahoo!-Answers-style Q&A tied to Academy
+    accounts. Every question passes the moderation filter before it is stored;
+    nothing here is ever posted automatically. `status` live|removed."""
+    __tablename__ = "answers_questions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[str | None] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(String(30), default="general", index=True)
+    status: Mapped[str] = mapped_column(String(12), default="live", index=True)
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    answer_count: Mapped[int] = mapped_column(Integer, default=0)
+    best_reply_id: Mapped[int | None] = mapped_column(Integer)
+    views: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+    last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+class AnswersReply(Base):
+    """An answer to a question. Moderation-gated like questions."""
+    __tablename__ = "answers_replies"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("answers_questions.id"), index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(12), default="live", index=True)
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    is_best: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+class AnswersVote(Base):
+    """One up/down vote per user per target (question or answer). Re-voting
+    updates the row; you cannot vote on your own content (enforced in service)."""
+    __tablename__ = "answers_votes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    target_kind: Mapped[str] = mapped_column(String(1), nullable=False)   # q | a
+    target_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    value: Mapped[int] = mapped_column(Integer, default=1)                # +1 | -1
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    __table_args__ = (UniqueConstraint("user_id", "target_kind", "target_id",
+                                       name="uq_answers_vote"),)
 
 
 class BlogPost(Base):

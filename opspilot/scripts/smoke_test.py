@@ -7597,7 +7597,7 @@ def main():
                                  # worker commit carries them (else the build breaks).
                                  "worker-tools/feeds.js", "worker-tools/explore.js",
                                  "worker-tools/netinfo.js", "worker-tools/labs.js",
-                                 "worker-tools/daily.js",
+                                 "worker-tools/daily.js", "worker-tools/answers.js",
                                  ".assetsignore", "wrangler.jsonc"}, sorted(_commits)
         import json as _json95
         _w = _json95.loads(_commits["wrangler.jsonc"])
@@ -7947,7 +7947,7 @@ def main():
         (_j100.get_config, _j100._fetch_file, _j100._list_post_paths, _j100._HTTP,
          _j100._KEV_FEED) = _o100
         _cf100.purge_urls = _opu100
-    assert _sr100.REPAIR_EPOCH == "1.102.0"
+    assert _sr100.REPAIR_EPOCH == "1.103.0"
     print("v1.100: KEV as-of-date + title-guided cutoff rebuild news editions exactly; SMB "
           "posts rebuilt from stored/evergreen text; hand-written posts untouched OK")
 
@@ -8082,7 +8082,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.102.0"
+    assert _gs101().APP_VERSION == "1.103.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8106,11 +8106,15 @@ def main():
     _n2, _c2 = _D102.apply_top_nav(_n1)
     assert _c1 and _c2
     assert '<li><a href="/explore/">🧭 Explore</a></li>' in _n2            # dropdown
-    assert '<li><a href="/explore/">Explore</a></li>' in _n2               # top level
+    assert '<li><a href="/explore/">🧭 Explore' in _n2 and 'NEW</span></a></li>' in _n2  # badged top level
     assert '/academy/lightning-labs/' in _n2
     _n3, _c3 = _D102.apply_nav(_n2); _n4, _c4 = _D102.apply_top_nav(_n3)
     assert not _c3 and not _c4 and _n4 == _n2                              # idempotent
-    assert _n2.count('href="/explore/">Explore</a>') == 1                  # no top dup
+    assert _n2.count('href="/explore/"') == 2                              # dropdown + top, no dup
+    # migrate a page that already has the v1.102 plain top link -> badged
+    _old102 = '<ul><li><a href="/blog/">Blog</a></li><li><a href="/explore/">Explore</a></li></ul>'
+    _mig, _cm = _D102.apply_top_nav(_old102)
+    assert _cm and 'NEW</span></a></li>' in _mig and _mig.count('href="/explore/"') == 1
     # (3) 404 telemetry wiring + link existence resolver
     _p404, _w404 = _D102._wire_404("<html><body>x</body></html>")
     assert _w404 and "pulse-404-ping" in _p404 and "/tools-api/notfound" in _p404
@@ -8187,13 +8191,79 @@ def main():
     finally:
         (_J102.get_config, _J102._fetch_file, _J102._HTTP, _CF102.purge_urls) = _o102b
     # (5) wired into the one-time repair at the new epoch
-    assert _sr100.REPAIR_EPOCH == "1.102.0"
+    assert _sr100.REPAIR_EPOCH == "1.103.0"
     import inspect as _insp102
     assert "destination" in _insp102.getsource(_sr100.run_full_repair)
     print("v1.102: Explore hub, Lightning Labs (edge-graded), 4 new tools, edge API, "
           "additive idempotent nav, 404 telemetry + broken-link scan, one-commit publish OK")
 
-    print("\n=== OpsPilot v1.102.0 SMOKE TEST PASSED ===")
+    # ==== v1.103.0: moderation engine + BVTech Answers community ====
+    from app.services import moderation as _MOD
+    # (1) moderation blocks evasions, passes near-miss clean words
+    _BLK = ["f*ck off", "sh!t", "n1gg3r", "x_fuck_x", "kill yourself", "Trump 2028",
+            "buy bitcoin now", "DM me on telegram", "a@b.com", "call 210-555-1234",
+            "asdasdasdasd", "qwertyuiop"]
+    _CLN = ["How do I configure class-based routing?", "Our analysis of the exploit",
+            "mississippi replication", "committee notes on IT", "my_variable_name convention",
+            "Assess my firewall please", "Starship launch was great", "coconut water at the meetup",
+            "switch vs router question", "I scored 95% on the exam"]
+    for _t in _BLK:
+        assert not _MOD.check(_t)["ok"], ("mod should block", _t)
+    for _t in _CLN:
+        assert _MOD.check(_t)["ok"], ("mod false-positive", _t, _MOD.check(_t)["categories"])
+    assert _MOD.check("you f u c k")["categories"] == ["profanity"]
+    assert "politics" in _MOD.check("what about the election and abortion")["categories"]
+
+    # (2) Answers service end-to-end on the smoke DB
+    from app.services import answers as _ANS
+    from app.models import User as _U103, Role as _R103
+    _ANS.ASK_MIN_GAP_S = 0; _ANS.ANSWER_MIN_GAP_S = 0
+    _d103 = _SLheal()
+    _ua = _U103(email="ans_alice@smoke.test", full_name="Ann Smoke", role=_R103.CLIENT_VIEWER,
+                password_hash="x")
+    _ub = _U103(email="ans_bob@smoke.test", full_name="Bo Smoke", role=_R103.CLIENT_VIEWER,
+                password_hash="x")
+    _d103.add_all([_ua, _ub]); _d103.commit()
+    assert _ANS.rank_for(0)["name"] == "Newcomer" and _ANS.rank_for(5000)["name"] == "Legend"
+    _rq = _ANS.ask(_d103, _ua, title="How do I harden a new Microsoft 365 tenant for 20 staff?",
+                   body="Fresh setup.", category="microsoft365")
+    assert _rq["ok"], _rq
+    _qid103 = _rq["id"]
+    assert not _ANS.ask(_d103, _ua, title="how the f*ck do i fix this damn thing", body="")["ok"]
+    assert not _ANS.ask(_d103, _ua, title="thoughts on Trump and the election?", body="")["ok"]
+    assert not _ANS.ask(_d103, _ua, title="hi", body="")["ok"]            # too short
+    _ra = _ANS.answer(_d103, _ub, question_id=_qid103,
+                      body="Turn on security defaults, or a Conditional Access MFA policy with a break-glass admin.")
+    assert _ra["ok"], _ra
+    _aid103 = _ra["id"]
+    assert not _ANS.answer(_d103, _ub, question_id=_qid103,
+                           body="buy followers http://a.co http://b.co http://c.co click here")["ok"]
+    assert not _ANS.vote(_d103, _ub, kind="a", target_id=_aid103, value=1)["ok"]   # self-vote
+    assert _ANS.vote(_d103, _ua, kind="a", target_id=_aid103, value=1)["score"] == 1
+    assert (_ANS.profile_card(_d103, _ub)["rep"] or 0) >= 10                        # answer+upvote
+    assert not _ANS.vote(_d103, _ua, kind="a", target_id=_aid103, value=-1)["ok"]  # low rep
+    assert _ANS.best(_d103, _ua, question_id=_qid103, reply_id=_aid103)["ok"]
+    assert _ANS.profile_card(_d103, _ub)["rank"]["name"] == "Contributor"          # 3+10+25=38
+    _gq = _ANS.get_question(_d103, _qid103, viewer=_ua)
+    assert _gq["answers"][0]["is_best"] and _gq["answers"][0]["your_vote"] == 1
+    assert _ANS.public_trending(_d103)["total"] >= 1
+    assert _ANS.public_trending(_d103)["items"][0]["url"].startswith("https://portal.bvtech.org/answers")
+    # bad display name -> safe handle
+    _ux = _U103(email="ans_x@smoke.test", full_name="f*cker99", role=_R103.CLIENT_VIEWER,
+                password_hash="x")
+    _d103.add(_ux); _d103.commit()
+    _ANS.ask(_d103, _ux, title="A totally fine question about offsite backups", body="")
+    assert _ANS.profile_card(_d103, _ux)["handle"].startswith("User")
+    # daily cap
+    _n103 = sum(1 for i in range(10) if _ANS.ask(
+        _d103, _ub, title=f"A valid VLAN trunking networking question number {i}", body="")["ok"])
+    assert _n103 == _ANS.ASK_PER_DAY, _n103
+
+    # (3) the daily game shuffles the answer off position 0 and grades it right
+    print("v1.103: moderation blocks evasions (clean near-misses pass); BVTech Answers "
+          "end-to-end (moderation gate, rate limits, votes, ranks, best answer, public feed) OK")
+
+    print("\n=== OpsPilot v1.103.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
