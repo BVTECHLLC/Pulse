@@ -133,6 +133,11 @@ def body() -> str:
   </div>
 
   <aside class="xp-side">
+    <a class="xp-card" href="https://portal.bvtech.org/arena/" style="display:block;text-decoration:none;background:linear-gradient(135deg,rgba(57,192,255,.18),rgba(245,190,88,.12));border-color:rgba(57,192,255,.4)">
+      <h3 style="margin:0 0 8px">⚔️ Breach Protocol <span class="tag" style="background:linear-gradient(135deg,#39c0ff,#F5BE58);color:#0E0D2C;border:0">NEW</span></h3>
+      <p style="color:var(--text);margin:0 0 6px;font-size:.9rem;line-height:1.5">Our 3D survivors game — defend the grid against waves of breaches. Built in <strong style="color:var(--o2)">Rust &amp; WebAssembly</strong>, right in your browser.</p>
+      <span style="color:#39c0ff;font-weight:800;font-size:.9rem">▶ Play Breach Protocol →</span>
+    </a>
     <a class="xp-card" href="https://portal.bvtech.org/signal/" style="display:block;text-decoration:none;background:linear-gradient(135deg,rgba(235,111,36,.18),rgba(68,64,219,.16));border-color:rgba(245,190,88,.4)">
       <h3 style="margin:0 0 8px">🎮 Signal 199X <span class="tag" style="background:linear-gradient(135deg,#EB6F24,#F5BE58);color:#0E0D2C;border:0">PLAY FREE</span></h3>
       <p style="color:var(--text);margin:0 0 6px;font-size:.9rem;line-height:1.5">Jump into our own retro-tech multiplayer world — explore, team up, and tune the airwaves. Free, in your browser, hosted by BVTech.</p>
@@ -172,7 +177,8 @@ def body() -> str:
   <p>The BVTech Academy turns this curiosity into skills: hands-on labs, our new live-style Lightning Labs on cloud and AI security, and certificates. Built in Texas by Jordan Polasek.</p>
   <a class="p" href="/academy/lightning-labs/">⚡ Try a Lightning Lab</a>
   <a class="s" href="/academy/">🎓 Academy Home</a>
-  <a class="p" href="https://portal.bvtech.org/signal/">🎮 Play Signal 199X</a>
+  <a class="p" href="https://portal.bvtech.org/arena/">⚔️ Play Breach Protocol</a>
+  <a class="s" href="https://portal.bvtech.org/signal/">🎮 Signal 199X</a>
   <a class="s" href="https://portal.bvtech.org/answers">💬 BVTech Answers</a>
   <a class="s" href="/tools/">🧰 Free Tools</a>
 </div>

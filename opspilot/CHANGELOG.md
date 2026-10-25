@@ -1,5 +1,22 @@
 # BVTech OpsPilot — Changelog
 
+## v1.105.0 — BVTech: Breach Protocol — a Rust → WebAssembly 3D game (Oct 2026)
+- A brand-new, original **3D survivors game built in Rust and compiled to
+  WebAssembly** — the same class of tech as the reference site that inspired it
+  (a compiled-to-WASM engine, not a JS toy). You defend "the grid" against
+  escalating waves of breaches, auto-firing countermeasures and collecting data
+  shards to level up (more fire rate, damage, multishot, integrity).
+- Engine: macroquad (Rust). The release wasm is ~400 KB, so it loads fast. Served
+  as a static bundle (wasm + loader + page) from the portal at
+  **portal.bvtech.org/arena/**, with a CSP exception for WebAssembly scoped to
+  that path only. Linked from bvtech.org (Explore card + site-wide nav).
+- Source lives in `games/arena-rs/` (Rust) and the built bundle in
+  `games/arena-web/`. This is a FIRST playable slice — the plan is to crank up
+  fidelity (models, lighting, effects, abilities, mobile controls, online score)
+  from here.
+- NOTE: WebGL can't be rendered in the headless build environment, so the live
+  visuals need a real browser — give it a look and we'll iterate.
+
 ## v1.104.1 — BVTech Tech Dispatch: our own take on the news (not reposts) (Oct 2026)
 - Instead of only linking other people's articles, we now publish a daily
   **BVTech Dispatch** — our free LLM gathers headlines from across the web and

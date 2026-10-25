@@ -104,6 +104,8 @@ NAV_EDITS = [
      '\n<li><a href="https://portal.bvtech.org/answers">💬 BVTech Answers</a></li>'),
     ('portal.bvtech.org/signal', '<li><a href="/academy/">🎓 Academy Home</a></li>',
      '\n<li><a href="https://portal.bvtech.org/signal/">🎮 Play Signal 199X</a></li>'),
+    ('portal.bvtech.org/arena', '<li><a href="/academy/">🎓 Academy Home</a></li>',
+     '\n<li><a href="https://portal.bvtech.org/arena/">⚔️ Play Breach Protocol</a></li>'),
 ]
 
 

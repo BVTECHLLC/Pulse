@@ -32,6 +32,15 @@ app = FastAPI(title=_s.APP_NAME, version=_s.APP_VERSION, docs_url=None, redoc_ur
 _static_dir = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
+# v1.105: the BVTech Breach Protocol game (Rust -> WebAssembly) ships as a tiny
+# static bundle (wasm + macroquad JS loader). Served at /arena. The bind-mounted
+# path exists only in the running container/dev tree; guard so imports never fail.
+import mimetypes as _mime
+_mime.add_type("application/wasm", ".wasm")
+_arena_dir = Path(__file__).resolve().parent.parent / "games" / "arena-web"
+if _arena_dir.is_dir():
+    app.mount("/arena", StaticFiles(directory=str(_arena_dir), html=True), name="arena")
+
 
 # --------------------------------------------------------------------------- #
 # Comprehensive audit trail — record every mutating API call (v0.22).
@@ -58,7 +67,9 @@ async def security_headers(request: Request, call_next):
         # (the blob is created by our own page; the framed doc has no extra rights).
         # worker-src blob: powers the Code Dojo sandbox — the learner's own code runs
         # in a terminable Web Worker (their browser, their risk), never on our server.
-        "script-src 'self' 'unsafe-inline'; worker-src 'self' blob:; "
+        "script-src 'self' 'unsafe-inline'"
+        + (" 'wasm-unsafe-eval'" if request.url.path.startswith("/arena") else "")
+        + "; worker-src 'self' blob:; "
         "frame-src 'self' blob:; frame-ancestors 'none'"
     )
     if _s.is_prod:

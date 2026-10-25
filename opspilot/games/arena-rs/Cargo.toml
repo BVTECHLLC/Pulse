@@ -1,0 +1,15 @@
+[package]
+name = "bvtech-arena"
+version = "0.1.0"
+edition = "2021"
+description = "BVTech Breach Protocol - a Rust/WASM 3D survivors game"
+
+[dependencies]
+macroquad = "0.4"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

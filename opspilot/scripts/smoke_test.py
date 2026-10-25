@@ -8082,7 +8082,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.104.1"
+    assert _gs101().APP_VERSION == "1.105.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8322,7 +8322,29 @@ def main():
           "filtered, model's source list replaced with real attributed links, no filler, "
           "own flood-guard channel OK")
 
-    print("\n=== OpsPilot v1.104.1 SMOKE TEST PASSED ===")
+    # ==== v1.105.0: BVTech Breach Protocol (Rust -> WASM game) ====
+    from pathlib import Path as _P105
+    _ar = _P105(__file__).resolve().parent.parent / "games" / "arena-web"
+    _rs = _P105(__file__).resolve().parent.parent / "games" / "arena-rs"
+    assert (_ar / "index.html").exists() and (_ar / "mq_js_bundle.js").exists()
+    _wasm = _ar / "bvtech-arena.wasm"
+    assert _wasm.exists() and _wasm.stat().st_size > 50000              # a real wasm binary
+    assert _wasm.read_bytes()[:4] == b"\x00asm"                         # wasm magic header
+    assert (_rs / "Cargo.toml").exists() and (_rs / "src" / "main.rs").exists()
+    assert "macroquad" in (_rs / "Cargo.toml").read_text()
+    # portal serves it and relaxes CSP for WASM, scoped to /arena only
+    assert any(getattr(r, "path", "") == "/arena" for r in app.routes), "arena mount missing"
+    _mainsrc = (_P105(__file__).resolve().parent.parent / "app" / "main.py").read_text()
+    assert "'wasm-unsafe-eval'" in _mainsrc and 'startswith("/arena")' in _mainsrc
+    assert 'add_type("application/wasm"' in _mainsrc
+    # link-outs present on bvtech.org
+    from app.services import pages_explore as _PEa, destination as _DEa
+    assert "portal.bvtech.org/arena/" in _PEa.body()
+    assert any("portal.bvtech.org/arena" in _m[0] for _m in _DEa.NAV_EDITS)
+    print("v1.105: Breach Protocol - Rust->WASM 3D survivors game compiled to wasm, "
+          "served at /arena with scoped wasm CSP, linked from Explore + nav OK")
+
+    print("\n=== OpsPilot v1.105.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
