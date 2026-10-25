@@ -8082,7 +8082,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.104.0"
+    assert _gs101().APP_VERSION == "1.104.1"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8285,7 +8285,44 @@ def main():
     print("v1.104: Signal 199X game vendored + patched for subpath; portal HTTP+WS "
           "reverse-proxy at /signal/; linked from Explore + site-wide nav OK")
 
-    print("\n=== OpsPilot v1.104.0 SMOKE TEST PASSED ===")
+    # ==== v1.104.1: Tech Dispatch (original takes on the news) ====
+    from app.services import news_digest as _ND
+    import app.services.ai as _ai104
+    _rss = ('<rss><channel>'
+            '<item><title>New AI chip speeds up laptops</title><link>https://ex.com/a</link>'
+            '<description>A faster chip lands.</description></item>'
+            '<item><title>Senate election debate heats up</title><link>https://ex.com/b</link>'
+            '<description>politics</description></item>'          # must be filtered
+            '<item><title>SpaceX lands another booster</title><link>https://ex.com/c</link>'
+            '<description>Reuse milestone.</description></item></channel></rss>')
+    _parsed = _ND._parse(_rss, "TestWire")
+    assert len(_parsed) == 2 and all("election" not in p["title"].lower() for p in _parsed)
+    _items104 = [{"title": f"Cool tech story {i}", "link": f"https://ex.com/{i}",
+                  "source": "TestWire", "summary": "A neat development."} for i in range(4)]
+    _o_cmp = _ai104.complete
+    try:
+        _ai104.complete = lambda sysp, u, **k: (
+            "TITLE: The BVTech Dispatch - October 25, 2026\n"
+            "EXCERPT: Our quick take on the tech worth knowing today.\n"
+            "HTML:\n<p>Here is what stood out.</p><h2>Picks</h2><p>Our take.</p>"
+            "<h2>Sources</h2><ul><li>MODEL-WROTE-THIS-FAKE</li></ul>")
+        _art104 = _ND.compose(None, _dt97.datetime(2026, 10, 25), _items104)
+        assert _art104 and _art104["slug"] == "bvtech-dispatch-2026-10-25"
+        assert "Tech Dispatch" in _art104["tags"] and _art104["author"] == "Jordan Polasek"
+        assert "MODEL-WROTE-THIS-FAKE" not in _art104["html"]          # model's list dropped
+        assert "Sources &amp; further reading" in _art104["html"]       # ours appended
+        assert _art104["html"].count('rel="noopener"') == 4 and "TestWire" in _art104["html"]
+        _ai104.complete = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down"))
+        assert _ND.compose(None, _dt97.datetime(2026, 10, 25), _items104) is None  # no filler
+    finally:
+        _ai104.complete = _o_cmp
+    # dispatch posts get their OWN flood-guard channel (not a dup of the SMB post)
+    assert 'startswith("bvtech-dispatch")' in __import__("inspect").getsource(_j101.cleanup_duplicate_posts)
+    print("v1.104.1: Tech Dispatch - original LLM commentary on curated news, politics "
+          "filtered, model's source list replaced with real attributed links, no filler, "
+          "own flood-guard channel OK")
+
+    print("\n=== OpsPilot v1.104.1 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

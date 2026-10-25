@@ -2465,7 +2465,9 @@ def cleanup_duplicate_posts(db: Session, site: str, *, days: int = 3,
             if d not in window:
                 continue
             stamps[path] = first_ts
-            channel = "news" if slug_root.startswith("bvtech-news") else "post"
+            channel = ("news" if slug_root.startswith("bvtech-news")
+                       else "dispatch" if slug_root.startswith("bvtech-dispatch")
+                       else "post")
             by_day.setdefault((channel, d), []).append(path)
         removed, actions, purge_urls = [], [], []
         listings = {lp: _fetch_file(cfg, lp) for lp in meta.get("index_paths", ())}

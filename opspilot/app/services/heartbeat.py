@@ -283,6 +283,14 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
         listings_heal = _jp_lh.listings_self_heal(db, now)
     except Exception:  # noqa: BLE001
         db.rollback()
+    # 13.557b) v1.104 TECH DISPATCH — once/day, our ORIGINAL take on the day's
+    #          tech news (LLM-written, sources quoted + linked). Skips cleanly
+    #          when the LLM is down (no filler).
+    try:
+        from . import news_digest as _nd
+        _nd.maybe_run_daily(db, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
     # 13.5575) v1.99 ONE-TIME SITE REPAIR - re-renders damaged bvtech.org post
     #          pages, repairs every listing, runs the AI self-test and the audit,
     #          then EMAILS the report. Background thread; never blocks the tick.

@@ -1,5 +1,20 @@
 # BVTech OpsPilot — Changelog
 
+## v1.104.1 — BVTech Tech Dispatch: our own take on the news (not reposts) (Oct 2026)
+- Instead of only linking other people's articles, we now publish a daily
+  **BVTech Dispatch** — our free LLM gathers headlines from across the web and
+  writes an ORIGINAL, first-person commentary (what caught our eye and why it
+  matters for a small business), in Jordan Polasek's voice.
+- It paraphrases rather than copies, quotes only briefly, and ALWAYS ends with a
+  real, attributed "Sources & further reading" list linking the originals — so we
+  add value and still send visitors to the source, instead of scraping it. Any
+  source list the model invents is discarded and replaced with the real links.
+- Politics/doom headlines are filtered out; it's upbeat and on-topic.
+- **No AI = no post:** if the LLM is unreachable we skip the day rather than
+  publish filler (the whole point is that it's written as us).
+- Runs once/day from the heartbeat, publishes natively to bvtech.org/blog, and
+  gets its OWN flood-guard channel so it never collides with the daily SMB post.
+
 ## v1.104.0 — Signal 199X game live on BVTech + game reverse-proxy (Oct 2026)
 - **Signal 199X** — the original retro-tech multiplayer browser game — is now
   hosted by us and live at **portal.bvtech.org/signal/**, linked from bvtech.org
