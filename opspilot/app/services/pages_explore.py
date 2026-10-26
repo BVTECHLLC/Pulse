@@ -26,7 +26,7 @@ def body() -> str:
     return r"""
 <section class="xp">
 <style>
-.xp{--o:#EB6F24;--o2:#F5BE58;max-width:1160px;margin:0 auto;padding:64px 18px 90px}
+.xp{--o:#EB6F24;--o2:#F5BE58;max-width:1160px;margin:0 auto;padding:104px 18px 90px}
 .xp-hero{scroll-margin-top:90px}
 .xp-hero{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;margin:0 0 14px}
 .xp-hello{font-family:var(--fh);font-size:clamp(1.7rem,4vw,2.5rem);font-weight:800;color:var(--white);margin:0;line-height:1.1}
@@ -40,6 +40,7 @@ def body() -> str:
 .xp-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:22px;margin-top:22px;align-items:start}
 .xp-main,.xp-side{min-width:0}
 @media(max-width:900px){.xp-grid{grid-template-columns:1fr}}
+@media(max-width:700px){.xp{padding-top:84px}}
 .xp-ticker{display:flex;align-items:stretch;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--card);margin:0 0 22px}
 .xp-ticker .lab{flex-shrink:0;display:flex;align-items:center;gap:7px;padding:10px 16px;background:linear-gradient(135deg,var(--o),var(--o2));color:#0E0D2C;font-weight:800;font-size:.72rem;letter-spacing:.1em;white-space:nowrap}
 .xp-ticker .lab .dot{width:7px;height:7px;border-radius:50%;background:#0E0D2C;animation:xp-pulse 1.6s infinite}
