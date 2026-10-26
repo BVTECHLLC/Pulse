@@ -268,7 +268,7 @@ impl Game {
             next_boss: 60,
             shake: 0.0,
             hitstop: 0.0,
-            cam: vec3(0.0, 19.0, 15.0),
+            cam: vec3(0.0, 16.0, 12.5),
             choices: Vec::new(),
             flash_level: 0.0,
         }
@@ -386,6 +386,91 @@ impl Game {
                 self.dmg *= 1.2;
             }
         }
+    }
+}
+
+// ---------- shaded 3D: fake directional lighting on box meshes ----------
+fn light_dir() -> Vec3 {
+    vec3(-0.35, 1.0, 0.28).normalize()
+}
+fn shade(base: Color, normal: Vec3) -> Color {
+    let d = normal.dot(light_dir()).max(0.0);
+    let amb = 0.40;
+    let b = amb + (1.0 - amb) * d;
+    Color::new(
+        (base.r * b).min(1.0),
+        (base.g * b).min(1.0),
+        (base.b * b).min(1.0),
+        base.a,
+    )
+}
+
+// A reusable 24-vertex box mesh re-stamped each draw: real per-face shading,
+// which is what separates "lit 3D" from macroquad's flat primitives.
+struct Boxer {
+    mesh: Mesh,
+}
+impl Boxer {
+    fn new() -> Self {
+        let mut indices = Vec::with_capacity(36);
+        for f in 0..6u16 {
+            let o = f * 4;
+            indices.extend_from_slice(&[o, o + 1, o + 2, o, o + 2, o + 3]);
+        }
+        let verts = vec![Vertex::new(0.0, 0.0, 0.0, 0.0, 0.0, WHITE); 24];
+        Boxer {
+            mesh: Mesh {
+                vertices: verts,
+                indices,
+                texture: None,
+            },
+        }
+    }
+    fn draw(&mut self, c: Vec3, h: Vec3, base: Color) {
+        let (x0, x1) = (c.x - h.x, c.x + h.x);
+        let (y0, y1) = (c.y - h.y, c.y + h.y);
+        let (z0, z1) = (c.z - h.z, c.z + h.z);
+        let faces: [(Vec3, [Vec3; 4]); 6] = [
+            (vec3(0.0, 1.0, 0.0), [vec3(x0, y1, z1), vec3(x1, y1, z1), vec3(x1, y1, z0), vec3(x0, y1, z0)]),
+            (vec3(0.0, -1.0, 0.0), [vec3(x0, y0, z0), vec3(x1, y0, z0), vec3(x1, y0, z1), vec3(x0, y0, z1)]),
+            (vec3(0.0, 0.0, 1.0), [vec3(x0, y0, z1), vec3(x1, y0, z1), vec3(x1, y1, z1), vec3(x0, y1, z1)]),
+            (vec3(0.0, 0.0, -1.0), [vec3(x1, y0, z0), vec3(x0, y0, z0), vec3(x0, y1, z0), vec3(x1, y1, z0)]),
+            (vec3(1.0, 0.0, 0.0), [vec3(x1, y0, z1), vec3(x1, y0, z0), vec3(x1, y1, z0), vec3(x1, y1, z1)]),
+            (vec3(-1.0, 0.0, 0.0), [vec3(x0, y0, z0), vec3(x0, y0, z1), vec3(x0, y1, z1), vec3(x0, y1, z0)]),
+        ];
+        let mut vi = 0;
+        for (n, cs) in faces.iter() {
+            let fc: [u8; 4] = shade(base, *n).into();
+            for p in cs.iter() {
+                let v = &mut self.mesh.vertices[vi];
+                v.position = *p;
+                v.color = fc;
+                vi += 1;
+            }
+        }
+        draw_mesh(&self.mesh);
+    }
+}
+
+// a soft vertical gradient "sky" drawn behind the 3D for atmosphere
+fn draw_sky() {
+    set_default_camera();
+    let w = screen_width();
+    let h = screen_height();
+    let top = col(0.05, 0.08, 0.20, 1.0);
+    let mid = col(0.07, 0.10, 0.17, 1.0);
+    let bot = col(0.02, 0.03, 0.07, 1.0);
+    let steps = 24;
+    for i in 0..steps {
+        let t0 = i as f32 / steps as f32;
+        let y = t0 * h;
+        let seg = h / steps as f32 + 1.0;
+        let c = if t0 < 0.5 {
+            lerp_col(top, mid, t0 * 2.0)
+        } else {
+            lerp_col(mid, bot, (t0 - 0.5) * 2.0)
+        };
+        draw_rectangle(0.0, y, w, seg, c);
     }
 }
 
@@ -741,7 +826,7 @@ fn update(g: &mut Game, dt: f32) {
     g.floats.retain(|f| f.life > 0.0);
 
     // camera smooth follow
-    let want = g.player + vec3(0.0, 19.0, 15.0);
+    let want = g.player + vec3(0.0, 16.0, 12.5);
     g.cam = g.cam.lerp(want, 0.12);
 
     if g.hp <= 0.0 {
@@ -762,8 +847,8 @@ fn make_camera(g: &Game) -> Camera3D {
     Camera3D {
         position: cam_pos,
         up: vec3(0.0, 1.0, 0.0),
-        target: g.player + vec3(0.0, 0.5, 0.0),
-        fovy: 0.82,
+        target: g.player + vec3(0.0, 0.8, 0.0),
+        fovy: 0.86,
         ..Default::default()
     }
 }
@@ -777,57 +862,67 @@ fn shadow(pos: Vec3, r: f32) {
     );
 }
 
-fn draw_enemy(e: &Enemy) {
+fn draw_enemy(e: &Enemy, bx: &mut Boxer) {
     let c = enemy_color(e.kind, e.flash);
-    shadow(e.pos, e.radius * 1.3);
+    shadow(e.pos, e.radius * 1.4);
+    let hot = lerp_col(c, WHITE, 0.25);
     match e.kind {
         1 => {
-            // fast: small spiky double-cube
-            let s = e.radius * 1.3;
-            draw_cube(e.pos, vec3(s, s * 0.7, s), None, c);
-            draw_cube(e.pos + vec3(0.0, s * 0.5, 0.0), vec3(s * 0.5, s * 0.6, s * 0.5), None, c);
+            // fast skirmisher: lean tapered body + bright visor
+            let s = e.radius;
+            bx.draw(e.pos, vec3(s * 0.7, s * 1.1, s * 0.7), c);
+            bx.draw(e.pos + vec3(0.0, s * 1.0, 0.0), vec3(s * 0.45, s * 0.4, s * 0.45), hot);
         }
         2 => {
-            // brute: armored stack
-            let s = e.radius * 1.6;
-            draw_cube(e.pos, vec3(s, s * 0.9, s), None, c);
-            draw_cube_wires(e.pos, vec3(s * 1.02, s * 0.92, s * 1.02), col(0.0, 0.0, 0.0, 0.6));
-            draw_cube(e.pos + vec3(0.0, s * 0.6, 0.0), vec3(s * 0.7, s * 0.4, s * 0.7), None, lerp_col(c, WHITE, 0.2));
+            // brute: heavy chassis with shoulder plates
+            let s = e.radius;
+            bx.draw(e.pos, vec3(s * 1.1, s * 0.95, s * 1.1), c);
+            bx.draw(e.pos + vec3(0.0, s * 0.85, 0.0), vec3(s * 0.7, s * 0.45, s * 0.7), hot);
+            bx.draw(e.pos + vec3(s * 1.0, s * 0.2, 0.0), vec3(s * 0.35, s * 0.6, s * 0.8), lerp_col(c, BLACK, 0.15));
+            bx.draw(e.pos + vec3(-s * 1.0, s * 0.2, 0.0), vec3(s * 0.35, s * 0.6, s * 0.8), lerp_col(c, BLACK, 0.15));
         }
         3 => {
-            // drone: floating diamond-ish
-            draw_sphere(e.pos, e.radius, None, c);
-            draw_sphere_wires(e.pos, e.radius * 1.15, None, col(1.0, 1.0, 1.0, 0.25));
+            // drone: floating core + fins, hovers (y handled in update)
+            let s = e.radius;
+            bx.draw(e.pos, vec3(s * 0.7, s * 0.7, s * 0.7), c);
+            let fin = (e.bob * 0.6).sin() * 0.25;
+            bx.draw(e.pos + vec3(s * 0.9, fin, 0.0), vec3(s * 0.5, s * 0.12, s * 0.5), hot);
+            bx.draw(e.pos + vec3(-s * 0.9, -fin, 0.0), vec3(s * 0.5, s * 0.12, s * 0.5), hot);
         }
         4 => {
-            // boss: big multi-part
+            // boss: towering core, crown, orbiting fists, wire shell
             let s = e.radius;
-            draw_cube(e.pos, vec3(s * 1.6, s * 1.6, s * 1.6), None, c);
-            draw_cube_wires(e.pos, vec3(s * 1.7, s * 1.7, s * 1.7), col(1.0, 0.9, 0.5, 0.7));
-            let o = (e.bob).sin() * 0.3;
-            draw_cube(e.pos + vec3(s * 1.3, o, 0.0), vec3(s * 0.6, s * 0.6, s * 0.6), None, lerp_col(c, RED, 0.3));
-            draw_cube(e.pos + vec3(-s * 1.3, -o, 0.0), vec3(s * 0.6, s * 0.6, s * 0.6), None, lerp_col(c, RED, 0.3));
+            bx.draw(e.pos, vec3(s * 1.3, s * 1.5, s * 1.3), c);
+            bx.draw(e.pos + vec3(0.0, s * 1.5, 0.0), vec3(s * 0.8, s * 0.5, s * 0.8), hot);
+            draw_cube_wires(e.pos, vec3(s * 2.9, s * 3.2, s * 2.9), col(1.0, 0.9, 0.5, 0.7));
+            let o = e.bob.sin() * 0.5;
+            bx.draw(e.pos + vec3(s * 1.7, o, 0.0), vec3(s * 0.55, s * 0.55, s * 0.55), lerp_col(c, RED, 0.3));
+            bx.draw(e.pos + vec3(-s * 1.7, -o, 0.0), vec3(s * 0.55, s * 0.55, s * 0.55), lerp_col(c, RED, 0.3));
         }
         _ => {
-            let s = e.radius * 1.5;
-            draw_cube(e.pos, vec3(s, s, s), None, c);
-            draw_cube_wires(e.pos, vec3(s * 1.03, s * 1.03, s * 1.03), col(0.0, 0.0, 0.0, 0.5));
+            // grunt: blocky walker with a head
+            let s = e.radius;
+            bx.draw(e.pos, vec3(s * 0.95, s * 0.9, s * 0.95), c);
+            bx.draw(e.pos + vec3(0.0, s * 0.85, 0.0), vec3(s * 0.55, s * 0.5, s * 0.55), hot);
         }
     }
     if e.hp < e.max_hp && e.kind != 4 {
         let frac = (e.hp / e.max_hp).clamp(0.0, 1.0);
-        let w = e.radius * 1.6;
-        draw_cube(e.pos + vec3(0.0, e.radius * 1.5, 0.0), vec3(w, 0.07, 0.07), None, col(0.2, 0.2, 0.2, 0.9));
+        let w = e.radius * 1.8;
+        let y = e.radius * 1.9;
+        draw_cube(e.pos + vec3(0.0, y, 0.0), vec3(w, 0.08, 0.08), None, col(0.1, 0.1, 0.12, 0.95));
         draw_cube(
-            e.pos + vec3(-(w * (1.0 - frac)) * 0.5, e.radius * 1.5, 0.0),
-            vec3(w * frac, 0.09, 0.09),
+            e.pos + vec3(-(w * (1.0 - frac)) * 0.5, y, 0.0),
+            vec3(w * frac, 0.11, 0.11),
             None,
-            col(0.3, 1.0, 0.4, 1.0),
+            lerp_col(col(1.0, 0.4, 0.3, 1.0), col(0.3, 1.0, 0.45, 1.0), frac),
         );
     }
 }
 
-fn draw_world(g: &Game) {
+fn draw_world(g: &Game, bx: &mut Boxer) {
+    // atmospheric gradient behind the 3D (2D pass doesn't write depth)
+    draw_sky();
     let cam = make_camera(g);
     set_camera(&cam);
 
@@ -845,26 +940,25 @@ fn draw_world(g: &Game) {
         draw_line_3d(p0, p1, col(0.2, 0.7, 1.0, 0.5 + 0.4 * pulse));
     }
 
-    // gems
+    // gems (floating shaded shards)
     for gem in &g.gems {
-        let y = 0.4 + (gem.t * 4.0).sin() * 0.08;
-        draw_cube(vec3(gem.pos.x, y, gem.pos.z), vec3(0.3, 0.3, 0.3), None, col(0.2, 1.0, 0.55, 1.0));
-        draw_cube_wires(vec3(gem.pos.x, y, gem.pos.z), vec3(0.4, 0.4, 0.4), col(0.6, 1.0, 0.8, 0.5));
+        let y = 0.4 + (gem.t * 4.0).sin() * 0.1;
+        bx.draw(vec3(gem.pos.x, y, gem.pos.z), vec3(0.16, 0.16, 0.16), col(0.2, 1.0, 0.55, 1.0));
     }
-    // pickups
+    // pickups (bright crate + wire halo)
     for p in &g.pickups {
         let c = match p.kind {
             0 => col(0.3, 1.0, 0.5, 1.0),
             1 => col(1.0, 0.8, 0.2, 1.0),
             _ => col(0.5, 0.85, 1.0, 1.0),
         };
-        let y = 0.5 + (get_time() as f32 * 3.0 + p.pos.x).sin() * 0.15;
-        draw_cube(vec3(p.pos.x, y, p.pos.z), vec3(0.5, 0.5, 0.5), None, c);
-        draw_cube_wires(vec3(p.pos.x, y, p.pos.z), vec3(0.62, 0.62, 0.62), WHITE);
+        let y = 0.55 + (get_time() as f32 * 3.0 + p.pos.x).sin() * 0.15;
+        bx.draw(vec3(p.pos.x, y, p.pos.z), vec3(0.28, 0.28, 0.28), c);
+        draw_cube_wires(vec3(p.pos.x, y, p.pos.z), vec3(0.72, 0.72, 0.72), WHITE);
     }
 
     for e in &g.enemies {
-        draw_enemy(e);
+        draw_enemy(e, bx);
     }
 
     // shots + trails
@@ -893,17 +987,25 @@ fn draw_world(g: &Game) {
         draw_cube(p.pos, vec3(p.size, p.size, p.size), None, c);
     }
 
-    // player
-    shadow(g.player, 1.1);
+    // player (shaded mech: body, core/head, muzzle in facing dir, glow halo)
+    shadow(g.player, 1.0);
     let bob = (get_time() as f32 * 3.0).sin() * 0.05;
-    let pp = g.player + vec3(0.0, bob, 0.0);
-    draw_cube(pp, vec3(0.95, 0.95, 0.95), None, col(0.2, 0.75, 1.0, 1.0));
-    let glow = 0.4 + 0.4 * (get_time() as f32 * 5.0).sin();
-    draw_cube_wires(pp, vec3(1.02, 1.02, 1.02), col(0.6, 0.95, 1.0, 0.3 + glow * 0.4));
-    draw_cube(pp + vec3(0.0, 0.6, 0.0), vec3(0.4, 0.3, 0.4), None, col(0.7, 0.95, 1.0, 1.0));
-    let bx = g.look.sin();
-    let bz = g.look.cos();
-    draw_cube(pp + vec3(bx * 0.75, 0.0, bz * 0.75), vec3(0.32, 0.32, 0.32), None, WHITE);
+    let pp = g.player + vec3(0.0, 0.0, 0.0) + vec3(0.0, bob, 0.0);
+    bx.draw(pp, vec3(0.42, 0.5, 0.42), col(0.13, 0.5, 0.92, 1.0));
+    bx.draw(pp + vec3(0.0, 0.6, 0.0), vec3(0.28, 0.24, 0.28), col(0.55, 0.9, 1.0, 1.0));
+    let fx = g.look.sin();
+    let fz = g.look.cos();
+    bx.draw(pp + vec3(fx * 0.55, 0.08, fz * 0.55), vec3(0.14, 0.14, 0.3), col(0.9, 0.97, 1.0, 1.0));
+    // faint deploy ring on the ground instead of a busy wire sphere
+    let seg = 28;
+    let rr = 0.95 + 0.05 * (get_time() as f32 * 3.0).sin();
+    for i in 0..seg {
+        let a0 = i as f32 / seg as f32 * std::f32::consts::TAU;
+        let a1 = (i + 1) as f32 / seg as f32 * std::f32::consts::TAU;
+        let p0 = g.player + vec3(a0.cos() * rr, 0.05, a0.sin() * rr);
+        let p1 = g.player + vec3(a1.cos() * rr, 0.05, a1.sin() * rr);
+        draw_line_3d(p0, p1, col(0.4, 0.9, 1.0, 0.5));
+    }
 }
 
 // ---------- HUD + screens ----------
@@ -1111,6 +1213,7 @@ fn draw_joystick() {
 async fn main() {
     rand::srand(macroquad::miniquad::date::now() as u64);
     let mut g = Game::new();
+    let mut bx = Boxer::new();
     loop {
         let dt = get_frame_time().min(0.05);
         clear_background(col(0.02, 0.03, 0.07, 1.0));
@@ -1118,7 +1221,7 @@ async fn main() {
 
         match g.phase {
             Phase::Title => {
-                draw_world(&g);
+                draw_world(&g, &mut bx);
                 set_default_camera();
                 draw_rectangle(0.0, 0.0, screen_width(), screen_height(), col(0.02, 0.03, 0.08, 0.55));
                 ctext("BVTECH: BREACH PROTOCOL", 170.0, 54, col(0.3, 0.8, 1.0, 1.0));
@@ -1133,7 +1236,7 @@ async fn main() {
             }
             Phase::Playing => {
                 update(&mut g, dt);
-                draw_world(&g);
+                draw_world(&g, &mut bx);
                 draw_floats(&g, &cam);
                 draw_hud(&g);
                 if is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::P) {
@@ -1141,7 +1244,7 @@ async fn main() {
                 }
             }
             Phase::LevelUp => {
-                draw_world(&g);
+                draw_world(&g, &mut bx);
                 draw_floats(&g, &cam);
                 draw_hud(&g);
                 draw_levelup(&g);
@@ -1154,7 +1257,7 @@ async fn main() {
                 }
             }
             Phase::Dead => {
-                draw_world(&g);
+                draw_world(&g, &mut bx);
                 draw_hud(&g);
                 set_default_camera();
                 draw_rectangle(0.0, 0.0, screen_width(), screen_height(), col(0.12, 0.0, 0.05, 0.6));
