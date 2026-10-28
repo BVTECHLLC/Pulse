@@ -15,6 +15,7 @@ var spawn_timer := 0.0
 var enemies: Array = []
 var _frame := 0  # dev-only: used by the `--shot` screenshot helper below
 var _torches: Array = []  # flickering omni lights, animated in _process
+var _upgrade_open := false  # a pick-a-perk screen is currently showing
 
 func _ready() -> void:
 	rng.randomize()
@@ -307,6 +308,19 @@ func spawn_damage_number(world_pos: Vector3, amount: int) -> void:
 	tw.tween_property(lbl, "position:y", lbl.position.y + 1.6, 0.7)
 	tw.tween_property(lbl, "modulate:a", 0.0, 0.7)
 	tw.chain().tween_callback(lbl.queue_free)
+
+func request_upgrade() -> void:
+	# open the pick-a-perk screen (guarded so we never stack two)
+	if _upgrade_open or player == null or player.pending_levels <= 0:
+		return
+	_upgrade_open = true
+	var u := CanvasLayer.new()
+	u.set_script(load("res://scripts/upgrades.gd"))
+	add_child(u)
+	u.open(player, self)
+
+func _on_upgrade_closed() -> void:
+	_upgrade_open = false
 
 func on_enemy_killed(pos: Vector3) -> void:
 	kills += 1

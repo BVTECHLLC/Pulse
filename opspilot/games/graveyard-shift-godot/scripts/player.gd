@@ -25,6 +25,14 @@ var fire_interval := 0.45
 var damage := 14.0
 var invuln := 0.0
 
+# upgrade-driven stats (grown via the level-up pick-a-perk screen)
+var move_mult := 1.0
+var multishot := 1
+var spread := 0.09      # radians between multishot arrows
+var pierce := 0         # extra enemies an arrow passes through
+var regen := 0.0        # hp per second
+var pending_levels := 0 # queued level-ups awaiting an upgrade choice
+
 func setup_camera() -> void:
 	spring = SpringArm3D.new()
 	spring.spring_length = 6.5
@@ -76,6 +84,10 @@ func _physics_process(delta: float) -> void:
 	invuln = max(0.0, invuln - delta)
 	fire_cd = max(0.0, fire_cd - delta)
 
+	# passive regeneration
+	if regen > 0.0 and hp > 0.0:
+		hp = min(max_hp, hp + regen * delta)
+
 	# gravity
 	if not is_on_floor():
 		velocity.y -= GRAVITY * delta
@@ -87,8 +99,8 @@ func _physics_process(delta: float) -> void:
 	if Input.is_key_pressed(KEY_A): input.x -= 1.0
 	if Input.is_key_pressed(KEY_D): input.x += 1.0
 	var dir := input.rotated(Vector3.UP, yaw).normalized()
-	velocity.x = dir.x * SPEED
-	velocity.z = dir.z * SPEED
+	velocity.x = dir.x * SPEED * move_mult
+	velocity.z = dir.z * SPEED * move_mult
 	if Input.is_key_pressed(KEY_SPACE) and is_on_floor():
 		velocity.y = JUMP
 
@@ -116,20 +128,27 @@ func _physics_process(delta: float) -> void:
 func _shoot() -> void:
 	if game == null:
 		return
+	var fwd := -global_transform.basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	# fan the multishot arrows out around the aim direction
+	for i in multishot:
+		var off := (float(i) - float(multishot - 1) * 0.5) * spread
+		_spawn_arrow(fwd.rotated(Vector3.UP, off))
+
+func _spawn_arrow(dir: Vector3) -> void:
 	var arrow := Node3D.new()
 	arrow.set_script(load("res://scripts/arrow.gd"))
 	var m = load("res://assets/forest/weapon-arrow.glb").instantiate()
 	m.rotation_degrees = Vector3(90, 0, 0)
 	m.scale = Vector3(1.4, 1.4, 1.4)
 	arrow.add_child(m)
-	var fwd := -global_transform.basis.z
-	fwd.y = 0.0
-	fwd = fwd.normalized()
-	arrow.dir = fwd
+	arrow.dir = dir
 	arrow.damage = damage
+	arrow.pierce = pierce
 	arrow.game = game
 	game.add_child(arrow)
-	arrow.global_position = global_position + Vector3(0, 1.1, 0) + fwd * 0.8
+	arrow.global_position = global_position + Vector3(0, 1.1, 0) + dir * 0.8
 
 func take_damage(amount: float) -> void:
 	if invuln > 0.0:
@@ -148,8 +167,7 @@ func gain_xp(amount: int) -> void:
 		xp -= xp_need
 		level += 1
 		xp_need = int(xp_need * 1.3) + 2
-		# simple auto-upgrades for the slice (upgrade-choice UI comes next)
-		max_hp += 15
-		hp = min(max_hp, hp + 30)
-		fire_interval = max(0.12, fire_interval * 0.92)
-		damage *= 1.1
+		pending_levels += 1
+	# hand level-ups to the game, which opens the pick-a-perk screen
+	if pending_levels > 0 and game and game.has_method("request_upgrade"):
+		game.request_upgrade()

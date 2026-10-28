@@ -7,7 +7,9 @@ var dir := Vector3.FORWARD
 var speed := 30.0
 var life := 2.2
 var damage := 14.0
+var pierce := 0          # extra enemies to pass through before stopping
 var game: Node3D
+var _hit: Array = []     # enemies already struck (no double hits)
 
 func _process(delta: float) -> void:
 	position += dir * speed * delta
@@ -20,8 +22,13 @@ func _process(delta: float) -> void:
 	if game == null:
 		return
 	for e in game.enemies:
-		if is_instance_valid(e) and global_position.distance_to(e.global_position + Vector3(0, 0.9, 0)) < 1.3:
+		if e in _hit or not is_instance_valid(e):
+			continue
+		if global_position.distance_to(e.global_position + Vector3(0, 0.9, 0)) < 1.3:
 			if e.has_method("hit"):
 				e.hit(damage, global_position)
-			queue_free()
-			return
+			_hit.append(e)
+			if pierce <= 0:
+				queue_free()
+				return
+			pierce -= 1
