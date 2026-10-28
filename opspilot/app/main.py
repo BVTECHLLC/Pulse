@@ -40,9 +40,14 @@ _mime.add_type("application/wasm", ".wasm")
 _arena_dir = Path(__file__).resolve().parent.parent / "games" / "arena-web"
 if _arena_dir.is_dir():
     app.mount("/arena", StaticFiles(directory=str(_arena_dir), html=True), name="arena")
-# Graveyard Shift (our vampire-survivors game, Rust -> WebAssembly) is served
-# statically at its own branded path /graveyard-shift (v1.111; was /signal).
-_game_dir = Path(__file__).resolve().parent.parent / "games" / "graveyard-web"
+# Graveyard Shift — our original 3D action-RPG (Godot 4 -> WebAssembly), served
+# statically at its branded path /graveyard-shift (v1.113; the earlier macroquad
+# arcade build in games/graveyard-web is kept as an archive). The Godot web
+# export is a threadless build, so it needs no cross-origin-isolation headers.
+_game_dir = Path(__file__).resolve().parent.parent / "games" / "graveyard-3d"
+if not _game_dir.is_dir():
+    # fall back to the archived arcade build if the 3D export is absent
+    _game_dir = Path(__file__).resolve().parent.parent / "games" / "graveyard-web"
 if _game_dir.is_dir():
     app.mount("/graveyard-shift", StaticFiles(directory=str(_game_dir), html=True), name="graveyard")
 
@@ -74,8 +79,11 @@ async def security_headers(request: Request, call_next):
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["X-Frame-Options"] = "DENY"
     resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    _game_path = request.url.path.startswith(("/arena", "/graveyard-shift"))
     resp.headers["Content-Security-Policy"] = (
-        "default-src 'self'; img-src 'self' data:; "
+        "default-src 'self'; "
+        # the Godot/WASM game shells load their boot splash + icons as blob: images
+        "img-src 'self' data:" + (" blob:" if _game_path else "") + "; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         # blob: lets the Content Studio preview its generated page in an iframe
@@ -83,7 +91,7 @@ async def security_headers(request: Request, call_next):
         # worker-src blob: powers the Code Dojo sandbox — the learner's own code runs
         # in a terminable Web Worker (their browser, their risk), never on our server.
         "script-src 'self' 'unsafe-inline'"
-        + (" 'wasm-unsafe-eval'" if request.url.path.startswith(("/arena", "/graveyard-shift")) else "")
+        + (" 'wasm-unsafe-eval'" if _game_path else "")
         + "; worker-src 'self' blob:; "
         "frame-src 'self' blob:; frame-ancestors 'none'"
     )
