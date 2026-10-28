@@ -40,11 +40,21 @@ _mime.add_type("application/wasm", ".wasm")
 _arena_dir = Path(__file__).resolve().parent.parent / "games" / "arena-web"
 if _arena_dir.is_dir():
     app.mount("/arena", StaticFiles(directory=str(_arena_dir), html=True), name="arena")
-# v1.108: Graveyard Shift (our vampire-survivors game, Rust -> WebAssembly) is
-# served statically at /signal, replacing the old Signal 199X proxy.
-_signal_dir = Path(__file__).resolve().parent.parent / "games" / "graveyard-web"
-if _signal_dir.is_dir():
-    app.mount("/signal", StaticFiles(directory=str(_signal_dir), html=True), name="signal")
+# Graveyard Shift (our vampire-survivors game, Rust -> WebAssembly) is served
+# statically at its own branded path /graveyard-shift (v1.111; was /signal).
+_game_dir = Path(__file__).resolve().parent.parent / "games" / "graveyard-web"
+if _game_dir.is_dir():
+    app.mount("/graveyard-shift", StaticFiles(directory=str(_game_dir), html=True), name="graveyard")
+
+# Keep the retired /signal path working: redirect it to the new home.
+from fastapi.responses import RedirectResponse as _Redir  # noqa: E402
+@app.get("/signal")
+@app.get("/signal/")
+async def _signal_root_redirect():
+    return _Redir("/graveyard-shift/", status_code=308)
+@app.get("/signal/{path:path}")
+async def _signal_redirect(path: str):
+    return _Redir("/graveyard-shift/" + path, status_code=308)
 
 
 # --------------------------------------------------------------------------- #
@@ -73,7 +83,7 @@ async def security_headers(request: Request, call_next):
         # worker-src blob: powers the Code Dojo sandbox — the learner's own code runs
         # in a terminable Web Worker (their browser, their risk), never on our server.
         "script-src 'self' 'unsafe-inline'"
-        + (" 'wasm-unsafe-eval'" if request.url.path.startswith(("/arena", "/signal")) else "")
+        + (" 'wasm-unsafe-eval'" if request.url.path.startswith(("/arena", "/graveyard-shift")) else "")
         + "; worker-src 'self' blob:; "
         "frame-src 'self' blob:; frame-ancestors 'none'"
     )

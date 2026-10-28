@@ -8,7 +8,7 @@ chrome by destination.publish(); styled with the site's own CSS variables.
 """
 from __future__ import annotations
 
-PLAY = "https://portal.bvtech.org/signal/"
+PLAY = "https://portal.bvtech.org/graveyard-shift/"
 
 TITLE = "Graveyard Shift — a free Halloween vampire-survivors game | BVTech"
 DESC = ("Graveyard Shift is BVTech's own free 3D vampire-survivors game: survive the "
