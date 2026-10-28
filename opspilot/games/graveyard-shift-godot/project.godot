@@ -1,0 +1,23 @@
+; Graveyard Shift — an original BVTech 3D action-RPG (Godot 4.3, GDScript).
+; Built with CC0 assets (Kenney Mini-Forest + Pirate Kit). Original lore,
+; characters, and mechanics. Open this folder in Godot 4.3+ to edit/run.
+config_version=5
+
+[application]
+
+config/name="Graveyard Shift"
+config/description="An original BVTech third-person action-RPG. CC0 art (Kenney)."
+run/main_scene="res://scenes/Main.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.3, 0.45, 0.6, 1)
