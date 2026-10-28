@@ -75,6 +75,28 @@ def body() -> str:
 .xp-q{font-size:.86rem;color:var(--text);font-variant-numeric:tabular-nums}
 .xp-q b{color:var(--white);font-weight:800;margin-right:7px;font-family:var(--fh)}
 .xp-q .up{color:var(--up);font-weight:700}.xp-q .dn{color:var(--dn);font-weight:700}
+/* ---- featured game (Halloween) ---- */
+.xp-feature{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:0;border-radius:20px;overflow:hidden;
+  border:1px solid rgba(159,123,255,.4);margin:0 0 30px;background:#0c0a22;transition:.18s}
+.xp-feature:hover{transform:translateY(-2px);border-color:rgba(159,123,255,.7)}
+@media(max-width:760px){.xp-feature{grid-template-columns:1fr}}
+.xp-feature .art{position:relative;min-height:210px;background:radial-gradient(130% 120% at 70% 0%,#2a1a55 0%,#120e30 55%,#0a0820 100%);overflow:hidden}
+.xp-feature .moon{position:absolute;top:26px;right:34px;width:64px;height:64px;border-radius:50%;
+  background:radial-gradient(circle at 38% 38%,#fdfbe6,#d7d5ad);box-shadow:0 0 44px 10px rgba(245,240,200,.25)}
+.xp-feature .bat{position:absolute;font-size:1.3rem;opacity:.85;animation:xp-fly 7s ease-in-out infinite}
+.xp-feature .bat.a{top:34%;left:16%}.xp-feature .bat.b{top:60%;left:40%;animation-delay:1.3s;font-size:1rem}
+.xp-feature .bat.c{top:26%;left:66%;animation-delay:.7s;font-size:1.1rem}.xp-feature .bat.d{top:68%;left:74%;animation-delay:2s;font-size:.95rem}
+.xp-feature .stones{position:absolute;bottom:0;left:0;right:0;height:60px;background:
+  linear-gradient(transparent,rgba(0,0,0,.5)),repeating-linear-gradient(90deg,transparent 0 44px,rgba(120,110,160,.18) 44px 58px)}
+@keyframes xp-fly{0%{transform:translate(0,0)}25%{transform:translate(14px,-10px)}50%{transform:translate(-8px,7px)}75%{transform:translate(10px,9px)}100%{transform:translate(0,0)}}
+.xp-feature .txt{padding:26px 28px;display:flex;flex-direction:column;justify-content:center;background:linear-gradient(135deg,rgba(159,123,255,.12),rgba(235,111,36,.08))}
+.xp-feature .kick{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:#c89bff;font-weight:800}
+.xp-feature h2{font-family:var(--fh);color:#fff;font-size:clamp(1.5rem,3vw,2rem);margin:10px 0 8px;line-height:1.1}
+.xp-feature p{color:var(--text);font-size:.95rem;line-height:1.6;margin:0 0 16px}
+.xp-feature .play{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;background:linear-gradient(135deg,#9f7bff,#EB6F24);
+  color:#0E0D2C;font-weight:800;font-size:1rem;padding:12px 26px;border-radius:12px}
+.xp-season{display:inline-flex;align-items:center;gap:7px;background:rgba(159,123,255,.14);border:1px solid rgba(159,123,255,.35);
+  color:#c89bff;font-weight:800;font-size:.72rem;letter-spacing:.06em;padding:5px 12px;border-radius:999px;margin-bottom:10px}
 /* ---- section heads ---- */
 .xp-h{display:flex;align-items:center;gap:10px;margin:0 0 16px}
 .xp-h h2{font-family:var(--fh);font-size:1.15rem;color:var(--white);margin:0;font-weight:800}
@@ -241,6 +263,21 @@ def body() -> str:
   <div class="track"><div class="scroll" id="xp-mkt-scroll"></div></div>
 </div>
 
+<!-- FEATURED GAME (Halloween) -->
+<a class="xp-feature" href="/graveyard-shift/">
+  <div class="art">
+    <div class="moon"></div>
+    <span class="bat a">🦇</span><span class="bat b">🦇</span><span class="bat c">🦇</span><span class="bat d">🦇</span>
+    <div class="stones"></div>
+  </div>
+  <div class="txt">
+    <span class="kick">🎃 Featured Game · Halloween</span>
+    <h2>Graveyard Shift</h2>
+    <p>Survive the night in our own 3D vampire-survivors game — swarms of undead, soul-shard level-ups and tech-flavored blessings, boss after boss until dawn. Free, in your browser.</p>
+    <span class="play">▶ Play now →</span>
+  </div>
+</a>
+
 <!-- THE BVTECH TAKE -->
 <div class="xp-take-band" id="xp-take">
   <div class="xp-h"><span class="pre"></span><h2>The BVTech Take</h2><span class="live">OUR ORIGINAL COMMENTARY</span></div>
@@ -323,7 +360,7 @@ def body() -> str:
       <p>Our own 3D survivors game — hold the grid against waves of breaches, level up and pick powerful upgrades. Runs right in your browser.</p>
       <span class="go" style="color:#39c0ff">▶ Play Breach Protocol →</span>
     </a>
-    <a class="xp-gcard" href="https://portal.bvtech.org/signal/" style="background:linear-gradient(135deg,rgba(130,40,160,.18),rgba(40,30,70,.2));border-color:rgba(160,110,200,.45)">
+    <a class="xp-gcard" href="/graveyard-shift/" style="background:linear-gradient(135deg,rgba(130,40,160,.18),rgba(40,30,70,.2));border-color:rgba(160,110,200,.45)">
       <div class="k" style="color:#c89bff">🧛 ORIGINAL · VAMPIRE SURVIVORS</div>
       <h3>Graveyard Shift</h3>
       <p>Survive the night in our own 3D bullet-heaven — swarms of undead, soul-shard level-ups and tech-flavored blessings, boss after boss till dawn. Free, in your browser.</p>

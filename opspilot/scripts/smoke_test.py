@@ -7947,7 +7947,7 @@ def main():
         (_j100.get_config, _j100._fetch_file, _j100._list_post_paths, _j100._HTTP,
          _j100._KEV_FEED) = _o100
         _cf100.purge_urls = _opu100
-    assert _sr100.REPAIR_EPOCH == "1.108.0"
+    assert _sr100.REPAIR_EPOCH == "1.109.0"
     print("v1.100: KEV as-of-date + title-guided cutoff rebuild news editions exactly; SMB "
           "posts rebuilt from stored/evergreen text; hand-written posts untouched OK")
 
@@ -8082,7 +8082,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.108.0"
+    assert _gs101().APP_VERSION == "1.109.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8160,8 +8160,9 @@ def main():
         _J102._HTTP = _http102
         _CF102.purge_urls = lambda *a, **k: {"ok": True}
         _rp = _D102.publish(None)
-        assert _rp["ok"] and len(_rp["pages"]) == 6, _rp
+        assert _rp["ok"] and len(_rp["pages"]) == 7, _rp
         assert "explore/index.html" in _sent102 and "academy/lightning-labs/index.html" in _sent102
+        assert "graveyard-shift/index.html" in _sent102
         assert "tools/whats-my-ip/index.html" in _sent102 and "tools/speed-test/index.html" in _sent102
         for _w in ("index", "feeds", "explore", "netinfo", "labs", "daily"):
             assert f"worker-tools/{_w}.js" in _sent102, _w
@@ -8191,7 +8192,7 @@ def main():
     finally:
         (_J102.get_config, _J102._fetch_file, _J102._HTTP, _CF102.purge_urls) = _o102b
     # (5) wired into the one-time repair at the new epoch
-    assert _sr100.REPAIR_EPOCH == "1.108.0"
+    assert _sr100.REPAIR_EPOCH == "1.109.0"
     import inspect as _insp102
     assert "destination" in _insp102.getsource(_sr100.run_full_repair)
     print("v1.102: Explore hub, Lightning Labs (edge-graded), 4 new tools, edge API, "
@@ -8282,10 +8283,9 @@ def main():
     # portal relaxes wasm CSP for /signal as well as /arena
     _mainsrc2 = (_P104(__file__).resolve().parent.parent / "app" / "main.py").read_text()
     assert '("/arena", "/signal")' in _mainsrc2, "signal CSP not relaxed"
-    # bvtech.org link-outs: Explore card is now Graveyard Shift, still at /signal/
+    # Explore features Graveyard Shift (its /graveyard-shift/ home page checked in v1.109)
     from app.services import pages_explore as _PEx, destination as _DEx
-    assert "portal.bvtech.org/signal/" in _PEx.body() and "Graveyard Shift" in _PEx.body()
-    assert any("portal.bvtech.org/signal" in _m[0] for _m in _DEx.NAV_EDITS)
+    assert "Graveyard Shift" in _PEx.body()
     print("v1.108: Graveyard Shift (vampire-survivors, Rust->WASM) served statically at "
           "/signal with scoped wasm CSP, boot-fixed loader, linked from Explore + nav OK")
 
@@ -8361,8 +8361,8 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.108.0"
-    assert _sr100.REPAIR_EPOCH == "1.108.0"   # forces Explore republish to bvtech.org
+    assert _gs101().APP_VERSION == "1.109.0"
+    assert _sr100.REPAIR_EPOCH == "1.109.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
 
@@ -8384,7 +8384,24 @@ def main():
           "The BVTech Take from our own posts, forecast, trending, tools); runtime header "
           "clearance; new worker markets/takes endpoints OK")
 
-    print("\n=== OpsPilot v1.108.0 SMOKE TEST PASSED ===")
+    # ==== v1.109.0: Graveyard Shift home page + Halloween Explore feature ====
+    from app.services import pages_game as _PG
+    _gp = _PG.body()
+    assert "Graveyard Shift" in _gp and "Play Now" in _gp and "portal.bvtech.org/signal/" in _gp
+    assert "Blessings" in _gp and "bestiary" in _gp.lower()
+    # the game page is in the destination publish set at /graveyard-shift/
+    assert any(p["url"].endswith("/graveyard-shift/") for p in _DEa._pages()), "game page not published"
+    assert _DEa.GAME_PATH == "graveyard-shift/index.html"
+    # Explore features the game (Halloween) and links to its home page
+    _xp2 = _PEa.body()
+    assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
+    # site nav points to the game home
+    assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
+    assert _gs101().APP_VERSION == "1.109.0" and _sr100.REPAIR_EPOCH == "1.109.0"
+    print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
+          "Explore features it with a Halloween hero, republish forced OK")
+
+    print("\n=== OpsPilot v1.109.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

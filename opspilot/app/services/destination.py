@@ -23,7 +23,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from . import pages_explore, pages_labs, pages_tools
+from . import pages_explore, pages_labs, pages_tools, pages_game
 
 AUTHOR = "Jordan Polasek"
 ORG = "BVTech LLC"
@@ -43,6 +43,7 @@ NEW_EDGE = {"worker-tools/feeds.js": "feeds.js",
 # URLs (…/index.html) to match the site's /tools/<slug>/ convention.
 EXPLORE_PATH = "explore/index.html"
 LABS_PATH = "academy/lightning-labs/index.html"
+GAME_PATH = "graveyard-shift/index.html"
 
 
 def _pages() -> list[dict]:
@@ -52,6 +53,8 @@ def _pages() -> list[dict]:
          "body": pages_explore.body()},
         {"path": LABS_PATH, "url": SITE + "/academy/lightning-labs/",
          "title": pages_labs.TITLE, "desc": pages_labs.DESC, "body": pages_labs.body()},
+        {"path": GAME_PATH, "url": SITE + "/graveyard-shift/",
+         "title": pages_game.TITLE, "desc": pages_game.DESC, "body": pages_game.body()},
     ]
     for t in pages_tools.all_tools():
         out.append({"path": f"tools/{t['slug']}/index.html",
@@ -102,8 +105,8 @@ NAV_EDITS = [
      '\n<li><a href="/academy/lightning-labs/">⚡ Lightning Labs</a></li>'),
     ('portal.bvtech.org/answers', '<li><a href="/academy/">🎓 Academy Home</a></li>',
      '\n<li><a href="https://portal.bvtech.org/answers">💬 BVTech Answers</a></li>'),
-    ('portal.bvtech.org/signal', '<li><a href="/academy/">🎓 Academy Home</a></li>',
-     '\n<li><a href="https://portal.bvtech.org/signal/">🧛 Play Graveyard Shift</a></li>'),
+    ('/graveyard-shift/', '<li><a href="/academy/">🎓 Academy Home</a></li>',
+     '\n<li><a href="/graveyard-shift/">🧛 Graveyard Shift</a></li>'),
     ('portal.bvtech.org/arena', '<li><a href="/academy/">🎓 Academy Home</a></li>',
      '\n<li><a href="https://portal.bvtech.org/arena/">⚔️ Play Breach Protocol</a></li>'),
 ]
