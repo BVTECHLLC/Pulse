@@ -64,6 +64,12 @@ func _physics_process(delta: float) -> void:
 		for m in _mats:
 			m.albedo_color = c
 
+	# freeze when the run is over (win/lose screen up)
+	if game and game.state != "play":
+		velocity = Vector3.ZERO
+		move_and_slide()
+		return
+
 	if not is_on_floor():
 		velocity.y -= GRAVITY * delta
 
@@ -79,8 +85,8 @@ func _physics_process(delta: float) -> void:
 		# contact damage
 		if dist < 1.6 and touch_cd <= 0.0:
 			if game.player.has_method("take_damage"):
-				game.player.take_damage(8.0)
-			touch_cd = 0.8
+				game.player.take_damage(6.0)
+			touch_cd = 1.0
 			if anim and anim.has_animation("attack-melee-right"):
 				anim.play("attack-melee-right", 0.1, 1.6)
 	else:

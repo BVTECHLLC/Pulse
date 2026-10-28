@@ -29,18 +29,22 @@ LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" \
 
 | Action | Key |
 | --- | --- |
-| Move | **W A S D** |
-| Look | **Mouse** |
-| Jump | **Space** |
-| Fire bow | **Hold Left Mouse** |
-| Free cursor / re-capture | click in window |
+| Move | **W A S D** / arrow keys |
+| Rotate camera | **Mouse** |
+| Dodge (brief i-frames) | **Space** |
+| Attack | **automatic** — your weapons fire on their own |
 
 ## How it plays
 
-Survive endless waves of **husks**. Each kill grants XP; every level auto-grants
-an upgrade (more HP, faster fire, more damage) and every 8 kills raises the wave,
-which spawns tougher, faster husks. (A pick-your-upgrade screen, classes, and
-meta-progression are the next milestone — see below.)
+Vampire-survivors style: you only **move and dodge** — every weapon fires on its
+own at nearby foes. Kill husks, they drop **soul-shard gems** that you vacuum up
+for XP. On level-up, **pick one of three** perks: a new auto-weapon, an upgrade
+to one you carry, or a passive boost. Survive until **dawn (7:00)** to win. Soul-
+shards bank between runs for a small permanent head-start.
+
+Weapons: **Silver Bolt** (homing-ish bolts), **Bone Spear** (piercing lance),
+**Reaper Scythe** (sweeping ring), **Holy Nova** (big burst), **Chain Smite**
+(lightning that leaps between foes), **Grave Aura** (constant damage field).
 
 ## Project layout
 
@@ -48,26 +52,29 @@ meta-progression are the next milestone — see below.)
 project.godot          # Godot 4.3 project (GL Compatibility renderer, 1280x720)
 scenes/Main.tscn       # entry scene -> scripts/game.gd
 scripts/
-  game.gd              # world build, waves, XP, damage numbers, death FX, HUD
-  player.gd            # third-person archer: movement, camera, jump, bow, anims
+  game.gd              # world, camera rig, waves, gems, timer, win/lose, meta, FX
+  player.gd            # movement + dodge, run stats, weapon list, XP/leveling
+  weapons.gd           # Weapon class: the six auto-firing weapons + scaling
+  projectile.gd        # generic physics-free projectile (bolts, spears)
   enemy.gd             # husk: chase, contact attack, take damage, die (animated)
-  arrow.gd             # bow projectile (physics-free, distance hit)
-  hud.gd               # health + XP bars, wave/kills/level, crosshair
+  upgrades.gd          # level-up pick-a-perk: new weapons / upgrades / passives
+  hud.gd               # timer, kills, level, weapons list, HP + XP bars
 assets/forest/         # Kenney Mini-Forest (CC0): rigged archer, bow, trees, rocks
 assets/pirate/         # Kenney Pirate Kit (CC0): barrels, crates, chests, tower...
 ```
 
 ## Roadmap
 
-- [x] Milestone 1: playable slice — third-person movement, animated enemies,
-      follow camera, bow combat, damage numbers, particles, lighting, HUD, XP.
-- [ ] Upgrade-choice screen (pick 1 of 3 on level-up).
-- [ ] Classes: Rogue / Warrior / Healer, each with unique starting skill.
-- [ ] Meta-progression: XP/currency carries across runs, unlock tree.
-- [ ] Pause + settings menu, main menu, game-over screen.
+- [x] Milestone 1: playable slice — movement, animated enemies, follow camera,
+      combat, damage numbers, particles, lighting, HUD, XP.
+- [x] Moonlit graveyard atmosphere (ghost ship, crypt, tombstones, torches).
+- [x] Milestone 2: true survivors loop — auto-firing weapons, XP gems, pick-a-perk
+      level-ups (weapons + passives), survive-to-dawn timer, win/lose, dodge,
+      persistent soul-shards. Web export + live hosting.
+- [ ] Main menu: pick a class (Rogue / Warrior / Healer) + difficulty (3 levels).
+- [ ] Deeper meta-progression: spend soul-shards to unlock weapons/perks/classes.
 - [ ] Music + SFX.
-- [ ] More weapons / abilities.
-- [ ] Web export + host online.
+- [ ] More weapons / active spells, more enemy types + bosses, more maps.
 - [ ] Multiplayer (authoritative server) — later phase.
 
 ## Credits / license
