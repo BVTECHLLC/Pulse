@@ -33,6 +33,12 @@ _TABS = "".join(
     f'<button class="xp-tab{" on" if i == 0 else ""}" data-cat="{c}">{label}</button>'
     for i, (c, label) in enumerate(CATS))
 
+# festive papel-picado bunting (a traditional cut-paper decoration motif)
+_PAPEL_COLORS = ["#ff5a8c", "#4dd9e6", "#ffd23f", "#8cd958", "#b374f2", "#ff9a3f"]
+_PAPEL = ('<div class="xp-papel" aria-hidden="true">'
+          + "".join(f'<i style="background:{_PAPEL_COLORS[i % 6]}"></i>' for i in range(20))
+          + "</div>")
+
 
 def body() -> str:
     return r"""
@@ -97,6 +103,11 @@ def body() -> str:
   color:#0E0D2C;font-weight:800;font-size:1rem;padding:12px 26px;border-radius:12px}
 .xp-season{display:inline-flex;align-items:center;gap:7px;background:rgba(159,123,255,.14);border:1px solid rgba(159,123,255,.35);
   color:#c89bff;font-weight:800;font-size:.72rem;letter-spacing:.06em;padding:5px 12px;border-radius:999px;margin-bottom:10px}
+/* papel-picado festive bunting */
+.xp-papel{display:flex;gap:2px;height:26px;margin:0 0 16px;overflow:hidden;opacity:.92}
+.xp-papel i{flex:1;height:24px;clip-path:polygon(0 0,100% 0,100% 64%,50% 100%,0 64%);position:relative}
+.xp-papel i::after{content:"";position:absolute;inset:4px 30% 40%;background:rgba(0,0,0,.18);border-radius:50%}
+.xp-greet-season{display:inline-block;margin-left:8px;font-size:1.1rem;vertical-align:middle}
 /* ---- section heads ---- */
 .xp-h{display:flex;align-items:center;gap:10px;margin:0 0 16px}
 .xp-h h2{font-family:var(--fh);font-size:1.15rem;color:var(--white);margin:0;font-weight:800}
@@ -230,11 +241,12 @@ def body() -> str:
 @media(prefers-reduced-motion:reduce){.xp-mkt .scroll{animation:none}.xp-sk.sh{animation:none}}
 </style>
 
+""" + _PAPEL + r"""
 <!-- HERO -->
 <div class="xp-hero">
   <div>
-    <h1 class="xp-hello"><span id="xp-greet">Welcome</span> to Explore</h1>
-    <p class="xp-sub">The fun, useful side of tech — curated by <b>Jordan Polasek</b> at BVTech. No politics, no doomscroll. <span class="xp-clock" id="xp-clock"></span></p>
+    <h1 class="xp-hello"><span id="xp-greet">Welcome</span> to Explore <span class="xp-greet-season">🎃💀🌼</span></h1>
+    <p class="xp-sub">The fun, useful side of tech — curated by <b>Jordan Polasek</b> at BVTech. No politics, no doomscroll. <span style="color:#c89bff">Happy Halloween &amp; Feliz Día de los Muertos!</span> <span class="xp-clock" id="xp-clock"></span></p>
   </div>
   <div class="xp-wx" id="xp-wx" hidden>
     <div class="e" id="xp-wx-e">🌡️</div>
