@@ -4,6 +4,7 @@ extends CharacterBody3D
 # player + reports the kill to the game when it dies.
 
 const GRAVITY := 20.0
+const HUSK_COL := Color(0.82, 0.18, 0.16)  # demonic red; glows faintly at night
 
 var game: Node3D
 var max_hp := 24.0
@@ -45,8 +46,11 @@ func _collect_materials(node: Node) -> void:
 				m = base.duplicate()
 			else:
 				m = StandardMaterial3D.new()
-			# menacing dark-red tint so husks read as enemies, not the hero
-			m.albedo_color = Color(0.85, 0.28, 0.28)
+			# menacing red tint + faint self-glow so husks read at night
+			m.albedo_color = HUSK_COL
+			m.emission_enabled = true
+			m.emission = Color(0.55, 0.06, 0.05)
+			m.emission_energy_multiplier = 1.0
 			mi.set_surface_override_material(i, m)
 			_mats.append(m)
 	for c in node.get_children():
@@ -56,7 +60,7 @@ func _physics_process(delta: float) -> void:
 	touch_cd = max(0.0, touch_cd - delta)
 	if flash > 0.0:
 		flash = max(0.0, flash - delta * 4.0)
-		var c := Color(0.85, 0.28, 0.28).lerp(Color(1, 1, 1), flash)
+		var c := HUSK_COL.lerp(Color(1, 1, 1), flash)
 		for m in _mats:
 			m.albedo_color = c
 
