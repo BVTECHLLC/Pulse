@@ -323,11 +323,11 @@ def body() -> str:
       <p>Our own 3D survivors game — hold the grid against waves of breaches, level up and pick powerful upgrades. Runs right in your browser.</p>
       <span class="go" style="color:#39c0ff">▶ Play Breach Protocol →</span>
     </a>
-    <a class="xp-gcard" href="https://portal.bvtech.org/signal/" style="background:linear-gradient(135deg,rgba(235,111,36,.16),rgba(68,64,219,.16));border-color:rgba(245,190,88,.4)">
-      <div class="k" style="color:var(--o2)">🎮 MULTIPLAYER · HOSTED BY BVTECH</div>
-      <h3>Signal 199X</h3>
-      <p>Jump into our retro-tech multiplayer world — explore, team up and tune the airwaves. Free, in your browser, no install.</p>
-      <span class="go" style="color:var(--o2)">▶ Enter the world →</span>
+    <a class="xp-gcard" href="https://portal.bvtech.org/signal/" style="background:linear-gradient(135deg,rgba(130,40,160,.18),rgba(40,30,70,.2));border-color:rgba(160,110,200,.45)">
+      <div class="k" style="color:#c89bff">🧛 ORIGINAL · VAMPIRE SURVIVORS</div>
+      <h3>Graveyard Shift</h3>
+      <p>Survive the night in our own 3D bullet-heaven — swarms of undead, soul-shard level-ups and tech-flavored blessings, boss after boss till dawn. Free, in your browser.</p>
+      <span class="go" style="color:#c89bff">▶ Start the night shift →</span>
     </a>
   </div>
 </div>

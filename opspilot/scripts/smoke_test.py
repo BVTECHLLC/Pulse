@@ -7947,7 +7947,7 @@ def main():
         (_j100.get_config, _j100._fetch_file, _j100._list_post_paths, _j100._HTTP,
          _j100._KEV_FEED) = _o100
         _cf100.purge_urls = _opu100
-    assert _sr100.REPAIR_EPOCH == "1.107.0"
+    assert _sr100.REPAIR_EPOCH == "1.108.0"
     print("v1.100: KEV as-of-date + title-guided cutoff rebuild news editions exactly; SMB "
           "posts rebuilt from stored/evergreen text; hand-written posts untouched OK")
 
@@ -8082,7 +8082,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.107.0"
+    assert _gs101().APP_VERSION == "1.108.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8191,7 +8191,7 @@ def main():
     finally:
         (_J102.get_config, _J102._fetch_file, _J102._HTTP, _CF102.purge_urls) = _o102b
     # (5) wired into the one-time repair at the new epoch
-    assert _sr100.REPAIR_EPOCH == "1.107.0"
+    assert _sr100.REPAIR_EPOCH == "1.108.0"
     import inspect as _insp102
     assert "destination" in _insp102.getsource(_sr100.run_full_repair)
     print("v1.102: Explore hub, Lightning Labs (edge-graded), 4 new tools, edge API, "
@@ -8263,27 +8263,31 @@ def main():
     print("v1.103: moderation blocks evasions (clean near-misses pass); BVTech Answers "
           "end-to-end (moderation gate, rate limits, votes, ranks, best answer, public feed) OK")
 
-    # ==== v1.104.0: Signal 199X game reverse-proxy ====
-    from app.api.routes import game_proxy as _GP
+    # ==== /signal game hosting (v1.108: Graveyard Shift replaces Signal 199X) ====
     from pathlib import Path as _P104
-    _gsrc = _P104(__file__).resolve().parent.parent / "games" / "signal199x"
-    assert (_gsrc / "server.mjs").exists() and (_gsrc / "public" / "index.html").exists()
-    # game client was patched to subpath-relative paths (no root-absolute /api,/ws)
-    _gjs = (_gsrc / "public" / "game.js").read_text()
-    assert "fetch('/api/" not in _gjs and "${location.host}/ws`" not in _gjs
-    assert "location.pathname.replace" in _gjs            # path-aware WS
-    _gidx = (_gsrc / "public" / "index.html").read_text()
-    assert 'src="/game.js"' not in _gidx and 'href="/style.css"' not in _gidx
-    # proxy routes are registered on the app
+    # /signal is now a static WASM mount (the retired Node proxy is gone)
     _rp = {r.path for r in app.routes}
-    assert "/signal" in _rp and "/signal/{path:path}" in _rp and "/signal/ws" in _rp, _rp
-    assert _GP.GAME_WS.startswith("ws://") and _GP.PUBLIC_ORIGIN.startswith("https://")
-    # bvtech.org link-outs present (Explore + site-wide nav edit)
+    assert "/signal" in _rp, _rp
+    _gv = _P104(__file__).resolve().parent.parent / "games" / "graveyard-web"
+    assert (_gv / "index.html").exists() and (_gv / "mq_js_bundle.js").exists()
+    _gwasm = _gv / "game.wasm"
+    assert _gwasm.exists() and _gwasm.stat().st_size > 50000
+    assert _gwasm.read_bytes()[:4] == b"\x00asm"
+    # the loader bundle carries the strict-mode boot fix
+    assert (_gv / "mq_js_bundle.js").read_text().startswith('"use strict";var register_plugin;')
+    _gvrs = _P104(__file__).resolve().parent.parent / "games" / "graveyard-rs"
+    assert (_gvrs / "Cargo.toml").exists() and "macroquad" in (_gvrs / "Cargo.toml").read_text()
+    _gvmain = (_gvrs / "src" / "main.rs").read_text()
+    assert "fn billboard(" in _gvmain and "fn build_art(" in _gvmain, "sprite game missing"
+    # portal relaxes wasm CSP for /signal as well as /arena
+    _mainsrc2 = (_P104(__file__).resolve().parent.parent / "app" / "main.py").read_text()
+    assert '("/arena", "/signal")' in _mainsrc2, "signal CSP not relaxed"
+    # bvtech.org link-outs: Explore card is now Graveyard Shift, still at /signal/
     from app.services import pages_explore as _PEx, destination as _DEx
-    assert "portal.bvtech.org/signal/" in _PEx.body()
+    assert "portal.bvtech.org/signal/" in _PEx.body() and "Graveyard Shift" in _PEx.body()
     assert any("portal.bvtech.org/signal" in _m[0] for _m in _DEx.NAV_EDITS)
-    print("v1.104: Signal 199X game vendored + patched for subpath; portal HTTP+WS "
-          "reverse-proxy at /signal/; linked from Explore + site-wide nav OK")
+    print("v1.108: Graveyard Shift (vampire-survivors, Rust->WASM) served statically at "
+          "/signal with scoped wasm CSP, boot-fixed loader, linked from Explore + nav OK")
 
     # ==== v1.104.1: Tech Dispatch (original takes on the news) ====
     from app.services import news_digest as _ND
@@ -8335,7 +8339,7 @@ def main():
     # portal serves it and relaxes CSP for WASM, scoped to /arena only
     assert any(getattr(r, "path", "") == "/arena" for r in app.routes), "arena mount missing"
     _mainsrc = (_P105(__file__).resolve().parent.parent / "app" / "main.py").read_text()
-    assert "'wasm-unsafe-eval'" in _mainsrc and 'startswith("/arena")' in _mainsrc
+    assert "'wasm-unsafe-eval'" in _mainsrc and '"/arena"' in _mainsrc
     assert 'add_type("application/wasm"' in _mainsrc
     # link-outs present on bvtech.org
     from app.services import pages_explore as _PEa, destination as _DEa
@@ -8357,8 +8361,8 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.107.0"
-    assert _sr100.REPAIR_EPOCH == "1.107.0"   # forces Explore republish to bvtech.org
+    assert _gs101().APP_VERSION == "1.108.0"
+    assert _sr100.REPAIR_EPOCH == "1.108.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
 
@@ -8380,7 +8384,7 @@ def main():
           "The BVTech Take from our own posts, forecast, trending, tools); runtime header "
           "clearance; new worker markets/takes endpoints OK")
 
-    print("\n=== OpsPilot v1.107.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.108.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

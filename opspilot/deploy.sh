@@ -42,11 +42,10 @@ REPO_VER=$(grep -oP 'APP_VERSION: str = "\K[^"]+' "$COMPOSE_DIR/app/core/config.
 cd "$COMPOSE_DIR"
 log "building api image..."
 docker compose up -d --build api 2>&1 | tail -3 | sed 's/^/  /' || log "WARN: build/up failed"
-# v1.104: the Signal 199X game service (stock node image + mounted source; no
-# build). Idempotent — a no-op when already running, picks up new game source on
-# each deploy. Never aborts the api deploy if the game has trouble.
-log "starting game service..."
-docker compose up -d game 2>&1 | tail -2 | sed 's/^/  /' || log "WARN: game up failed"
+# v1.108: the games (/arena, /signal) are static WASM bundles bind-mounted into
+# the api container, so rebuilding api above already picks up new game builds.
+# Stop the retired Signal 199X node service if it is still running (idempotent).
+docker compose stop game 2>/dev/null; docker compose rm -f game 2>/dev/null || true
 log "applying migrations..."
 docker compose exec -T api alembic upgrade head 2>&1 | tail -5 | sed 's/^/  /' || log "WARN: alembic failed"
 docker compose restart api >/dev/null 2>&1 || log "WARN: restart failed"

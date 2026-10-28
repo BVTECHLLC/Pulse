@@ -30,34 +30,13 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    # v1.105: serve the Rust/WASM game bundle statically from the portal (/arena).
+    # Serve the Rust/WASM games statically from the portal (/arena, /signal).
     volumes:
       - ./games/arena-web:/app/games/arena-web:ro
+      - ./games/graveyard-web:/app/games/graveyard-web:ro
     # No host port published — Caddy (or cloudflared) reaches it on the internal network.
     expose:
       - "8000"
-
-  # Signal 199X — the self-hosted Node game (v1.104). Pure-stdlib Node 24
-  # (node:sqlite), source mounted read-only, SQLite in a writable volume. Not
-  # publicly exposed: the portal reverse-proxies it at /signal/ (see
-  # app/api/routes/game_proxy.py), so no extra DNS/TLS/tunnel is needed.
-  game:
-    image: node:24
-    restart: unless-stopped
-    working_dir: /game
-    command: ["node", "server.mjs"]
-    environment:
-      NODE_ENV: production
-      HOST: 0.0.0.0
-      PORT: "3000"
-      TRUST_PROXY: "true"
-      ALLOWED_ORIGINS: "https://portal.bvtech.org"
-      DATA_DIR: /data
-    volumes:
-      - ./games/signal199x:/game:ro
-      - gamedata:/data
-    expose:
-      - "3000"
 
   caddy:
     image: caddy:2-alpine
@@ -77,4 +56,3 @@ volumes:
   redisdata:
   caddydata:
   caddyconfig:
-  gamedata:

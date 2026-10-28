@@ -23,7 +23,7 @@ from .api.routes import (
     campaigns, remote, quickbooks, gbp, hubspot, docs, payments, dialer, posture,
     remediation, inventory, autopost, setup, ai, branding, practice, status, users,
     library, academy, website, patching, copilot, psa, vcio, autonomy, incidents,
-    content_autopilot, browser, public_tools, onboarding, answers, game_proxy,
+    content_autopilot, browser, public_tools, onboarding, answers,
 )
 
 _s = get_settings()
@@ -40,6 +40,11 @@ _mime.add_type("application/wasm", ".wasm")
 _arena_dir = Path(__file__).resolve().parent.parent / "games" / "arena-web"
 if _arena_dir.is_dir():
     app.mount("/arena", StaticFiles(directory=str(_arena_dir), html=True), name="arena")
+# v1.108: Graveyard Shift (our vampire-survivors game, Rust -> WebAssembly) is
+# served statically at /signal, replacing the old Signal 199X proxy.
+_signal_dir = Path(__file__).resolve().parent.parent / "games" / "graveyard-web"
+if _signal_dir.is_dir():
+    app.mount("/signal", StaticFiles(directory=str(_signal_dir), html=True), name="signal")
 
 
 # --------------------------------------------------------------------------- #
@@ -68,7 +73,7 @@ async def security_headers(request: Request, call_next):
         # worker-src blob: powers the Code Dojo sandbox — the learner's own code runs
         # in a terminable Web Worker (their browser, their risk), never on our server.
         "script-src 'self' 'unsafe-inline'"
-        + (" 'wasm-unsafe-eval'" if request.url.path.startswith("/arena") else "")
+        + (" 'wasm-unsafe-eval'" if request.url.path.startswith(("/arena", "/signal")) else "")
         + "; worker-src 'self' blob:; "
         "frame-src 'self' blob:; frame-ancestors 'none'"
     )
@@ -194,7 +199,6 @@ app.include_router(patching.router)
 app.include_router(copilot.router)
 app.include_router(public_tools.router)
 app.include_router(answers.router)
-app.include_router(game_proxy.router)
 
 
 # --- BVTech Answers community pages (server-rendered, same-origin session auth) ---

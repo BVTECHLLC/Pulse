@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>BVTech: Graveyard Shift — a Rust/WASM vampire-survivors game</title>
+<meta name="description" content="Survive the night in Graveyard Shift — a BVTech original 3D vampire-survivors game built in Rust and WebAssembly. Free to play in your browser.">
+<style>
+  html,body{margin:0;height:100%;background:#05060f;overflow:hidden;font-family:system-ui,sans-serif}
+  #glcanvas{display:block;width:100vw;height:100vh;outline:none}
+  #boot{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+        background:radial-gradient(circle at 50% 35%,#15102e,#05060f);color:#cfe3d0;z-index:5;transition:opacity .5s}
+  #boot h1{font-size:clamp(1.6rem,5vw,2.7rem);margin:0 0 6px;letter-spacing:.04em;
+           background:linear-gradient(90deg,#9f7bff,#8be08f);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  #boot p{opacity:.72;margin:4px 0;font-size:.95rem}
+  #boot .bar{width:220px;height:6px;border-radius:99px;background:rgba(255,255,255,.1);margin-top:16px;overflow:hidden}
+  #boot .bar i{display:block;height:100%;width:30%;background:linear-gradient(90deg,#9f7bff,#8be08f);animation:ld 1.1s infinite}
+  @keyframes ld{0%{margin-left:-30%}100%{margin-left:100%}}
+  #boot a{color:#9f7bff;font-size:.8rem;margin-top:18px;text-decoration:none}
+</style>
+</head>
+<body>
+<canvas id="glcanvas" tabindex="0"></canvas>
+<div id="boot">
+  <h1>BVTech: Graveyard Shift</h1>
+  <p>Raising the dead…</p>
+  <p style="font-size:.85rem;opacity:.6">Survive the night · auto-attack · level up and pick blessings · outlast the bosses</p>
+  <p style="font-size:.8rem;opacity:.45">A BVTech original · Rust + WebAssembly · needs a modern browser with WebGL</p>
+  <div class="bar"><i></i></div>
+  <a href="https://bvtech.org/">← back to bvtech.org</a>
+</div>
+<script src="mq_js_bundle.js"></script>
+<script>
+  function hideBoot(){var b=document.getElementById("boot");if(b){b.style.opacity=0;setTimeout(function(){b.remove();},600);}}
+  load("game.wasm");
+  setTimeout(hideBoot, 1500);
+  window.addEventListener("error", function(){var b=document.getElementById("boot");if(b)b.querySelector("p").textContent="Could not start — try a desktop Chrome/Firefox/Edge.";});
+</script>
+</body>
+</html>
