@@ -8280,6 +8280,11 @@ def main():
     _mainsrc2 = (_P104(__file__).resolve().parent.parent / "app" / "main.py").read_text()
     assert '"games" / "graveyard-3d"' in _mainsrc2, "mount not repointed to 3D build"
     assert '("/arena", "/graveyard-shift")' in _mainsrc2, "game CSP not relaxed"
+    # the Dockerfile copies only app/migrations/agent, so the game dir MUST be
+    # bind-mounted into the api container or it won't exist there at runtime.
+    _compose = (_P104(__file__).resolve().parent.parent / "docker-compose.yml").read_text()
+    assert "./games/graveyard-3d:/app/games/graveyard-3d" in _compose, \
+        "graveyard-3d not bind-mounted in docker-compose (would fall back to arcade build)"
     # the complete editable Godot project is in the repo
     _gdp = _P104(__file__).resolve().parent.parent / "games" / "graveyard-shift-godot"
     assert (_gdp / "project.godot").exists() and (_gdp / "scripts" / "game.gd").exists()

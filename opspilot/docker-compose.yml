@@ -30,10 +30,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    # Serve the Rust/WASM games statically from the portal (/arena, /signal).
+    # Serve the WASM games statically from the portal. The Dockerfile copies
+    # only app/migrations/agent, so each game dir MUST be bind-mounted here or
+    # it won't exist in the container. graveyard-3d is the live Godot build;
+    # graveyard-web is the archived macroquad arcade build (fallback).
     volumes:
       - ./games/arena-web:/app/games/arena-web:ro
       - ./games/graveyard-web:/app/games/graveyard-web:ro
+      - ./games/graveyard-3d:/app/games/graveyard-3d:ro
     # No host port published — Caddy (or cloudflared) reaches it on the internal network.
     expose:
       - "8000"
