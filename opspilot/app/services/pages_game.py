@@ -43,7 +43,7 @@ def _cards(items):
 
 
 def body() -> str:
-    return r"""
+    return (r"""
 <section class="gs">
 <style>
 .gs{--o:#EB6F24;--o2:#F5BE58;--pp:#9f7bff;max-width:1060px;margin:0 auto;padding:110px 18px 90px}
@@ -134,4 +134,4 @@ def body() -> str:
 </div>
 <p class="gs-note">Graveyard Shift is an original BVTech game — all art, characters and code are our own. Built in Texas by Jordan Polasek. Happy Halloween! 🦇</p>
 </section>
-""".replace("__PLAY__", PLAY)
+""").replace("__PLAY__", PLAY)

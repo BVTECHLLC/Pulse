@@ -7947,7 +7947,7 @@ def main():
         (_j100.get_config, _j100._fetch_file, _j100._list_post_paths, _j100._HTTP,
          _j100._KEV_FEED) = _o100
         _cf100.purge_urls = _opu100
-    assert _sr100.REPAIR_EPOCH == "1.111.0"
+    assert _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.100: KEV as-of-date + title-guided cutoff rebuild news editions exactly; SMB "
           "posts rebuilt from stored/evergreen text; hand-written posts untouched OK")
 
@@ -8082,7 +8082,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.111.0"
+    assert _gs101().APP_VERSION == "1.112.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8192,7 +8192,7 @@ def main():
     finally:
         (_J102.get_config, _J102._fetch_file, _J102._HTTP, _CF102.purge_urls) = _o102b
     # (5) wired into the one-time repair at the new epoch
-    assert _sr100.REPAIR_EPOCH == "1.111.0"
+    assert _sr100.REPAIR_EPOCH == "1.112.0"
     import inspect as _insp102
     assert "destination" in _insp102.getsource(_sr100.run_full_repair)
     print("v1.102: Explore hub, Lightning Labs (edge-graded), 4 new tools, edge API, "
@@ -8361,8 +8361,8 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.111.0"
-    assert _sr100.REPAIR_EPOCH == "1.111.0"   # forces Explore republish to bvtech.org
+    assert _gs101().APP_VERSION == "1.112.0"
+    assert _sr100.REPAIR_EPOCH == "1.112.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
 
@@ -8397,7 +8397,7 @@ def main():
     assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
     # site nav points to the game home
     assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
-    assert _gs101().APP_VERSION == "1.111.0" and _sr100.REPAIR_EPOCH == "1.111.0"
+    assert _gs101().APP_VERSION == "1.112.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
           "Explore features it with a Halloween hero, republish forced OK")
 
@@ -8416,12 +8416,12 @@ def main():
     assert _gv2wasm.exists() and _gv2wasm.stat().st_size > 50000 and _gv2wasm.read_bytes()[:4] == b"\x00asm"
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
-    assert "xp-papel" in _xp3 and "Día de los Muertos" in _xp3, "festive Explore theme missing"
-    assert _gs101().APP_VERSION == "1.111.0" and _sr100.REPAIR_EPOCH == "1.111.0"
+    assert "xp-papel" in _xp3 and "Happy Halloween" in _xp3, "spooky Explore theme missing"
+    assert _gs101().APP_VERSION == "1.112.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
 
-    print("\n=== OpsPilot v1.111.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.112.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

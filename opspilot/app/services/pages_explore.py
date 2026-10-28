@@ -33,8 +33,8 @@ _TABS = "".join(
     f'<button class="xp-tab{" on" if i == 0 else ""}" data-cat="{c}">{label}</button>'
     for i, (c, label) in enumerate(CATS))
 
-# festive papel-picado bunting (a traditional cut-paper decoration motif)
-_PAPEL_COLORS = ["#ff5a8c", "#4dd9e6", "#ffd23f", "#8cd958", "#b374f2", "#ff9a3f"]
+# spooky Halloween bunting — orange / purple / black pennants
+_PAPEL_COLORS = ["#e8721f", "#6a2fa0", "#241a33", "#c2410c", "#4a1d6e", "#1c1430"]
 _PAPEL = ('<div class="xp-papel" aria-hidden="true">'
           + "".join(f'<i style="background:{_PAPEL_COLORS[i % 6]}"></i>' for i in range(20))
           + "</div>")
@@ -245,8 +245,8 @@ def body() -> str:
 <!-- HERO -->
 <div class="xp-hero">
   <div>
-    <h1 class="xp-hello"><span id="xp-greet">Welcome</span> to Explore <span class="xp-greet-season">🎃💀🌼</span></h1>
-    <p class="xp-sub">The fun, useful side of tech — curated by <b>Jordan Polasek</b> at BVTech. No politics, no doomscroll. <span style="color:#c89bff">Happy Halloween &amp; Feliz Día de los Muertos!</span> <span class="xp-clock" id="xp-clock"></span></p>
+    <h1 class="xp-hello"><span id="xp-greet">Welcome</span> to Explore <span class="xp-greet-season">🎃👻🦇</span></h1>
+    <p class="xp-sub">The fun, useful side of tech — curated by <b>Jordan Polasek</b> at BVTech. No politics, no doomscroll. <span style="color:#e8721f">Happy Halloween! 👻</span> <span class="xp-clock" id="xp-clock"></span></p>
   </div>
   <div class="xp-wx" id="xp-wx" hidden>
     <div class="e" id="xp-wx-e">🌡️</div>
