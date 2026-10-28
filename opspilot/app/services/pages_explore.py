@@ -1,17 +1,29 @@
-"""The BVTech Explore hub (/explore/) — a friendly "front page of the internet"
-for bvtech.org (v1.102): positive tech / Tesla / space / AI / science headlines,
-a NASA photo, upcoming rocket launches, local weather, "on this day in tech", a
-daily trivia game and a tip — all pulled live by the site Worker (/tools-api/*)
-and rendered client-side. Headlines link OUT to the publisher (no copied text,
-so Google sees a curated link hub, not scraped content). Styled with the site's
-own CSS variables; all script is inline (the site CSP allows 'self'/'unsafe-inline').
+"""The BVTech Explore hub (/explore/) — our own "front page of tech" for
+bvtech.org (v1.106): an impressive, Yahoo-style portal built in BVTech's brand.
+
+What's on it:
+  * A hero with greeting, live clock and the reader's local weather + forecast.
+  * A live tech-markets ticker (big-tech stocks + crypto), free & keyless.
+  * "The BVTech Take" — our OWN original commentary on the day's news (the daily
+    Tech Dispatch), written as Jordan Polasek, with every source cited inside.
+    Explore links readers to our authored takes, never to scraped article text.
+  * Latest headlines by category (link OUT to the publisher), trending on HN,
+    the NASA photo, upcoming rocket launches, "on this day in tech", a daily
+    trivia game, BVTech Answers, our two browser games and the free tools.
+
+Everything dynamic is pulled live by the site Worker (/tools-api/*) and rendered
+client-side; the page is styled with the site's own CSS variables and all script
+is inline (the site CSP allows 'self'/'unsafe-inline'). The top padding is set
+from the real header height on load, so the fixed site banner can never clip the
+hero again.
 """
 from __future__ import annotations
 
-TITLE = "Explore — Tech, Space, EVs, AI & Good News | BVTech"
-DESC = ("Your friendly front page for technology: the day's best tech, Tesla, space, "
-        "AI and science headlines, a NASA photo, rocket launches, a daily tech-trivia "
-        "game and more — curated by Jordan Polasek at BVTech. No politics, no doomscroll.")
+TITLE = "Explore — Tech, Space, EVs, AI, Markets & Good News | BVTech"
+DESC = ("Your front page for technology: live tech-market prices, the day's best "
+        "tech, Tesla, space, AI and science news, our own original take on the "
+        "headlines, a NASA photo, rocket launches, a daily tech game and more — "
+        "curated by Jordan Polasek at BVTech. No politics, no doomscroll.")
 
 CATS = [("tech", "💻 Tech"), ("tesla", "⚡ Tesla & EVs"), ("space", "🚀 Space"),
         ("ai", "🤖 AI"), ("science", "🔬 Science"), ("gadgets", "📱 Gadgets"),
@@ -24,53 +36,110 @@ _TABS = "".join(
 
 def body() -> str:
     return r"""
-<section class="xp">
+<section class="xp" id="xp">
 <style>
-.xp{--o:#EB6F24;--o2:#F5BE58;max-width:1160px;margin:0 auto;padding:104px 18px 90px}
-.xp-hero{scroll-margin-top:90px}
-.xp-hero{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;margin:0 0 14px}
-.xp-hello{font-family:var(--fh);font-size:clamp(1.7rem,4vw,2.5rem);font-weight:800;color:var(--white);margin:0;line-height:1.1}
+.xp{--o:#EB6F24;--o2:#F5BE58;--up:#26C485;--dn:#ff6b6b;max-width:1160px;margin:0 auto;padding:104px 18px 100px}
+@media(max-width:700px){.xp{padding-top:84px}}
+.xp *{box-sizing:border-box}
+.xp a{text-decoration:none}
+/* ---- hero ---- */
+.xp-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;margin:0 0 20px}
+.xp-hello{font-family:var(--fh);font-size:clamp(1.9rem,4.4vw,2.9rem);font-weight:800;color:var(--white);margin:0;line-height:1.05;letter-spacing:-.01em}
 .xp-hello span{background:linear-gradient(90deg,var(--o),var(--o2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.xp-sub{color:var(--muted);margin:8px 0 0;font-size:.98rem}
-.xp-wx{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 16px;min-width:200px}
-.xp-wx .t{font-size:1.9rem;font-weight:800;color:var(--white);font-family:var(--fh);line-height:1}
-.xp-wx .e{font-size:2rem;line-height:1}
-.xp-wx .m{color:var(--muted);font-size:.8rem;line-height:1.35}
-.xp-clock{color:var(--o2);font-variant-numeric:tabular-nums}
-.xp-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:22px;margin-top:22px;align-items:start}
+.xp-sub{color:var(--muted);margin:10px 0 0;font-size:1rem;line-height:1.5}
+.xp-sub b{color:var(--text)}
+.xp-clock{color:var(--o2);font-variant-numeric:tabular-nums;font-weight:700}
+.xp-wx{display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,rgba(68,64,219,.16),rgba(235,111,36,.10));border:1px solid var(--border);border-radius:16px;padding:14px 18px;min-width:230px}
+.xp-wx .e{font-size:2.4rem;line-height:1}
+.xp-wx .t{font-size:2.1rem;font-weight:800;color:var(--white);font-family:var(--fh);line-height:1}
+.xp-wx .m{color:var(--muted);font-size:.8rem;line-height:1.4;margin-top:2px}
+.xp-wx .p{color:var(--o2);font-size:.72rem;font-weight:700;margin-top:3px}
+/* ---- search + section nav ---- */
+.xp-bar{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:0 0 20px}
+.xp-search{display:flex;flex:1;min-width:240px;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.xp-search input{flex:1;background:transparent;border:0;outline:0;color:var(--white);font-size:.95rem;padding:12px 16px;font-family:var(--fb)}
+.xp-search input::placeholder{color:var(--muted)}
+.xp-search button{background:linear-gradient(135deg,var(--o),var(--o2));color:#0E0D2C;border:0;font-weight:800;padding:0 20px;cursor:pointer;font-size:.9rem}
+.xp-nav{display:flex;gap:8px;flex-wrap:wrap}
+.xp-nav a{color:var(--muted);font-size:.84rem;font-weight:700;padding:9px 14px;border-radius:999px;border:1px solid var(--border);transition:.15s}
+.xp-nav a:hover{color:var(--white);border-color:var(--o)}
+/* ---- markets ticker ---- */
+.xp-mkt{display:flex;align-items:stretch;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--card);margin:0 0 26px}
+.xp-mkt .lab{flex-shrink:0;display:flex;align-items:center;gap:7px;padding:0 16px;background:linear-gradient(135deg,var(--o),var(--o2));color:#0E0D2C;font-weight:800;font-size:.72rem;letter-spacing:.1em;white-space:nowrap}
+.xp-mkt .lab .dot{width:7px;height:7px;border-radius:50%;background:#0E0D2C;animation:xp-pulse 1.6s infinite}
+@keyframes xp-pulse{0%{opacity:1}50%{opacity:.25}100%{opacity:1}}
+.xp-mkt .track{flex:1;overflow:hidden;position:relative;-webkit-mask-image:linear-gradient(to right,transparent,#000 3%,#000 97%,transparent);mask-image:linear-gradient(to right,transparent,#000 3%,#000 97%,transparent)}
+.xp-mkt .scroll{display:inline-flex;align-items:center;gap:26px;padding:12px 20px;white-space:nowrap;animation:xp-marquee 48s linear infinite}
+.xp-mkt:hover .scroll{animation-play-state:paused}
+@keyframes xp-marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+.xp-q{font-size:.86rem;color:var(--text);font-variant-numeric:tabular-nums}
+.xp-q b{color:var(--white);font-weight:800;margin-right:7px;font-family:var(--fh)}
+.xp-q .up{color:var(--up);font-weight:700}.xp-q .dn{color:var(--dn);font-weight:700}
+/* ---- section heads ---- */
+.xp-h{display:flex;align-items:center;gap:10px;margin:0 0 16px}
+.xp-h h2{font-family:var(--fh);font-size:1.15rem;color:var(--white);margin:0;font-weight:800}
+.xp-h .pre{width:4px;height:20px;border-radius:3px;background:linear-gradient(var(--o),var(--o2))}
+.xp-h .live{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:.68rem;font-weight:800;letter-spacing:.1em;color:var(--o2)}
+.xp-h .live .dot{width:7px;height:7px;border-radius:50%;background:var(--up);animation:xp-pulse 1.6s infinite}
+/* ---- the BVTech take ---- */
+.xp-take-band{margin:0 0 30px}
+.xp-take-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:20px}
+@media(max-width:860px){.xp-take-grid{grid-template-columns:1fr}}
+.xp-take-feat{display:block;border-radius:18px;border:1px solid rgba(245,190,88,.28);background:linear-gradient(145deg,rgba(235,111,36,.14),rgba(68,64,219,.12));padding:28px 30px;transition:.18s}
+.xp-take-feat:hover{transform:translateY(-2px);border-color:rgba(245,190,88,.55)}
+.xp-kick{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--o2);font-weight:800;display:flex;align-items:center;gap:8px}
+.xp-take-feat h3{font-family:var(--fh);color:var(--white);font-size:clamp(1.3rem,2.6vw,1.75rem);line-height:1.22;margin:12px 0 10px;letter-spacing:-.01em}
+.xp-take-feat p{color:var(--text);font-size:1rem;line-height:1.65;margin:0 0 16px}
+.xp-take-feat .by{color:var(--muted);font-size:.82rem}.xp-take-feat .by b{color:var(--o2)}
+.xp-take-feat .go{display:inline-block;margin-top:14px;color:var(--o2);font-weight:800;font-size:.95rem}
+.xp-take-more{display:flex;flex-direction:column;gap:12px}
+.xp-take-mini{display:block;border:1px solid var(--border);border-radius:14px;background:var(--card);padding:16px 18px;transition:.15s}
+.xp-take-mini:hover{border-color:var(--o);transform:translateY(-2px)}
+.xp-take-mini .d{font-size:.68rem;letter-spacing:.08em;color:var(--o2);font-weight:800;text-transform:uppercase}
+.xp-take-mini h4{color:var(--white);font-family:var(--fh);font-size:1rem;line-height:1.3;margin:6px 0 5px}
+.xp-take-mini p{color:var(--muted);font-size:.84rem;line-height:1.5;margin:0}
+/* ---- main grid ---- */
+.xp-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:24px;align-items:start}
 .xp-main,.xp-side{min-width:0}
 @media(max-width:900px){.xp-grid{grid-template-columns:1fr}}
-@media(max-width:700px){.xp{padding-top:84px}}
-.xp-ticker{display:flex;align-items:stretch;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--card);margin:0 0 22px}
-.xp-ticker .lab{flex-shrink:0;display:flex;align-items:center;gap:7px;padding:10px 16px;background:linear-gradient(135deg,var(--o),var(--o2));color:#0E0D2C;font-weight:800;font-size:.72rem;letter-spacing:.1em;white-space:nowrap}
-.xp-ticker .lab .dot{width:7px;height:7px;border-radius:50%;background:#0E0D2C;animation:xp-pulse 1.6s infinite}
-@keyframes xp-pulse{0%{opacity:1}50%{opacity:.3}100%{opacity:1}}
-.xp-ticker .track{flex:1;overflow:hidden;position:relative;-webkit-mask-image:linear-gradient(to right,transparent,#000 3%,#000 97%,transparent);mask-image:linear-gradient(to right,transparent,#000 3%,#000 97%,transparent)}
-.xp-ticker .scroll{display:inline-flex;align-items:center;gap:30px;padding:10px 20px;white-space:nowrap;animation:xp-marquee 60s linear infinite}
-.xp-ticker:hover .scroll{animation-play-state:paused}
-@keyframes xp-marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
-.xp-ticker a{color:var(--text);text-decoration:none;font-size:.86rem}.xp-ticker a:hover{color:var(--o2)}
-.xp-ticker a b{color:var(--o2);font-weight:700;margin-right:6px}
 .xp-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-.xp-tab{font-family:var(--fb);font-size:.86rem;font-weight:700;padding:7px 14px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;transition:.15s}
+.xp-tab{font-family:var(--fb);font-size:.84rem;font-weight:700;padding:8px 14px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;transition:.15s}
 .xp-tab:hover{border-color:var(--o)}
 .xp-tab.on{background:linear-gradient(90deg,var(--o),var(--o2));color:#0E0D2C;border-color:transparent}
-.xp-feat{display:block;border-radius:16px;border:1px solid var(--border);background:linear-gradient(150deg,rgba(235,111,36,.10),rgba(68,64,219,.08));padding:24px 26px;margin-bottom:14px;text-decoration:none}
+.xp-feat{display:block;border-radius:16px;border:1px solid var(--border);background:linear-gradient(150deg,rgba(235,111,36,.10),rgba(68,64,219,.08));padding:22px 24px;margin-bottom:12px;transition:.15s}
+.xp-feat:hover{transform:translateY(-2px);border-color:rgba(245,190,88,.4)}
 .xp-feat .src{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--o2);font-weight:800}
-.xp-feat h3{color:var(--white);font-size:1.3rem;line-height:1.3;margin:8px 0 6px;font-family:var(--fh)}
-.xp-feat p{color:var(--muted);margin:0;font-size:.92rem;line-height:1.6}
+.xp-feat h3{color:var(--white);font-size:1.3rem;line-height:1.3;margin:8px 0 0;font-family:var(--fh)}
 .xp-list{display:flex;flex-direction:column;gap:2px}
-.xp-item{display:flex;gap:14px;align-items:baseline;padding:13px 14px;border-radius:11px;text-decoration:none;border:1px solid transparent;transition:.12s}
+.xp-item{display:flex;gap:14px;align-items:baseline;padding:13px 14px;border-radius:11px;border:1px solid transparent;transition:.12s}
 .xp-item:hover{background:var(--card);border-color:var(--border)}
 .xp-item .n{color:var(--o2);font-weight:800;font-family:var(--fh);font-size:.95rem;flex:0 0 1.4em;text-align:right}
 .xp-item .b{min-width:0}
 .xp-item h4{color:var(--white);font-size:1rem;line-height:1.4;margin:0;font-weight:600}
 .xp-item .meta{color:var(--muted);font-size:.78rem;margin-top:3px}
 .xp-item:hover h4{color:var(--o2)}
-.xp-card{border-radius:16px;border:1px solid var(--border);background:var(--card);padding:20px;margin-bottom:18px}
-.xp-card h3{margin:0 0 12px;color:var(--white);font-family:var(--fh);font-size:1.05rem;display:flex;align-items:center;gap:8px}
+/* ---- cards ---- */
+.xp-card{border-radius:16px;border:1px solid var(--border);background:var(--card);padding:20px;margin-bottom:18px;transition:.15s}
+.xp-card.lift:hover{transform:translateY(-2px);border-color:rgba(245,190,88,.35)}
+.xp-card h3{margin:0 0 14px;color:var(--white);font-family:var(--fh);font-size:1.05rem;display:flex;align-items:center;gap:8px}
 .xp-card h3 .tag{margin-left:auto;font-size:.66rem;font-weight:800;letter-spacing:.08em;color:var(--o2);border:1px solid var(--border);border-radius:999px;padding:2px 9px}
-.xp-photo img{width:100%;border-radius:12px;display:block;max-height:240px;object-fit:cover;background:var(--bg3)}
+/* markets mini */
+.xp-mrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border)}
+.xp-mrow:first-of-type{border-top:0}
+.xp-mrow .sym{font-family:var(--fh);font-weight:800;color:var(--white);font-size:.92rem;flex:0 0 52px}
+.xp-mrow .nm{color:var(--muted);font-size:.78rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.xp-mrow .px{color:var(--text);font-size:.88rem;font-variant-numeric:tabular-nums;text-align:right}
+.xp-mrow .ch{font-size:.8rem;font-weight:700;font-variant-numeric:tabular-nums;flex:0 0 66px;text-align:right}
+.xp-mrow .ch.up{color:var(--up)}.xp-mrow .ch.dn{color:var(--dn)}
+/* weather forecast */
+.xp-fc{display:flex;gap:8px}
+.xp-fc .d{flex:1;text-align:center;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:9px 4px}
+.xp-fc .d .dn{font-size:.68rem;color:var(--muted);text-transform:uppercase;font-weight:700}
+.xp-fc .d .ic{font-size:1.3rem;margin:3px 0}
+.xp-fc .d .hl{font-size:.74rem;color:var(--text)}
+.xp-fc .d .hl b{color:var(--white)}
+/* photo / launches / otd */
+.xp-photo img{width:100%;border-radius:12px;display:block;max-height:220px;object-fit:cover;background:var(--bg3)}
 .xp-photo .cap{color:var(--muted);font-size:.8rem;margin-top:9px;line-height:1.5}
 .xp-photo .cap b{color:var(--text)}
 .xp-launch{display:flex;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--border)}
@@ -82,7 +151,12 @@ def body() -> str:
 .xp-launch .i p{margin:2px 0 0;color:var(--muted);font-size:.76rem}
 .xp-otd li{color:var(--text);font-size:.9rem;line-height:1.5;margin:0 0 10px;list-style:none;padding-left:52px;position:relative;min-height:1.2em}
 .xp-otd li b{position:absolute;left:0;top:0;color:var(--o2);font-family:var(--fh);font-weight:800}
-.xp-otd a{color:inherit;text-decoration:none}.xp-otd a:hover{color:var(--o2)}
+.xp-otd a{color:inherit}.xp-otd a:hover{color:var(--o2)}
+/* trending */
+.xp-tr a{display:flex;gap:10px;align-items:baseline;padding:9px 0;border-top:1px solid var(--border);color:var(--text);font-size:.86rem;line-height:1.4}
+.xp-tr a:first-child{border-top:0}.xp-tr a:hover{color:var(--o2)}
+.xp-tr .n{color:var(--o2);font-weight:800;font-family:var(--fh);flex:0 0 1.2em}
+/* game */
 .xp-game .q{color:var(--white);font-size:1.02rem;font-weight:600;line-height:1.4;margin:0 0 14px}
 .xp-opt{display:block;width:100%;text-align:left;padding:11px 14px;margin:0 0 8px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,.02);color:var(--text);font-size:.92rem;cursor:pointer;transition:.12s;font-family:inherit}
 .xp-opt:hover:not(:disabled){border-color:var(--o)}
@@ -95,95 +169,191 @@ def body() -> str:
 .xp-game .d-Easy{background:rgba(38,196,133,.16);color:#6fe0b4}.xp-game .d-Med{background:rgba(245,190,88,.16);color:#F5BE58}.xp-game .d-Hard{background:rgba(229,72,77,.16);color:#ff8d8f}
 .xp-game .streak{margin-left:auto;font-size:.76rem;color:var(--o2);font-weight:700}
 .xp-why{color:var(--muted);font-size:.86rem;line-height:1.55;margin:12px 0 0;padding:12px 14px;border-radius:10px;background:rgba(68,64,219,.1);border:1px solid var(--border)}
-.xp-tip{color:var(--text);font-size:.94rem;line-height:1.6}
-.xp-tip b{color:var(--o2)}
-.xp-ans a.row{display:block;padding:9px 0;border-top:1px solid var(--border);color:var(--text);font-size:.88rem;line-height:1.4;text-decoration:none}
-.xp-ans a.row:first-child{border-top:0}
-.xp-ans a.row:hover{color:var(--o2)}
-.xp-ans .m{color:var(--muted);font-size:.74rem;margin-top:2px}
-.xp-ans .s{color:var(--green)}
-.xp-cta{margin-top:30px;border-radius:18px;padding:30px 28px;background:linear-gradient(135deg,rgba(68,64,219,.2),rgba(235,111,36,.14));border:1px solid rgba(245,190,88,.3);text-align:center}
-.xp-cta h2{color:var(--white);font-family:var(--fh);margin:0 0 8px;font-size:clamp(1.3rem,3vw,1.8rem)}
-.xp-cta p{color:var(--text);margin:0 auto 18px;max-width:560px;line-height:1.6}
-.xp-cta a{display:inline-block;margin:5px;padding:12px 22px;border-radius:10px;font-weight:800;text-decoration:none}
+.xp-tip{color:var(--text);font-size:.94rem;line-height:1.6}.xp-tip b{color:var(--o2)}
+/* answers */
+.xp-ans a.row{display:block;padding:9px 0;border-top:1px solid var(--border);color:var(--text);font-size:.88rem;line-height:1.4}
+.xp-ans a.row:first-child{border-top:0}.xp-ans a.row:hover{color:var(--o2)}
+.xp-ans .m{color:var(--muted);font-size:.74rem;margin-top:2px}.xp-ans .s{color:var(--green)}
+/* discover + games + tools bands */
+.xp-three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin:4px 0 8px}
+@media(max-width:860px){.xp-three{grid-template-columns:1fr}}
+.xp-three .xp-card{margin:0;height:100%}
+.xp-games{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:30px 0 8px}
+@media(max-width:700px){.xp-games{grid-template-columns:1fr}}
+.xp-gcard{display:block;border-radius:18px;border:1px solid var(--border);padding:26px 28px;transition:.18s;position:relative;overflow:hidden}
+.xp-gcard:hover{transform:translateY(-3px)}
+.xp-gcard .k{font-size:.7rem;letter-spacing:.12em;font-weight:800;text-transform:uppercase}
+.xp-gcard h3{font-family:var(--fh);color:var(--white);font-size:1.4rem;margin:8px 0 8px}
+.xp-gcard p{color:var(--text);font-size:.92rem;line-height:1.55;margin:0 0 14px}
+.xp-gcard .go{font-weight:800;font-size:.95rem}
+.xp-tools{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:12px 0 0}
+@media(max-width:860px){.xp-tools{grid-template-columns:repeat(2,1fr)}}
+.xp-tool{display:flex;flex-direction:column;align-items:center;gap:7px;text-align:center;border:1px solid var(--border);border-radius:14px;background:var(--card);padding:18px 10px;transition:.15s}
+.xp-tool:hover{transform:translateY(-2px);border-color:var(--o)}
+.xp-tool .ic{font-size:1.7rem}
+.xp-tool .nm{color:var(--white);font-size:.84rem;font-weight:700}
+.xp-tool .ds{color:var(--muted);font-size:.72rem;line-height:1.3}
+/* cta + misc */
+.xp-cta{margin-top:36px;border-radius:20px;padding:34px 30px;background:linear-gradient(135deg,rgba(68,64,219,.22),rgba(235,111,36,.14));border:1px solid rgba(245,190,88,.3);text-align:center}
+.xp-cta h2{color:var(--white);font-family:var(--fh);margin:0 0 8px;font-size:clamp(1.4rem,3vw,1.9rem)}
+.xp-cta p{color:var(--text);margin:0 auto 18px;max-width:580px;line-height:1.6}
+.xp-cta a{display:inline-block;margin:5px;padding:12px 22px;border-radius:10px;font-weight:800}
 .xp-cta .p{background:var(--o);color:#0E0D2C}.xp-cta .s{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.3)}
 .xp-sk{color:var(--muted);padding:26px 4px;text-align:center;font-size:.9rem}
-.xp-foot{color:var(--muted);font-size:.8rem;text-align:center;margin-top:30px;line-height:1.6}
+.xp-sk.sh{background:linear-gradient(90deg,var(--card),rgba(255,255,255,.07),var(--card));background-size:200% 100%;animation:xp-sh 1.3s infinite;border-radius:10px;height:14px;padding:0;margin:10px 0}
+@keyframes xp-sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.xp-band{margin:34px 0 0}
+.xp-foot{color:var(--muted);font-size:.8rem;text-align:center;margin-top:32px;line-height:1.7}
+.xp-foot a{color:var(--o2)}
+@media(prefers-reduced-motion:reduce){.xp-mkt .scroll{animation:none}.xp-sk.sh{animation:none}}
 </style>
 
-<div class="xp-ticker" id="xp-ticker" hidden>
-  <div class="lab"><span class="dot"></span>LATEST</div>
-  <div class="track"><div class="scroll" id="xp-ticker-scroll"></div></div>
-</div>
-
+<!-- HERO -->
 <div class="xp-hero">
   <div>
     <h1 class="xp-hello"><span id="xp-greet">Welcome</span> to Explore</h1>
-    <p class="xp-sub">The fun side of tech, curated by <strong style="color:var(--text)">Jordan Polasek</strong> at BVTech — no politics, no doomscroll. <span class="xp-clock" id="xp-clock"></span></p>
+    <p class="xp-sub">The fun, useful side of tech — curated by <b>Jordan Polasek</b> at BVTech. No politics, no doomscroll. <span class="xp-clock" id="xp-clock"></span></p>
   </div>
   <div class="xp-wx" id="xp-wx" hidden>
     <div class="e" id="xp-wx-e">🌡️</div>
-    <div><div class="t" id="xp-wx-t">—</div><div class="m" id="xp-wx-m"></div><div class="p" id="xp-wx-p" style="color:var(--o2);font-size:.72rem;font-weight:700"></div></div>
+    <div><div class="t" id="xp-wx-t">—</div><div class="m" id="xp-wx-m"></div><div class="p" id="xp-wx-p"></div></div>
   </div>
 </div>
 
-<div class="xp-grid">
+<!-- SEARCH + SECTION NAV -->
+<div class="xp-bar">
+  <form class="xp-search" id="xp-search" autocomplete="off">
+    <input id="xp-search-q" type="search" placeholder="Search the web…" aria-label="Search the web">
+    <button type="submit">Search</button>
+  </form>
+  <nav class="xp-nav">
+    <a href="#xp-take">Our Take</a>
+    <a href="#xp-news">News</a>
+    <a href="#xp-discover">Discover</a>
+    <a href="#xp-games">Games</a>
+    <a href="#xp-tools">Tools</a>
+  </nav>
+</div>
+
+<!-- MARKETS TICKER -->
+<div class="xp-mkt" id="xp-mkt" hidden>
+  <div class="lab"><span class="dot"></span>TECH MARKETS</div>
+  <div class="track"><div class="scroll" id="xp-mkt-scroll"></div></div>
+</div>
+
+<!-- THE BVTECH TAKE -->
+<div class="xp-take-band" id="xp-take">
+  <div class="xp-h"><span class="pre"></span><h2>The BVTech Take</h2><span class="live">OUR ORIGINAL COMMENTARY</span></div>
+  <div class="xp-take-grid">
+    <a class="xp-take-feat" id="xp-take-feat" href="/blog/">
+      <div class="xp-kick">✍️ Written by us · sources cited</div>
+      <h3 id="xp-take-title">Our daily read on the tech that matters</h3>
+      <p id="xp-take-ex">Every day we read across the web and write our own honest take — what caught our eye and why it matters for a small business — then link every source so you can dig in yourself. No scraping, no reposting: our words, their credit.</p>
+      <div class="by">By <b>Jordan Polasek</b> · BVTech <span id="xp-take-date"></span></div>
+      <span class="go">Read our full take →</span>
+    </a>
+    <div class="xp-take-more" id="xp-take-more"></div>
+  </div>
+</div>
+
+<!-- MAIN GRID: NEWS + RAIL -->
+<div class="xp-grid" id="xp-news">
   <div class="xp-main">
+    <div class="xp-h"><span class="pre"></span><h2>Latest in Tech</h2><span class="live"><span class="dot"></span>LIVE</span></div>
     <div class="xp-tabs">""" + _TABS + r"""</div>
-    <div id="xp-feed"><div class="xp-sk">Loading the good stuff…</div></div>
+    <div id="xp-feed"><div class="xp-sk sh"></div><div class="xp-sk sh"></div><div class="xp-sk sh"></div></div>
   </div>
 
   <aside class="xp-side">
-    <a class="xp-card" href="https://portal.bvtech.org/arena/" style="display:block;text-decoration:none;background:linear-gradient(135deg,rgba(57,192,255,.18),rgba(245,190,88,.12));border-color:rgba(57,192,255,.4)">
-      <h3 style="margin:0 0 8px">⚔️ Breach Protocol <span class="tag" style="background:linear-gradient(135deg,#39c0ff,#F5BE58);color:#0E0D2C;border:0">NEW</span></h3>
-      <p style="color:var(--text);margin:0 0 6px;font-size:.9rem;line-height:1.5">Our 3D survivors game — defend the grid against waves of breaches. Built in <strong style="color:var(--o2)">Rust &amp; WebAssembly</strong>, right in your browser.</p>
-      <span style="color:#39c0ff;font-weight:800;font-size:.9rem">▶ Play Breach Protocol →</span>
-    </a>
-    <a class="xp-card" href="https://portal.bvtech.org/signal/" style="display:block;text-decoration:none;background:linear-gradient(135deg,rgba(235,111,36,.18),rgba(68,64,219,.16));border-color:rgba(245,190,88,.4)">
-      <h3 style="margin:0 0 8px">🎮 Signal 199X <span class="tag" style="background:linear-gradient(135deg,#EB6F24,#F5BE58);color:#0E0D2C;border:0">PLAY FREE</span></h3>
-      <p style="color:var(--text);margin:0 0 6px;font-size:.9rem;line-height:1.5">Jump into our own retro-tech multiplayer world — explore, team up, and tune the airwaves. Free, in your browser, hosted by BVTech.</p>
-      <span style="color:var(--o2);font-weight:800;font-size:.9rem">▶ Enter the world →</span>
-    </a>
-    <div class="xp-card xp-game">
+    <div class="xp-card lift" id="xp-mkt-card" hidden>
+      <h3>📈 Markets <span class="tag" id="xp-mkt-tag">LIVE</span></h3>
+      <div id="xp-mkt-list"></div>
+    </div>
+    <div class="xp-card lift" id="xp-fc-card" hidden>
+      <h3>⛅ Your Forecast</h3>
+      <div class="xp-fc" id="xp-fc"></div>
+    </div>
+    <div class="xp-card lift xp-game">
       <h3>🧠 Daily Byte <span class="tag" id="xp-game-tag">TODAY</span></h3>
       <div id="xp-game"><div class="xp-sk">Loading today's question…</div></div>
     </div>
-    <div class="xp-card" id="xp-ans-card" hidden>
-      <h3>💬 BVTech Answers <span class="tag" id="xp-ans-tag">NEW</span></h3>
-      <div id="xp-ans"></div>
+    <div class="xp-card lift" id="xp-tr-card" hidden>
+      <h3>🔥 Trending in Tech</h3>
+      <div class="xp-tr" id="xp-tr"></div>
+    </div>
+    <div class="xp-card lift" id="xp-ans-card" hidden>
+      <h3>💬 BVTech Answers <span class="tag">COMMUNITY</span></h3>
+      <div class="xp-ans" id="xp-ans"></div>
       <a href="https://portal.bvtech.org/answers" style="display:inline-block;margin-top:12px;color:var(--o2);font-weight:700;font-size:.9rem">Ask the community →</a>
     </div>
-    <div class="xp-card xp-photo" id="xp-photo-card" hidden>
-      <h3>🔭 NASA Photo of the Day</h3>
-      <a id="xp-photo-link" target="_blank" rel="noopener"><img id="xp-photo-img" alt="" loading="lazy"></a>
-      <div class="cap" id="xp-photo-cap"></div>
-    </div>
-    <div class="xp-card" id="xp-launch-card" hidden>
-      <h3>🚀 Next Rocket Launches</h3>
-      <div id="xp-launches"></div>
-    </div>
-    <div class="xp-card" id="xp-otd-card" hidden>
-      <h3>📅 On This Day in Tech</h3>
-      <ul class="xp-otd" id="xp-otd" style="margin:0;padding:0"></ul>
-    </div>
-    <div class="xp-card">
+    <div class="xp-card lift">
       <h3>💡 Tip of the Day</h3>
       <div class="xp-tip" id="xp-tip">Stay tuned…</div>
     </div>
   </aside>
 </div>
 
+<!-- DISCOVER: photo / launches / on this day -->
+<div class="xp-band" id="xp-discover">
+  <div class="xp-h"><span class="pre"></span><h2>Discover</h2></div>
+  <div class="xp-three">
+    <div class="xp-card lift xp-photo" id="xp-photo-card" hidden>
+      <h3>🔭 NASA Photo of the Day</h3>
+      <a id="xp-photo-link" target="_blank" rel="noopener"><img id="xp-photo-img" alt="" loading="lazy"></a>
+      <div class="cap" id="xp-photo-cap"></div>
+    </div>
+    <div class="xp-card lift" id="xp-launch-card" hidden>
+      <h3>🚀 Next Rocket Launches</h3>
+      <div id="xp-launches"></div>
+    </div>
+    <div class="xp-card lift" id="xp-otd-card" hidden>
+      <h3>📅 On This Day in Tech</h3>
+      <ul class="xp-otd" id="xp-otd" style="margin:0;padding:0"></ul>
+    </div>
+  </div>
+</div>
+
+<!-- GAMES -->
+<div class="xp-band" id="xp-games">
+  <div class="xp-h"><span class="pre"></span><h2>Play — Free, in your browser</h2></div>
+  <div class="xp-games">
+    <a class="xp-gcard" href="https://portal.bvtech.org/arena/" style="background:linear-gradient(135deg,rgba(57,192,255,.16),rgba(245,190,88,.10));border-color:rgba(57,192,255,.4)">
+      <div class="k" style="color:#39c0ff">⚔️ ORIGINAL · RUST + WEBASSEMBLY</div>
+      <h3>Breach Protocol</h3>
+      <p>Our own 3D survivors game — hold the grid against waves of breaches, level up and pick powerful upgrades. Runs right in your browser.</p>
+      <span class="go" style="color:#39c0ff">▶ Play Breach Protocol →</span>
+    </a>
+    <a class="xp-gcard" href="https://portal.bvtech.org/signal/" style="background:linear-gradient(135deg,rgba(235,111,36,.16),rgba(68,64,219,.16));border-color:rgba(245,190,88,.4)">
+      <div class="k" style="color:var(--o2)">🎮 MULTIPLAYER · HOSTED BY BVTECH</div>
+      <h3>Signal 199X</h3>
+      <p>Jump into our retro-tech multiplayer world — explore, team up and tune the airwaves. Free, in your browser, no install.</p>
+      <span class="go" style="color:var(--o2)">▶ Enter the world →</span>
+    </a>
+  </div>
+</div>
+
+<!-- FREE TOOLS -->
+<div class="xp-band" id="xp-tools">
+  <div class="xp-h"><span class="pre"></span><h2>Free BVTech Tools</h2></div>
+  <div class="xp-tools">
+    <a class="xp-tool" href="/tools/whats-my-ip/"><span class="ic">🌐</span><span class="nm">What's My IP</span><span class="ds">IP &amp; network info</span></a>
+    <a class="xp-tool" href="/tools/speed-test/"><span class="ic">⚡</span><span class="nm">Speed Test</span><span class="ds">Check your line</span></a>
+    <a class="xp-tool" href="/tools/is-it-down/"><span class="ic">📡</span><span class="nm">Is It Down?</span><span class="ds">Site status</span></a>
+    <a class="xp-tool" href="/tools/ev-savings/"><span class="ic">🔋</span><span class="nm">EV Savings</span><span class="ds">Gas vs. electric</span></a>
+    <a class="xp-tool" href="/tools/"><span class="ic">🧰</span><span class="nm">All Tools</span><span class="ds">The full kit</span></a>
+  </div>
+</div>
+
+<!-- CTA -->
 <div class="xp-cta">
   <h2>Liked poking around? Learn the real thing — free.</h2>
-  <p>The BVTech Academy turns this curiosity into skills: hands-on labs, our new live-style Lightning Labs on cloud and AI security, and certificates. Built in Texas by Jordan Polasek.</p>
+  <p>The BVTech Academy turns this curiosity into skills: hands-on labs, our live-style Lightning Labs on cloud and AI security, and certificates. Built in Texas by Jordan Polasek.</p>
   <a class="p" href="/academy/lightning-labs/">⚡ Try a Lightning Lab</a>
   <a class="s" href="/academy/">🎓 Academy Home</a>
-  <a class="p" href="https://portal.bvtech.org/arena/">⚔️ Play Breach Protocol</a>
-  <a class="s" href="https://portal.bvtech.org/signal/">🎮 Signal 199X</a>
   <a class="s" href="https://portal.bvtech.org/answers">💬 BVTech Answers</a>
   <a class="s" href="/tools/">🧰 Free Tools</a>
 </div>
-<p class="xp-foot">Headlines link to their original publishers — BVTech just curates the good ones. Photos courtesy of NASA. Refreshed through the day.</p>
+<p class="xp-foot">"The BVTech Take" is our own original commentary, written by Jordan Polasek, with every source linked and credited. News headlines link out to their original publishers — we curate the good ones, we don't copy them. Market data is delayed and for information only, not advice. Photos courtesy of NASA. Refreshed through the day. <a href="/blog/">Read all our takes →</a></p>
 </section>
 
 <script>
@@ -192,26 +362,83 @@ def body() -> str:
   function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e;}
   function ago(ts){if(!ts)return"";var s=(Date.now()-ts)/1000;if(s<3600)return Math.max(1,Math.round(s/60))+"m ago";if(s<86400)return Math.round(s/3600)+"h ago";return Math.round(s/86400)+"d ago";}
   function get(u){return fetch(API+u).then(function(r){return r.json();});}
+  function money(n){n=+n;if(!isFinite(n))return"";return n>=1000?n.toLocaleString(undefined,{maximumFractionDigits:0}):n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});}
+
+  // bulletproof header clearance: set top padding from the REAL fixed-header height
+  (function(){
+    try{
+      var hdr=document.querySelector("header,.header");var xp=document.getElementById("xp");
+      if(hdr&&xp){var set=function(){var h=hdr.offsetHeight||72;xp.style.paddingTop=(h+30)+"px";};
+        set();window.addEventListener("resize",set);setTimeout(set,400);}
+    }catch(e){}
+  })();
 
   // greeting + clock
   var h=new Date().getHours();
   document.getElementById("xp-greet").textContent=h<12?"Good morning":h<18?"Good afternoon":"Good evening";
   var ck=document.getElementById("xp-clock");
-  function tick(){try{ck.textContent="· "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});}catch(e){}}
+  function tick(){try{ck.textContent="· "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});}catch(e){}}
   tick();setInterval(tick,30000);
 
-  // headlines
+  // web search
+  var sf=document.getElementById("xp-search");
+  if(sf)sf.addEventListener("submit",function(e){e.preventDefault();
+    var q=document.getElementById("xp-search-q").value.trim();if(!q)return;
+    window.open("https://duckduckgo.com/?q="+encodeURIComponent(q),"_blank","noopener");});
+
+  // ---- markets (ticker + rail card) ----
+  function chSpan(ch){var s=el("span",(ch>=0?"up":"dn"));s.textContent=(ch>=0?"▲ ":"▼ ")+Math.abs(ch).toFixed(2)+"%";return s;}
+  get("explore/markets").then(function(d){
+    var items=(d&&d.items)||[];if(!items.length)return;
+    var sc=document.getElementById("xp-mkt-scroll");
+    function fill(){items.forEach(function(q){
+      var w=el("span","xp-q");var b=el("b",null,q.sym);w.appendChild(b);
+      w.appendChild(document.createTextNode("$"+money(q.price)+" "));
+      w.appendChild(chSpan(q.chg));sc.appendChild(w);
+    });}
+    fill();fill();
+    document.getElementById("xp-mkt").hidden=false;
+    // rail card: top 7
+    var box=document.getElementById("xp-mkt-list");
+    items.slice(0,7).forEach(function(q){
+      var r=el("div","xp-mrow");
+      r.appendChild(el("div","sym",q.sym));
+      r.appendChild(el("div","nm",q.name));
+      r.appendChild(el("div","px","$"+money(q.price)));
+      var c=el("div","ch "+(q.chg>=0?"up":"dn"),(q.chg>=0?"+":"")+q.chg.toFixed(2)+"%");
+      r.appendChild(c);box.appendChild(r);
+    });
+    document.getElementById("xp-mkt-card").hidden=false;
+  }).catch(function(){});
+
+  // ---- the BVTech take ----
+  get("explore/takes").then(function(d){
+    var items=(d&&d.items)||[];if(!items.length)return;
+    var f=items[0];
+    var fa=document.getElementById("xp-take-feat");fa.href=f.href;
+    document.getElementById("xp-take-title").textContent=f.title;
+    if(f.excerpt)document.getElementById("xp-take-ex").textContent=f.excerpt;
+    if(f.date)document.getElementById("xp-take-date").textContent="· "+f.date;
+    var more=document.getElementById("xp-take-more");
+    items.slice(1,4).forEach(function(t){
+      var a=el("a","xp-take-mini");a.href=t.href;
+      if(t.date)a.appendChild(el("div","d",t.date));
+      a.appendChild(el("h4",null,t.title));
+      if(t.excerpt)a.appendChild(el("p",null,t.excerpt));
+      more.appendChild(a);
+    });
+  }).catch(function(){});
+
+  // ---- headlines ----
   var feed=document.getElementById("xp-feed"),cur="tech",loaded={};
   function renderFeed(cat,data){
-    if(cur!==cat)return;
-    feed.textContent="";
+    if(cur!==cat)return;feed.textContent="";
     var items=(data&&data.items)||[];
     if(!items.length){feed.appendChild(el("div","xp-sk","No headlines right now — check back soon."));return;}
     var f=items[0];
     var fa=el("a","xp-feat");fa.href=f.link;fa.target="_blank";fa.rel="noopener";
     fa.appendChild(el("div","src",f.source+(f.t?" · "+ago(f.t):"")));
-    fa.appendChild(el("h3",null,f.title));
-    feed.appendChild(fa);
+    fa.appendChild(el("h3",null,f.title));feed.appendChild(fa);
     var list=el("div","xp-list");
     items.slice(1).forEach(function(it,i){
       var a=el("a","xp-item");a.href=it.link;a.target="_blank";a.rel="noopener";
@@ -222,40 +449,32 @@ def body() -> str:
     });
     feed.appendChild(list);
   }
-  function load(cat){
-    cur=cat;
+  function load(cat){cur=cat;
     if(loaded[cat]){renderFeed(cat,loaded[cat]);return;}
-    feed.innerHTML='<div class="xp-sk">Loading '+cat+'…</div>';
+    feed.innerHTML='<div class="xp-sk sh"></div><div class="xp-sk sh"></div><div class="xp-sk sh"></div>';
     get("feeds?cat="+cat).then(function(d){loaded[cat]=d;renderFeed(cat,d);})
       .catch(function(){if(cur===cat)feed.innerHTML='<div class="xp-sk">Could not load headlines. Try another tab.</div>';});
   }
   Array.prototype.forEach.call(document.querySelectorAll(".xp-tab"),function(t){
     t.addEventListener("click",function(){
       document.querySelector(".xp-tab.on").classList.remove("on");
-      t.classList.add("on");load(t.dataset.cat);
-    });
+      t.classList.add("on");load(t.dataset.cat);});
   });
   load("tech");
 
-  // Latest-in-tech ticker (headlines scrolling across the top)
-  (function(){
-    Promise.all([get("feeds?cat=tech"),get("feeds?cat=tesla")]).then(function(rs){
-      var items=[];rs.forEach(function(d){(d&&d.items||[]).slice(0,8).forEach(function(i){items.push(i);});});
-      if(!items.length)return;
-      items.sort(function(a,b){return b.t-a.t;});
-      var sc=document.getElementById("xp-ticker-scroll");
-      function fill(){items.slice(0,14).forEach(function(it){
-        var a=el("a");a.href=it.link;a.target="_blank";a.rel="noopener";
-        a.innerHTML="<b>"+(it.source||"")+"</b>";a.appendChild(document.createTextNode(it.title));
-        sc.appendChild(a);
-      });}
-      fill();fill(); // duplicate for seamless marquee loop
-      document.getElementById("xp-ticker").hidden=false;
-    }).catch(function(){});
-  })();
+  // ---- trending (Hacker News) ----
+  get("feeds?cat=hn").then(function(d){
+    var items=(d&&d.items)||[];if(!items.length)return;
+    var box=document.getElementById("xp-tr");
+    items.slice(0,6).forEach(function(it,i){
+      var a=el("a");a.href=it.link;a.target="_blank";a.rel="noopener";
+      a.appendChild(el("span","n",String(i+1)));
+      a.appendChild(el("span",null,it.title));box.appendChild(a);
+    });
+    document.getElementById("xp-tr-card").hidden=false;
+  }).catch(function(){});
 
-
-  // weather (visitor location if allowed, else El Campo TX)
+  // ---- weather (hero + forecast card) ----
   function wx(lat,lon){
     get("explore/weather"+(lat?"?lat="+lat+"&lon="+lon:"")).then(function(d){
       if(!d||!d.now||d.now.temp==null)return;
@@ -264,16 +483,26 @@ def body() -> str:
       document.getElementById("xp-wx-m").innerHTML=d.now.sky[0]+"<br>feels "+d.now.feels+"° · "+(d.days[0]?("H "+d.days[0].hi+"° L "+d.days[0].lo+"°"):"");
       if(d.place)document.getElementById("xp-wx-p").textContent="📍 "+d.place;
       document.getElementById("xp-wx").hidden=false;
+      var fc=document.getElementById("xp-fc");
+      if(fc&&d.days&&d.days.length){fc.textContent="";
+        d.days.slice(0,4).forEach(function(day,i){
+          var dd=el("div","d");
+          var nm=i===0?"Today":new Date(day.day+"T12:00").toLocaleDateString([],{weekday:"short"});
+          dd.appendChild(el("div","dn",nm));
+          dd.appendChild(el("div","ic",day.sky[1]));
+          var hl=el("div","hl");hl.innerHTML="<b>"+day.hi+"°</b> "+day.lo+"°";
+          dd.appendChild(hl);fc.appendChild(dd);
+        });
+        document.getElementById("xp-fc-card").hidden=false;
+      }
     }).catch(function(){});
   }
-  wx();  // show the visitor's IP-based local weather right away
-  if(navigator.geolocation){  // then refine to exact GPS if they allow it
-    try{navigator.geolocation.getCurrentPosition(
-      function(p){wx(p.coords.latitude.toFixed(2),p.coords.longitude.toFixed(2));},
-      function(){},{timeout:6000,maximumAge:3600000});}catch(e){}
-  }
+  wx();
+  if(navigator.geolocation){try{navigator.geolocation.getCurrentPosition(
+    function(p){wx(p.coords.latitude.toFixed(2),p.coords.longitude.toFixed(2));},
+    function(){},{timeout:6000,maximumAge:3600000});}catch(e){}}
 
-  // daily game + tip (with category, difficulty and a local streak)
+  // ---- daily game + tip ----
   function streakGet(){try{return JSON.parse(localStorage.getItem("bvByte")||"{}");}catch(e){return {};}}
   function streakSet(v){try{localStorage.setItem("bvByte",JSON.stringify(v));}catch(e){}}
   get("daily").then(function(d){
@@ -282,8 +511,7 @@ def body() -> str:
     var tag=document.getElementById("xp-game-tag");if(tag&&d.index)tag.textContent="#"+d.index;
     if(!d||!d.question){box.appendChild(el("div","xp-sk","Game unavailable."));return;}
     var st=streakGet();
-    var meta=el("div","meta");
-    meta.appendChild(el("span","cat",d.category||""));
+    var meta=el("div","meta");meta.appendChild(el("span","cat",d.category||""));
     if(d.difficulty)meta.appendChild(el("span","diff d-"+d.difficulty,d.difficulty));
     var streakEl=el("span","streak",(st.streak>0?("🔥 "+st.streak+" day streak"):""));
     meta.appendChild(streakEl);box.appendChild(meta);
@@ -298,11 +526,9 @@ def body() -> str:
             btns.forEach(function(x){x.disabled=true;});
             if(res.correct){b.classList.add("right");}
             else{b.classList.add("wrong");if(btns[res.answer])btns[res.answer].classList.add("right");}
-            // update streak once per day
             var s2=streakGet();
             if(s2.done!==d.date){
-              if(res.correct){ s2.streak=(s2.last===d.date-1?(s2.streak||0)+1:1); }
-              else { s2.streak=0; }
+              if(res.correct){s2.streak=(s2.last===d.date-1?(s2.streak||0)+1:1);}else{s2.streak=0;}
               s2.done=d.date;s2.last=d.date;streakSet(s2);
               streakEl.textContent=s2.streak>0?("🔥 "+s2.streak+" day streak"):"";
             }
@@ -316,7 +542,7 @@ def body() -> str:
     });
   }).catch(function(){document.getElementById("xp-game").innerHTML='<div class="xp-sk">Game unavailable.</div>';});
 
-  // NASA photo
+  // ---- NASA photo ----
   get("explore/photos").then(function(d){
     var it=(d&&d.items||[])[0];if(!it)return;
     document.getElementById("xp-photo-img").src=it.img;
@@ -326,45 +552,42 @@ def body() -> str:
     document.getElementById("xp-photo-card").hidden=false;
   }).catch(function(){});
 
-  // launches
+  // ---- launches ----
   get("explore/launches").then(function(d){
     var items=(d&&d.items)||[];if(!items.length)return;
     var box=document.getElementById("xp-launches");
     items.forEach(function(l){
-      var dt=new Date(l.net);
-      var row=el("div","xp-launch");
+      var dt=new Date(l.net);var row=el("div","xp-launch");
       var dd=el("div","d");dd.appendChild(el("b",null,String(dt.getDate())));
-      dd.appendChild(el("span",null,dt.toLocaleString([], {month:"short"})));
-      row.appendChild(dd);
+      dd.appendChild(el("span",null,dt.toLocaleString([],{month:"short"})));row.appendChild(dd);
       var i=el("div","i");i.appendChild(el("h4",null,l.name));
-      i.appendChild(el("p",null,(l.provider||"")+" · "+dt.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})));
+      i.appendChild(el("p",null,(l.provider||"")+" · "+dt.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})));
       row.appendChild(i);box.appendChild(row);
     });
     document.getElementById("xp-launch-card").hidden=false;
   }).catch(function(){});
 
-  // on this day
+  // ---- on this day ----
   get("explore/onthisday").then(function(d){
     var items=(d&&d.items)||[];if(!items.length)return;
     var ul=document.getElementById("xp-otd");
     items.forEach(function(e){
       var li=el("li");li.appendChild(el("b",null,String(e.year)));
       if(e.link){var a=el("a",null,e.text);a.href=e.link;a.target="_blank";a.rel="noopener";li.appendChild(a);}
-      else li.appendChild(document.createTextNode(e.text));
-      ul.appendChild(li);
+      else li.appendChild(document.createTextNode(e.text));ul.appendChild(li);
     });
     document.getElementById("xp-otd-card").hidden=false;
   }).catch(function(){});
 
-  // BVTech Answers trending
+  // ---- answers ----
   get("answers").then(function(d){
     var items=(d&&d.items)||[];if(!items.length)return;
     var box=document.getElementById("xp-ans");
     items.slice(0,5).forEach(function(q){
       var a=el("a","row");a.href=q.url;a.target="_blank";a.rel="noopener";
       a.appendChild(el("div",null,(q.solved?"✓ ":"")+q.cat+" "+q.title));
-      var m=el("div","m"+(q.solved?" s":""),q.answers+" answer"+(q.answers===1?"":"s")+" · "+q.score+" votes");
-      a.appendChild(m);box.appendChild(a);
+      a.appendChild(el("div","m"+(q.solved?" s":""),q.answers+" answer"+(q.answers===1?"":"s")+" · "+q.score+" votes"));
+      box.appendChild(a);
     });
     document.getElementById("xp-ans-card").hidden=false;
   }).catch(function(){});

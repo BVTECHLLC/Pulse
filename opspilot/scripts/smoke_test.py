@@ -7947,7 +7947,7 @@ def main():
         (_j100.get_config, _j100._fetch_file, _j100._list_post_paths, _j100._HTTP,
          _j100._KEV_FEED) = _o100
         _cf100.purge_urls = _opu100
-    assert _sr100.REPAIR_EPOCH == "1.106.0"
+    assert _sr100.REPAIR_EPOCH == "1.107.0"
     print("v1.100: KEV as-of-date + title-guided cutoff rebuild news editions exactly; SMB "
           "posts rebuilt from stored/evergreen text; hand-written posts untouched OK")
 
@@ -8082,7 +8082,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.106.0"
+    assert _gs101().APP_VERSION == "1.107.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8191,7 +8191,7 @@ def main():
     finally:
         (_J102.get_config, _J102._fetch_file, _J102._HTTP, _CF102.purge_urls) = _o102b
     # (5) wired into the one-time repair at the new epoch
-    assert _sr100.REPAIR_EPOCH == "1.106.0"
+    assert _sr100.REPAIR_EPOCH == "1.107.0"
     import inspect as _insp102
     assert "destination" in _insp102.getsource(_sr100.run_full_repair)
     print("v1.102: Explore hub, Lightning Labs (edge-graded), 4 new tools, edge API, "
@@ -8349,7 +8349,7 @@ def main():
     from app.services import pages_explore as _PE106
     _xp = _PE106.body()
     # the Explore content must clear the 72px fixed site header (was 64px -> cut off)
-    assert "padding:104px 18px 90px" in _xp, "explore top padding not cleared for fixed header"
+    assert "padding:104px 18px 100px" in _xp, "explore top padding not cleared for fixed header"
     assert "@media(max-width:700px){.xp{padding-top:84px}}" in _xp, "explore mobile clearance missing"
     # the live game bundle must declare register_plugin so strict-mode boot doesn't throw
     _bundle = (_P106(__file__).resolve().parent.parent / "games" / "arena-web" / "mq_js_bundle.js").read_text()
@@ -8357,12 +8357,30 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.106.0"
-    assert _sr100.REPAIR_EPOCH == "1.106.0"   # forces Explore republish to bvtech.org
+    assert _gs101().APP_VERSION == "1.107.0"
+    assert _sr100.REPAIR_EPOCH == "1.107.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
 
-    print("\n=== OpsPilot v1.106.0 SMOKE TEST PASSED ===")
+    # ==== v1.107.0: Explore rebuilt as a full tech front page ====
+    # new front-page modules are present and the header clearance is now measured
+    # from the real header at runtime (bulletproof), not a fixed guess.
+    for _needle in ("The BVTech Take", "TECH MARKETS", "explore/markets", "explore/takes",
+                    "Your Forecast", "Trending in Tech", "Free BVTech Tools",
+                    "hdr.offsetHeight"):
+        assert _needle in _xp, f"explore portal missing: {_needle}"
+    # the worker serves the new markets + our-takes endpoints
+    _exjs = (_P106(__file__).resolve().parent.parent / "app" / "services"
+             / "edge_tools" / "explore.js").read_text()
+    assert "export async function markets" in _exjs and "export async function takes" in _exjs
+    assert 'what === "markets"' in _exjs and 'what === "takes"' in _exjs, "explore routes missing"
+    # "our take" content links to our own authored posts (not scraped article text)
+    assert "sources cited" in _xp.lower() and "/blog/" in _xp
+    print("v1.107: Explore rebuilt as a Yahoo-style tech front page (markets ticker + rail, "
+          "The BVTech Take from our own posts, forecast, trending, tools); runtime header "
+          "clearance; new worker markets/takes endpoints OK")
+
+    print("\n=== OpsPilot v1.107.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

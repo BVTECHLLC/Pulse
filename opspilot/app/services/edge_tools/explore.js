@@ -91,6 +91,62 @@ export async function onThisDay(now = new Date()) {
   });
 }
 
+// Tech markets ticker: a handful of big tech names + crypto. Both feeds are
+// free and keyless; Yahoo's chart endpoint needs no crumb, CoinGecko's simple
+// price is open. Cached 3 min at the edge so upstreams see a trickle.
+const STOCKS = [["AAPL", "Apple"], ["MSFT", "Microsoft"], ["NVDA", "Nvidia"],
+  ["GOOGL", "Alphabet"], ["AMZN", "Amazon"], ["TSLA", "Tesla"], ["META", "Meta"],
+  ["AMD", "AMD"]];
+
+export async function markets() {
+  return cached("explore-v2-markets", 180, async () => {
+    const out = [];
+    const stk = await Promise.allSettled(STOCKS.map(async ([sym, name]) => {
+      const r = JSON.parse(await getText(
+        "https://query1.finance.yahoo.com/v8/finance/chart/" + sym + "?range=1d&interval=1d", 7000));
+      const m = (((r.chart || {}).result || [])[0] || {}).meta || {};
+      const price = m.regularMarketPrice;
+      const prev = m.chartPreviousClose != null ? m.chartPreviousClose : m.previousClose;
+      if (price == null) throw new Error("no price");
+      const chg = prev ? ((price - prev) / prev) * 100 : 0;
+      return { sym, name, price, chg, kind: "stock" };
+    }));
+    for (const s of stk) if (s.status === "fulfilled") out.push(s.value);
+    try {
+      const cg = JSON.parse(await getText(
+        "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana"
+        + "&vs_currencies=usd&include_24hr_change=true", 7000));
+      for (const [id, sym, name] of [["bitcoin", "BTC", "Bitcoin"],
+        ["ethereum", "ETH", "Ethereum"], ["solana", "SOL", "Solana"]]) {
+        if (cg[id] && cg[id].usd != null)
+          out.push({ sym, name, price: cg[id].usd, chg: cg[id].usd_24h_change || 0, kind: "crypto" });
+      }
+    } catch (e) { /* crypto is best-effort */ }
+    return { items: out, at: Date.now() };
+  });
+}
+
+// "The BVTech Take" — our OWN original commentary, surfaced from our blog. We
+// read our own /blog/ index (a static asset) and return the latest posts, so
+// Explore sends readers to our authored takes (sources cited inside each one),
+// never to scraped article text.
+export async function takes() {
+  return cached("explore-v2-takes", 1200, async () => {
+    const html = await getText("https://bvtech.org/blog/", 7000);
+    const cards = html.match(/<a[^>]*class="blog-card"[\s\S]*?<\/a>/gi) || [];
+    const items = cards.map((c) => {
+      const href = (c.match(/href="([^"]+)"/i) || [])[1] || "";
+      const date = decode((c.match(/class="meta"[^>]*>([\s\S]*?)<\/div>/i) || [])[1] || "");
+      const title = decode((c.match(/<h3[^>]*>([\s\S]*?)<\/h3>/i) || [])[1] || "");
+      const excerpt = decode((c.match(/<p[^>]*>([\s\S]*?)<\/p>/i) || [])[1] || "");
+      return { href, date, title, excerpt, dispatch: /bvtech-dispatch-/i.test(href) };
+    }).filter((x) => /^https?:\/\//.test(x.href) && x.title);
+    // dispatch ("our take") posts first, then the rest, keeping order within each
+    const ordered = items.filter((x) => x.dispatch).concat(items.filter((x) => !x.dispatch));
+    return { items: ordered.slice(0, 7), at: Date.now() };
+  });
+}
+
 async function img(request) {
   const u = new URL(request.url).searchParams.get("u") || "";
   if (!IMG_HOSTS.some((h) => u.startsWith(h)) || u.includes(".."))
@@ -114,6 +170,8 @@ export async function onRequestGet({ request }) {
       return json(await weather(url.searchParams.get("lat"), url.searchParams.get("lon"),
                                 request.cf), 200, 600);
     if (what === "onthisday") return json(await onThisDay(), 200, 3600);
+    if (what === "markets") return json(await markets(), 200, 120);
+    if (what === "takes") return json(await takes(), 200, 600);
   } catch (e) {
     return json({ items: [], error: "temporarily unavailable" }, 200, 60);
   }

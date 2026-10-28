@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-REPAIR_EPOCH = "1.106.0"         # bump to re-run the one-time repair after a future fix
+REPAIR_EPOCH = "1.107.0"         # bump to re-run the one-time repair after a future fix
 MARKER = '<p class="meta">By '
 _PROVIDER = "site_repair"
 _lock = threading.Lock()
