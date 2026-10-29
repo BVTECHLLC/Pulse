@@ -25,3 +25,10 @@
 .portal-signal{background:rgba(10,30,45,.92)!important;border:1px solid #7fd8ff!important;color:#d8f4ff!important;box-shadow:0 0 22px rgba(120,210,255,.5);animation:portalPulse 1.1s ease-in-out infinite}
 @keyframes portalPulse{50%{box-shadow:0 0 34px rgba(150,220,255,.9);border-color:#cdeeff}}
 @media(max-width:680px){.boss-health{width:82vw}}
+
+/* V8 mobile: ensure touch controls appear on phones/tablets even in wide landscape */
+html.is-mobile .touch-zone{display:block;position:fixed;left:20px;bottom:120px;width:120px;height:120px;border-radius:50%;background:#1e353870;border:2px solid #a0e5d055;touch-action:none;user-select:none;z-index:20}
+html.is-mobile .touch-knob{width:48px;height:48px;position:absolute;top:calc(50% - 24px);left:calc(50% - 24px);border-radius:50%;border:2px solid #c4ffe8;background:#75cfb79a}
+html.is-mobile .hud-mobile-hint{display:block}
+html.is-mobile .control-hint{font-size:8px}
+html.is-mobile .ability-bar button,html.is-mobile .jump-control{min-height:46px}

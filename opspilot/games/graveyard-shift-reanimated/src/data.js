@@ -35,6 +35,16 @@ export const SKINS = [
  {id:'pumpkin',name:'Jack-o-Lantern',hex:'#ff7a1a',unlock:0},
  {id:'wraith',name:'Wraith',hex:'#e2fff2',unlock:0}
 ];
+// Pre-run blessings — pick one before every run for an instant build-defining edge.
+export const BOONS = [
+ {id:'fury',name:'Oath of Fury',icon:'⚔',desc:'+25% weapon damage for the whole run.'},
+ {id:'fleet',name:'Fleet Spirit',icon:'➤',desc:'+15% movement speed — kite the horde with ease.'},
+ {id:'bulwark',name:'Grave Bulwark',icon:'❖',desc:'+25% maximum health, fully healed.'},
+ {id:'leech',name:'Blood Pact',icon:'✚',desc:'Lifesteal: heal for a sliver of all damage you deal.'},
+ {id:'arsenal',name:'Hidden Arsenal',icon:'✦',desc:'Begin the run with a second random weapon.'},
+ {id:'seer',name:'Eye of the Seer',icon:'◉',desc:'Start with +2 rerolls and +1 banish on level-ups.'},
+ {id:'fortune',name:"Reaper's Fortune",icon:'◈',desc:'+35% coins and XP gained all run long.'},
+];
 export const MAPS = [
  {id:'cemetery',name:'Forgotten Cemetery',subtitle:'Where every shadow remembers.',icon:'☽',color:0x111b27,fog:0x101923,accent:'#7cd7bf',unlock:0},
  {id:'village',name:'The Forsaken Village',subtitle:'The bells stopped ringing years ago.',icon:'⌂',color:0x201b28,fog:0x201728,accent:'#e4a76e',unlock:3},
