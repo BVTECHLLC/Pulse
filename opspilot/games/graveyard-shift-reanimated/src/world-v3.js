@@ -29,50 +29,62 @@ function vegetation(world,terrain,x,z,scale,asset){
  terrain.addCircle(x,z,.35*scale,2.9*scale);
 }
 export function buildWorldV3(engine,map){
+ // V9: a hand-structured, walled arena. A perimeter rampart rings the fight; a
+ // central ruined shrine anchors the middle; symmetric ruins give verticality;
+ // decoration is kept sparse and purposeful so the space reads clean.
  const world=engine.world,terrain=new Terrain(73),seed=map.id==='cemetery'?7331:map.id==='village'?9137:7711,rnd=rng(seed);engine.terrain=terrain;
  engine.v3Props=[];
- const centerPositions=[{x:12,z:1,axis:'x',sign:1},{x:-15,z:11,axis:'z',sign:1},{x:1,z:-19,axis:'x',sign:-1}];
- for(const pos of centerPositions)platform(world,terrain,pos);
+ const wallCol=map.id==='facility'?0x3a4a52:map.id==='inferno'?0x4a2a1c:map.id==='crypt'?0x27404a:0x3a4048;
+
+ // --- Perimeter rampart (one cylindrical shell + a stone cap + watch-pillars) ---
+ const R=56;
+ const wall=new THREE.Mesh(new THREE.CylinderGeometry(R,R,5.5,64,1,true),new THREE.MeshStandardMaterial({color:wallCol,roughness:.92,metalness:.04,side:THREE.DoubleSide,flatShading:true}));
+ wall.position.y=2.6;world.add(wall);
+ const cap=new THREE.Mesh(new THREE.TorusGeometry(R,.7,8,64),TRIM);cap.rotation.x=Math.PI/2;cap.position.y=5.3;world.add(cap);
+ for(let i=0;i<44;i++){const a=i/44*Math.PI*2;terrain.addCircle(Math.cos(a)*R,Math.sin(a)*R,5.5,6);}
+ for(let i=0;i<16;i++){const a=i/16*Math.PI*2,x=Math.cos(a)*R,z=Math.sin(a)*R;
+  const pil=new THREE.Mesh(new THREE.CylinderGeometry(1.5,1.9,9,8),STONE);pil.position.set(x,4.3,z);pil.castShadow=true;world.add(pil);
+  const flame=new THREE.Mesh(new THREE.ConeGeometry(.55,1.4,8),EMBER);flame.position.set(x,9.7,z);world.add(flame);
+  if(i%4===0){const l=new THREE.PointLight(0xffa64d,1.5,34,2);l.position.set(x*.9,8.5,z*.9);world.add(l);}
+ }
+
+ // --- Central ruined shrine: 4 standing monoliths framing the start, a floating rune crystal above ---
+ for(const [mx,mz] of [[9,9],[-9,9],[9,-9],[-9,-9]]){
+  const mono=new THREE.Mesh(new THREE.BoxGeometry(1.1,4.4,1.1),STONE);mono.position.set(mx,2.2,mz);mono.rotation.y=(mx+mz)*0.1;mono.castShadow=true;world.add(mono);
+  const tip=new THREE.Mesh(new THREE.ConeGeometry(.8,1.0,4),TRIM);tip.position.set(mx,4.7,mz);tip.rotation.y=.78;world.add(tip);
+  terrain.addCircle(mx,mz,.75,4.4);
+ }
+ const crystal=new THREE.Mesh(new THREE.OctahedronGeometry(1.0),new THREE.MeshStandardMaterial({color:0x8be8ff,emissive:0x59c6ff,emissiveIntensity:1.8,metalness:.3,roughness:.2}));crystal.position.set(0,5.2,0);world.add(crystal);
+ const crLight=new THREE.PointLight(0x7fd8ff,1.7,30,2);crLight.position.set(0,5.2,0);world.add(crLight);
+ engine.v3Crystal=crystal;
+
+ // --- Three symmetric ruined platforms (climbable verticality) ---
+ for(const pos of [{x:0,z:-30,axis:'x',sign:-1},{x:-26,z:18,axis:'z',sign:1},{x:26,z:18,axis:'x',sign:1}])platform(world,terrain,pos);
+
+ // --- Sparse rocks (instanced), kept to the mid-ring so the arena stays open ---
  const rockG=new THREE.DodecahedronGeometry(1,0);rockG.scale(1,.55,.78);
  const rockMat=mat(map.id==='facility'?0x526b7a:0x60665e);
- const rocks=new THREE.InstancedMesh(rockG,rockMat,49),dummy=new THREE.Object3D();
- for(let i=0;i<49;i++){
-  let x=0,z=0;for(let retry=0;retry<14;retry++){const r=11+Math.sqrt(rnd())*54,a=rnd()*Math.PI*2;x=Math.cos(a)*r;z=Math.sin(a)*r;if(!terrain.blocked(x,z,0,1.8))break;}
-  const size=.75+rnd()*.8;dummy.position.set(x,size*.31,z);dummy.scale.set(size,size,size);dummy.rotation.set(0,rnd()*Math.PI*2,0);dummy.updateMatrix();rocks.setMatrixAt(i,dummy.matrix);
-  terrain.addCircle(x,z,size*.68,size*.65);if(size>1.05)terrain.addPerch(x,z,size*.48,size*.64);
+ const rocks=new THREE.InstancedMesh(rockG,rockMat,16),dummy=new THREE.Object3D();let rc=0;
+ for(let i=0;i<16;i++){
+  let x=0,z=0,ok=false;for(let retry=0;retry<16;retry++){const r=16+Math.sqrt(rnd())*32,a=rnd()*Math.PI*2;x=Math.cos(a)*r;z=Math.sin(a)*r;if(!terrain.blocked(x,z,0,1.8)){ok=true;break;}}
+  if(!ok)continue;const size=.8+rnd()*.7;dummy.position.set(x,size*.31,z);dummy.scale.set(size,size,size);dummy.rotation.set(0,rnd()*Math.PI*2,0);dummy.updateMatrix();rocks.setMatrixAt(rc++,dummy.matrix);
+  terrain.addCircle(x,z,size*.68,size*.65);if(size>1.1)terrain.addPerch(x,z,size*.48,size*.64);
  }
- rocks.count=49;rocks.instanceMatrix.needsUpdate=true;rocks.castShadow=true;rocks.receiveShadow=true;world.add(rocks);
- // All decorative trees use the same physical collision footprints as their visuals.
- for(let i=0;i<34;i++){
-  let x=0,z=0;for(let t=0;t<20;t++){const a=rnd()*Math.PI*2,r=15+Math.sqrt(rnd())*51;x=Math.cos(a)*r;z=Math.sin(a)*r;if(!terrain.blocked(x,z,0,2))break;}
-  vegetation(world,terrain,x,z,.82+rnd()*.57,(name,height)=>engine.cloneModel(name,height));
- }
- // Dungeon set dressing: all physical pillars, coffins, and walls block travel.
- for(let j=0;j<14;j++){
-  const a=j*2.39996,r=24+(j%4)*6.7,x=Math.cos(a)*r,z=Math.sin(a)*r;
-  if(terrain.blocked(x,z,0,1.4))continue;
-  const obj=engine.cloneModel(j%3===0?'Dungeonpillar':j%3===1?'Dungeonbarrel':'Dungeoncrate',j%3===0?2.5:1.2);
-  if(obj){obj.position.set(x,0,z);obj.rotation.y=a;world.add(obj);}else block(world,x,z,1.05,1.6,1.05,STONE);
-  terrain.addCircle(x,z,.67,2.2);
- }
- // Distinct crafted fantasy props decorate the ruins and provide cover where appropriate.
- const props=['Cauldron','Barrel','Crate_Wooden','WeaponStand','Lantern_Wall','CandleStick_Triple','Banner_1','Potion_1'];
- for(let i=0;i<34;i++){
-  const a=i*2.39996,r=15+(i%7)*5.2,x=Math.cos(a)*r,z=Math.sin(a)*r;
-  if(terrain.blocked(x,z,0,1.1))continue;
-  const name=props[i%props.length],obj=engine.cloneModel('Fantasy'+name,name==='Banner_1'?2.5:name==='Lantern_Wall'?1.3:1.1);
+ rocks.count=rc;rocks.instanceMatrix.needsUpdate=true;rocks.castShadow=true;rocks.receiveShadow=true;world.add(rocks);
+
+ // --- A ring of dead trees hugging the rampart for silhouette, plus a few crafted props ---
+ for(let i=0;i<12;i++){const a=i/12*Math.PI*2+rnd()*.3,r=44+rnd()*8;const x=Math.cos(a)*r,z=Math.sin(a)*r;if(terrain.blocked(x,z,0,2))continue;vegetation(world,terrain,x,z,.9+rnd()*.5,(name,height)=>engine.cloneModel(name,height));}
+ const props=['Cauldron','WeaponStand','CandleStick_Triple','Banner_1','Barrel','Crate_Wooden'];
+ for(let i=0;i<10;i++){const a=i/10*Math.PI*2+1.1,r=20+(i%3)*8;const x=Math.cos(a)*r,z=Math.sin(a)*r;if(terrain.blocked(x,z,0,1.1))continue;
+  const name=props[i%props.length],obj=engine.cloneModel('Fantasy'+name,name==='Banner_1'?2.5:1.1);
   if(!obj)continue;obj.position.set(x,0,z);obj.rotation.y=a;world.add(obj);
   if(['Cauldron','Barrel','Crate_Wooden','WeaponStand'].includes(name))terrain.addCircle(x,z,.49,1.5);
  }
- // Lit beacons make the map legible at night without expensive light per prop.
- for(let i=0;i<16;i++){
-  const a=i/16*Math.PI*2,r=27+(i%3)*6,x=Math.cos(a)*r,z=Math.sin(a)*r;
-  const post=new THREE.Mesh(new THREE.CylinderGeometry(.05,.09,1.6,6),WOOD);post.position.set(x,.8,z);world.add(post);
-  const flame=new THREE.Mesh(new THREE.ConeGeometry(.19,.44,7),EMBER);flame.position.set(x,1.79,z);world.add(flame);
- }
- const dustGeo=new THREE.BufferGeometry(),pos=[];for(let i=0;i<300;i++)pos.push((rnd()-.5)*140,.12+rnd()*3,(rnd()-.5)*140);
+
+ // --- Light drifting dust for atmosphere (reduced) ---
+ const dustGeo=new THREE.BufferGeometry(),pos=[];for(let i=0;i<110;i++)pos.push((rnd()-.5)*110,.2+rnd()*3.4,(rnd()-.5)*110);
  dustGeo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
- const dust=new THREE.Points(dustGeo,new THREE.PointsMaterial({color:0xa1c6b4,size:.045,transparent:true,opacity:.35,depthWrite:false}));world.add(dust);
+ const dust=new THREE.Points(dustGeo,new THREE.PointsMaterial({color:0xa1c6b4,size:.05,transparent:true,opacity:.3,depthWrite:false}));world.add(dust);
  engine.v3Dust=dust;
  return terrain;
 }

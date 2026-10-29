@@ -24,7 +24,7 @@ export const MUTATORS = [
  {id:'turbo',name:'Turbo Shift',icon:'ϟ',detail:'Accelerated movement and enemy swarms.',reward:1.2,spawn:1.3,enemySpeed:1.15,playerDamage:1,playerHp:1}
 ];
 export const SKINS = [
- {id:'default',name:'Original',hex:'#9fd4ff',unlock:0},
+ {id:'default',name:'Original',hex:'#3fd3e8',unlock:0},
  {id:'crimson',name:'Blood Moon',hex:'#ef627b',unlock:0},
  {id:'specter',name:'Specter',hex:'#91f5e7',unlock:2},
  {id:'royal',name:'Royal',hex:'#e8bd72',unlock:3},
@@ -50,7 +50,9 @@ export const MAPS = [
  {id:'village',name:'The Forsaken Village',subtitle:'The bells stopped ringing years ago.',icon:'⌂',color:0x201b28,fog:0x201728,accent:'#e4a76e',unlock:3},
  {id:'facility',name:'Sector 13',subtitle:'Experiment terminated. Subjects remain.',icon:'⌬',color:0x0d2029,fog:0x0c1c25,accent:'#67d4ef',unlock:7},
  {id:'crypt',name:'The Sunken Crypt',subtitle:'Drowned halls where the tide never recedes.',icon:'⚱',color:0x0a1822,fog:0x081620,accent:'#5fb8d6',unlock:10},
- {id:'inferno',name:'Ashfall Reach',subtitle:'The furnace at the end of the shift.',icon:'♨',color:0x241009,fog:0x1e0b06,accent:'#ff8a4a',unlock:14}
+ {id:'inferno',name:'Ashfall Reach',subtitle:'The furnace at the end of the shift.',icon:'♨',color:0x241009,fog:0x1e0b06,accent:'#ff8a4a',unlock:14},
+ {id:'moor',name:'The Howling Moor',subtitle:'Wind, fog, and things that hunt in it.',icon:'☁',color:0x151c20,fog:0x121a1e,accent:'#9fb4c0',unlock:18},
+ {id:'sanctum',name:'The Fallen Sanctum',subtitle:'Hallowed ground the dead reclaimed.',icon:'✠',color:0x1a1520,fog:0x15101c,accent:'#c6a0ff',unlock:22}
 ];
 export const WEAPONS = [
  ...V3_WEAPONS,
