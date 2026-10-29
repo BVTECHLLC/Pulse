@@ -14,6 +14,6 @@ test('every map has a unique ID and positive unlock',()=>{assert.equal(new Set(M
 import {sanitizeImportedSave} from '../src/profile.js';
 test('imported guest saves cannot introduce executable strings or invalid upgrades',()=>{
  const raw={version:1,totalXP:2000,coins:200,selected:'<img src=x onerror=alert(1)>',skin:'void',stats:{runs:'evil',bestKills:4},settings:{sfx:9999,shadows:'notbool'},upgrades:{power:99999,exploit:999},achievements:['first','impossible']};
- const clean=sanitizeImportedSave(raw);assert.equal(clean.selected,'warden');assert.equal(clean.upgrades.power,10);assert.ok(!('exploit' in clean.upgrades));assert.equal(clean.stats.runs,0);assert.equal(clean.settings.sfx,1);assert.equal(clean.settings.shadows,true);assert.deepEqual(clean.achievements,['first']);
+ const clean=sanitizeImportedSave(raw);assert.equal(clean.selected,'warden');assert.equal(clean.upgrades.power,META.find(m=>m.id==='power').max);assert.ok(!('exploit' in clean.upgrades));assert.equal(clean.stats.runs,0);assert.equal(clean.settings.sfx,1);assert.equal(clean.settings.shadows,true);assert.deepEqual(clean.achievements,['first']);
 });
 test('reject malformed save files',()=>{assert.throws(()=>sanitizeImportedSave({version:1,coins:'99999',totalXP:0}));});

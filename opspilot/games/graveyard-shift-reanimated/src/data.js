@@ -31,7 +31,9 @@ export const SKINS = [
  {id:'void',name:'Voidwalker',hex:'#ad88ff',unlock:4},
  {id:'toxic',name:'Biohazard',hex:'#a7ed79',unlock:5},
  {id:'frost',name:'Frostbound',hex:'#89c9ff',unlock:6},
- {id:'ember',name:'Infernal',hex:'#ff955b',unlock:8}
+ {id:'ember',name:'Infernal',hex:'#ff955b',unlock:8},
+ {id:'pumpkin',name:'Jack-o-Lantern',hex:'#ff7a1a',unlock:0},
+ {id:'wraith',name:'Wraith',hex:'#e2fff2',unlock:0}
 ];
 export const MAPS = [
  {id:'cemetery',name:'Forgotten Cemetery',subtitle:'Where every shadow remembers.',icon:'☽',color:0x111b27,fog:0x101923,accent:'#7cd7bf',unlock:0},
@@ -56,18 +58,18 @@ export const WEAPONS = [
  {id:'blood',name:'Blood Pact',icon:'♥',rarity:'rare',desc:'Steal life with vampiric bolts.',color:0xf66f91,damage:16,cooldown:1.3,projectiles:1}
 ];
 export const PASSIVES = [
- {id:'might',name:'Giant Slayer',icon:'⚒',desc:'+10% weapon damage per rank.',max:5},
- {id:'haste',name:'Quick Hands',icon:'ϟ',desc:'8% shorter cooldowns per rank.',max:5},
- {id:'vitality',name:'Thick Skin',icon:'♥',desc:'+20 maximum HP per rank.',max:5},
- {id:'magnet',name:'Soul Magnet',icon:'◎',desc:'+25% pickup radius per rank.',max:5},
- {id:'boots',name:'Night Runner',icon:'➤',desc:'+8% movement speed per rank.',max:5},
- {id:'fortune',name:'Lucky Bones',icon:'✦',desc:'+12% gold per rank.',max:5},
- {id:'focus',name:'Scholar',icon:'✧',desc:'+10% XP per rank.',max:5},
- {id:'armor',name:'Iron Bark',icon:'⬡',desc:'Reduce damage taken by 1 per rank.',max:5},
- {id:'regen',name:'Rebirth',icon:'✚',desc:'Regain 0.3 HP/second per rank.',max:5},
- {id:'area',name:'Abyssal Reach',icon:'◉',desc:'+12% attack area per rank.',max:5},
- {id:'crit',name:'Keen Edge',icon:'⚔',desc:'+5% critical chance per rank.',max:5},
- {id:'greed',name:'Grave Robber',icon:'◆',desc:'+10% soul rewards per rank.',max:5}
+ {id:'might',name:'Giant Slayer',icon:'⚒',desc:'+10% weapon damage per rank.',max:12},
+ {id:'haste',name:'Quick Hands',icon:'ϟ',desc:'8% shorter cooldowns per rank.',max:12},
+ {id:'vitality',name:'Thick Skin',icon:'♥',desc:'+20 maximum HP per rank.',max:12},
+ {id:'magnet',name:'Soul Magnet',icon:'◎',desc:'+25% pickup radius per rank.',max:12},
+ {id:'boots',name:'Night Runner',icon:'➤',desc:'+8% movement speed per rank.',max:12},
+ {id:'fortune',name:'Lucky Bones',icon:'✦',desc:'+12% gold per rank.',max:12},
+ {id:'focus',name:'Scholar',icon:'✧',desc:'+10% XP per rank.',max:12},
+ {id:'armor',name:'Iron Bark',icon:'⬡',desc:'Reduce damage taken by 1 per rank.',max:12},
+ {id:'regen',name:'Rebirth',icon:'✚',desc:'Regain 0.3 HP/second per rank.',max:12},
+ {id:'area',name:'Abyssal Reach',icon:'◉',desc:'+12% attack area per rank.',max:12},
+ {id:'crit',name:'Keen Edge',icon:'⚔',desc:'+5% critical chance per rank.',max:12},
+ {id:'greed',name:'Grave Robber',icon:'◆',desc:'+10% soul rewards per rank.',max:12}
 ];
 export const EVOLUTIONS = [
  ...V3_EVOLUTIONS,
@@ -81,12 +83,12 @@ export const EVOLUTIONS = [
  {weapon:'blood',passive:'magnet',name:'Crimson Covenant',effect:'Vampiric volleys'}
 ];
 export const META = [
- {id:'power',name:'Weapon Mastery',icon:'⚔',desc:'+4% permanent damage per rank',max:10,base:70},
- {id:'health',name:'Body Armor',icon:'♥',desc:'+8 maximum HP per rank',max:10,base:50},
- {id:'speed',name:'Sprint Training',icon:'➤',desc:'+1.5% speed per rank',max:10,base:60},
- {id:'magnet',name:'Gravitation',icon:'◎',desc:'+6% XP pickup radius per rank',max:10,base:60},
- {id:'luck',name:'Fortune Finder',icon:'◆',desc:'+3% coins and souls per rank',max:10,base:90},
- {id:'resilience',name:'Second Chances',icon:'✚',desc:'+0.08 HP regen per second per rank',max:10,base:80}
+ {id:'power',name:'Weapon Mastery',icon:'⚔',desc:'+4% permanent damage per rank',max:20,base:70},
+ {id:'health',name:'Body Armor',icon:'♥',desc:'+8 maximum HP per rank',max:20,base:50},
+ {id:'speed',name:'Sprint Training',icon:'➤',desc:'+1.5% speed per rank',max:20,base:60},
+ {id:'magnet',name:'Gravitation',icon:'◎',desc:'+6% XP pickup radius per rank',max:20,base:60},
+ {id:'luck',name:'Fortune Finder',icon:'◆',desc:'+3% coins and souls per rank',max:20,base:90},
+ {id:'resilience',name:'Second Chances',icon:'✚',desc:'+0.08 HP regen per second per rank',max:20,base:80}
 ];
 export const ACHIEVEMENTS = [
  {id:'first',name:'First Blood',desc:'Defeat 1 enemy',reward:25},

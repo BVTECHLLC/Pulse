@@ -8,3 +8,11 @@
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
 
 .ability-bar{display:flex;gap:7px;margin-left:10px;pointer-events:auto}.ability-bar button{border:1px solid #7bb8a6aa;background:#132f35db;color:#d2fcef;min-width:86px;min-height:43px;padding:6px;font-weight:900;font-size:12px}.ability-bar button span{display:block;color:#8fb6ae;font-size:8px;letter-spacing:.5px}.ability-bar button b{display:block;font-size:9px;color:#88e5b9}.ability-bar button.cooling{opacity:.6}@media(max-width:680px){.ability-bar{order:-2;margin:0 auto;gap:3px}.ability-bar button{min-width:73px;height:39px;padding:4px}.ability-bar button span{font-size:7px}.hud-bottom{padding-bottom:4px}.weapon-icons{justify-content:flex-end;width:auto;flex:1}.touch-zone{bottom:160px}}
+
+/* V6 draft tools: banish, reroll, skip */
+.banish-x{position:absolute;top:10px;left:12px;width:26px;height:26px;display:grid;place-items:center;border-radius:50%;background:rgba(40,12,18,.85);border:1px solid #b4536a;color:#ff9fb2;font-size:13px;font-weight:900;line-height:1;z-index:3;pointer-events:auto;transition:transform .12s,background .12s}
+.banish-x:hover{transform:scale(1.18);background:#8a2338;color:#ffd0da}
+.draft-tools{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin-top:22px}
+.draft-tools .btn-ghost{min-height:44px;padding:0 18px;font-size:10px}
+.draft-tools .btn-ghost:disabled{opacity:.35;border-color:rgba(173,208,210,.14)}
+.draft-note{width:100%;text-align:center;font-size:9px;letter-spacing:1.3px;color:#86a0a8;font-weight:800;margin-top:4px}

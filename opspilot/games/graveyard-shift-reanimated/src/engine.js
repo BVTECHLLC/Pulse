@@ -92,7 +92,7 @@ export class GraveyardEngine {
  makePlayerMesh(char,skinId){
   const p=this.cloneModel(char.model,1.8)||new THREE.Group();
   if(!p.children.length){const body=new THREE.Mesh(new THREE.CapsuleGeometry(.43,.7,4,8),material(0x8fb6db));body.position.y=.9;p.add(body);}
-  const skin=[{id:'default',hex:'#9fd4ff'},{id:'crimson',hex:'#ef627b'},{id:'specter',hex:'#91f5e7'},{id:'royal',hex:'#e8bd72'},{id:'void',hex:'#ad88ff'},{id:'toxic',hex:'#a7ed79'},{id:'frost',hex:'#89c9ff'},{id:'ember',hex:'#ff955b'}].find(x=>x.id===skinId)||{hex:'#9fd4ff'};
+  const skin=[{id:'default',hex:'#9fd4ff'},{id:'crimson',hex:'#ef627b'},{id:'specter',hex:'#91f5e7'},{id:'royal',hex:'#e8bd72'},{id:'void',hex:'#ad88ff'},{id:'toxic',hex:'#a7ed79'},{id:'frost',hex:'#89c9ff'},{id:'ember',hex:'#ff955b'},{id:'pumpkin',hex:'#ff7a1a'},{id:'wraith',hex:'#e2fff2'}].find(x=>x.id===skinId)||{hex:'#9fd4ff'};
   const color=new THREE.Color(skin.hex);p.traverse(o=>{if(o.isMesh){const tint=m=>{const t=m.clone();if(t.color)t.color=t.color.clone().lerp(color,.5);t.emissive=color.clone().multiplyScalar(.26);t.emissiveIntensity=1;if('metalness'in t)t.metalness=Math.min(1,(t.metalness||0)+.18);if('roughness'in t)t.roughness=Math.max(.22,(t.roughness??.7)-.18);return t;};o.material=Array.isArray(o.material)?o.material.map(tint):tint(o.material);o.castShadow=true;}});
   // V5: glowing aura + colored rim light so each skin reads as a distinct, premium look
   const halo=circleRing(.92,skin.hex,.9);halo.position.y=.05;p.add(halo);
@@ -134,19 +134,65 @@ export class GraveyardEngine {
    g.position.set(x,0,z);this.world.add(g);this.shrines.push({mesh:g,x,z,rune,crystal,used:false});
   }
  }
- makeMenuWorld(){this.status='menu';this.clearWorld();this.buildFloor(MAPS[0]);buildWorldV3(this,MAPS[0]);this.buildDecor(MAPS[0]);this.menuAvatar=new THREE.Group();const body=new THREE.Mesh(new THREE.CapsuleGeometry(.5,.8,4,8),material(0x839f91));body.position.y=.95;this.menuAvatar.add(body);this.world.add(this.menuAvatar);
+ makeWaterTexture(){
+  const c=document.createElement('canvas');c.width=c.height=256;const x=c.getContext('2d');
+  x.fillStyle='#0a2f3c';x.fillRect(0,0,256,256);
+  for(let i=0;i<70;i++){x.strokeStyle=`rgba(130,205,225,${rand(.04,.15)})`;x.lineWidth=rand(1,2.4);x.beginPath();const y=rand(0,256);x.moveTo(0,y);for(let xx=0;xx<=256;xx+=16)x.lineTo(xx,y+Math.sin(xx*.08+i)*rand(2,7));x.stroke();}
+  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(3,3);t.colorSpace=THREE.SRGBColorSpace;return t;
+ }
+ buildHalloween(map){
+  // V6: water + Halloween theming layered onto any map.
+  this.waters=[];this.bats=[];this.pumpkins=[];
+  this.scene.fog.color.copy(new THREE.Color(map.fog||0x101923)).lerp(new THREE.Color(0x2a1536),.5);
+  this.scene.background.copy(new THREE.Color(map.color||0x101925)).lerp(new THREE.Color(0x160e20),.45);
+  // giant harvest moon + halo + warm cast
+  const moon=new THREE.Mesh(new THREE.SphereGeometry(7,24,16),new THREE.MeshBasicMaterial({color:0xff9a3c,fog:false}));moon.position.set(-40,33,-54);this.world.add(moon);
+  const halo=new THREE.Mesh(new THREE.SphereGeometry(9.4,20,14),new THREE.MeshBasicMaterial({color:0xff7a1a,transparent:true,opacity:.17,fog:false,side:THREE.BackSide}));halo.position.copy(moon.position);this.world.add(halo);
+  const moonLight=new THREE.PointLight(0xffb060,1.6,170,1.3);moonLight.position.copy(moon.position);this.world.add(moonLight);
+  // animated water pools with stone rims
+  for(const [wx,wz,wr] of [[-27,20,8],[31,-13,7],[13,35,6],[0,-31,7]]){
+   const w=new THREE.Mesh(new THREE.CircleGeometry(wr,40),new THREE.MeshStandardMaterial({color:0x0b3744,emissive:0x07252f,emissiveIntensity:.55,transparent:true,opacity:.9,roughness:.1,metalness:.8,map:this.makeWaterTexture()}));
+   w.rotation.x=-Math.PI/2;w.position.set(wx,-.02,wz);this.world.add(w);this.waters.push(w);
+   const rim=circleRing(wr+.35,0x3b5a74,.55);rim.position.set(wx,.015,wz);this.world.add(rim);
+  }
+  if(this.status==='menu')return;
+  // jack-o'-lanterns with inner glow
+  for(let i=0;i<15;i++){
+   const a=rand(0,TAU),r=rand(11,58),x=Math.cos(a)*r,z=Math.sin(a)*r,free=this.terrain?.findFree?.(x,z,0,.5)||{x,z};
+   const g=new THREE.Group();
+   const body=new THREE.Mesh(new THREE.SphereGeometry(.42,12,9),new THREE.MeshStandardMaterial({color:0xff7a1a,emissive:0xff5300,emissiveIntensity:.6,roughness:.55}));body.scale.set(1.05,.82,1.05);body.position.y=.36;g.add(body);
+   const stem=new THREE.Mesh(new THREE.CylinderGeometry(.045,.08,.2,5),material(0x4f7a3a));stem.position.y=.72;g.add(stem);
+   const light=new THREE.PointLight(0xff8a2e,1.15,4.6,2);light.position.set(free.x,.52,free.z);this.world.add(light);
+   g.position.set(free.x,0,free.z);this.world.add(g);this.pumpkins.push({light,phase:rand(0,TAU)});
+  }
+  // bats circling overhead
+  for(let i=0;i<12;i++){
+   const bat=new THREE.Group(),bm=new THREE.MeshStandardMaterial({color:0x1a1420,emissive:0x140e1c,emissiveIntensity:.3});
+   bat.add(new THREE.Mesh(new THREE.SphereGeometry(.1,6,5),bm));
+   const wL=new THREE.Mesh(new THREE.ConeGeometry(.17,.5,3),bm);wL.rotation.z=Math.PI/2;wL.position.x=-.22;bat.add(wL);
+   const wR=new THREE.Mesh(new THREE.ConeGeometry(.17,.5,3),bm);wR.rotation.z=-Math.PI/2;wR.position.x=.22;bat.add(wR);
+   bat.scale.setScalar(rand(.8,1.4));this.world.add(bat);
+   this.bats.push({mesh:bat,wL,wR,a:rand(0,TAU),r:rand(9,32),y:rand(6,12),cx:rand(-16,16),cz:rand(-16,16),sp:rand(.3,.7)});
+  }
+ }
+ _animAmbience(dt){
+  for(const w of this.waters||[]){const m=w.material.map;if(m){m.offset.x+=dt*.02;m.offset.y+=dt*.013;}w.material.emissiveIntensity=.52+Math.sin(this.elapsed*1.3+w.position.x)*.12;}
+  for(const b of this.bats||[]){b.a+=dt*b.sp;b.mesh.position.set(b.cx+Math.cos(b.a)*b.r,b.y+Math.sin(b.a*2)*.7,b.cz+Math.sin(b.a)*b.r);b.mesh.rotation.y=-b.a+Math.PI/2;const flap=Math.sin(this.elapsed*13+b.a*4)*.7;b.wL.rotation.z=Math.PI/2+flap;b.wR.rotation.z=-Math.PI/2-flap;}
+  for(const p of this.pumpkins||[])p.light.intensity=1.05+Math.sin(this.elapsed*7+p.phase)*.4;
+ }
+ makeMenuWorld(){this.status='menu';this.clearWorld();this.buildFloor(MAPS[0]);buildWorldV3(this,MAPS[0]);this.buildDecor(MAPS[0]);this.buildHalloween(MAPS[0]);this.menuAvatar=new THREE.Group();const body=new THREE.Mesh(new THREE.CapsuleGeometry(.5,.8,4,8),material(0x839f91));body.position.y=.95;this.menuAvatar.add(body);this.world.add(this.menuAvatar);
   this.loading?.then(()=>{if(this.status!=='menu')return;const hero=this.makePlayerMesh(CHARACTERS[0],'default');this.world.remove(this.menuAvatar);this.menuAvatar=hero;this.world.add(hero);});}
  async start({character='warden',skin='default',map='cemetery',mutator='standard',relic='nightfall'}={}){
   const char=CHARACTERS.find(c=>c.id===character)||CHARACTERS[0],setting=MAPS.find(m=>m.id===map)||MAPS[0];
   await this.loading;this.status='initializing';this.clearWorld();this.preset=graphicsPreset(profile.settings.graphics??.5);this.budget=BUDGETS[this.preset];this.currentEnemyCap=this.budget.enemies;this.renderer.setPixelRatio(Math.min(devicePixelRatio||1,this.budget.dpr));this.renderer.shadowMap.enabled=profile.settings.shadows===true&&this.preset==='high';this.resize();
-  this.scene.background.set(setting.color);this.scene.fog.color.set(setting.fog);this.buildFloor(setting);buildWorldV3(this,setting);this.buildDecor(setting);this.enemyBatch=new EnemyBatch(this.world,this.budget.enemies);
+  this.scene.background.set(setting.color);this.scene.fog.color.set(setting.fog);this.buildFloor(setting);buildWorldV3(this,setting);this.buildDecor(setting);this.buildHalloween(setting);this.enemyBatch=new EnemyBatch(this.world,this.budget.enemies);
   this.hero=this.makePlayerMesh(char,skin);this.world.add(this.hero);this.attachWeapon(char.weapon);this.hero.position.set(0,.01,0);
   this.animMixer=new THREE.AnimationMixer(this.hero);this.animations={};this.animCurrent=null;
   for(const [kind,src,name] of [['idle','RigIdle','Idle_A'],['run','RigMove','Running_A']]){const clip=this.models[src]?.animations?.find(a=>a.name===name);if(clip)this.animations[kind]=this.animMixer.clipAction(clip);}
   this.mutator=MUTATORS.find(m=>m.id===mutator)||MUTATORS[0];
   this.player={pos:new THREE.Vector3(0,0,0),hp:char.hp+8*(profile.upgrades.health||0)+(char.id==='bruiser'?35:0),maxHp:char.hp+8*(profile.upgrades.health||0)+(char.id==='bruiser'?35:0),speed:char.speed*(char.id==='shade'?1.15:1)*(this.mutator.id==='turbo'?1.15:1)*(1+.015*(profile.upgrades.speed||0)),damage:char.damage*this.mutator.playerDamage*(1+.04*(profile.upgrades.power||0)),armor:char.armor,invuln:0,face:new THREE.Vector3(1,0,0),char,skin,regen:(profile.upgrades.resilience||0)*.08+(char.id==='paladin'?.35:0)};
   this.player.y=0;this.player.vy=0;this.player.grounded=true;this.player.jumpCooldown=0;this.player.maxHp=Math.round(this.player.maxHp*this.mutator.playerHp);this.player.hp=this.player.maxHp;this.player.dashCooldown=0;this.player.novaCooldown=0;this.player.relic=RELICS.find(r=>r.id===relic)||RELICS[0];this.player.blessing=0;
-  this.orbitMeshes=[];this.weapons={[char.weapon]:{level:1,next:0,evolved:false}};this.passives={};this.level=1;this.xp=0;this.earnedXP=0;this.required=levelRequired(1);this.kills=0;this.coins=0;this.souls=0;this.bossKills=0;this.evolutions=0;this.elapsed=0;this.spawnTimer=.32;this.bossWave=0;this.chestTimer=21;this.chests=[];this.closestChest=null;this.uiClock=0;this.wave=1;this.combo=0;this.comboClock=0;this.contractIndex=0;this.contracts=[{name:'CLEAR THE GATES',target:35,coins:40,souls:12},{name:'HOLD THE LINE',target:105,coins:75,souls:30},{name:'BREAK THE HORDE',target:220,coins:130,souls:55}];this.rush=false;this.fps=60;this.fpsWindow=0;this.fpsFrames=0;this.status='playing';this.runMap=map;
+  this.orbitMeshes=[];this.weapons={[char.weapon]:{level:1,next:0,evolved:false}};this.passives={};this.level=1;this.xp=0;this.earnedXP=0;this.required=levelRequired(1);this.kills=0;this.coins=0;this.souls=0;this.bossKills=0;this.evolutions=0;this.elapsed=0;this.spawnTimer=.32;this.bossWave=0;this.chestTimer=21;this.chests=[];this.closestChest=null;this.uiClock=0;this.wave=1;this.combo=0;this.comboClock=0;this.contractIndex=0;this.contracts=[{name:'CLEAR THE GATES',target:35,coins:40,souls:12},{name:'HOLD THE LINE',target:105,coins:75,souls:30},{name:'BREAK THE HORDE',target:220,coins:130,souls:55}];this.rush=false;this.fps=60;this.fpsWindow=0;this.fpsFrames=0;this.banished=new Set();this.rerolls=3;this.banishes=2;this.status='playing';this.runMap=map;
   this.events.start?.(char);this.events.toast?.(`THE NIGHT BEGINS · ${char.name.toUpperCase()}`);
  }
 
@@ -189,7 +235,7 @@ export class GraveyardEngine {
   this.coins+=(e.boss?80:Math.random()<.24?2:0)*this.mutator.reward*(1+.12*(this.passives.fortune||0));
   this.souls+=(e.boss?25:e.value)*this.mutator.reward;
   if(e.boss){this.bossKills++;this.events.boss?.('defeat');this.spawnChest(true);this.events.toast?.('TITAN SLAIN · OPEN ITS RELIC');}
-  else{this.dropPickup(e.mesh.position.clone(),'xp',e.value*2*bonus);if(Math.random()<.014)this.dropPickup(e.mesh.position.clone(),'heal',20);}
+  else{this.dropPickup(e.mesh.position.clone(),'xp',e.value*2*bonus);if(Math.random()<.06)this.dropPickup(e.mesh.position.clone(),'heal',26);if(Math.random()<.02)this.dropPickup(e.mesh.position.clone(),'coin',5);}
   const contract=this.contracts?.[this.contractIndex];if(contract&&this.kills>=contract.target){this.coins+=contract.coins;this.souls+=contract.souls;this.contractIndex++;this.events.toast?.(`✦ CONTRACT CLEARED · ${contract.name} · +${contract.coins} COINS`);}
   if(this.kills===1)this.events.toast?.('FIRST BLOOD');
  }
@@ -208,8 +254,8 @@ export class GraveyardEngine {
  addXP(value){let xp=value*(1+.1*(this.passives.focus||0)+(this.player.char.id==='hex'?.12:0));this.xp+=xp;this.earnedXP+=Math.round(xp);this.events.pickup?.();if(this.xp>=this.required){this.xp-=this.required;this.level++;this.required=levelRequired(this.level);this.status='levelup';this.events.levelUp?.(this.generateChoices());}}
  generateChoices(){
   const pool=[];
-  for(const w of WEAPONS){const level=this.weapons[w.id]?.level||0;if(level<8&&(level>0||Object.keys(this.weapons).length<6))pool.push({type:'weapon',id:w.id,title:w.name,icon:w.icon,desc:level?`Level ${level+1} · +damage, extra attacks, faster firing`:w.desc,level,rarity:w.rarity});}
-  for(const p of PASSIVES){const level=this.passives[p.id]||0;if(level<5&&(level>0||Object.keys(this.passives).length<6))pool.push({type:'passive',id:p.id,title:p.name,icon:p.icon,desc:p.desc,level,rarity:'passive'});}
+  for(const w of WEAPONS){const level=this.weapons[w.id]?.level||0;if(level<20&&!this.banished?.has(w.id)&&(level>0||Object.keys(this.weapons).length<6))pool.push({type:'weapon',id:w.id,title:w.name,icon:w.icon,desc:level?`Level ${level+1} · +damage, extra attacks, faster firing`:w.desc,level,rarity:w.rarity});}
+  for(const p of PASSIVES){const level=this.passives[p.id]||0;if(level<(p.max||12)&&!this.banished?.has(p.id)&&(level>0||Object.keys(this.passives).length<6))pool.push({type:'passive',id:p.id,title:p.name,icon:p.icon,desc:p.desc,level,rarity:'passive'});}
   const result=[];
   // V5: less random — always offer at least one weapon so your arsenal keeps
   // growing; favor upgrades you already run, then fill the rest with variety.
@@ -225,6 +271,9 @@ export class GraveyardEngine {
   this.status='playing';this.events.toast?.(`${choice.title.toUpperCase()} · UPGRADED`);
   if(this.xp>=this.required){this.xp-=this.required;this.level++;this.required=levelRequired(this.level);this.status='levelup';this.events.levelUp?.(this.generateChoices());}
  }
+ reroll(){if(this.status!=='levelup'||this.rerolls<=0)return null;this.rerolls--;this.events.toast?.(`REROLLED · ${this.rerolls} LEFT`);return this.generateChoices();}
+ banish(id){if(this.status!=='levelup'||this.banishes<=0||!id)return null;this.banishes--;this.banished.add(id);this.events.toast?.(`BANISHED · ${this.banishes} LEFT`);return this.generateChoices();}
+ skipUpgrade(){if(this.status!=='levelup')return;this.coins+=18;this.player.hp=Math.min(this.player.maxHp,this.player.hp+this.player.maxHp*.08);this.status='playing';this.events.toast?.('SKIPPED · +18 COINS · PATCHED UP');if(this.xp>=this.required){this.xp-=this.required;this.level++;this.required=levelRequired(this.level);this.status='levelup';this.events.levelUp?.(this.generateChoices());}}
  openChest(){
   const candidates=EVOLUTIONS.filter(e=>this.weapons[e.weapon]?.level>=8&&this.passives[e.passive]&&!this.weapons[e.weapon].evolved);
   if(candidates.length){const e=candidates[Math.floor(rand(0,candidates.length))];this.weapons[e.weapon].evolved=true;this.evolutions++;this.events.toast?.(`✦ EVOLUTION: ${e.name.toUpperCase()}!`);this.events.evolve?.(e);}
@@ -461,6 +510,7 @@ export class GraveyardEngine {
    this.uiClock+=dt;if(this.uiClock>.13){this.uiClock=0;this.events.tick?.(this.snapshot());}
   }
   if(this.status==='playing'){for(const ch of this.chests){ch.age+=dt;ch.mesh.rotation.y+=dt*.24;ch.mesh.position.y=.08+Math.sin(ch.age*2)*.055;ch.ring.rotation.z+=dt*.22;}}
+  this._animAmbience(dt);
   this.renderer.render(this.scene,this.camera);
  }
  snapshot(){const p=this.player;return {hp:p.hp,maxHp:p.maxHp,xp:this.xp,required:this.required,level:this.level,kills:this.kills,coins:this.coins,souls:this.souls,time:this.elapsed,wave:this.wave,weapons:this.weapons,passives:this.passives,enemies:this.enemies.length,dashCooldown:p.dashCooldown,novaCooldown:p.novaCooldown,combo:this.combo,blessing:p.blessing,shrine:!!this.focusedShrine,chest:!!this.closestChest,height:Math.round(p.y*10)/10,jumpReady:p.grounded&&p.jumpCooldown<=0,chests:this.chests.length,rush:this.rush,contract:this.contracts?.[this.contractIndex]||null,fps:this.fps,quality:this.preset};}
