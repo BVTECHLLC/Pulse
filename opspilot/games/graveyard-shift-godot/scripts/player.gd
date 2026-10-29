@@ -26,8 +26,10 @@ var level := 1
 var xp_need := 6
 var pending_levels := 0
 
+var heal_on_kill := 0.0
 var invuln := 0.0
 var dodge_cd := 0.0
+var dodge_cd_max := 1.4
 var dodge_t := 0.0
 var _dodge_dir := Vector3.ZERO
 var _face := 0.0
@@ -41,6 +43,28 @@ func setup() -> void:
 			if anim.has_animation(a):
 				anim.get_animation(a).loop_mode = Animation.LOOP_LINEAR
 		_play("idle")
+
+func apply_class(id: String) -> void:
+	match id:
+		"rogue":
+			max_hp = 95.0
+			move_mult = 1.18
+			dodge_cd_max = 0.95
+			add_weapon("spear")
+		"warrior":
+			max_hp = 155.0
+			armor = 3.0
+			move_mult = 0.95
+			add_weapon("scythe")
+		"healer":
+			max_hp = 115.0
+			regen = 1.5
+			pickup_range = 6.5
+			heal_on_kill = 3.0
+			add_weapon("nova")
+		_:
+			add_weapon("bolt")
+	hp = max_hp
 
 func add_weapon(id: String) -> void:
 	if has_weapon(id):
@@ -104,7 +128,7 @@ func _physics_process(delta: float) -> void:
 	if Input.is_key_pressed(KEY_SPACE) and dodge_cd <= 0.0:
 		_dodge_dir = dir if dir.length() > 0.1 else Vector3(sin(_face), 0, cos(_face))
 		dodge_t = 0.22
-		dodge_cd = 1.4
+		dodge_cd = dodge_cd_max
 		invuln = max(invuln, 0.34)
 
 	if dodge_t > 0.0:

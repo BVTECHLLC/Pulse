@@ -10,13 +10,34 @@ var player: CharacterBody3D
 var hud: CanvasLayer
 var rng := RandomNumberGenerator.new()
 
-var state := "play"        # "play" | "over"
+var state := "menu"        # "menu" | "play" | "over"
 var run_time := 0.0
 var dawn := 420.0          # survive 7:00 to win
 var kills := 0
 var spawn_timer := 0.0
 var enemies: Array = []
 var gems: Array = []
+
+# chosen at the main menu
+var chosen_class := "rogue"
+var chosen_diff := "mid"
+var menu: CanvasLayer
+# difficulty multipliers (set by _apply_difficulty)
+var diff_hp := 1.0
+var diff_spawn := 1.0
+var diff_dmg := 1.0
+var diff_reward := 1.0
+
+const DIFFS := {
+	"dusk":      {"name": "Dusk",      "hp": 0.8, "spawn": 1.3,  "dmg": 0.75, "reward": 0.8},
+	"mid":       {"name": "Midnight",  "hp": 1.0, "spawn": 1.0,  "dmg": 1.0,  "reward": 1.0},
+	"nightmare": {"name": "Nightmare", "hp": 1.5, "spawn": 0.72, "dmg": 1.3,  "reward": 1.7},
+}
+const CLASSES := {
+	"rogue":   {"name": "Rogue",   "blurb": "Fast & evasive.\nStarts: Bone Spear.\nQuicker dodge, less HP."},
+	"warrior": {"name": "Warrior", "blurb": "Tanky bruiser.\nStarts: Reaper Scythe.\n+HP, +armor, slower."},
+	"healer":  {"name": "Healer",  "blurb": "Sustain build.\nStarts: Holy Nova.\nRegen, heal on kill, big magnet."},
+}
 
 # follow camera (decoupled from the hero so facing doesn't spin the view)
 var cam_rig: Node3D
@@ -33,11 +54,41 @@ func _ready() -> void:
 	rng.randomize()
 	_build_environment()
 	_build_camera()
+	if "--shot" in OS.get_cmdline_user_args():
+		start_run("rogue", "mid")   # dev render skips the menu
+	else:
+		_show_menu()
+
+func _show_menu() -> void:
+	state = "menu"
+	menu = CanvasLayer.new()
+	menu.set_script(load("res://scripts/menu.gd"))
+	add_child(menu)
+	menu.open(self)
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+func start_run(class_id: String, diff_id: String) -> void:
+	chosen_class = class_id
+	chosen_diff = diff_id
+	_apply_difficulty(diff_id)
+	if menu and is_instance_valid(menu):
+		menu.queue_free()
 	_spawn_player()
 	_build_hud()
+	run_time = 0.0
+	kills = 0
 	for i in 3:
 		_spawn_enemy()
 	spawn_timer = 2.5   # brief calm before the swarm builds
+	state = "play"
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+func _apply_difficulty(diff_id: String) -> void:
+	var d = DIFFS.get(diff_id, DIFFS["mid"])
+	diff_hp = d["hp"]
+	diff_spawn = d["spawn"]
+	diff_dmg = d["dmg"]
+	diff_reward = d["reward"]
 
 # --------------------------------------------------------------------------- #
 # World
@@ -246,7 +297,7 @@ func _spawn_player() -> void:
 	add_child(player)
 	player.game = self
 	player.setup()
-	player.add_weapon("bolt")
+	player.apply_class(chosen_class)
 
 	# small persistent bonus from banked soul-shards (meta-progression)
 	var meta := _load_save()
@@ -283,6 +334,18 @@ func _process(delta: float) -> void:
 		if is_instance_valid(t):
 			t.light_energy = 2.3 + sin(tnow * 9.0 + i * 1.7) * 0.35 + rng.randf_range(-0.15, 0.15)
 
+	if state == "menu":
+		cam_yaw += delta * 0.07   # slow orbit over the graveyard behind the menu
+		if cam_rig:
+			cam_rig.global_position = cam_rig.global_position.lerp(Vector3.ZERO, 2.0 * delta)
+			cam_rig.rotation.y = cam_yaw
+		if "--menushot" in OS.get_cmdline_user_args() and _frame == 70:
+			var mimg := get_viewport().get_texture().get_image()
+			mimg.save_png("user://gys_menu.png")
+			print("MENU_SHOT: ", OS.get_user_data_dir(), "/gys_menu.png")
+			get_tree().quit()
+		return
+
 	if cam_rig and is_instance_valid(player):
 		cam_rig.global_position = cam_rig.global_position.lerp(player.global_position, 8.0 * delta)
 		cam_rig.rotation.y = cam_yaw
@@ -301,7 +364,7 @@ func _process(delta: float) -> void:
 		var burst: int = 1 + int(run_time / 70.0)
 		for b in burst:
 			_spawn_enemy()
-		spawn_timer = max(0.45, 1.7 - run_time * 0.0016)
+		spawn_timer = max(0.45, 1.7 - run_time * 0.0016) * diff_spawn
 
 	if run_time >= dawn:
 		_win()
@@ -343,7 +406,7 @@ func _spawn_enemy() -> void:
 	var r := rng.randf_range(22.0, 34.0)
 	e.position = player.position + Vector3(cos(a) * r, 0.5, sin(a) * r)
 	e.game = self
-	e.max_hp = 12.0 + run_time * 0.8
+	e.max_hp = (12.0 + run_time * 0.8) * diff_hp
 	# occasional heavy "tomb-brute"
 	if rng.randf() < 0.12 + run_time * 0.0003:
 		e.max_hp *= 2.4
@@ -466,6 +529,8 @@ func beam_flash(a: Vector3, b: Vector3, color: Color) -> void:
 # --------------------------------------------------------------------------- #
 func on_enemy_killed(pos: Vector3) -> void:
 	kills += 1
+	if is_instance_valid(player) and player.heal_on_kill > 0.0:
+		player.hp = min(player.max_hp, player.hp + player.heal_on_kill)
 	var val := 1
 	if kills % 12 == 0:
 		val = 5   # occasional rich shard
@@ -562,7 +627,7 @@ func _win() -> void:
 
 func _end(victory: bool) -> void:
 	state = "over"
-	var earned: int = kills + int(run_time / 8.0) + (120 if victory else 0)
+	var earned: int = int((kills + int(run_time / 8.0) + (120 if victory else 0)) * diff_reward)
 	var meta := _load_save()
 	meta["shards"] = int(meta.get("shards", 0)) + earned
 	meta["best_time"] = max(float(meta.get("best_time", 0.0)), run_time)
