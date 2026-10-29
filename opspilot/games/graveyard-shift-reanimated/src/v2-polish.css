@@ -1,0 +1,60 @@
+/* Nightfall overhaul: restrained dark-fantasy art direction, legible gameplay UI, low-DOM-cost effects. */
+:root{--mint:#cadfbb;--aqua:#c5dbb1;--gold:#e8be82;--muted:#a3afa8;--line:rgba(226,203,156,.15);--panel:rgba(16,25,29,.91);color:#f3f0e6;background:#10191d}
+#world{background:radial-gradient(ellipse at 50% 34%,#3c5552,#10191e 67%)}
+#app:before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;box-shadow:inset 0 0 180px 38px rgba(2,7,9,.8),inset 0 0 45px rgba(11,16,18,.5)}
+.site-shell{position:relative;background:radial-gradient(ellipse at 82% 22%,rgba(122,144,117,.06),transparent 45%),linear-gradient(102deg,rgba(9,16,20,.96) 0%,rgba(11,19,24,.9) 42%,rgba(11,16,20,.56) 100%)}
+.topbar{background:rgba(12,19,23,.91);border-bottom:1px solid rgba(231,207,164,.17);box-shadow:0 8px 35px #060d13a1}
+.brand{font-size:23px;letter-spacing:1.3px}.brand em,.brand-glyph{color:#e6be81}.brand-glyph{border-color:#b69c7188;background:#8e795b18}
+.main-nav button{color:#b3bab4}.main-nav button.active{color:#f8edda}.main-nav button.active:after{background:#e4bb82;box-shadow:0 0 14px #e4bb8280}
+.currency,.avatar{color:#d4dabb}.currency.gold,.mission-grid b,.gold-text{color:#ebc58e}.avatar{background:#1d2a2b;border-color:#ddbd8566}
+.hero-promo h1{font-size:clamp(74px,8.4vw,150px);letter-spacing:1px;line-height:.83;text-transform:uppercase;text-shadow:0 10px 35px #050e13bb}
+.hero-promo h1 span{color:#e6c68e;text-shadow:0 4px 45px #e6b77732}
+.hero-promo .lead{font-size:15px;color:#bec9c3;max-width:600px;line-height:1.8}
+.kicker{color:#e9c48b}.pulse-dot,.online-dot{background:#e1c28f;box-shadow:0 0 12px #e5c48c80}
+.btn-primary{background:linear-gradient(125deg,#f4d49d,#c49e65);color:#20221c;box-shadow:0 11px 38px #c39c6240;border:1px solid #ffdcaa8f;border-radius:5px}
+.btn-ghost{border-color:#decba44a;color:#eee9da;border-radius:5px}.btn-ghost:hover{color:#f1cea0;border-color:#c8a979}
+.mission-card,.roster-card,.shop-card,.codex-item,.achievement,.settings-panel,.selected-mini,.progress-mini,.customize-card,.map-pick,.career-panel{border-color:rgba(222,203,166,.19)!important;border-radius:9px;box-shadow:0 12px 38px #0710153d}
+.mission-card{background:linear-gradient(152deg,rgba(40,48,49,.97),rgba(16,29,33,.95))}
+.mission-card:before,.mission-card:after{border-color:#dbc094}.mission-art{background:radial-gradient(ellipse at 59% 37%,rgba(239,222,174,.19),transparent 35%),linear-gradient(160deg,#455b56,#1c2c31 58%,#253538)}
+.moon{background:#f5dfb4;box-shadow:0 0 70px #f1d59f85}.mission-tag{color:#f5e3bf}.text-link{color:#efc58e}
+.frame-icon,.shop-icon,.item-icon,.achievement-icon{background:#273734;border-color:#988d6b77;color:#ecc68a}
+.track div,.upgrade-pips span.on{background:linear-gradient(90deg,#b2be9b,#e9cd9b)}
+.stat-chip{background:#1a292dba;border-radius:5px}.stat-chip b{color:#eacb9c}
+.progress-mini>span{color:#e1ca9e}
+.roster-card{background:linear-gradient(150deg,#293b3d,#17262c 60%,#172124)}
+.roster-card.chosen{border-color:#e6c187!important;box-shadow:inset 0 0 52px #c2a47713,0 0 25px #c9a7681c}
+.roster-glyph{color:#ead2a7;text-shadow:0 0 43px #dbc28b8c}
+.roster-trait{color:#e3ce9f}.skin-swatch.chosen{border-color:#e6c187}.rarity,.map-pick em,.achievement small{color:#dcd0a6}
+.shop-buy{color:#f4d7a8;border-color:#aa8f6399;background:#544733}.shop-buy:not(:disabled):hover{background:#826944}
+.map-picture{color:#e4c49b;background:radial-gradient(circle at 50% 50%,rgba(163,134,94,.2),transparent 60%),linear-gradient(155deg,#384b4b,#16252b)}
+.game-hud{position:fixed;z-index:2;text-shadow:0 1px 3px #090e10b8}
+.hud-top{background:linear-gradient(rgba(8,15,19,.84),rgba(8,15,19,.29) 65%,transparent);padding:22px 31px}
+.hud-bottom{background:linear-gradient(transparent,rgba(4,12,15,.49) 16%,rgba(4,12,15,.7));padding:26px 28px 21px}
+.hud-timer{color:#faf1df;text-shadow:0 3px 13px #090c10}
+.hud-weapon{background:#263b3ec9;border-color:#d7c48c63;color:#e9d8b7;border-radius:6px}
+.health-fill{background:linear-gradient(90deg,#a24552,#e17c77)}.xp-fill{background:linear-gradient(90deg,#7d9e8f,#d4d29b)}
+.hud-pause{border-radius:6px;background:#1b2a2d;border-color:#e5c48a66;color:#f2d5a4}
+.ability-bar button{border:1px solid #cbaf7d8f;border-radius:6px;background:#1d2c30ed;color:#f4d7a2;min-width:104px}
+.ability-bar button span{color:#e7e6d8}.ability-bar button b{color:#c7dcb8}
+.veil{background:rgba(6,11,15,.8);backdrop-filter:blur(8px)}.level-card{border-radius:9px;background:linear-gradient(150deg,#334040,#1d2d33)}
+.level-card:hover{border-color:#f2d39a;transform:translateY(-5px)}
+.combat-signals{position:fixed;top:104px;left:50%;transform:translateX(-50%);display:flex;align-items:center;flex-direction:column;gap:7px;pointer-events:none;z-index:4;min-width:190px}
+.combat-signals span:not([hidden]),.combat-signals button:not([hidden]){display:block;min-width:195px;max-width:min(78vw,440px);text-align:center;padding:9px 16px;background:#17292ce8;border:1px solid #bd9f6b66;border-radius:7px;color:#f1d6aa;font-size:10px;font-weight:900;letter-spacing:1.4px;box-shadow:0 8px 30px #090f13a8}
+.combat-signals [hidden]{display:none!important}
+.combat-signals #rush-signal{color:#ffc2b8;background:#44202ae8;border-color:#b65d5d}
+.combat-signals #combo-signal{color:#c2efc8;border-color:#87b8947f}
+.combat-signals #shrine-signal{pointer-events:auto;cursor:pointer;color:#2c2a20;background:#e4c590;border-color:#fcdfab;font-size:12px}
+.combat-signals #perf-signal{display:block;position:fixed;top:-89px;left:calc(50vw - 126px);min-width:0;max-width:none;width:250px;background:transparent;border:0;box-shadow:none;padding:0;color:#f3e0b78c;font-size:9px;white-space:nowrap;text-align:right}
+.relic-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:15px 0 32px}
+.relic-card{min-height:149px;text-align:left;display:flex;gap:16px;align-items:center;border:1px solid #4f5a53;background:linear-gradient(140deg,#283839,#17252a);padding:18px;color:#f2eee1;border-radius:10px;position:relative;transition:transform .15s,border-color .15s}
+.relic-card.chosen{border-color:#e3c38c;box-shadow:inset 0 0 40px #dbb97917}
+.relic-card:hover{transform:translateY(-2px);border-color:#d9be8d}
+.relic-symbol{min-width:58px;height:64px;display:grid;place-items:center;border:1px solid #decb946b;border-radius:8px;background:#8d855524;font-size:32px;color:#ebc692}
+.relic-card div{flex:1}.relic-card h3{font:800 24px 'Barlow Condensed',sans-serif;margin:7px 0}.relic-card p{color:#bcc7c0;font-size:11px;line-height:1.5;margin:0}.relic-card small{font-size:9px;letter-spacing:1px;color:#d3b78b}.relic-card>b{position:absolute;top:12px;right:13px;font-size:8px;color:#e7c68f;letter-spacing:1px}
+.toasts{pointer-events:none}.toast{border-radius:5px;border-color:#c3a674;color:#edd5ac;background:#1b2b2eea}
+@media(max-width:1024px){.relic-grid{grid-template-columns:repeat(2,1fr)}.main-nav{gap:2px}}
+@media(max-width:680px){.hero-promo h1{font-size:clamp(60px,14vw,88px)}.relic-grid{grid-template-columns:1fr}.relic-card{min-height:105px}.combat-signals{top:132px}.combat-signals #perf-signal{display:none}.hud-bottom{padding-bottom:10px}.ability-bar button{min-width:72px}}
+@media(prefers-reduced-motion:reduce){.relic-card:hover,.level-card:hover,.btn-primary:hover{transform:none}}
+
+.combat-signals #contract-signal{position:fixed;top:calc(100vh - 174px);left:calc(-50vw + 26px);font-size:9px;text-align:left;max-width:290px;color:#e8d2a8;background:rgba(16,32,36,.7)}
+@media(max-width:680px){.combat-signals #contract-signal{top:calc(100vh - 296px);left:calc(-50vw + 15px);max-width:210px;padding:6px 8px;font-size:8px}}

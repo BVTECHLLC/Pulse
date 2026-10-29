@@ -1,6 +1,6 @@
-import {accountLevel,metaPrice,ACHIEVEMENTS,CHARACTERS,SKINS,MAPS,MUTATORS,META} from './data.js';
+import {accountLevel,metaPrice,ACHIEVEMENTS,CHARACTERS,SKINS,MAPS,MUTATORS,META,RELICS} from './data.js';
 const KEY='bvtech.graveyard-shift.reanimated.profile.v1';
-export const initialProfile=()=>({version:1,coins:0,souls:0,totalXP:0,selected:'warden',skin:'default',map:'cemetery',mutator:'standard',upgrades:{},achievements:[],stats:{runs:0,bestKills:0,bestTime:0,defeated:0,wins:0},settings:{music:.25,sfx:.6,shadows:true,particles:true,shake:true,damageNumbers:true},lastPlayed:null});
+export const initialProfile=()=>({version:1,coins:0,souls:0,totalXP:0,selected:'warden',skin:'default',map:'cemetery',mutator:'standard',selectedRelic:'nightfall',upgrades:{},achievements:[],stats:{runs:0,bestKills:0,bestTime:0,defeated:0,wins:0},settings:{music:.25,sfx:.6,graphics:.5,shadows:true,particles:true,shake:true,damageNumbers:true},lastPlayed:null});
 export function loadProfile(){
  try {const p=JSON.parse(localStorage.getItem(KEY));if(p?.version===1)return sanitizeImportedSave(p);}catch{}return initialProfile();
 }
@@ -35,6 +35,7 @@ export function sanitizeImportedSave(raw){
  if(SKINS.some(c=>c.id===raw.skin))base.skin=raw.skin;
  if(MAPS.some(c=>c.id===raw.map))base.map=raw.map;
  if(MUTATORS.some(c=>c.id===raw.mutator))base.mutator=raw.mutator;
+ if(RELICS.some(c=>c.id===raw.selectedRelic))base.selectedRelic=raw.selectedRelic;
  if(raw.upgrades&&typeof raw.upgrades==='object'&&!Array.isArray(raw.upgrades)){for(const m of META)base.upgrades[m.id]=num(raw.upgrades[m.id],m.max);}
  if(Array.isArray(raw.achievements))base.achievements=ACHIEVEMENTS.filter(a=>raw.achievements.includes(a.id)).map(a=>a.id);
  if(raw.stats&&typeof raw.stats==='object'){for(const k of Object.keys(base.stats))base.stats[k]=num(raw.stats[k]);}

@@ -1,13 +1,16 @@
-GRAVEYARD SHIFT: REANIMATED — ALL-IN-ONE CLAUDE CODE HANDOFF (UNDER 30 MB)
+GRAVEYARD SHIFT: NIGHTFALL V3 - COMPLETE HANDOFF
+===============================================
+You are in the actual game source folder, not in a design concept or an asset-only pack.
+READ README.md and docs/V3_IMPLEMENTATION_AND_AUDIO.md before doing any edits.
 
-THIS ZIP CONTAINS THE COMPLETE PLAYABLE PROTOTYPE, SOURCE, CORE 3D ASSETS, DOCUMENTATION, AND TESTS.
-Only THREE oversized tree bark/normal textures were downscaled from 2048x2048 to 1024x1024 so the entire project fits the 30 MB upload limit. There is no gameplay functionality removed.
+WORK ORDER
+1. npm install; npm test; npm run build. Fix failures first.
+2. Playtest and inspect browser/DevTools. Investigate performance, asset loading, hitboxes, terrain clipping, stairs, jumping and camera. Profile FPS before graphical additions.
+3. Keep V3 terrain.js/world-v3.js collision volumes matched with rendered trees/rocks/ruins. Never allow decorations to be freely traversed.
+4. Preserve auto-firing 26-weapon armory, 12 active relics, 20 evolutions, drops, chests and permanent XP.
+5. Use assets from public/assets/models and library; import more only after checking licenses, texture budgets and model scaling. FBX-only assets need glTF/GLB conversion; do NOT copy unsafely.
+6. The new src/audio.js orchestrates ORIGINAL custom OGG songs and 22 SFX. Don't re-introduce high-frequency beeps. Test audio settings, muted mode, pause/resume and browser autoplay permission after first gesture. No repeated attack spam. Music must loop.
+7. Integrate Linode authenticated profiles only after inspecting existing login/session architecture. NEVER accept client-reported XP or coins as authentic; design trusted server run verification first.
+8. Create a staging copy of the portal and backup database before any production changes. Validate and obtain explicit user approval for cutover.
 
-INSTRUCTIONS FOR CLAUDE CODE
-1. Extract this ZIP, open the extracted folder (or upload this archive if your interface accepts ZIPs).
-2. FIRST read CLAUDE_CODE_PROMPT.txt, docs/CLAUDE_CODE_HANDOFF.md, docs/GAME_DESIGN_BIBLE.md and README.md.
-3. Run npm install && npm test && npm run dev. Actually play and debug the game in a browser.
-4. Build the real production features and staging integration, preserving live login/DB data.
-5. Do NOT deploy over the live website before backup, staging QA, and rollback plan.
-
-If Claude Code is running against your local folder, it can read the extracted files directly: the 30MB attachment limit does not apply to the folder contents.
+The full ZIP can be placed on Linode via SCP; Claude Code can read it locally without a 25 MB UI upload. See transfer-tools/LINODE_STAGING_SETUP.md in the root of the delivery ZIP.

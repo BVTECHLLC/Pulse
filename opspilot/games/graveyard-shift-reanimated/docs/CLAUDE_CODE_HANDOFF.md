@@ -109,3 +109,6 @@ First inspect the existing identity system and database. Reuse existing login/se
 Work incrementally with commits. Verify each phase via the browser. Prioritize actual playability, responsiveness, art coherence, performance, account security, and future maintainability. If asset licenses conflict, keep the game playable with CC0 alternatives and note the restriction. If you can't inspect production, keep all destructive operations disabled and produce a staging bundle and a deployment checklist.
 
 **Definition of Done:** a returning user logs in, chooses a fully modeled survivor and skin, survives enjoyable 3D horde combat, collects XP/levels/evolutions, dies or wins, receives verified persistent XP/currency, buys a permanent upgrade, logs out and back in, and sees the exact same legitimate progression. Everything works on modern desktop and touch devices without breaking the existing portal.
+
+## NIGHTFALL V3 ADDENDUM (latest; takes precedence over V2)
+Read `docs/V3_IMPLEMENTATION_AND_AUDIO.md` and `START_HERE_CLAUDE.txt`. 3D terrain obstacles, chests and 26 weapons are already coded. Music + SFX are original OGG sound files under `public/assets/audio` and loaded with `src/audio.js`, not WebAudio oscillator beeps. Check runtime behavior. This is a prototype, not a certified deployed release.

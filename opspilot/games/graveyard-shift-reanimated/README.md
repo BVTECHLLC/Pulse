@@ -1,79 +1,43 @@
-# ☠ GRAVEYARD SHIFT: REANIMATED
+# Graveyard Shift: NIGHTFALL V3 — Sound & World Overhaul
 
-**A playable, original 3D browser horde-survival roguelite starter for the BVTech portal.**
+An original browser-based 3D survival roguelite. Built with Three.js, JavaScript and Vite. **V3 prototype source, not an independently playtested release.** No deployment to your live portal has been performed.
 
-Version `0.8.0-prototype` · built using assets supplied by the game owner · frontend only
+## Play locally
 
-## Get it running
-
-```bash
-# Node.js 20+ required
+```sh
 npm install
 npm run dev
-# Open http://localhost:5173/
 ```
 
-**Production build under existing BVTech portal subdirectory:**
+Open the Vite URL printed in your terminal. Node 20+ required. To check source and game logic:
 
-```bash
-VITE_BASE_PATH=/graveyard-shift/ npm run build
-# Contents of dist/ should be served at https://portal.bvtech.org/graveyard-shift/
+```sh
+npm test
+npm run build
 ```
 
-Do not deploy this blindly to production. Back up the existing game and account database. The remaster is a standalone frontend prototype; the live portal's source was not provided. It does not update or reuse current user accounts yet.
+**Controls:** WASD/arrows move, Space jump/climb, Q dash, E selected relic, F loot chest/activate altar, Escape pause. Weapons auto-fire. Graphics, sound, and music adjustable in Settings.
 
-## What's already playable
+## V3 gameplay additions
 
-- Original 3D arena with 6 provided KayKit character models, low-poly enemy crowds, interactive pickups, cinematic lighting, a procedurally detailed ground, and a follow camera.
-- 10 survivor **classes** built from 6 core character models, 8 colorway skins per class (**80 class/skin combinations**), unlocks linked to permanent account XP.
-- 3 map themes, 14 automatic weapons, 12 passive perks, 8 weapon evolutions, up to 6 weapons and 6 passives per run.
-- Scaling enemy waves, 3-minute boss spawns, boss chests, critical hits, knockback, healing, auto-fired attacks, a 12-minute victory condition, 3-card upgrade drafts, run-end stats.
-- 4 add-on challenge mutators including Nightmare and Glass Cannon.
-- Persistent local XP, coins, souls, permanent upgrade tree, best scores, achievements, and save export/import.
-- Responsive desktop/mobile interface, WASD and arrow controls, touch joystick, pause, settings, minimal original synthesized audio cues.
-- Content/consistency tests.
+- Perspective/height-aware 3D camera and solid collision volumes for trees, ruins, rocks, boulders and buildings. Platforms, ramps and climbable/jumpable rocks.
+- 26 auto-firing weapons, 20 weapon evolution recipes, 12 active relic spells, 16 survivor classes, eight skin palettes (128 character/class/skin combinations) and 12 passive abilities.
+- Dynamic treasure chests throughout runs, with rare drops, healing, cash, weapon upgrades and bonuses.
+- Weapon-specific projectile shapes (crossbow bolts, discs, shards, fiery cones, homing spirits), AoE knockback, slows, bosses, timed blood moons and objectives.
+- Optimized enemy batching, effects/projectile budgets and scalable graphics presets to help avoid the oversized spawn/freezing bug from V2.
+- Two **original composed looping soundtracks** (menu and combat) plus 22 unique synthesized sound cues. The sound mixer throttles attacks to at most one cue per ~520 ms, limits simultaneous SFX voices to four, and supports separate volume sliders.
+- Local save for XP, coins and progress. **Authenticated Linode sync is not included**; do not trust local saves for server-side rewards.
 
-## Important prototype limitations
+## Asset packs
 
-**Server persistence is not yet connected**: the supplied build persists locally with `localStorage` and exposes a read-only `/api/graveyard-shift/v1/me` integration probe. Claude Code should integrate with the existing Linode Linux server and existing identity system. Server must be authoritative over currency/XP and verify run submissions; **never blindly trust client-provided scores.**
+The runtime uses optimized GLB / glTF exports from supplied KayKit, Fantasy Props, Universal Base Characters, Nature, sci-fi, adventurer and dungeon model packs. Extra models are imported into `public/assets/models/kaykit/`, `public/assets/models/fantasy/`, and `public/assets/library/universal/` for later placement; **the full asset library is not drawn in every scene** (that would cause long loads and FPS problems). Some supplied FBX-only Halloween content remains source-only pending conversion to web GLB. See `docs/ASSET_PROVENANCE.md` for licensing.
 
-This is an integrated first build, not a verified production release. A full end-to-end 3D browser test and production integration are still needed, followed by animations, effects, balancing, proper sound/music, accessibility, and stronger performance optimization. See `docs/CLAUDE_CODE_HANDOFF.md`.
+## Give this to Claude Code without any attachment-size limit
 
-The optional music slider is a placeholder for the future original soundtrack. Rendering effects toggles are UI preferences and not yet fully applied to the engine.
+Best option: extract the full ZIP on **your Windows computer**, open a terminal in `graveyard-shift-reanimated`, then start `claude` there. Claude Code reads your working directory rather than relying on the ChatGPT/Claude message upload UI.
 
-## Controls
+Alternatively transfer the extracted full folder to your **Linode staging directory** using the PowerShell / Bash scripts in `../transfer-tools/`, SSH to the Linode, `cd` to the folder and run `claude`. See `../transfer-tools/LINODE_STAGING_SETUP.md` for safe, reversible steps. **Do not overwrite `/var/www` or your existing user database until staging has been tested.**
 
-| Input | Action |
-| --- | --- |
-| WASD / arrow keys | Move relative to camera |
-| Mouse / touch | Use menus; movement touch joystick on mobile |
-| 1, 2, 3 | Pick corresponding level-up |
-| Q / E | Shadow Dash / Nightfall Burst (active skills, cooldowns) |
-| Escape | Pause / resume |
-| Auto-fire | Weapons shoot automatically at nearby enemies |
-| Boss chest | Obtain coins/health or evolve a max-level weapon with its prerequisite passive |
+## Important limits
 
-## Project layout
-
-```text
-index.html
-src/
-  data.js          Content tables and balance numbers
-  engine.js        Three.js scene, combat, wave AI, loot, camera
-  main.js          Menus, HUD, events, interactions
-  profile.js       Browser save and Linode API probe
-  style.css        Full game UI styles
-public/assets/models/     Curated subset of original uploaded CC0 asset packs
-server-example/            Design/reference for Linode integration
-scripts/                   Reserved for asset processing
-stats/
-docs/
-  CLAUDE_CODE_HANDOFF.md   START HERE for Claude Code
-  ASSET_PROVENANCE.md      Source and license notes
-  GAME_DESIGN_BIBLE.md    Next-phase scope and detailed mechanics
-  ADDON_SPEC.md           Data-only add-on safety spec
-```
-
-## Licensing
-
-Code in this remaster is original, and you can modify and use it for your BVTech game. The included **asset models belong to their respective creators** and come from the user's uploads. Quaternius, KayKit, and Kenney CC0 licenses are preserved in each asset subdirectory. The Quaternius Bestiary QAL-licensed pack was intentionally not included to avoid redistributing that pack's raw assets. Retain embedded attribution/license files. No Vampire Survivors assets or source code are included.
+Tests are static/logic tests; installing npm deps and interactive WebGL playtesting were not possible in the creation environment. Before deployment Claude should execute `npm install`, `npm test`, `npm run build`, then manual browser/WebGL performance tests on Desktop + mobile. No authentication backend is asserted to be working. All 3D assets used must be audited for permissions before public redistribution.

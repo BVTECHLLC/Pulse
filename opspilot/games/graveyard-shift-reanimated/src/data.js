@@ -1,4 +1,11 @@
+import {V3_WEAPONS,V3_RELICS,V3_EVOLUTIONS} from './v3-content.js';
 export const CHARACTERS = [
+ {id:'arbalist',name:'Dusk Arbalist',role:'Marksman',model:'Ranger',icon:'➶',blurb:'Every arrow is a whispered goodbye.',weapon:'crossbow',hp:115,speed:5.5,damage:1.05,armor:1,skill:'Piercing Aim',passive:'Piercing spectral arrows.',unlock:0},
+ {id:'starwitch',name:'Star Witch',role:'Meteor Mage',model:'Mage',icon:'☄',blurb:'The stars obey the last witch of midnight.',weapon:'meteor',hp:90,speed:5,damage:1.24,armor:0,skill:'Falling Stars',passive:'Meteor mastery and strong area damage.',unlock:3},
+ {id:'bladedancer',name:'Moon Dancer',role:'Blademaster',model:'Rogue',icon:'◈',blurb:'A crescent of steel in the darkness.',weapon:'chakram',hp:111,speed:6.1,damage:1.1,armor:1,skill:'Blade Storm',passive:'Fast, piercing moon blades.',unlock:4},
+ {id:'firedrake',name:'Cinder Herald',role:'Pyromancer',model:'Barbarian',icon:'♨',blurb:'The fire never learned mercy.',weapon:'wyrmfire',hp:128,speed:4.9,damage:1.14,armor:2,skill:'Infernal Breath',passive:'Scatter fire across an entire wave.',unlock:5},
+ {id:'briar',name:'Briar Knight',role:'Guardian',model:'Knight',icon:'❋',blurb:'A walking fortress of living thorns.',weapon:'thorn',hp:172,speed:4.65,damage:1,armor:4,skill:'Thorn Crown',passive:'Orbiting defenses protect allies.',unlock:6},
+ {id:'warlock',name:'Hex Gunner',role:'Spellshot',model:'Rogue_Hooded',icon:'⌁',blurb:'Runes, repeaters, and relentless fire.',weapon:'hexbolt',hp:98,speed:5.6,damage:1.22,armor:0,skill:'Hex Machine',passive:'Fast-fire magic bolts.',unlock:8},
  {id:'warden',name:'The Warden',role:'Survivor',model:'Knight',icon:'⚔',blurb:'Armor, resolve, and a sword that never rests.',weapon:'boneblades',hp:145,speed:5,damage:1,armor:3,skill:'Iron Will',passive:'Take 12% less damage.',unlock:0},
  {id:'hex',name:'Hex Weaver',role:'Arcanist',model:'Mage',icon:'✦',blurb:'Turns dark energy into beautiful destruction.',weapon:'ember',hp:90,speed:5.2,damage:1.2,armor:0,skill:'Arcane Hunger',passive:'12% more XP and spell damage.',unlock:0},
  {id:'ranger',name:'Night Ranger',role:'Hunter',model:'Ranger',icon:'➶',blurb:'Never outnumbered when arrows fly.',weapon:'shrapnel',hp:110,speed:5.6,damage:1.04,armor:1,skill:'Quickdraw',passive:'15% faster weapon cooldowns.',unlock:0},
@@ -32,6 +39,7 @@ export const MAPS = [
  {id:'facility',name:'Sector 13',subtitle:'Experiment terminated. Subjects remain.',icon:'⌬',color:0x0d2029,fog:0x0c1c25,accent:'#67d4ef',unlock:7}
 ];
 export const WEAPONS = [
+ ...V3_WEAPONS,
  {id:'boneblades',name:'Bone Blades',icon:'⚔',rarity:'common',desc:'Seeking blades cut into the closest foes.',color:0xe1e8fa,damage:19,cooldown:1.05,projectiles:1},
  {id:'ember',name:'Ember Wand',icon:'✦',rarity:'common',desc:'Homing firebolts ignite the undead.',color:0xff9751,damage:17,cooldown:.82,projectiles:1},
  {id:'shrapnel',name:'Grave Scattergun',icon:'✹',rarity:'common',desc:'A brutal close-range cone of pellets.',color:0xf0c878,damage:12,cooldown:1.65,projectiles:5},
@@ -62,6 +70,7 @@ export const PASSIVES = [
  {id:'greed',name:'Grave Robber',icon:'◆',desc:'+10% soul rewards per rank.',max:5}
 ];
 export const EVOLUTIONS = [
+ ...V3_EVOLUTIONS,
  {weapon:'boneblades',passive:'might',name:'Ossuary Requiem',effect:'Double seeking blades'},
  {weapon:'ember',passive:'focus',name:'Inferno Codex',effect:'Rapid burning salvos'},
  {weapon:'shrapnel',passive:'haste',name:'Midnight Barrage',effect:'Huge shotgun volley'},
@@ -94,3 +103,14 @@ export const findPassive=id=>PASSIVES.find(p=>p.id===id);
 export const levelRequired=level=>Math.floor(12+level*6+level**1.38*2.5);
 export const accountLevel=xp=>Math.floor(1+Math.sqrt(Math.max(0,xp)/140));
 export const metaPrice=(upgrade,rank)=>Math.floor(upgrade.base * (rank+1)**1.6);
+
+// Real, selectable E-slot abilities, with individual cooldowns.
+export const RELICS=[
+ ...V3_RELICS,
+ {id:'nightfall',name:'Nightfall Burst',icon:'☀',cooldown:24,desc:'Expanding radiant shockwave. High damage and enormous knockback.'},
+ {id:'frostbite',name:'Winter Veil',icon:'❄',cooldown:19,desc:'Freeze the crowd around you; slow enemies for six seconds.'},
+ {id:'bloodwell',name:'Bloodwell',icon:'♥',cooldown:25,desc:'Sacrifice enemy health to heal yourself, then gain temporary armor.'},
+ {id:'thunder',name:'Thunder Crown',icon:'ϟ',cooldown:21,desc:'Chain lightning lashes up to sixteen nearby enemies.'},
+ {id:'sanctuary',name:'Sanctuary',icon:'✦',cooldown:28,desc:'Gain five seconds of immunity and a small emergency heal.'},
+ {id:'gravity',name:'Void Singularity',icon:'◉',cooldown:22,desc:'Drag surrounding enemies inward, then detonate the singularity.'}
+];
