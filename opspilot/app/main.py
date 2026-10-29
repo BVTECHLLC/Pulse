@@ -103,6 +103,12 @@ async def security_headers(request: Request, call_next):
         + "; worker-src 'self' blob:; "
         "frame-src 'self' blob:; frame-ancestors 'none'"
     )
+    # Game HTML (directory index / *.html) must always revalidate so a new deploy
+    # shows up immediately instead of serving a stale edge/browser copy; the
+    # fingerprinted JS/CSS/model assets stay freely cacheable.
+    if _game_path and (request.url.path.endswith("/") or request.url.path.endswith(".html")):
+        resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
     if _s.is_prod:
         resp.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
     return resp
