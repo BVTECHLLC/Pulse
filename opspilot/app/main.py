@@ -51,6 +51,14 @@ if not _game_dir.is_dir():
 if _game_dir.is_dir():
     app.mount("/graveyard-shift", StaticFiles(directory=str(_game_dir), html=True), name="graveyard")
 
+# Graveyard Shift: Reanimated — the new Three.js remaster, served at a STAGING
+# path for QA. Production (/graveyard-shift) is left untouched until it passes.
+# ("/graveyard-shift-beta" is not a sub-path of "/graveyard-shift/", so the two
+# static mounts never collide.)
+_beta_dir = Path(__file__).resolve().parent.parent / "games" / "graveyard-shift-beta"
+if _beta_dir.is_dir():
+    app.mount("/graveyard-shift-beta", StaticFiles(directory=str(_beta_dir), html=True), name="graveyard-beta")
+
 # Keep the retired /signal path working: redirect it to the new home.
 from fastapi.responses import RedirectResponse as _Redir  # noqa: E402
 @app.get("/signal")

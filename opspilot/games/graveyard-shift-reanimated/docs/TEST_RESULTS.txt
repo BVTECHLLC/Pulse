@@ -1,0 +1,63 @@
+TAP version 13
+# Subtest: content minimums and no duplicate IDs
+ok 1 - content minimums and no duplicate IDs
+  ---
+  duration_ms: 1.060169
+  type: 'test'
+  ...
+# Subtest: every class starts with a defined weapon
+ok 2 - every class starts with a defined weapon
+  ---
+  duration_ms: 0.204327
+  type: 'test'
+  ...
+# Subtest: every evolution uses a real weapon and passive
+ok 3 - every evolution uses a real weapon and passive
+  ---
+  duration_ms: 0.161953
+  type: 'test'
+  ...
+# Subtest: level thresholds and coin costs grow monotonically
+ok 4 - level thresholds and coin costs grow monotonically
+  ---
+  duration_ms: 0.269334
+  type: 'test'
+  ...
+# Subtest: account levels are monotonic
+ok 5 - account levels are monotonic
+  ---
+  duration_ms: 0.200811
+  type: 'test'
+  ...
+# Subtest: every map has a unique ID and positive unlock
+ok 6 - every map has a unique ID and positive unlock
+  ---
+  duration_ms: 0.101091
+  type: 'test'
+  ...
+# Subtest: imported guest saves cannot introduce executable strings or invalid upgrades
+ok 7 - imported guest saves cannot introduce executable strings or invalid upgrades
+  ---
+  duration_ms: 0.86736
+  type: 'test'
+  ...
+# Subtest: reject malformed save files
+ok 8 - reject malformed save files
+  ---
+  duration_ms: 0.254372
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 67.364352
+
+
+Static JavaScript syntax checks: PASS
+Asset existence/PNG verification: PASS
+Full browser gameplay/build test: NOT RUN (npm dependencies unavailable in this environment)

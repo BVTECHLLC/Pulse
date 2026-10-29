@@ -1,0 +1,96 @@
+export const CHARACTERS = [
+ {id:'warden',name:'The Warden',role:'Survivor',model:'Knight',icon:'⚔',blurb:'Armor, resolve, and a sword that never rests.',weapon:'boneblades',hp:145,speed:5,damage:1,armor:3,skill:'Iron Will',passive:'Take 12% less damage.',unlock:0},
+ {id:'hex',name:'Hex Weaver',role:'Arcanist',model:'Mage',icon:'✦',blurb:'Turns dark energy into beautiful destruction.',weapon:'ember',hp:90,speed:5.2,damage:1.2,armor:0,skill:'Arcane Hunger',passive:'12% more XP and spell damage.',unlock:0},
+ {id:'ranger',name:'Night Ranger',role:'Hunter',model:'Ranger',icon:'➶',blurb:'Never outnumbered when arrows fly.',weapon:'shrapnel',hp:110,speed:5.6,damage:1.04,armor:1,skill:'Quickdraw',passive:'15% faster weapon cooldowns.',unlock:0},
+ {id:'shade',name:'The Shade',role:'Assassin',model:'Rogue_Hooded',icon:'◈',blurb:'A whisper behind every enemy.',weapon:'voidlance',hp:92,speed:6.1,damage:1.15,armor:0,skill:'Ghost Step',passive:'15% faster movement.',unlock:3},
+ {id:'bruiser',name:'Gravedigger',role:'Brawler',model:'Barbarian',icon:'⚒',blurb:'More monster than the monsters.',weapon:'scythe',hp:180,speed:4.6,damage:1.17,armor:4,skill:'Last Stand',passive:'+25% maximum HP.',unlock:4},
+ {id:'alchemist',name:'Plague Doctor',role:'Scientist',model:'Mage',icon:'☣',blurb:'A cure for everything except curiosity.',weapon:'spores',hp:100,speed:5,damage:1.08,armor:1,skill:'Toxicology',passive:'Poison and area attacks are 18% stronger.',unlock:5},
+ {id:'hacker',name:'Ghost Protocol',role:'Technomancer',model:'Rogue',icon:'⌘',blurb:'Unauthorized access to the afterlife.',weapon:'drone',hp:105,speed:5.35,damage:1.08,armor:0,skill:'Overclock',passive:'+15% projectile speed.',unlock:6},
+ {id:'paladin',name:'Dawnbringer',role:'Templar',model:'Knight',icon:'☼',blurb:'Light is a weapon after midnight.',weapon:'nova',hp:135,speed:4.95,damage:1.08,armor:3,skill:'Second Sunrise',passive:'Regenerate 0.35 HP/s.',unlock:8},
+ {id:'reaper',name:'The Reaper',role:'Harvester',model:'Rogue_Hooded',icon:'☠',blurb:'The grave finally learned to walk.',weapon:'orbit',hp:112,speed:5.5,damage:1.18,armor:1,skill:'Soul Collector',passive:'Earn 15% more souls per run.',unlock:10},
+ {id:'storm',name:'Stormcaller',role:'Conduit',model:'Ranger',icon:'ϟ',blurb:'A thunderstorm wearing a human disguise.',weapon:'coil',hp:100,speed:5.15,damage:1.17,armor:0,skill:'Static Charge',passive:'Lightning chains to an additional target.',unlock:12}
+];
+export const MUTATORS = [
+ {id:'standard',name:'Classic Shift',icon:'☽',detail:'The intended 12-minute survival experience.',reward:1,spawn:1,enemySpeed:1,playerDamage:1,playerHp:1},
+ {id:'nightmare',name:'Nightmare Mode',icon:'☠',detail:'More enemies, faster pursuit, bigger rewards.',reward:1.5,spawn:1.6,enemySpeed:1.2,playerDamage:1,playerHp:1},
+ {id:'glass',name:'Glass Cannon',icon:'✹',detail:'Deal 40% more damage, but start with 40% less health.',reward:1.25,spawn:1,enemySpeed:1,playerDamage:1.4,playerHp:.6},
+ {id:'turbo',name:'Turbo Shift',icon:'ϟ',detail:'Accelerated movement and enemy swarms.',reward:1.2,spawn:1.3,enemySpeed:1.15,playerDamage:1,playerHp:1}
+];
+export const SKINS = [
+ {id:'default',name:'Original',hex:'#9fd4ff',unlock:0},
+ {id:'crimson',name:'Blood Moon',hex:'#ef627b',unlock:0},
+ {id:'specter',name:'Specter',hex:'#91f5e7',unlock:2},
+ {id:'royal',name:'Royal',hex:'#e8bd72',unlock:3},
+ {id:'void',name:'Voidwalker',hex:'#ad88ff',unlock:4},
+ {id:'toxic',name:'Biohazard',hex:'#a7ed79',unlock:5},
+ {id:'frost',name:'Frostbound',hex:'#89c9ff',unlock:6},
+ {id:'ember',name:'Infernal',hex:'#ff955b',unlock:8}
+];
+export const MAPS = [
+ {id:'cemetery',name:'Forgotten Cemetery',subtitle:'Where every shadow remembers.',icon:'☽',color:0x111b27,fog:0x101923,accent:'#7cd7bf',unlock:0},
+ {id:'village',name:'The Forsaken Village',subtitle:'The bells stopped ringing years ago.',icon:'⌂',color:0x201b28,fog:0x201728,accent:'#e4a76e',unlock:3},
+ {id:'facility',name:'Sector 13',subtitle:'Experiment terminated. Subjects remain.',icon:'⌬',color:0x0d2029,fog:0x0c1c25,accent:'#67d4ef',unlock:7}
+];
+export const WEAPONS = [
+ {id:'boneblades',name:'Bone Blades',icon:'⚔',rarity:'common',desc:'Seeking blades cut into the closest foes.',color:0xe1e8fa,damage:19,cooldown:1.05,projectiles:1},
+ {id:'ember',name:'Ember Wand',icon:'✦',rarity:'common',desc:'Homing firebolts ignite the undead.',color:0xff9751,damage:17,cooldown:.82,projectiles:1},
+ {id:'shrapnel',name:'Grave Scattergun',icon:'✹',rarity:'common',desc:'A brutal close-range cone of pellets.',color:0xf0c878,damage:12,cooldown:1.65,projectiles:5},
+ {id:'voidlance',name:'Void Lance',icon:'◇',rarity:'uncommon',desc:'Piercing blasts tear through lines.',color:0x996eff,damage:23,cooldown:1.8,projectiles:1},
+ {id:'scythe',name:'Spectral Scythe',icon:'☾',rarity:'uncommon',desc:'Cleave the crowd in a wide arc.',color:0xb5f4c1,damage:29,cooldown:2.15,projectiles:1},
+ {id:'spores',name:'Plague Spores',icon:'☣',rarity:'uncommon',desc:'Poison all creatures nearby.',color:0x9cde67,damage:10,cooldown:2.2,projectiles:1},
+ {id:'drone',name:'Sentry Drone',icon:'⌘',rarity:'rare',desc:'A clockwork ally attacks your enemies.',color:0x76deef,damage:13,cooldown:.75,projectiles:1},
+ {id:'nova',name:'Solar Nova',icon:'☼',rarity:'rare',desc:'A radiant burst blows enemies away.',color:0xffe69e,damage:28,cooldown:4,projectiles:1},
+ {id:'orbit',name:'Reaper Halo',icon:'◎',rarity:'uncommon',desc:'Orbiting blades shred nearby foes.',color:0xcf8cfc,damage:10,cooldown:0,projectiles:2},
+ {id:'coil',name:'Arc Coil',icon:'ϟ',rarity:'rare',desc:'Lightning chains between multiple targets.',color:0x79c4ff,damage:17,cooldown:1.75,projectiles:3},
+ {id:'frost',name:'Frozen Heart',icon:'❄',rarity:'uncommon',desc:'An icy ring slows approaching monsters.',color:0x90e8ff,damage:14,cooldown:3.3,projectiles:1},
+ {id:'mines',name:'Soul Mines',icon:'✣',rarity:'common',desc:'Explosive traps punish the horde.',color:0xd8a5ff,damage:40,cooldown:3.9,projectiles:1},
+ {id:'ravens',name:'Raven Swarm',icon:'❖',rarity:'rare',desc:'Summoned ravens dive at nearby enemies.',color:0xc3bcf3,damage:19,cooldown:1.6,projectiles:2},
+ {id:'blood',name:'Blood Pact',icon:'♥',rarity:'rare',desc:'Steal life with vampiric bolts.',color:0xf66f91,damage:16,cooldown:1.3,projectiles:1}
+];
+export const PASSIVES = [
+ {id:'might',name:'Giant Slayer',icon:'⚒',desc:'+10% weapon damage per rank.',max:5},
+ {id:'haste',name:'Quick Hands',icon:'ϟ',desc:'8% shorter cooldowns per rank.',max:5},
+ {id:'vitality',name:'Thick Skin',icon:'♥',desc:'+20 maximum HP per rank.',max:5},
+ {id:'magnet',name:'Soul Magnet',icon:'◎',desc:'+25% pickup radius per rank.',max:5},
+ {id:'boots',name:'Night Runner',icon:'➤',desc:'+8% movement speed per rank.',max:5},
+ {id:'fortune',name:'Lucky Bones',icon:'✦',desc:'+12% gold per rank.',max:5},
+ {id:'focus',name:'Scholar',icon:'✧',desc:'+10% XP per rank.',max:5},
+ {id:'armor',name:'Iron Bark',icon:'⬡',desc:'Reduce damage taken by 1 per rank.',max:5},
+ {id:'regen',name:'Rebirth',icon:'✚',desc:'Regain 0.3 HP/second per rank.',max:5},
+ {id:'area',name:'Abyssal Reach',icon:'◉',desc:'+12% attack area per rank.',max:5},
+ {id:'crit',name:'Keen Edge',icon:'⚔',desc:'+5% critical chance per rank.',max:5},
+ {id:'greed',name:'Grave Robber',icon:'◆',desc:'+10% soul rewards per rank.',max:5}
+];
+export const EVOLUTIONS = [
+ {weapon:'boneblades',passive:'might',name:'Ossuary Requiem',effect:'Double seeking blades'},
+ {weapon:'ember',passive:'focus',name:'Inferno Codex',effect:'Rapid burning salvos'},
+ {weapon:'shrapnel',passive:'haste',name:'Midnight Barrage',effect:'Huge shotgun volley'},
+ {weapon:'orbit',passive:'area',name:'Crown of Thorns',effect:'Massive spinning halo'},
+ {weapon:'coil',passive:'crit',name:'Thunder Judgment',effect:'Lightning storms'},
+ {weapon:'frost',passive:'regen',name:'Absolute Zero',effect:'Glacial burst'},
+ {weapon:'scythe',passive:'vitality',name:'Harvest Moon',effect:'Devastating cleaves'},
+ {weapon:'blood',passive:'magnet',name:'Crimson Covenant',effect:'Vampiric volleys'}
+];
+export const META = [
+ {id:'power',name:'Weapon Mastery',icon:'⚔',desc:'+4% permanent damage per rank',max:10,base:70},
+ {id:'health',name:'Body Armor',icon:'♥',desc:'+8 maximum HP per rank',max:10,base:50},
+ {id:'speed',name:'Sprint Training',icon:'➤',desc:'+1.5% speed per rank',max:10,base:60},
+ {id:'magnet',name:'Gravitation',icon:'◎',desc:'+6% XP pickup radius per rank',max:10,base:60},
+ {id:'luck',name:'Fortune Finder',icon:'◆',desc:'+3% coins and souls per rank',max:10,base:90},
+ {id:'resilience',name:'Second Chances',icon:'✚',desc:'+0.08 HP regen per second per rank',max:10,base:80}
+];
+export const ACHIEVEMENTS = [
+ {id:'first',name:'First Blood',desc:'Defeat 1 enemy',reward:25},
+ {id:'hundred',name:'Crowd Control',desc:'Defeat 100 enemies in a run',reward:75},
+ {id:'fivehundred',name:'No Vacancy',desc:'Defeat 500 enemies in a run',reward:180},
+ {id:'minutes',name:'Night Watch',desc:'Survive 5 minutes',reward:120},
+ {id:'boss',name:'Head Hunter',desc:'Slay a boss',reward:150},
+ {id:'victory',name:'Dawn Survivor',desc:'Survive the full night',reward:500},
+ {id:'evolved',name:'Transcendence',desc:'Evolve a weapon',reward:150},
+ {id:'collector',name:'Curator',desc:'Unlock 5 characters',reward:300}
+];
+export const findWeapon=id=>WEAPONS.find(w=>w.id===id);
+export const findPassive=id=>PASSIVES.find(p=>p.id===id);
+export const levelRequired=level=>Math.floor(12+level*6+level**1.38*2.5);
+export const accountLevel=xp=>Math.floor(1+Math.sqrt(Math.max(0,xp)/140));
+export const metaPrice=(upgrade,rank)=>Math.floor(upgrade.base * (rank+1)**1.6);

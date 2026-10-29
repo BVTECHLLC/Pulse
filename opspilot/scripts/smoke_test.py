@@ -8285,6 +8285,15 @@ def main():
     _compose = (_P104(__file__).resolve().parent.parent / "docker-compose.yml").read_text()
     assert "./games/graveyard-3d:/app/games/graveyard-3d" in _compose, \
         "graveyard-3d not bind-mounted in docker-compose (would fall back to arcade build)"
+    # v1.113+: Graveyard Shift: Reanimated (Three.js remaster) staged at
+    # /graveyard-shift-beta — production /graveyard-shift stays untouched.
+    assert "/graveyard-shift-beta" in _mainsrc2, "beta staging mount missing in main.py"
+    assert "./games/graveyard-shift-beta:/app/games/graveyard-shift-beta" in _compose, \
+        "graveyard-shift-beta not bind-mounted in docker-compose"
+    _beta = _P104(__file__).resolve().parent.parent / "games" / "graveyard-shift-beta"
+    assert (_beta / "index.html").exists(), "beta staging build missing"
+    assert "/graveyard-shift-beta/assets/" in (_beta / "index.html").read_text(), \
+        "beta build not built with the /graveyard-shift-beta base path"
     # the complete editable Godot project is in the repo
     _gdp = _P104(__file__).resolve().parent.parent / "games" / "graveyard-shift-godot"
     assert (_gdp / "project.godot").exists() and (_gdp / "scripts" / "game.gd").exists()

@@ -38,6 +38,7 @@ services:
       - ./games/arena-web:/app/games/arena-web:ro
       - ./games/graveyard-web:/app/games/graveyard-web:ro
       - ./games/graveyard-3d:/app/games/graveyard-3d:ro
+      - ./games/graveyard-shift-beta:/app/games/graveyard-shift-beta:ro
     # No host port published — Caddy (or cloudflared) reaches it on the internal network.
     expose:
       - "8000"

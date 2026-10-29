@@ -1,0 +1,13 @@
+GRAVEYARD SHIFT: REANIMATED — ALL-IN-ONE CLAUDE CODE HANDOFF (UNDER 30 MB)
+
+THIS ZIP CONTAINS THE COMPLETE PLAYABLE PROTOTYPE, SOURCE, CORE 3D ASSETS, DOCUMENTATION, AND TESTS.
+Only THREE oversized tree bark/normal textures were downscaled from 2048x2048 to 1024x1024 so the entire project fits the 30 MB upload limit. There is no gameplay functionality removed.
+
+INSTRUCTIONS FOR CLAUDE CODE
+1. Extract this ZIP, open the extracted folder (or upload this archive if your interface accepts ZIPs).
+2. FIRST read CLAUDE_CODE_PROMPT.txt, docs/CLAUDE_CODE_HANDOFF.md, docs/GAME_DESIGN_BIBLE.md and README.md.
+3. Run npm install && npm test && npm run dev. Actually play and debug the game in a browser.
+4. Build the real production features and staging integration, preserving live login/DB data.
+5. Do NOT deploy over the live website before backup, staging QA, and rollback plan.
+
+If Claude Code is running against your local folder, it can read the extracted files directly: the 30MB attachment limit does not apply to the folder contents.
