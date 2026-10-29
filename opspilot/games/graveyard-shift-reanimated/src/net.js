@@ -57,3 +57,35 @@ export function createGuest(hostCode,h){
 }
 
 export const netSupported = typeof RTCPeerConnection!=='undefined';
+
+// ---- Lobby: no-code co-op via a same-origin WebSocket signaling server ----
+// Host gets a short 4-char code and shows up in the open-games list; the guest
+// picks it or types the code. The server only relays the WebRTC handshake.
+function wsUrl(){return (location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws/coop';}
+export async function fetchRooms(){try{const r=await fetch('/api/coop/rooms',{cache:'no-store'});if(!r.ok)return[];return (await r.json()).rooms||[];}catch{return[];}}
+
+export function hostLobby({name,onCode,onStatus,handlers}){
+  const ws=new WebSocket(wsUrl());const pc=new RTCPeerConnection(ICE);
+  const ch=pc.createDataChannel('gs',{ordered:true});wire(ch,pc,handlers);
+  ws.onopen=()=>{ws.send(JSON.stringify({t:'host',name:name||'A Survivor'}));onStatus?.('Opening the gate…');};
+  ws.onmessage=async e=>{let m;try{m=JSON.parse(e.data);}catch{return;}
+    if(m.t==='hosted'){onCode?.(m.code);onStatus?.('Waiting for a friend to join…');}
+    else if(m.t==='peer'){onStatus?.('Friend found — connecting…');try{const o=await pc.createOffer();await pc.setLocalDescription(o);await waitIce(pc);ws.send(JSON.stringify({t:'offer',sdp:pc.localDescription}));}catch{onStatus?.('Connection failed — try again.');}}
+    else if(m.t==='answer'){try{await pc.setRemoteDescription(m.sdp);}catch{}try{ws.close();}catch{}}
+    else if(m.t==='peer-left')onStatus?.('Your friend disconnected.');
+    else if(m.t==='error')onStatus?.(m.msg||'Lobby error.');};
+  ws.onerror=()=>onStatus?.('__fallback__');
+  return {send:o=>{if(ch.readyState==='open')ch.send(JSON.stringify(o));},close:()=>{try{ws.close();}catch{}try{pc.close();}catch{}}};
+}
+export function joinLobby({code,onStatus,handlers}){
+  const ws=new WebSocket(wsUrl());const pc=new RTCPeerConnection(ICE);let ch=null;
+  pc.ondatachannel=e=>{ch=e.channel;wire(ch,pc,handlers);};
+  ws.onopen=()=>{ws.send(JSON.stringify({t:'join',code:(code||'').toUpperCase()}));onStatus?.('Connecting…');};
+  ws.onmessage=async e=>{let m;try{m=JSON.parse(e.data);}catch{return;}
+    if(m.t==='joined')onStatus?.('Found '+(m.name||'the game')+' — connecting…');
+    else if(m.t==='offer'){try{await pc.setRemoteDescription(m.sdp);const a=await pc.createAnswer();await pc.setLocalDescription(a);await waitIce(pc);ws.send(JSON.stringify({t:'answer',sdp:pc.localDescription}));}catch{onStatus?.('Connection failed — try again.');}try{ws.close();}catch{}}
+    else if(m.t==='peer-left')onStatus?.('The host left.');
+    else if(m.t==='error')onStatus?.(m.msg||'That game is no longer available.');};
+  ws.onerror=()=>onStatus?.('__fallback__');
+  return {send:o=>{if(ch&&ch.readyState==='open')ch.send(JSON.stringify(o));},close:()=>{try{ws.close();}catch{}try{pc.close();}catch{}}};
+}

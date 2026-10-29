@@ -49,3 +49,21 @@ html.is-mobile .ability-bar button,html.is-mobile .jump-control{min-height:46px}
 
 /* V9 endless night banner */
 .overtime-signal{background:rgba(50,8,14,.92)!important;border:1px solid #ff5a5a!important;color:#ffc6c6!important;box-shadow:0 0 18px rgba(255,70,70,.4);animation:portalPulse 1s ease-in-out infinite}
+
+/* V10 co-op lobby */
+.coop-code-big{font:900 54px 'Barlow Condensed',Impact,sans-serif;letter-spacing:10px;color:#9fffd0;text-align:center;margin:14px 0 6px;text-shadow:0 0 22px rgba(80,255,170,.5);padding:14px;border:1px dashed #4e7f73;border-radius:10px;background:rgba(10,24,20,.6)}
+.coop-rooms{display:flex;flex-direction:column;gap:8px;max-height:230px;overflow-y:auto;margin:6px 0 10px}
+.coop-room{display:flex;align-items:center;gap:10px;text-align:left;background:rgba(14,28,26,.9);border:1px solid #3c6f6a;border-radius:7px;padding:12px 14px;color:#dff6ee}
+.coop-room:hover{border-color:#7be6cc;background:rgba(20,44,40,.95)}
+.coop-room b{font:800 17px 'Barlow Condensed';flex:0 0 auto}
+.coop-room span{font-size:10px;color:#8fb0a8;flex:1}
+.coop-room em{font-style:normal;font-weight:900;font-size:11px;color:#7be6cc;letter-spacing:1px}
+.coop-code-in{text-transform:uppercase;letter-spacing:6px;font-weight:900;text-align:center;max-width:140px}
+.coop-advanced{margin-top:10px;font-size:10px;opacity:.75;border:none!important;text-decoration:underline}
+.coop-advanced:hover{opacity:1}
+
+/* V10 minimap + level-up flash */
+.minimap{position:fixed;top:94px;right:20px;width:140px;height:140px;pointer-events:none;filter:drop-shadow(0 4px 12px rgba(0,0,0,.5));z-index:4}
+@media(max-width:680px){.minimap{width:92px;height:92px;top:auto;bottom:150px;right:12px}}
+.levelup-flash{position:fixed;inset:0;pointer-events:none;z-index:45;background:radial-gradient(circle at 50% 60%,rgba(140,255,200,.35),transparent 55%);animation:lvlFlash .6s ease-out forwards}
+@keyframes lvlFlash{0%{opacity:0}20%{opacity:1}100%{opacity:0}}
