@@ -97,7 +97,7 @@ export class GraveyardEngine {
   for(const orbit of this.orbitMeshes||[]){orbit.geometry?.dispose();orbit.material?.dispose();}
   if(this.floorMesh){this.floorMesh.geometry.dispose();this.floorMesh.material.dispose();this.floorTexture?.dispose();this.floorMesh=null;}
   for(const o of this.decorOwned||[]){o.material?.dispose?.();}this.decorOwned=[];
-  this.world.clear();this.enemies=[];this.projectiles=[];this.projectilePool=[];this.pickups=[];this.fx=[];this.decor=[];this.orbiters=[];this.shrines=[];this.focusedShrine=null;
+  this.world.clear();this.enemies=[];this.projectiles=[];this.projectilePool=[];this.pickups=[];this.fx=[];this.decor=[];this.orbiters=[];this.shrines=[];this.focusedShrine=null;this.partnerMesh=null;this.partnerTarget=null;
  }
  cloneModel(name,height=1.75){const d=this.models[name];if(!d)return null;const g=cloneSkinned(d.scene);const bb=new THREE.Box3().setFromObject(g),sz=bb.getSize(new THREE.Vector3()),center=bb.getCenter(new THREE.Vector3());const scale=height/Math.max(.01,sz.y);g.scale.setScalar(scale);g.position.set(-center.x*scale,-bb.min.y*scale,-center.z*scale);const p=new THREE.Group();p.add(g);return p;}
  attachWeapon(id){
@@ -118,6 +118,14 @@ export class GraveyardEngine {
   const rim=new THREE.PointLight(color.getHex(),2.1,5.2,2.2);rim.position.set(0,1.35,0);p.add(rim);
   return p;
  }
+ // --- Co-op: a live avatar of the other player, driven by network state ---
+ setPartner(s){
+  if(!s)return;this.partner=Object.assign(this.partner||{},s);
+  if(!this.partnerMesh){const pc=CHARACTERS.find(c=>c.id===s.ch)||CHARACTERS[0];this.partnerMesh=this.makePlayerMesh(pc,s.sk||'crimson');const ring=circleRing(1.42,0xffe08a,.6);ring.position.y=.07;this.partnerMesh.add(ring);const beacon=makeGlow(0xffd36a,.2);beacon.position.y=2.5;this.partnerMesh.add(beacon);this.partnerMesh.position.set(s.x||0,s.y||0,s.z||0);this.partnerTarget=new THREE.Vector3(s.x||0,s.y||0,s.z||0);this.world.add(this.partnerMesh);}
+  if(this.partnerTarget)this.partnerTarget.set(s.x||0,s.y||0,s.z||0);
+ }
+ clearPartner(){if(this.partnerMesh){this.world.remove(this.partnerMesh);this.disposeGenerated?.(this.partnerMesh);}this.partnerMesh=null;this.partnerTarget=null;this.partner=null;}
+ netState(){const p=this.player;if(!p||!p.pos)return null;return {t:'s',x:+p.pos.x.toFixed(2),z:+p.pos.z.toFixed(2),y:+((p.y||0)).toFixed(2),hp:Math.ceil(p.hp),mh:p.maxHp,lv:this.level,al:this.status!=='ended',k:this.kills,ch:p.char.id,sk:p.skin};}
  buildFloor(map){
   const tex=makeGroundTexture(map.id);const ground=new THREE.Mesh(new THREE.PlaneGeometry(170,170),new THREE.MeshStandardMaterial({map:tex,roughness:1,metalness:0}));ground.rotation.x=-Math.PI/2;ground.position.y=-.05;this.world.add(ground);this.floorMesh=ground;this.floorTexture=tex;
   // Concentric carved paths anchor the combat arena without blocking movement.
@@ -607,8 +615,9 @@ export class GraveyardEngine {
   }
   if(this.status==='playing'){for(const ch of this.chests){ch.age+=dt;ch.mesh.rotation.y+=dt*.24;ch.mesh.position.y=.08+Math.sin(ch.age*2)*.055;ch.ring.rotation.z+=dt*.22;}}
   this._animAmbience(dt);
+  if(this.partnerMesh&&this.partnerTarget){this.partnerMesh.position.lerp(this.partnerTarget,Math.min(1,dt*11));this.partnerMesh.rotation.y+=dt*.3;}
   this.renderer.render(this.scene,this.camera);
  }
- snapshot(){const p=this.player;return {hp:p.hp,maxHp:p.maxHp,xp:this.xp,required:this.required,level:this.level,kills:this.kills,coins:this.coins,souls:this.souls,time:this.elapsed,wave:this.wave,weapons:this.weapons,passives:this.passives,enemies:this.enemies.length,dashCooldown:p.dashCooldown,novaCooldown:p.novaCooldown,combo:this.combo,blessing:p.blessing,shrine:!!this.focusedShrine,chest:!!this.closestChest,height:Math.round(p.y*10)/10,jumpReady:p.grounded&&p.jumpCooldown<=0,chests:this.chests.length,rush:this.rush,contract:this.contracts?.[this.contractIndex]||null,fps:this.fps,quality:this.preset,finalBoss:this.finalBoss&&!this.finalBoss.dead?{hp:Math.max(0,this.finalBoss.hp),maxHp:this.finalBoss.maxHp,name:'THE GRAVEKEEPER'}:null,portal:!!this.portal};}
+ snapshot(){const p=this.player;return {hp:p.hp,maxHp:p.maxHp,xp:this.xp,required:this.required,level:this.level,kills:this.kills,coins:this.coins,souls:this.souls,time:this.elapsed,wave:this.wave,weapons:this.weapons,passives:this.passives,enemies:this.enemies.length,dashCooldown:p.dashCooldown,novaCooldown:p.novaCooldown,combo:this.combo,blessing:p.blessing,shrine:!!this.focusedShrine,chest:!!this.closestChest,height:Math.round(p.y*10)/10,jumpReady:p.grounded&&p.jumpCooldown<=0,chests:this.chests.length,rush:this.rush,contract:this.contracts?.[this.contractIndex]||null,fps:this.fps,quality:this.preset,finalBoss:this.finalBoss&&!this.finalBoss.dead?{hp:Math.max(0,this.finalBoss.hp),maxHp:this.finalBoss.maxHp,name:'THE GRAVEKEEPER'}:null,portal:!!this.portal,partner:this.partner?{hp:this.partner.hp,mh:this.partner.mh,lv:this.partner.lv,al:this.partner.al,k:this.partner.k||0}:null,coopKills:this.partner?(this.kills+(this.partner.k||0)):null};}
  destroy(){this.renderer.setAnimationLoop(null);this.renderer.dispose();}
 }

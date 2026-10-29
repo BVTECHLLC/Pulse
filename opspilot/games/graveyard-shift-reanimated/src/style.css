@@ -32,3 +32,17 @@ html.is-mobile .touch-knob{width:48px;height:48px;position:absolute;top:calc(50%
 html.is-mobile .hud-mobile-hint{display:block}
 html.is-mobile .control-hint{font-size:8px}
 html.is-mobile .ability-bar button,html.is-mobile .jump-control{min-height:46px}
+
+/* V8 co-op (P2P) modal + HUD */
+.coop-modal{width:min(100%,620px)}
+.coop-actions{display:flex;gap:12px;justify-content:center;margin:20px 0 10px;flex-wrap:wrap}
+.coop-actions .btn-primary,.coop-actions .btn-ghost{min-width:190px}
+.coop-step{font-size:11px;font-weight:800;letter-spacing:.5px;color:#bfe9dc;margin:16px 0 7px;text-align:left}
+.coop-row{display:flex;gap:8px;align-items:stretch}
+.coop-field{width:100%;background:rgba(8,18,24,.9);border:1px solid #3c6f6a;color:#d6fff0;padding:11px;font:600 12px/1.4 'DM Sans',monospace;border-radius:6px}
+.coop-code{resize:none;height:66px;word-break:break-all;font-size:10px;color:#9fd8c9}
+.coop-copy{min-height:40px;white-space:nowrap;font-size:10px;padding:0 14px}
+.coop-modal .btn-primary{margin-top:8px}
+.coop-signal{background:rgba(40,30,10,.9)!important;border:1px solid #ffd36a!important;color:#ffe6ad!important}
+.coop-cta{border-color:#9b7fd6!important;color:#d9c9ff!important}
+.coop-cta:hover{border-color:#c3a8ff!important;color:#fff!important}
