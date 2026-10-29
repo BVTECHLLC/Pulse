@@ -22,7 +22,7 @@ export class Terrain {
  resolve(x,z,feet=0,r=PLAYER_RADIUS){
   let px=clamp(x,-this.bound+r,this.bound-r),pz=clamp(z,-this.bound+r,this.bound-r);
   // Four passes converge reliably at intersections; inexpensive at our modest prop counts.
-  for(let iter=0;iter<3;iter++)for(const s of this.solids){if(feet>=s.top-.16)continue;
+  for(let iter=0;iter<3;iter++)for(const s of this.solids){if(feet>=s.top-.55)continue;
    if(s.shape==='circle'){
     const dx=px-s.x,dz=pz-s.z,d=Math.hypot(dx,dz),min=s.r+r;
     if(d<min){const nx=d>.0001?dx/d:1,nz=d>.0001?dz/d:0;px=s.x+nx*min;pz=s.z+nz*min;}

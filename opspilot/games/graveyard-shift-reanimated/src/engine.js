@@ -26,16 +26,34 @@ const enemyTypes=[
 const tmp=new THREE.Vector3();
 function makeGlow(color,r=.28){return new THREE.Mesh(new THREE.SphereGeometry(r,10,8),new THREE.MeshBasicMaterial({color,transparent:true,opacity:.75,depthWrite:false}));}
 function circleRing(radius,color,opacity=.45){const m=new THREE.Mesh(new THREE.RingGeometry(radius-.065,radius,48),new THREE.MeshBasicMaterial({color,transparent:true,opacity,side:THREE.DoubleSide,depthWrite:false}));m.rotation.x=-Math.PI/2;return m;}
+// Original procedural "dark graveyard grass" — no grid, mossy and moody. CC0 by construction.
 function makeGroundTexture(type){
- const c=document.createElement('canvas');c.width=c.height=512;const x=c.getContext('2d');
- x.fillStyle=type==='facility'?'#152733':type==='village'?'#292533':'#1b2929';x.fillRect(0,0,512,512);
- for(let i=0;i<8500;i++){
-  const a=Math.random()*512,b=Math.random()*512,r=rand(.2,2.4);x.fillStyle=`rgba(${type==='facility'?'78,161,193':'110,138,130'},${rand(.018,.095)})`;x.fillRect(a,b,r,r);
+ const S=512,c=document.createElement('canvas');c.width=c.height=S;const x=c.getContext('2d');
+ // Per-map dark earth palette: cemetery = wet moss, village = rotted turf, facility = toxic moss, crypt = drowned, inferno = scorched.
+ const P={
+  cemetery:{base:'#14231a',g1:[52,86,48],g2:[86,120,66],g3:[20,40,26],dirt:[34,34,24]},
+  village: {base:'#1d2016',g1:[74,76,42],g2:[110,104,60],g3:[30,32,18],dirt:[44,38,22]},
+  facility:{base:'#12241f',g1:[44,92,78],g2:[72,132,110],g3:[18,44,38],dirt:[26,40,36]},
+  crypt:   {base:'#0e1a20',g1:[40,78,86],g2:[70,120,128],g3:[14,34,40],dirt:[22,36,40]},
+  inferno: {base:'#201108',g1:[96,56,28],g2:[150,88,38],g3:[40,20,10],dirt:[52,30,16]},
+ }[type]||{base:'#14231a',g1:[52,86,48],g2:[86,120,66],g3:[20,40,26],dirt:[34,34,24]};
+ x.fillStyle=P.base;x.fillRect(0,0,S,S);
+ // soft tonal patches for large-scale variation
+ for(let i=0;i<80;i++){const g=Math.random()<.5?P.g3:P.dirt;x.fillStyle=`rgba(${g[0]},${g[1]},${g[2]},${rand(.05,.16)})`;x.beginPath();x.ellipse(rand(0,S),rand(0,S),rand(18,70),rand(14,54),rand(0,TAU),0,TAU);x.fill();}
+ // dirt / mud bald patches
+ for(let i=0;i<34;i++){x.fillStyle=`rgba(${P.dirt[0]},${P.dirt[1]},${P.dirt[2]},${rand(.18,.4)})`;x.beginPath();x.ellipse(rand(0,S),rand(0,S),rand(8,34),rand(6,22),rand(0,TAU),0,TAU);x.fill();}
+ // thousands of tiny grass blades (short strokes, varied greens + angle)
+ x.lineWidth=1;x.lineCap='round';
+ for(let i=0;i<9000;i++){
+  const bx=rand(0,S),by=rand(0,S),len=rand(2.5,7),ang=-Math.PI/2+rand(-.5,.5),t=Math.random();
+  const g=t<.62?P.g1:t<.9?P.g2:P.g3;x.strokeStyle=`rgba(${g[0]},${g[1]},${g[2]},${rand(.3,.8)})`;
+  x.beginPath();x.moveTo(bx,by);x.lineTo(bx+Math.cos(ang)*len,by+Math.sin(ang)*len);x.stroke();
  }
- x.strokeStyle=type==='facility'?'#304a53':'#263838';x.lineWidth=1.2;
- for(let i=0;i<512;i+=64){x.beginPath();x.moveTo(i,0);x.lineTo(i,512);x.moveTo(0,i);x.lineTo(512,i);x.stroke();}
- if(type==='cemetery')for(let i=0;i<100;i++){x.fillStyle=`rgba(62,99,87,${rand(.025,.1)})`;x.beginPath();x.ellipse(rand(0,512),rand(0,512),rand(3,17),rand(2,10),0,0,TAU);x.fill();}
- const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(14,14);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;return t;
+ // scattered pale moss flecks + a few dark roots/cracks for an eerie feel
+ for(let i=0;i<260;i++){const g=P.g2;x.fillStyle=`rgba(${g[0]+20},${g[1]+20},${g[2]+10},${rand(.05,.22)})`;x.fillRect(rand(0,S),rand(0,S),rand(.6,2),rand(.6,2));}
+ x.strokeStyle='rgba(6,10,8,.5)';
+ for(let i=0;i<26;i++){x.lineWidth=rand(.6,1.8);x.beginPath();let px=rand(0,S),py=rand(0,S);x.moveTo(px,py);for(let s=0;s<4;s++){px+=rand(-22,22);py+=rand(-22,22);x.lineTo(px,py);}x.stroke();}
+ const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(20,20);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;return t;
 }
 export class GraveyardEngine {
  constructor(canvas,events={}){
@@ -88,7 +106,7 @@ export class GraveyardEngine {
   const name=findWeapon(id)?.model||lookup[id]||'sword_rare',model=this.cloneModel('Dungeon'+name,.72);
   if(model){model.position.set(.53,.91,.22);model.rotation.set(-.4,0,-.45);this.hero.add(model);this.heldWeapon=model;}
  }
- jump(){if(this.status!=='playing'||!this.player?.grounded||this.player.jumpCooldown>0)return false;this.player.vy=6.1;this.player.grounded=false;this.player.jumpCooldown=.22;this.events.jump?.();return true;}
+ jump(){if(this.status!=='playing'||!this.player?.grounded||this.player.jumpCooldown>0)return false;this.player.vy=8.5;this.player.grounded=false;this.player.jumpCooldown=.22;this.events.jump?.();return true;}
  makePlayerMesh(char,skinId){
   const p=this.cloneModel(char.model,1.8)||new THREE.Group();
   if(!p.children.length){const body=new THREE.Mesh(new THREE.CapsuleGeometry(.43,.7,4,8),material(0x8fb6db));body.position.y=.9;p.add(body);}
@@ -140,21 +158,31 @@ export class GraveyardEngine {
   for(let i=0;i<70;i++){x.strokeStyle=`rgba(130,205,225,${rand(.04,.15)})`;x.lineWidth=rand(1,2.4);x.beginPath();const y=rand(0,256);x.moveTo(0,y);for(let xx=0;xx<=256;xx+=16)x.lineTo(xx,y+Math.sin(xx*.08+i)*rand(2,7));x.stroke();}
   const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(3,3);t.colorSpace=THREE.SRGBColorSpace;return t;
  }
+ makeMoonTexture(){
+  const S=256,c=document.createElement('canvas');c.width=c.height=S;const x=c.getContext('2d');
+  const grd=x.createRadialGradient(S*.4,S*.38,10,S*.5,S*.5,S*.6);grd.addColorStop(0,'#ffe0a8');grd.addColorStop(.55,'#ffb257');grd.addColorStop(1,'#e07a1f');
+  x.fillStyle=grd;x.fillRect(0,0,S,S);
+  for(let i=0;i<60;i++){const cx=rand(0,S),cy=rand(0,S),r=rand(3,20);x.fillStyle=`rgba(150,78,20,${rand(.1,.3)})`;x.beginPath();x.arc(cx,cy,r,0,TAU);x.fill();x.fillStyle=`rgba(255,224,170,${rand(.08,.2)})`;x.beginPath();x.arc(cx-r*.25,cy-r*.25,r*.7,0,TAU);x.fill();}
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;
+ }
  buildHalloween(map){
   // V6: water + Halloween theming layered onto any map.
-  this.waters=[];this.bats=[];this.pumpkins=[];
-  this.scene.fog.color.copy(new THREE.Color(map.fog||0x101923)).lerp(new THREE.Color(0x2a1536),.5);
-  this.scene.background.copy(new THREE.Color(map.color||0x101925)).lerp(new THREE.Color(0x160e20),.45);
-  // giant harvest moon + halo + warm cast
-  const moon=new THREE.Mesh(new THREE.SphereGeometry(7,24,16),new THREE.MeshBasicMaterial({color:0xff9a3c,fog:false}));moon.position.set(-40,33,-54);this.world.add(moon);
-  const halo=new THREE.Mesh(new THREE.SphereGeometry(9.4,20,14),new THREE.MeshBasicMaterial({color:0xff7a1a,transparent:true,opacity:.17,fog:false,side:THREE.BackSide}));halo.position.copy(moon.position);this.world.add(halo);
-  const moonLight=new THREE.PointLight(0xffb060,1.6,170,1.3);moonLight.position.copy(moon.position);this.world.add(moonLight);
-  // animated water pools with stone rims
-  for(const [wx,wz,wr] of [[-27,20,8],[31,-13,7],[13,35,6],[0,-31,7]]){
-   const w=new THREE.Mesh(new THREE.CircleGeometry(wr,40),new THREE.MeshStandardMaterial({color:0x0b3744,emissive:0x07252f,emissiveIntensity:.55,transparent:true,opacity:.9,roughness:.1,metalness:.8,map:this.makeWaterTexture()}));
+  this.waters=[];this.bats=[];this.pumpkins=[];this.wisps=[];
+  this.scene.fog.color.copy(new THREE.Color(map.fog||0x101923)).lerp(new THREE.Color(0x2a1536),.55);
+  this.scene.background.copy(new THREE.Color(map.color||0x101925)).lerp(new THREE.Color(0x120a1c),.55);
+  // enormous cratered harvest moon + layered halo + warm cast
+  const moon=new THREE.Mesh(new THREE.SphereGeometry(12,32,20),new THREE.MeshBasicMaterial({map:this.makeMoonTexture(),fog:false}));moon.position.set(-46,38,-60);this.world.add(moon);
+  for(const [hr,op] of [[15,.2],[19,.12],[25,.06]]){const halo=new THREE.Mesh(new THREE.SphereGeometry(hr,22,16),new THREE.MeshBasicMaterial({color:0xff7a1a,transparent:true,opacity:op,fog:false,side:THREE.BackSide}));halo.position.copy(moon.position);this.world.add(halo);}
+  const moonLight=new THREE.PointLight(0xffb060,2.1,220,1.2);moonLight.position.copy(moon.position);this.world.add(moonLight);
+  // many animated water pools of varied size, with stone rims + a glint
+  for(const [wx,wz,wr] of [[-27,20,9],[31,-13,8],[13,35,6.5],[0,-31,8],[-44,-24,7],[42,28,6],[-13,-7,5],[22,6,5.5],[-8,44,6]]){
+   const w=new THREE.Mesh(new THREE.CircleGeometry(wr,40),new THREE.MeshStandardMaterial({color:0x0a323f,emissive:0x082a37,emissiveIntensity:.6,transparent:true,opacity:.92,roughness:.08,metalness:.85,map:this.makeWaterTexture()}));
    w.rotation.x=-Math.PI/2;w.position.set(wx,-.02,wz);this.world.add(w);this.waters.push(w);
-   const rim=circleRing(wr+.35,0x3b5a74,.55);rim.position.set(wx,.015,wz);this.world.add(rim);
+   const rim=circleRing(wr+.4,0x3b5a74,.5);rim.position.set(wx,.015,wz);this.world.add(rim);
+   const glint=circleRing(wr*.5,0x9fe3ff,.22);glint.position.set(wx,.02,wz);this.world.add(glint);
   }
+  // drifting spectral wisps — eerie green soul-lights floating over the field
+  for(let i=0;i<14;i++){const wsp=makeGlow(0x7dffb0,.16);const cx=rand(-55,55),cz=rand(-55,55);wsp.position.set(cx,rand(1.2,3.4),cz);this.world.add(wsp);this.wisps.push({mesh:wsp,cx,cz,y:wsp.position.y,phase:rand(0,TAU),sp:rand(.15,.4)});}
   if(this.status==='menu')return;
   // jack-o'-lanterns with inner glow
   for(let i=0;i<15;i++){
@@ -179,6 +207,7 @@ export class GraveyardEngine {
   for(const w of this.waters||[]){const m=w.material.map;if(m){m.offset.x+=dt*.02;m.offset.y+=dt*.013;}w.material.emissiveIntensity=.52+Math.sin(this.elapsed*1.3+w.position.x)*.12;}
   for(const b of this.bats||[]){b.a+=dt*b.sp;b.mesh.position.set(b.cx+Math.cos(b.a)*b.r,b.y+Math.sin(b.a*2)*.7,b.cz+Math.sin(b.a)*b.r);b.mesh.rotation.y=-b.a+Math.PI/2;const flap=Math.sin(this.elapsed*13+b.a*4)*.7;b.wL.rotation.z=Math.PI/2+flap;b.wR.rotation.z=-Math.PI/2-flap;}
   for(const p of this.pumpkins||[])p.light.intensity=1.05+Math.sin(this.elapsed*7+p.phase)*.4;
+  for(const w of this.wisps||[]){w.mesh.position.set(w.cx+Math.sin(this.elapsed*w.sp+w.phase)*4.5,w.y+Math.sin(this.elapsed*1.3+w.phase)*.55,w.cz+Math.cos(this.elapsed*w.sp*.8+w.phase)*4.5);if(w.mesh.material)w.mesh.material.opacity=.45+Math.sin(this.elapsed*2+w.phase)*.33;}
   for(const fl of this.arenaPillars||[]){fl.flame.scale.y=.8+Math.sin(this.elapsed*9+fl.phase)*.22;fl.light.intensity=2.3+Math.sin(this.elapsed*11+fl.phase)*.8;}
   if(this.portal){const pr=this.portal;pr.ring.rotation.z+=dt*1.6;pr.inner.rotation.z-=dt*2.3;pr.inner.material.opacity=.72+Math.sin(this.elapsed*4)*.2;pr.light.intensity=3.4+Math.sin(this.elapsed*5)*1.1;pr.group.position.y=1.5+Math.sin(this.elapsed*1.8)*.14;}
  }
@@ -284,7 +313,7 @@ export class GraveyardEngine {
   if(e.boss){this.bossKills++;this.spawnChest(true);
    if(e.final){this.finalBoss=null;this.coins+=250;this.spawnVictoryPortal(e.mesh.position.clone());}
    else{this.events.boss?.('defeat');this.events.toast?.('TITAN SLAIN · OPEN ITS RELIC');}}
-  else{this.dropPickup(e.mesh.position.clone(),'xp',e.value*2*bonus);if(Math.random()<.06)this.dropPickup(e.mesh.position.clone(),'heal',26);if(Math.random()<.02)this.dropPickup(e.mesh.position.clone(),'coin',5);}
+  else{this.dropPickup(e.mesh.position.clone(),'xp',e.value*2*bonus);const lowHp=this.player.hp/this.player.maxHp<.5;if(Math.random()<(lowHp?.15:.05))this.dropPickup(e.mesh.position.clone(),'heal',26);if(Math.random()<.045)this.dropPickup(e.mesh.position.clone(),'coin',6);}
   const contract=this.contracts?.[this.contractIndex];if(contract&&this.kills>=contract.target){this.coins+=contract.coins;this.souls+=contract.souls;this.contractIndex++;this.events.toast?.(`✦ CONTRACT CLEARED · ${contract.name} · +${contract.coins} COINS`);}
   if(this.kills===1)this.events.toast?.('FIRST BLOOD');
  }
@@ -294,10 +323,13 @@ export class GraveyardEngine {
    for(let i=this.pickups.length-1,iMin=Math.max(0,this.pickups.length-25);i>=iMin;i--){const q=this.pickups[i];if(q.type==='xp'&&Math.hypot(q.pos.x-pos.x,q.pos.z-pos.z)<2.7){q.value+=value;return;}}
   }
   if(this.pickups.length>=this.budget.pickups){
-   const q=this.pickups.find(p=>p.type==='xp');if(q){q.value+=value;return;}if(type==='xp')return;
+   // Soft cap: never lose a drop. Heal/coin apply instantly; XP merges into an existing orb (or falls through to make one).
+   if(type==='heal'){this.player.hp=Math.min(this.player.maxHp,this.player.hp+value);return;}
+   if(type==='coin'){this.coins+=value;return;}
+   const q=this.pickups.find(p=>p.type==='xp');if(q){q.value+=value;return;}
   }
-  const color=type==='chest'?0xe9c677:type==='heal'?0xff718e:value>=10?0xc4abff:0x89e5c0;
-  const mesh=new THREE.Mesh(type==='xp'?ico:type==='chest'?boxgeo:sphere,new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:.43,roughness:.35}));mesh.scale.setScalar(type==='chest'?.47:type==='heal'?.3:.19);
+  const color=type==='chest'?0xe9c677:type==='coin'?0xffcf5a:type==='heal'?0xff718e:value>=10?0xc4abff:0x89e5c0;
+  const mesh=new THREE.Mesh(type==='xp'?ico:type==='chest'?boxgeo:sphere,new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:type==='coin'?.6:.43,roughness:.35}));mesh.scale.setScalar(type==='chest'?.47:type==='coin'?.25:type==='heal'?.3:.19);
   mesh.position.set(pos.x,type==='chest'?.55:.33,pos.z);this.world.add(mesh);this.pickups.push({mesh,pos:mesh.position,type,value,age:0});
  }
  addXP(value){let xp=value*(1+.1*(this.passives.focus||0)+(this.player.char.id==='hex'?.12:0));this.xp+=xp;this.earnedXP+=Math.round(xp);this.events.pickup?.();if(this.xp>=this.required){this.xp-=this.required;this.level++;this.required=levelRequired(this.level);this.status='levelup';this.events.levelUp?.(this.generateChoices());}}
@@ -434,10 +466,11 @@ export class GraveyardEngine {
   }
  }
  updatePickups(dt){
-  const p=this.player.pos,range=(2.2+.55*(this.passives.magnet||0))*(1+.06*(profile.upgrades.magnet||0));
+  const p=this.player.pos,range=(4.6+.7*(this.passives.magnet||0))*(1+.06*(profile.upgrades.magnet||0));
   for(let i=this.pickups.length-1;i>=0;i--){const o=this.pickups[i];o.age+=dt;const dx=o.pos.x-p.x,dz=o.pos.z-p.z,d=Math.hypot(dx,dz);o.mesh.rotation.y+=dt*1.9;o.mesh.position.y=(o.type==='chest'?.55:.32)+Math.sin(o.age*3)*.06;
-   if(d<range&&o.type!=='chest'){const pull=Math.max(2,12/Math.max(.15,d));o.pos.x-=dx*Math.min(1,dt*pull);o.pos.z-=dz*Math.min(1,dt*pull);}
-   if(d<(.7+(o.type==='chest'?.25:0))){if(o.type==='xp')this.addXP(o.value);else if(o.type==='chest')this.openChest();else this.player.hp=Math.min(this.player.maxHp,this.player.hp+o.value);
+   // Generous magnet so loot always comes to you; plus anti-stranding — anything left >6s gets reeled in no matter how far.
+   if(o.type!=='chest'&&(d<range||o.age>6)){const pull=Math.max(2.5,14/Math.max(.15,d));o.pos.x-=dx*Math.min(1,dt*pull);o.pos.z-=dz*Math.min(1,dt*pull);}
+   if(d<(.78+(o.type==='chest'?.25:0))){if(o.type==='xp')this.addXP(o.value);else if(o.type==='chest')this.openChest();else if(o.type==='coin'){this.coins+=o.value;this.events.pickup?.();}else{this.player.hp=Math.min(this.player.maxHp,this.player.hp+o.value);this.events.pickup?.();}
     this.world.remove(o.mesh);o.mesh.material.dispose();this.pickups.splice(i,1);if(this.status==='levelup')break;}
   }
  }
