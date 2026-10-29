@@ -8269,14 +8269,15 @@ def main():
     # /signal is now a static WASM mount (the retired Node proxy is gone)
     _rp = {r.path for r in app.routes}
     assert "/graveyard-shift" in _rp, _rp
-    # v1.113: the hosted game is now our original 3D action-RPG (Godot 4 -> WASM).
+    # Production /graveyard-shift now serves the NIGHTFALL Three.js remaster
+    # ("full send": the old Godot WASM build is retired; its editable project is
+    # kept in games/graveyard-shift-godot. The mount dir name is unchanged.)
     _gv = _P104(__file__).resolve().parent.parent / "games" / "graveyard-3d"
     assert (_gv / "index.html").exists(), "graveyard-3d shell missing"
-    assert (_gv / "index.js").exists() and (_gv / "index.pck").exists()
-    _gwasm = _gv / "index.wasm"
-    assert _gwasm.exists() and _gwasm.stat().st_size > 1_000_000, "godot wasm missing/small"
-    assert _gwasm.read_bytes()[:4] == b"\x00asm"
-    # main.py points the /graveyard-shift mount at the Godot build + relaxes wasm CSP
+    assert (_gv / "assets").is_dir(), "graveyard-3d game assets missing"
+    assert "/graveyard-shift/assets/" in (_gv / "index.html").read_text(), \
+        "graveyard-3d not built with the /graveyard-shift base path"
+    # main.py points the /graveyard-shift mount at the game build + relaxes CSP
     _mainsrc2 = (_P104(__file__).resolve().parent.parent / "app" / "main.py").read_text()
     assert '"games" / "graveyard-3d"' in _mainsrc2, "mount not repointed to 3D build"
     assert '("/arena", "/graveyard-shift")' in _mainsrc2, "game CSP not relaxed"
