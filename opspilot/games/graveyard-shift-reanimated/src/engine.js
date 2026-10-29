@@ -40,14 +40,15 @@ function makeGroundTexture(type){
 export class GraveyardEngine {
  constructor(canvas,events={}){
   this.canvas=canvas;this.events=events;this.renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,powerPreference:'high-performance'});
-  this.preset=graphicsPreset(profile.settings.graphics??.5);this.budget=BUDGETS[this.preset];this.renderer.setPixelRatio(Math.min(devicePixelRatio||1,this.budget.dpr));this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.4;
+  this.preset=graphicsPreset(profile.settings.graphics??.5);this.budget=BUDGETS[this.preset];this.renderer.setPixelRatio(Math.min(devicePixelRatio||1,this.budget.dpr));this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.55;
   this.renderer.shadowMap.enabled=false;this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;this.scene=new THREE.Scene();this.scene.background=new THREE.Color(0x101925);this.scene.fog=new THREE.FogExp2(0x101925,.017);
   this.camera=new THREE.PerspectiveCamera(52,window.innerWidth/Math.max(1,window.innerHeight),.1,200);this.camera.position.set(14,24,19);this.camera.lookAt(0,0,0);
   this.clock=new THREE.Clock();this.world=new THREE.Group();this.scene.add(this.world);
   this.scene.add(new THREE.HemisphereLight(0xc8dcda,0x0d1620,1.85));
   const moon=new THREE.DirectionalLight(0xc5cde0,2.3);moon.position.set(-22,32,-18);this.scene.add(moon);moon.castShadow=true;moon.shadow.mapSize.set(1024,1024);moon.shadow.camera.left=-30;moon.shadow.camera.right=30;moon.shadow.camera.top=30;moon.shadow.camera.bottom=-30;moon.shadow.normalBias=.04;this.sun=moon;
-  const pink=new THREE.DirectionalLight(0xb66b60,.95);pink.position.set(19,15,18);this.scene.add(pink);
-  this.glow=new THREE.PointLight(0x98dbb9,15,11,2);this.scene.add(this.glow);
+  const pink=new THREE.DirectionalLight(0xc77bd6,1.2);pink.position.set(19,15,18);this.scene.add(pink);
+  const amber=new THREE.DirectionalLight(0xffb06a,.5);amber.position.set(-16,10,22);this.scene.add(amber);
+  this.glow=new THREE.PointLight(0x9fe9c6,24,14,2);this.scene.add(this.glow);
   this.loader=new GLTFLoader();this.models={};this.loading=this.loadAssets();
   this.keys=new Set();this.touch={x:0,z:0};this.projectileMaterials=new Map();this.projectilePool=[];this.focusedShrine=null;this.combo=0;this.comboClock=0;this.fps=60;this.fpsFrames=0;this.fpsWindow=0;this.currentEnemyCap=this.budget.enemies;this.status='menu';this.previews=[];this.elapsed=0;this.frameCount=0;
   window.addEventListener('keydown',e=>{if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();this.keys.add(e.code);if(!e.repeat&&e.code==='KeyQ')this.activateAbility('dash');if(!e.repeat&&e.code==='KeyE')this.activateAbility('nova');if(!e.repeat&&e.code==='KeyF')this.interact();if(!e.repeat&&e.code==='Space')this.jump();if(e.code==='Escape'&&this.status==='playing')this.pause();else if(e.code==='Escape'&&this.status==='paused')this.resume();});
@@ -92,8 +93,11 @@ export class GraveyardEngine {
   const p=this.cloneModel(char.model,1.8)||new THREE.Group();
   if(!p.children.length){const body=new THREE.Mesh(new THREE.CapsuleGeometry(.43,.7,4,8),material(0x8fb6db));body.position.y=.9;p.add(body);}
   const skin=[{id:'default',hex:'#9fd4ff'},{id:'crimson',hex:'#ef627b'},{id:'specter',hex:'#91f5e7'},{id:'royal',hex:'#e8bd72'},{id:'void',hex:'#ad88ff'},{id:'toxic',hex:'#a7ed79'},{id:'frost',hex:'#89c9ff'},{id:'ember',hex:'#ff955b'}].find(x=>x.id===skinId)||{hex:'#9fd4ff'};
-  const color=new THREE.Color(skin.hex);p.traverse(o=>{if(o.isMesh){const tint=m=>{const t=m.clone();if(t.color)t.color=t.color.clone().lerp(color,.34);if(t.emissive)t.emissive=color.clone().multiplyScalar(.045);return t;};o.material=Array.isArray(o.material)?o.material.map(tint):tint(o.material);}});
-  const halo=circleRing(.83,skin.hex,.6);halo.position.y=.055;p.add(halo);
+  const color=new THREE.Color(skin.hex);p.traverse(o=>{if(o.isMesh){const tint=m=>{const t=m.clone();if(t.color)t.color=t.color.clone().lerp(color,.5);t.emissive=color.clone().multiplyScalar(.26);t.emissiveIntensity=1;if('metalness'in t)t.metalness=Math.min(1,(t.metalness||0)+.18);if('roughness'in t)t.roughness=Math.max(.22,(t.roughness??.7)-.18);return t;};o.material=Array.isArray(o.material)?o.material.map(tint):tint(o.material);o.castShadow=true;}});
+  // V5: glowing aura + colored rim light so each skin reads as a distinct, premium look
+  const halo=circleRing(.92,skin.hex,.9);halo.position.y=.05;p.add(halo);
+  const halo2=circleRing(1.18,skin.hex,.35);halo2.position.y=.03;p.add(halo2);
+  const rim=new THREE.PointLight(color.getHex(),2.1,5.2,2.2);rim.position.set(0,1.35,0);p.add(rim);
   return p;
  }
  buildFloor(map){
@@ -207,8 +211,12 @@ export class GraveyardEngine {
   for(const w of WEAPONS){const level=this.weapons[w.id]?.level||0;if(level<8&&(level>0||Object.keys(this.weapons).length<6))pool.push({type:'weapon',id:w.id,title:w.name,icon:w.icon,desc:level?`Level ${level+1} · +damage, extra attacks, faster firing`:w.desc,level,rarity:w.rarity});}
   for(const p of PASSIVES){const level=this.passives[p.id]||0;if(level<5&&(level>0||Object.keys(this.passives).length<6))pool.push({type:'passive',id:p.id,title:p.name,icon:p.icon,desc:p.desc,level,rarity:'passive'});}
   const result=[];
-  // Prefer upgrades already in a player's build, but guarantee diversity.
-  while(pool.length&&result.length<3){const weights=pool.map(p=>p.level>0?3:1);const sum=weights.reduce((a,b)=>a+b,0);let n=Math.random()*sum,ix=0;for(let i=0;i<weights.length;i++){n-=weights[i];if(n<0){ix=i;break;}}result.push(...pool.splice(ix,1));}
+  // V5: less random — always offer at least one weapon so your arsenal keeps
+  // growing; favor upgrades you already run, then fill the rest with variety.
+  const weightedPick=arr=>{const weights=arr.map(p=>p.level>0?3:1);const sum=weights.reduce((a,b)=>a+b,0)||1;let n=Math.random()*sum;for(let i=0;i<arr.length;i++){n-=weights[i];if(n<0)return i;}return arr.length-1;};
+  const weaponIdx=pool.map((p,i)=>p.type==='weapon'?i:-1).filter(i=>i>=0);
+  if(weaponIdx.length){const local=weaponIdx.map(i=>pool[i]);const li=weightedPick(local);result.push(pool.splice(weaponIdx[li],1)[0]);}
+  while(pool.length&&result.length<3){result.push(pool.splice(weightedPick(pool),1)[0]);}
   return result;
  }
  selectUpgrade(choice){if(this.status!=='levelup')return;
@@ -317,7 +325,7 @@ export class GraveyardEngine {
    if(this.terrain?.blocked(b.mesh.position.x,b.mesh.position.z,b.mesh.position.y,.11)){b.life=0;}
    if(b.life>0)for(const e of this.enemies){if(e.dead||b.hit.has(e))continue;
     const dx=b.mesh.position.x-e.mesh.position.x,dz=b.mesh.position.z-e.mesh.position.z;
-    if(Math.abs(b.mesh.position.y-(e.mesh.position.y+.8))>1.55)continue;
+    /* V5: elevation-agnostic — your shots connect at any height, on ramps or perches */
     if(dx*dx+dz*dz<(e.radius+.24)*(e.radius+.24)){
      this.damageEnemy(e,b.damage,'normal',b.knock);this.spark(e.mesh.position,b.mesh.material.color);b.hit.add(e);if(b.pierce--<=0){b.life=0;break;}
     }
