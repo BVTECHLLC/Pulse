@@ -179,8 +179,10 @@ export class GraveyardEngine {
   for(const w of this.waters||[]){const m=w.material.map;if(m){m.offset.x+=dt*.02;m.offset.y+=dt*.013;}w.material.emissiveIntensity=.52+Math.sin(this.elapsed*1.3+w.position.x)*.12;}
   for(const b of this.bats||[]){b.a+=dt*b.sp;b.mesh.position.set(b.cx+Math.cos(b.a)*b.r,b.y+Math.sin(b.a*2)*.7,b.cz+Math.sin(b.a)*b.r);b.mesh.rotation.y=-b.a+Math.PI/2;const flap=Math.sin(this.elapsed*13+b.a*4)*.7;b.wL.rotation.z=Math.PI/2+flap;b.wR.rotation.z=-Math.PI/2-flap;}
   for(const p of this.pumpkins||[])p.light.intensity=1.05+Math.sin(this.elapsed*7+p.phase)*.4;
+  for(const fl of this.arenaPillars||[]){fl.flame.scale.y=.8+Math.sin(this.elapsed*9+fl.phase)*.22;fl.light.intensity=2.3+Math.sin(this.elapsed*11+fl.phase)*.8;}
+  if(this.portal){const pr=this.portal;pr.ring.rotation.z+=dt*1.6;pr.inner.rotation.z-=dt*2.3;pr.inner.material.opacity=.72+Math.sin(this.elapsed*4)*.2;pr.light.intensity=3.4+Math.sin(this.elapsed*5)*1.1;pr.group.position.y=1.5+Math.sin(this.elapsed*1.8)*.14;}
  }
- makeMenuWorld(){this.status='menu';this.clearWorld();this.buildFloor(MAPS[0]);buildWorldV3(this,MAPS[0]);this.buildDecor(MAPS[0]);this.buildHalloween(MAPS[0]);this.menuAvatar=new THREE.Group();const body=new THREE.Mesh(new THREE.CapsuleGeometry(.5,.8,4,8),material(0x839f91));body.position.y=.95;this.menuAvatar.add(body);this.world.add(this.menuAvatar);
+ makeMenuWorld(){this.status='menu';this.clearWorld();this.portal=null;this.arenaPillars=[];this.finalBoss=null;this.finalBossSpawned=false;this.buildFloor(MAPS[0]);buildWorldV3(this,MAPS[0]);this.buildDecor(MAPS[0]);this.buildHalloween(MAPS[0]);this.menuAvatar=new THREE.Group();const body=new THREE.Mesh(new THREE.CapsuleGeometry(.5,.8,4,8),material(0x839f91));body.position.y=.95;this.menuAvatar.add(body);this.world.add(this.menuAvatar);
   this.loading?.then(()=>{if(this.status!=='menu')return;const hero=this.makePlayerMesh(CHARACTERS[0],'default');this.world.remove(this.menuAvatar);this.menuAvatar=hero;this.world.add(hero);});}
  async start({character='warden',skin='default',map='cemetery',mutator='standard',relic='nightfall'}={}){
   const char=CHARACTERS.find(c=>c.id===character)||CHARACTERS[0],setting=MAPS.find(m=>m.id===map)||MAPS[0];
@@ -192,7 +194,7 @@ export class GraveyardEngine {
   this.mutator=MUTATORS.find(m=>m.id===mutator)||MUTATORS[0];
   this.player={pos:new THREE.Vector3(0,0,0),hp:char.hp+8*(profile.upgrades.health||0)+(char.id==='bruiser'?35:0),maxHp:char.hp+8*(profile.upgrades.health||0)+(char.id==='bruiser'?35:0),speed:char.speed*(char.id==='shade'?1.15:1)*(this.mutator.id==='turbo'?1.15:1)*(1+.015*(profile.upgrades.speed||0)),damage:char.damage*this.mutator.playerDamage*(1+.04*(profile.upgrades.power||0)),armor:char.armor,invuln:0,face:new THREE.Vector3(1,0,0),char,skin,regen:(profile.upgrades.resilience||0)*.08+(char.id==='paladin'?.35:0)};
   this.player.y=0;this.player.vy=0;this.player.grounded=true;this.player.jumpCooldown=0;this.player.maxHp=Math.round(this.player.maxHp*this.mutator.playerHp);this.player.hp=this.player.maxHp;this.player.dashCooldown=0;this.player.novaCooldown=0;this.player.relic=RELICS.find(r=>r.id===relic)||RELICS[0];this.player.blessing=0;
-  this.orbitMeshes=[];this.weapons={[char.weapon]:{level:1,next:0,evolved:false}};this.passives={};this.level=1;this.xp=0;this.earnedXP=0;this.required=levelRequired(1);this.kills=0;this.coins=0;this.souls=0;this.bossKills=0;this.evolutions=0;this.elapsed=0;this.spawnTimer=.32;this.bossWave=0;this.chestTimer=21;this.chests=[];this.closestChest=null;this.uiClock=0;this.wave=1;this.combo=0;this.comboClock=0;this.contractIndex=0;this.contracts=[{name:'CLEAR THE GATES',target:35,coins:40,souls:12},{name:'HOLD THE LINE',target:105,coins:75,souls:30},{name:'BREAK THE HORDE',target:220,coins:130,souls:55}];this.rush=false;this.fps=60;this.fpsWindow=0;this.fpsFrames=0;this.banished=new Set();this.rerolls=3;this.banishes=2;this.status='playing';this.runMap=map;
+  this.orbitMeshes=[];this.weapons={[char.weapon]:{level:1,next:0,evolved:false}};this.passives={};this.level=1;this.xp=0;this.earnedXP=0;this.required=levelRequired(1);this.kills=0;this.coins=0;this.souls=0;this.bossKills=0;this.evolutions=0;this.elapsed=0;this.spawnTimer=.32;this.bossWave=0;this.chestTimer=21;this.chests=[];this.closestChest=null;this.uiClock=0;this.wave=1;this.combo=0;this.comboClock=0;this.contractIndex=0;this.contracts=[{name:'CLEAR THE GATES',target:35,coins:40,souls:12},{name:'HOLD THE LINE',target:105,coins:75,souls:30},{name:'BREAK THE HORDE',target:220,coins:130,souls:55}];this.rush=false;this.fps=60;this.fpsWindow=0;this.fpsFrames=0;this.banished=new Set();this.rerolls=3;this.banishes=2;this.finalBossSpawned=false;this.finalBoss=null;this.portal=null;this.arenaPillars=[];this.status='playing';this.runMap=map;
   this.events.start?.(char);this.events.toast?.(`THE NIGHT BEGINS · ${char.name.toUpperCase()}`);
  }
 
@@ -200,6 +202,51 @@ export class GraveyardEngine {
  resume(){if(this.status!=='paused')return;this.status='playing';this.events.resume?.();}
  moveStick(x,z){this.touch.x=x;this.touch.z=z;}
  nearest(x,z,range=Infinity,exclude=null){let best=null,d=range*range;for(const e of this.enemies){if(e.dead||e===exclude)continue;const dx=e.mesh.position.x-x,dz=e.mesh.position.z-z,v=dx*dx+dz*dz;if(v<d){d=v;best=e;}}return best;}
+ spawnFinalBoss(){
+  // THE GRAVEKEEPER — the one you have to beat. Kill it and a dawn portal opens.
+  this.finalBossSpawned=true;
+  const a=rand(0,TAU),r=13,rawX=this.player.pos.x+Math.cos(a)*r,rawZ=this.player.pos.z+Math.sin(a)*r,free=this.terrain?.findFree(rawX,rawZ,0,1.8)||{x:rawX,z:rawZ};
+  const m=new THREE.Group();
+  const armor=material(0x2b3a2f,0x0a1d10);armor.metalness=.2;
+  const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.72,.9,4,10),armor);torso.position.y=1.55;torso.scale.set(1.3,1.1,.92);m.add(torso);
+  const head=new THREE.Mesh(new THREE.IcosahedronGeometry(.56,1),material(0xcfe8cf));head.position.y=2.78;m.add(head);
+  const crownMat=material(0xe8c45a,0x5a4410);for(let i=0;i<7;i++){const spike=new THREE.Mesh(new THREE.ConeGeometry(.1,.42,5),crownMat);const ca=i/7*TAU;spike.position.set(Math.cos(ca)*.42,3.18,Math.sin(ca)*.42);m.add(spike);}
+  const hornMat=material(0x7fe08a);for(const sign of [-1,1]){
+   const horn=new THREE.Mesh(new THREE.ConeGeometry(.3,1.0,6),hornMat);horn.position.set(sign*.56,3.35,0);horn.rotation.z=sign*.42;m.add(horn);
+   const eye=makeGlow(0x8dff7a,.14);eye.position.set(sign*.22,2.86,.46);m.add(eye);
+  }
+  const scythe=new THREE.Mesh(new THREE.TorusGeometry(.72,.09,6,10,Math.PI*1.15),material(0xd7fbe0,0x5aa877));scythe.position.set(1.15,2.0,0);scythe.rotation.set(Math.PI/2,0,.4);m.add(scythe);
+  const aura=makeGlow(0x6cff9a,1.9);aura.position.y=1.6;m.add(aura);
+  const mark=circleRing(2.5,0x8dff7a,.7);mark.position.y=.05;m.add(mark);
+  m.scale.setScalar(1.35);m.position.set(free.x,0,free.z);this.world.add(m);
+  const mod=1+this.elapsed/370+(this.wave-1)*.055;const hp=3400*mod;
+  const entry={mesh:m,type:2,hp,maxHp:hp,speed:.82*this.mutator.enemySpeed,radius:1.75,size:2.4,damage:30,value:900,dead:false,boss:true,final:true,slow:0,flash:0,phase:rand(0,TAU),orbitCooldown:0};
+  this.enemies.push(entry);this.finalBoss=entry;
+  this.buildArena();this.scene.fog.color.set(0x2a0a14);this.scene.background.set(0x180611);
+  this.events.boss?.('warning');this.events.toast?.('☠☠ THE GRAVEKEEPER RISES · SLAY IT TO OPEN THE DAWN PORTAL');
+ }
+ buildArena(){
+  // A ring of green flame-pillars rises for the finale. Decorative only (no collision) so you can never be trapped.
+  const stone=material(0x3a3340,0x120a16);
+  for(let i=0;i<12;i++){const ang=i/12*TAU,rr=21,x=Math.cos(ang)*rr,z=Math.sin(ang)*rr;
+   const col=new THREE.Mesh(new THREE.CylinderGeometry(.55,.72,4.4,8),stone);col.position.set(x,2.2,z);this.world.add(col);
+   const flame=new THREE.Mesh(new THREE.ConeGeometry(.52,1.5,7),new THREE.MeshStandardMaterial({color:0x8dff7a,emissive:0x4cff86,emissiveIntensity:2.2,transparent:true,opacity:.9}));flame.position.set(x,5.0,z);this.world.add(flame);
+   const light=new THREE.PointLight(0x6cff9a,2.6,13,2);light.position.set(x,5.2,z);this.world.add(light);
+   this.arenaPillars.push({col,flame,light,phase:i*.6});
+  }
+ }
+ spawnVictoryPortal(pos){
+  if(this.portal)return;
+  const free=this.terrain?.findFree(pos.x,pos.z,0,1.2)||{x:pos.x,z:pos.z};
+  const group=new THREE.Group();group.position.set(free.x,1.5,free.z);
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(1.6,.22,10,28),new THREE.MeshStandardMaterial({color:0x8be8ff,emissive:0x59c6ff,emissiveIntensity:2.6,metalness:.3,roughness:.2}));group.add(ring);
+  const inner=new THREE.Mesh(new THREE.CircleGeometry(1.45,30),new THREE.MeshBasicMaterial({color:0xd6b8ff,transparent:true,opacity:.8,side:THREE.DoubleSide}));group.add(inner);
+  const light=new THREE.PointLight(0x9fd8ff,3.4,20,2);group.add(light);
+  const beam=new THREE.Mesh(new THREE.CylinderGeometry(1.3,1.3,22,16,1,true),new THREE.MeshBasicMaterial({color:0x8be8ff,transparent:true,opacity:.12,side:THREE.DoubleSide}));beam.position.y=10;group.add(beam);
+  this.world.add(group);
+  this.portal={group,ring,inner,light,x:free.x,z:free.z};
+  this.events.boss?.('defeat');this.events.toast?.('✦ THE GRAVEKEEPER FALLS · STEP INTO THE DAWN PORTAL TO ESCAPE');
+ }
  spawnEnemy(boss=false){
   if(this.enemies.length>=this.currentEnemyCap)return;
   const a=rand(0,TAU),r=rand(14.5,19),roll=Math.random();
@@ -234,7 +281,9 @@ export class GraveyardEngine {
   const bonus=comboMultiplier(this.combo);
   this.coins+=(e.boss?80:Math.random()<.24?2:0)*this.mutator.reward*(1+.12*(this.passives.fortune||0));
   this.souls+=(e.boss?25:e.value)*this.mutator.reward;
-  if(e.boss){this.bossKills++;this.events.boss?.('defeat');this.spawnChest(true);this.events.toast?.('TITAN SLAIN · OPEN ITS RELIC');}
+  if(e.boss){this.bossKills++;this.spawnChest(true);
+   if(e.final){this.finalBoss=null;this.coins+=250;this.spawnVictoryPortal(e.mesh.position.clone());}
+   else{this.events.boss?.('defeat');this.events.toast?.('TITAN SLAIN · OPEN ITS RELIC');}}
   else{this.dropPickup(e.mesh.position.clone(),'xp',e.value*2*bonus);if(Math.random()<.06)this.dropPickup(e.mesh.position.clone(),'heal',26);if(Math.random()<.02)this.dropPickup(e.mesh.position.clone(),'coin',5);}
   const contract=this.contracts?.[this.contractIndex];if(contract&&this.kills>=contract.target){this.coins+=contract.coins;this.souls+=contract.souls;this.contractIndex++;this.events.toast?.(`✦ CONTRACT CLEARED · ${contract.name} · +${contract.coins} COINS`);}
   if(this.kills===1)this.events.toast?.('FIRST BLOOD');
@@ -333,6 +382,8 @@ export class GraveyardEngine {
   if(id==='shrapnel'){const n=5+Math.floor(lvl/2)+(ev?6:0);for(let i=0;i<n;i++)shot((i-(n-1)/2)*.13,dmg*.65,{speed:16,life:.57,knock:.26});return;}
   if(id==='voidlance'){for(let i=0;i<(ev?3:1);i++)shot((i-(ev?1:0))*.19,dmg,{scale:.23,life:2,speed:15,pierce:3+Math.floor(lvl/2)});return;}
   if(id==='blood'){for(let i=0;i<1+(ev?2:0);i++)shot((i-(ev?1:0))*.18,dmg,{homing:true,speed:12});this.player.hp=Math.min(this.player.maxHp,this.player.hp+.26*lvl);return;}
+  if(id==='tempest'){const n=10+lvl+(ev?8:0);for(let i=0;i<n;i++)shot(i*TAU/n,dmg*.8,{visual:'bolt',speed:15,life:1.25,pierce:1+Math.floor(lvl/4)});return;}
+  if(id==='starfall'){const n=2+Math.floor(lvl/3)+(ev?3:0);for(let i=0;i<n;i++){const ang=rand(0,TAU),rr=rand(2.2,9);this.spawnMeteor(new THREE.Vector3(p.x+Math.cos(ang)*rr,0,p.z+Math.sin(ang)*rr),dmg*1.2,(1.9+lvl*.14)*radius,data.color);}return;}
   for(let i=0;i<1+Math.floor(lvl/3)+(ev?2:0);i++)shot((i-(Math.floor(lvl/3)+(ev?2:0))/2)*.13,dmg,{homing:id==='boneblades'||id==='ember',pierce:id==='boneblades'?1:0});
  }
  updateCombat(dt){
@@ -485,7 +536,7 @@ export class GraveyardEngine {
   this.focusedShrine=null;for(const shrine of this.shrines){if(!shrine.used&&Math.hypot(shrine.x-p.pos.x,shrine.z-p.pos.z)<2.1){this.focusedShrine=shrine;break;}}
   this.closestChest=this.chests?.find(ch=>Math.hypot(ch.x-p.pos.x,ch.z-p.pos.z)<2.1)||null;
  }
- finish(victory=false){if(this.status==='ended')return;this.status='ended';const result={victory,kills:this.kills,time:this.elapsed,coins:this.coins+Math.floor(this.elapsed/8),souls:Math.floor(this.souls*(1+.1*(this.passives.greed||0))*(this.player.char.id==='reaper'?1.15:1)),earnedXP:this.earnedXP,level:this.level,bossKills:this.bossKills,evolutions:this.evolutions,map:this.runMap,character:this.player.char.id};this.events.finish?.(result);}
+ finish(victory=false,ending=null){if(this.status==='ended')return;this.status='ended';const result={victory,ending,kills:this.kills,time:this.elapsed,coins:this.coins+Math.floor(this.elapsed/8),souls:Math.floor(this.souls*(1+.1*(this.passives.greed||0))*(this.player.char.id==='reaper'?1.15:1)),earnedXP:this.earnedXP,level:this.level,bossKills:this.bossKills,evolutions:this.evolutions,map:this.runMap,character:this.player.char.id};this.events.finish?.(result);}
  animate(){
   const dt=safeDelta(this.clock.getDelta());this.frameCount++;
   this.fpsWindow+=dt;this.fpsFrames++;
@@ -504,8 +555,10 @@ export class GraveyardEngine {
    if(this.spawnTimer<=0){const plan=spawnPlan(this.elapsed,this.mutator.spawn,this.rush);for(let i=0;i<plan.count;i++)this.spawnEnemy();this.spawnTimer=plan.interval;}
    this.chestTimer-=dt;if(this.chestTimer<=0){this.spawnChest();this.chestTimer=rand(35,52);}
    const nextBoss=Math.floor(this.elapsed/120);if(nextBoss>this.bossWave){this.bossWave=nextBoss;this.spawnEnemy(true);}
+   if(this.elapsed>=540&&!this.finalBossSpawned)this.spawnFinalBoss();
    this.updatePlayer(dt);this.updateEnemies(dt);
    if(this.status==='playing'){this.updateCombat(dt);this.updateProjectiles(dt);this.updatePickups(dt);this.updateFX(dt);}
+   if(this.portal&&Math.hypot(this.player.pos.x-this.portal.x,this.player.pos.z-this.portal.z)<2.3){this.finish(true,'portal');return;}
    if(this.elapsed>=720)this.finish(true);
    this.uiClock+=dt;if(this.uiClock>.13){this.uiClock=0;this.events.tick?.(this.snapshot());}
   }
@@ -513,6 +566,6 @@ export class GraveyardEngine {
   this._animAmbience(dt);
   this.renderer.render(this.scene,this.camera);
  }
- snapshot(){const p=this.player;return {hp:p.hp,maxHp:p.maxHp,xp:this.xp,required:this.required,level:this.level,kills:this.kills,coins:this.coins,souls:this.souls,time:this.elapsed,wave:this.wave,weapons:this.weapons,passives:this.passives,enemies:this.enemies.length,dashCooldown:p.dashCooldown,novaCooldown:p.novaCooldown,combo:this.combo,blessing:p.blessing,shrine:!!this.focusedShrine,chest:!!this.closestChest,height:Math.round(p.y*10)/10,jumpReady:p.grounded&&p.jumpCooldown<=0,chests:this.chests.length,rush:this.rush,contract:this.contracts?.[this.contractIndex]||null,fps:this.fps,quality:this.preset};}
+ snapshot(){const p=this.player;return {hp:p.hp,maxHp:p.maxHp,xp:this.xp,required:this.required,level:this.level,kills:this.kills,coins:this.coins,souls:this.souls,time:this.elapsed,wave:this.wave,weapons:this.weapons,passives:this.passives,enemies:this.enemies.length,dashCooldown:p.dashCooldown,novaCooldown:p.novaCooldown,combo:this.combo,blessing:p.blessing,shrine:!!this.focusedShrine,chest:!!this.closestChest,height:Math.round(p.y*10)/10,jumpReady:p.grounded&&p.jumpCooldown<=0,chests:this.chests.length,rush:this.rush,contract:this.contracts?.[this.contractIndex]||null,fps:this.fps,quality:this.preset,finalBoss:this.finalBoss&&!this.finalBoss.dead?{hp:Math.max(0,this.finalBoss.hp),maxHp:this.finalBoss.maxHp,name:'THE GRAVEKEEPER'}:null,portal:!!this.portal};}
  destroy(){this.renderer.setAnimationLoop(null);this.renderer.dispose();}
 }

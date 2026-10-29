@@ -38,7 +38,9 @@ export const SKINS = [
 export const MAPS = [
  {id:'cemetery',name:'Forgotten Cemetery',subtitle:'Where every shadow remembers.',icon:'☽',color:0x111b27,fog:0x101923,accent:'#7cd7bf',unlock:0},
  {id:'village',name:'The Forsaken Village',subtitle:'The bells stopped ringing years ago.',icon:'⌂',color:0x201b28,fog:0x201728,accent:'#e4a76e',unlock:3},
- {id:'facility',name:'Sector 13',subtitle:'Experiment terminated. Subjects remain.',icon:'⌬',color:0x0d2029,fog:0x0c1c25,accent:'#67d4ef',unlock:7}
+ {id:'facility',name:'Sector 13',subtitle:'Experiment terminated. Subjects remain.',icon:'⌬',color:0x0d2029,fog:0x0c1c25,accent:'#67d4ef',unlock:7},
+ {id:'crypt',name:'The Sunken Crypt',subtitle:'Drowned halls where the tide never recedes.',icon:'⚱',color:0x0a1822,fog:0x081620,accent:'#5fb8d6',unlock:10},
+ {id:'inferno',name:'Ashfall Reach',subtitle:'The furnace at the end of the shift.',icon:'♨',color:0x241009,fog:0x1e0b06,accent:'#ff8a4a',unlock:14}
 ];
 export const WEAPONS = [
  ...V3_WEAPONS,
@@ -46,6 +48,8 @@ export const WEAPONS = [
  {id:'ember',name:'Ember Wand',icon:'✦',rarity:'common',desc:'Homing firebolts ignite the undead.',color:0xff9751,damage:17,cooldown:.82,projectiles:1},
  {id:'shrapnel',name:'Grave Scattergun',icon:'✹',rarity:'common',desc:'A brutal close-range cone of pellets.',color:0xf0c878,damage:12,cooldown:1.65,projectiles:5},
  {id:'voidlance',name:'Void Lance',icon:'◇',rarity:'uncommon',desc:'Piercing blasts tear through lines.',color:0x996eff,damage:23,cooldown:1.8,projectiles:1},
+ {id:'tempest',name:'Storm Tempest',icon:'✺',rarity:'rare',desc:'Unleashes a full ring of crackling bolts in every direction.',color:0x7ec8ff,damage:18,cooldown:1.55,projectiles:10},
+ {id:'starfall',name:'Starfall',icon:'☄',rarity:'epic',desc:'Calls a rain of blazing meteors crashing down around you.',color:0xffb14a,damage:30,cooldown:2.45,projectiles:3},
  {id:'scythe',name:'Spectral Scythe',icon:'☾',rarity:'uncommon',desc:'Cleave the crowd in a wide arc.',color:0xb5f4c1,damage:29,cooldown:2.15,projectiles:1},
  {id:'spores',name:'Plague Spores',icon:'☣',rarity:'uncommon',desc:'Poison all creatures nearby.',color:0x9cde67,damage:10,cooldown:2.2,projectiles:1},
  {id:'drone',name:'Sentry Drone',icon:'⌘',rarity:'rare',desc:'A clockwork ally attacks your enemies.',color:0x76deef,damage:13,cooldown:.75,projectiles:1},
