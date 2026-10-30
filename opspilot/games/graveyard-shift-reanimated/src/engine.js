@@ -245,6 +245,9 @@ export class GraveyardEngine {
   else if(boon==='seer'){this.rerolls+=2;this.banishes+=1;}
   else if(boon==='fortune')this.boonReward=1.35;
   else if(boon==='arsenal'){const opts=WEAPONS.filter(w=>w.id!==char.weapon);const pick=opts[Math.floor(Math.random()*opts.length)];if(pick)this.weapons[pick.id]={level:1,next:0,evolved:false};}
+  // V11: pre-compile every shader now so the first frames — and the first boss,
+  // which reuses these same materials — pop in without a hitch.
+  try{this.renderer.compile(this.scene,this.camera);}catch{}
   this.status='playing';this.runMap=map;
   this.events.start?.(char);this.events.toast?.(`THE NIGHT BEGINS · ${char.name.toUpperCase()}`);
  }
