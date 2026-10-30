@@ -90,7 +90,7 @@ export class GraveyardEngine {
    try {const data=await this.loader.loadAsync(ASSET_BASE+url);this.models[name]=data;}catch(e){console.warn('Model unavailable; fallback enabled',name,e);}
   }));this.events.assets?.(Object.keys(this.models).length);return this.models;
  }
- _setupBloom(){try{const w=window.innerWidth,h=window.innerHeight;const mob=/Mobi|Android|iPhone|iPad|iPod|Silk/i.test(navigator.userAgent||'');this.composer=new EffectComposer(this.renderer);this.composer.addPass(new RenderPass(this.scene,this.camera));this.bloomPass=new UnrealBloomPass(new THREE.Vector2(w,h),mob?.46:.62,.55,.74);this.composer.addPass(this.bloomPass);this.composer.addPass(new OutputPass());this.composer.setSize(w,h);}catch(err){this.composer=null;this.useBloom=false;}}
+ _setupBloom(){try{const w=window.innerWidth,h=window.innerHeight;const mob=/Mobi|Android|iPhone|iPad|iPod|Silk/i.test(navigator.userAgent||'');this.composer=new EffectComposer(this.renderer);this.composer.addPass(new RenderPass(this.scene,this.camera));this.bloomPass=new UnrealBloomPass(new THREE.Vector2(w,h),mob?.42:.55,.55,.82);this.composer.addPass(this.bloomPass);this.composer.addPass(new OutputPass());this.composer.setSize(w,h);}catch(err){this.composer=null;this.useBloom=false;}}
  resize(){const w=window.innerWidth,h=window.innerHeight;this.renderer.setSize(w,h,false);if(this.composer){this.composer.setSize(w,h);this.bloomPass?.setSize(w,h);}const width=13.2;if(this.camera.isPerspectiveCamera){this.camera.aspect=w/Math.max(1,h);}else{this.camera.left=-width;this.camera.right=width;this.camera.top=width*h/w;this.camera.bottom=-width*h/w;}this.camera.updateProjectionMatrix();}
  disposeGenerated(root){if(!root)return;root.traverse?.(obj=>{if(!obj.isMesh)return;if(obj.geometry&&!([sphere,boxgeo,ico,cyl].includes(obj.geometry)))obj.geometry.dispose();if(Array.isArray(obj.material))obj.material.forEach(m=>m.dispose());else obj.material?.dispose();});}
 
@@ -103,7 +103,8 @@ export class GraveyardEngine {
   for(const orbit of this.orbitMeshes||[]){orbit.geometry?.dispose();orbit.material?.dispose();}
   if(this.floorMesh){this.floorMesh.geometry.dispose();this.floorMesh.material.dispose();this.floorTexture?.dispose();this.floorMesh=null;}
   for(const o of this.decorOwned||[]){o.material?.dispose?.();}this.decorOwned=[];
-  this.world.clear();this.enemies=[];this.projectiles=[];this.projectilePool=[];this.pickups=[];this.fx=[];this.decor=[];this.orbiters=[];this.shrines=[];this.focusedShrine=null;this.partnerMesh=null;this.partnerTarget=null;this.v3Crystal=null;
+  for(const h of this.hazards||[]){h.mesh?.material?.dispose?.();h.mesh?.geometry?.dispose?.();h.ring?.material?.dispose?.();h.ring?.geometry?.dispose?.();}
+  this.world.clear();this.enemies=[];this.projectiles=[];this.projectilePool=[];this.pickups=[];this.fx=[];this.decor=[];this.orbiters=[];this.shrines=[];this.focusedShrine=null;this.partnerMesh=null;this.partnerTarget=null;this.v3Crystal=null;this.hazards=[];
  }
  cloneModel(name,height=1.75){const d=this.models[name];if(!d)return null;const g=cloneSkinned(d.scene);const bb=new THREE.Box3().setFromObject(g),sz=bb.getSize(new THREE.Vector3()),center=bb.getCenter(new THREE.Vector3());const scale=height/Math.max(.01,sz.y);g.scale.setScalar(scale);g.position.set(-center.x*scale,-bb.min.y*scale,-center.z*scale);const p=new THREE.Group();p.add(g);return p;}
  attachWeapon(id){
@@ -122,16 +123,18 @@ export class GraveyardEngine {
   const dark=color.clone().multiplyScalar(.55);
   p.traverse(o=>{if(o.isMesh){
    const b={color:color.clone(),flatShading:true};
-   if(style==='metal'){b.metalness=.95;b.roughness=.22;b.emissive=dark.clone().multiplyScalar(.2);}
-   else if(style==='ghost'){b.transparent=true;b.opacity=.6;b.emissive=color.clone().multiplyScalar(.55);b.metalness=.1;b.roughness=.4;b.depthWrite=false;}
-   else if(style==='ember'){b.emissive=color.clone().multiplyScalar(.8);b.metalness=.2;b.roughness=.5;}
-   else if(style==='frost'){b.metalness=.5;b.roughness=.14;b.transparent=true;b.opacity=.86;b.emissive=color.clone().multiplyScalar(.22);}
-   else {b.metalness=.18;b.roughness=.5;b.emissive=color.clone().multiplyScalar(.16);}
+   // V13.1: emissive toned down across the board so the hero reads as colored,
+   // not a glowing blob — bloom was amplifying these into eye-searing white.
+   if(style==='metal'){b.metalness=.95;b.roughness=.28;b.emissive=dark.clone().multiplyScalar(.12);}
+   else if(style==='ghost'){b.transparent=true;b.opacity=.62;b.emissive=color.clone().multiplyScalar(.35);b.metalness=.1;b.roughness=.45;b.depthWrite=false;}
+   else if(style==='ember'){b.emissive=color.clone().multiplyScalar(.45);b.metalness=.2;b.roughness=.55;}
+   else if(style==='frost'){b.metalness=.5;b.roughness=.18;b.transparent=true;b.opacity=.88;b.emissive=color.clone().multiplyScalar(.14);}
+   else {b.metalness=.18;b.roughness=.55;b.emissive=color.clone().multiplyScalar(.09);}
    o.material=new THREE.MeshStandardMaterial(b);o.castShadow=true;}});
-  // Aura ring + colored glow sphere + rim light make the hero pop at any distance.
-  const halo=circleRing(.94,skin.hex,.98);halo.position.y=.05;p.add(halo);
-  const aura=new THREE.Mesh(new THREE.SphereGeometry(.95,14,10),new THREE.MeshBasicMaterial({color:skin.hex,transparent:true,opacity:style==='ghost'?.34:.2,depthWrite:false,side:THREE.BackSide}));aura.position.y=1.0;p.add(aura);
-  const rim=new THREE.PointLight(color.getHex(),2.4,5.6,2.1);rim.position.set(0,1.35,0);p.add(rim);
+  // A subtle aura reads the skin color at distance without blooming out (V13.1: toned way down).
+  const halo=circleRing(.9,skin.hex,.5);halo.position.y=.05;p.add(halo);
+  const aura=new THREE.Mesh(new THREE.SphereGeometry(.82,14,10),new THREE.MeshBasicMaterial({color:skin.hex,transparent:true,opacity:style==='ghost'?.2:.1,depthWrite:false,side:THREE.BackSide}));aura.position.y=1.0;p.add(aura);
+  const rim=new THREE.PointLight(color.getHex(),1.1,4.6,2.2);rim.position.set(0,1.35,0);p.add(rim);
   return p;
  }
  // --- Co-op: a live avatar of the other player, driven by network state ---
@@ -236,6 +239,7 @@ export class GraveyardEngine {
  _animAmbience(dt){
   for(const w of this.waters||[]){const m=w.material.map;if(m){m.offset.x+=dt*.02;m.offset.y+=dt*.013;}w.material.emissiveIntensity=.52+Math.sin(this.elapsed*1.3+w.position.x)*.12;}
   for(const s of this.waterSheen||[]){s.rotation.z+=dt*.09;if(s.material)s.material.opacity=.05+Math.abs(Math.sin(this.elapsed*.7+s.position.x))*.06;}
+  for(const h of this.hazards||[]){if(h.mesh?.material){h.mesh.material.emissiveIntensity=(h.type==='lava'?1.25:.85)+Math.sin(this.elapsed*3+h.phase)*.35;h.mesh.material.opacity=.7+Math.sin(this.elapsed*2+h.phase)*.12;}if(h.ring)h.ring.rotation.z+=dt*.4;}
   for(const b of this.bats||[]){b.a+=dt*b.sp;b.mesh.position.set(b.cx+Math.cos(b.a)*b.r,b.y+Math.sin(b.a*2)*.7,b.cz+Math.sin(b.a)*b.r);b.mesh.rotation.y=-b.a+Math.PI/2;const flap=Math.sin(this.elapsed*13+b.a*4)*.7;b.wL.rotation.z=Math.PI/2+flap;b.wR.rotation.z=-Math.PI/2-flap;}
   for(const p of this.pumpkins||[])p.light.intensity=1.05+Math.sin(this.elapsed*7+p.phase)*.4;
   for(const w of this.wisps||[]){w.mesh.position.set(w.cx+Math.sin(this.elapsed*w.sp+w.phase)*4.5,w.y+Math.sin(this.elapsed*1.3+w.phase)*.55,w.cz+Math.cos(this.elapsed*w.sp*.8+w.phase)*4.5);if(w.mesh.material)w.mesh.material.opacity=.45+Math.sin(this.elapsed*2+w.phase)*.33;}
@@ -245,7 +249,7 @@ export class GraveyardEngine {
  }
  makeMenuWorld(){this.status='menu';this.clearWorld();this.portal=null;this.arenaPillars=[];this.finalBoss=null;this.finalBossSpawned=false;this.buildFloor(MAPS[0]);buildWorldV3(this,MAPS[0]);this.buildDecor(MAPS[0]);this.buildHalloween(MAPS[0]);this.menuAvatar=new THREE.Group();const body=new THREE.Mesh(new THREE.CapsuleGeometry(.5,.8,4,8),material(0x839f91));body.position.y=.95;this.menuAvatar.add(body);this.world.add(this.menuAvatar);
   this.loading?.then(()=>{if(this.status!=='menu')return;const hero=this.makePlayerMesh(CHARACTERS[0],'default');this.world.remove(this.menuAvatar);this.menuAvatar=hero;this.world.add(hero);});}
- async start({character='warden',skin='default',map='cemetery',mutator='standard',relic='nightfall',boon=null,weapon=null,difficulty='normal'}={}){
+ async start({character='warden',skin='default',map='cemetery',mutator='standard',relic='nightfall',boon=null,weapon=null,difficulty='normal',mode='survival'}={}){
   const char=CHARACTERS.find(c=>c.id===character)||CHARACTERS[0],setting=MAPS.find(m=>m.id===map)||MAPS[0];
   await this.loading;this.status='initializing';this.clearWorld();this.preset=graphicsPreset(profile.settings.graphics??.5);this.budget=BUDGETS[this.preset];this.currentEnemyCap=this.budget.enemies;this.renderer.setPixelRatio(Math.min(devicePixelRatio||1,this.budget.dpr));this.renderer.shadowMap.enabled=profile.settings.shadows===true&&this.preset==='high';this.useBloom=this.preset!=='low'&&profile.settings.particles!==false;if(this.useBloom&&!this.composer)this._setupBloom();this.resize();
   this.scene.background.set(setting.color);this.scene.fog.color.set(setting.fog);this.buildFloor(setting);buildWorldV3(this,setting);this.buildDecor(setting);this.buildHalloween(setting);this.enemyBatch=new EnemyBatch(this.world,this.budget.enemies);
@@ -257,7 +261,7 @@ export class GraveyardEngine {
   this.startWeapon=(weapon&&WEAPONS.some(w=>w.id===weapon))?weapon:char.weapon;
   this.player={pos:new THREE.Vector3(0,0,0),hp:char.hp+8*(profile.upgrades.health||0)+(char.id==='bruiser'?35:0),maxHp:char.hp+8*(profile.upgrades.health||0)+(char.id==='bruiser'?35:0),speed:char.speed*(char.id==='shade'?1.15:1)*(this.mutator.id==='turbo'?1.15:1)*(1+.015*(profile.upgrades.speed||0)),damage:char.damage*this.mutator.playerDamage*(1+.04*(profile.upgrades.power||0)),armor:char.armor,invuln:0,frenzy:0,face:new THREE.Vector3(1,0,0),char,skin,regen:(profile.upgrades.resilience||0)*.08+(char.id==='paladin'?.35:0)};
   this.player.y=0;this.player.vy=0;this.player.grounded=true;this.player.jumpCooldown=0;this.player.maxHp=Math.round(this.player.maxHp*this.mutator.playerHp);this.player.hp=this.player.maxHp;this.player.dashCooldown=0;this.player.novaCooldown=0;this.player.relic=RELICS.find(r=>r.id===relic)||RELICS[0];this.player.blessing=0;
-  this.orbitMeshes=[];this.weapons={[this.startWeapon||char.weapon]:{level:1,next:0,evolved:false}};this.passives={};this.level=1;this.xp=0;this.earnedXP=0;this.required=levelRequired(1);this.kills=0;this.coins=0;this.souls=0;this.bossKills=0;this.evolutions=0;this.elapsed=0;this.spawnTimer=.32;this.bossWave=0;this.chestTimer=21;this.chests=[];this.closestChest=null;this.uiClock=0;this.wave=1;this.combo=0;this.comboClock=0;this.contractIndex=0;this.contracts=[{name:'CLEAR THE GATES',target:35,coins:40,souls:12},{name:'HOLD THE LINE',target:105,coins:75,souls:30},{name:'BREAK THE HORDE',target:220,coins:130,souls:55}];this.rush=false;this.fps=60;this.fpsWindow=0;this.fpsFrames=0;this.banished=new Set();this.rerolls=3;this.banishes=2;this.finalBossSpawned=false;this.finalBoss=null;this.portal=null;this.arenaPillars=[];this.overtime=false;
+  this.orbitMeshes=[];this.weapons={[this.startWeapon||char.weapon]:{level:1,next:0,evolved:false}};this.passives={};this.level=1;this.xp=0;this.earnedXP=0;this.required=levelRequired(1);this.kills=0;this.coins=0;this.souls=0;this.bossKills=0;this.evolutions=0;this.elapsed=0;this.spawnTimer=.32;this.bossWave=0;this.chestTimer=21;this.chests=[];this.closestChest=null;this.uiClock=0;this.wave=1;this.combo=0;this.comboClock=0;this.contractIndex=0;this.contracts=[{name:'CLEAR THE GATES',target:35,coins:40,souls:12},{name:'HOLD THE LINE',target:105,coins:75,souls:30},{name:'BREAK THE HORDE',target:220,coins:130,souls:55}];this.rush=false;this.fps=60;this.fpsWindow=0;this.fpsFrames=0;this.banished=new Set();this.rerolls=3;this.banishes=2;this.finalBossSpawned=false;this.finalBoss=null;this.portal=null;this.arenaPillars=[];this.overtime=false;this.mode=mode;this.depth=1;this.chamberActive=false;this.dungeonMult=1;this.hazards=[];
   // Pre-run blessing
   this.boon=boon;this.boonReward=1;this.player.lifesteal=0;
   if(boon==='fury')this.player.damage*=1.25;
@@ -271,7 +275,8 @@ export class GraveyardEngine {
   // which reuses these same materials — pop in without a hitch.
   try{this.renderer.compile(this.scene,this.camera);}catch{}
   this.status='playing';this.runMap=map;
-  this.events.start?.(char);this.events.toast?.(`THE NIGHT BEGINS · ${char.name.toUpperCase()}`);
+  this.events.start?.(char);this.events.toast?.(this.mode==='dungeon'?`THE DESCENT BEGINS · ${char.name.toUpperCase()}`:`THE NIGHT BEGINS · ${char.name.toUpperCase()}`);
+  if(this.mode==='dungeon')this._startChamber(1);else this._populateHazards(setting,4);
  }
 
  pause(){if(this.status!=='playing')return;this.status='paused';this.events.pause?.();}
@@ -323,6 +328,62 @@ export class GraveyardEngine {
   this.portal={group,ring,inner,light,x:free.x,z:free.z};
   this.events.boss?.('defeat');this.events.toast?.('✦ THE GRAVEKEEPER FALLS · STEP INTO THE DAWN PORTAL TO ESCAPE');
  }
+ // --- Ground hazards: lava burns fast, toxic creep burns slower and slows you ---
+ spawnHazard(x,z,r,type){
+  const lava=type==='lava',col=lava?0xff5a1e:0x8be03a;
+  const disc=new THREE.Mesh(new THREE.CircleGeometry(r,28),new THREE.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:lava?1.4:.95,roughness:.55,transparent:true,opacity:.8,depthWrite:false}));
+  disc.rotation.x=-Math.PI/2;disc.position.set(x,.03,z);this.world.add(disc);
+  const ring=circleRing(r,col,.6);ring.position.set(x,.05,z);this.world.add(ring);
+  this.hazards.push({x,z,r,type,dps:lava?20:10,slow:lava?1:.6,mesh:disc,ring,phase:rand(0,TAU)});
+ }
+ _populateHazards(setting,count){
+  const lavaMap=setting?.id==='inferno';
+  for(let i=0;i<count;i++){
+   const a=rand(0,TAU),d=rand(10,30),x=Math.cos(a)*d,z=Math.sin(a)*d;
+   if(Math.hypot(x,z)<7)continue; // keep the spawn point clear
+   const type=(lavaMap?Math.random()<.7:Math.random()<.4)?'lava':'creep';
+   this.spawnHazard(x,z,rand(2.2,3.6),type);
+  }
+ }
+ _clearHazards(){for(const h of this.hazards||[]){this.world.remove(h.mesh,h.ring);h.mesh?.material?.dispose?.();h.mesh?.geometry?.dispose?.();h.ring?.material?.dispose?.();h.ring?.geometry?.dispose?.();}this.hazards=[];}
+ // --- Dungeon Dive: clear a chamber of foes, then descend into a deeper one ---
+ aliveEnemies(){let n=0;for(const e of this.enemies)if(!e.dead)n++;return n;}
+ _startChamber(depth){
+  this.depth=depth;this.chamberActive=true;this.dungeonMult=1+(depth-1)*.2;this.wave=depth;
+  const guardian=depth%5===0;
+  const count=Math.min(Math.max(28,this.currentEnemyCap-12),6+depth*3);
+  for(let i=0;i<count;i++)this.spawnEnemy();
+  if(guardian)this.spawnEnemy(true);
+  this._populateHazards(MAPS.find(m=>m.id===this.runMap)||MAPS[0],Math.min(6,1+Math.floor(depth/2)));
+  this.scene.fog.color.lerp(new THREE.Color(guardian?0x2a0820:0x0a1622),.22);
+  this.events.toast?.(guardian?`⚔ DEPTH ${depth} · CHAMBER GUARDIAN — SLAY IT TO DESCEND`:`▼ DEPTH ${depth} · CLEAR THE CHAMBER`);
+ }
+ _clearChamber(){
+  this.chamberActive=false;
+  this.spawnChest(this.depth>=3);
+  const tier=this.depth>=10?3:this.depth>=6?2:this.depth>=3?1:0;
+  this.dropPickup(this.player.pos.clone().add(new THREE.Vector3(1.6,0,0)),'relic',tier);
+  this.coins+=40+this.depth*12;this.player.hp=Math.min(this.player.maxHp,this.player.hp+this.player.maxHp*.2);
+  const a=rand(0,TAU),px=this.player.pos.x+Math.cos(a)*8,pz=this.player.pos.z+Math.sin(a)*8;
+  this._spawnDescendPortal(new THREE.Vector3(px,0,pz));
+  this.events.toast?.('✦ CHAMBER CLEARED · ENTER THE DESCENT FOR GREATER SPOILS');
+ }
+ _spawnDescendPortal(pos){
+  if(this.portal)return;
+  const free=this.terrain?.findFree(pos.x,pos.z,0,1.2)||{x:pos.x,z:pos.z};
+  const group=new THREE.Group();group.position.set(free.x,1.5,free.z);
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(1.6,.22,10,28),new THREE.MeshStandardMaterial({color:0xc46bff,emissive:0x8a3cff,emissiveIntensity:2.2,metalness:.3,roughness:.2}));group.add(ring);
+  const inner=new THREE.Mesh(new THREE.CircleGeometry(1.45,30),new THREE.MeshBasicMaterial({color:0x2a0a3a,transparent:true,opacity:.86,side:THREE.DoubleSide}));group.add(inner);
+  const light=new THREE.PointLight(0xb06bff,3,18,2);group.add(light);
+  this.world.add(group);
+  this.portal={group,ring,inner,light,x:free.x,z:free.z,descend:true};
+ }
+ _descend(){
+  if(this.portal){this.world.remove(this.portal.group);this.disposeGenerated?.(this.portal.group);this.portal=null;}
+  this._clearHazards();
+  this.player.hp=Math.min(this.player.maxHp,this.player.hp+this.player.maxHp*.12);
+  this._startChamber((this.depth||1)+1);
+ }
  spawnEnemy(boss=false){
   if(this.enemies.length>=this.currentEnemyCap)return;
   const a=rand(0,TAU),r=rand(14.5,19),roll=Math.random();
@@ -342,7 +403,10 @@ export class GraveyardEngine {
   }else{m=new THREE.Object3D();m.position.copy(position);}
   // V13: late game is where the fun lives — enemies get tankier AND their hits
   // scale with the clock, so a good build (not just a big HP pool) is what keeps you alive.
-  const et=this.elapsed,mod=1+et/330+(et>240?Math.pow((et-240)/300,2)*.9:0)+(this.wave-1)*.05,dmgRamp=1+et/340*.9,dm=this.difficulty||{};
+  const et=this.elapsed,dm=this.difficulty||{};
+  let mod,dmgRamp;
+  if(this.mode==='dungeon'){mod=this.dungeonMult||1;dmgRamp=this.dungeonMult||1;}
+  else{mod=1+et/330+(et>240?Math.pow((et-240)/300,2)*.9:0)+(this.wave-1)*.05;dmgRamp=1+et/340*.9;}
   const hp=(boss?630:t.hp)*mod*(this.overtime?1.55:1)*(dm.hpMul||1);
   this.enemies.push({mesh:m,type:idx,hp,maxHp:hp,speed:(boss?1.0:t.speed)*(1+this.elapsed/2000)*this.mutator.enemySpeed,radius:enemyRadius(idx,boss),size:scale,damage:(boss?23:t.damage)*(dm.dmgMul||1)*(this.overtime?1.4:1)*dmgRamp,value:t.reward*(boss?36:1),dead:false,boss,slow:0,flash:0,phase:rand(0,TAU),orbitCooldown:0});
   if(boss){this.events.boss?.('warning');this.events.toast?.('☠ GRAVE TITAN · BOSS APPROACHING');}
@@ -616,7 +680,9 @@ export class GraveyardEngine {
  }
 
  updatePlayer(dt){
-  const p=this.player;let mx=0,mz=0;
+  const p=this.player;let mx=0,mz=0,hazSlow=1;
+  if(this.hazards?.length){for(const h of this.hazards){if(Math.hypot(p.pos.x-h.x,p.pos.z-h.z)<h.r){p.hp-=h.dps*dt;if(h.slow<hazSlow)hazSlow=h.slow;if(Math.random()<.05)this.events.damage?.(Math.ceil(h.dps));}}
+   if(p.hp<=0){this.finish(false,'hazard');return;}}
   if(this.keys.has('KeyA')||this.keys.has('ArrowLeft'))mx--;
   if(this.keys.has('KeyD')||this.keys.has('ArrowRight'))mx++;
   if(this.keys.has('KeyW')||this.keys.has('ArrowUp'))mz--;
@@ -625,7 +691,7 @@ export class GraveyardEngine {
   if(norm>.01){
    mx/=Math.max(1,norm);mz/=Math.max(1,norm);
    const b=this.camera.matrixWorld.elements,right=new THREE.Vector3(b[0],0,b[2]).normalize(),up=new THREE.Vector3(b[4],0,b[6]).normalize();
-   const dir=right.multiplyScalar(mx).addScaledVector(up,-mz).normalize(),speed=dt*p.speed*(1+.08*(this.passives.boots||0));
+   const dir=right.multiplyScalar(mx).addScaledVector(up,-mz).normalize(),speed=dt*p.speed*(1+.08*(this.passives.boots||0))*hazSlow;
    const next=this.terrain?.resolve(p.pos.x+dir.x*speed,p.pos.z+dir.z*speed,p.y,.42)||{x:p.pos.x+dir.x*speed,z:p.pos.z+dir.z*speed};
    p.pos.x=next.x;p.pos.z=next.z;p.face.copy(dir);this.hero.rotation.y=Math.atan2(dir.x,dir.z);
   }
@@ -653,22 +719,30 @@ export class GraveyardEngine {
   }
   if(this.status==='menu'){this.elapsed+=dt;if(this.menuAvatar)this.menuAvatar.rotation.y+=dt*.2;this.camera.position.set(14+Math.sin(this.elapsed*.13)*1.8,24,19+Math.cos(this.elapsed*.13)*1.8);this.camera.lookAt(0,0,0);}
   if(this.status==='playing'){
-   this.elapsed+=dt;this.wave=Math.min(12,1+Math.floor(this.elapsed/60));this.comboClock=Math.max(0,this.comboClock-dt);if(this.comboClock===0)this.combo=0;
-   const rushWindow=this.elapsed%90;const nextRush=this.elapsed>80&&rushWindow>0&&rushWindow<18;
-   if(nextRush&&!this.rush){this.events.bloodMoon?.('start');this.events.toast?.('☾ BLOOD MOON · THE DEAD GROW RESTLESS');}
-   if(!nextRush&&this.rush){this.events.bloodMoon?.('end');this.events.toast?.('✦ BLOOD MOON ENDED · SURVIVED THE RUSH');}
-   this.rush=nextRush;
-   this.spawnTimer-=dt;
-   if(this.spawnTimer<=0){const plan=spawnPlan(this.elapsed,this.mutator.spawn,this.rush);const n=Math.ceil((this.overtime?plan.count*1.6:plan.count)*(this.difficulty?.spawnMul||1));for(let i=0;i<n;i++)this.spawnEnemy();this.spawnTimer=plan.interval*(this.overtime?.68:1);}
-   this.chestTimer-=dt;if(this.chestTimer<=0){this.spawnChest();this.chestTimer=rand(35,52);}
-   const nextBoss=Math.floor(this.elapsed/120);if(nextBoss>this.bossWave){this.bossWave=nextBoss;this.spawnEnemy(true);}
-   if(this.elapsed>=540&&!this.finalBossSpawned)this.spawnFinalBoss();
+   this.elapsed+=dt;this.comboClock=Math.max(0,this.comboClock-dt);if(this.comboClock===0)this.combo=0;
+   if(this.mode==='dungeon'){
+    // Dungeon Dive: no timed horde — clear the chamber, then a descent portal opens.
+    if(this.chamberActive&&this.aliveEnemies()===0&&!this.portal)this._clearChamber();
+   }else{
+    this.wave=Math.min(12,1+Math.floor(this.elapsed/60));
+    const rushWindow=this.elapsed%90;const nextRush=this.elapsed>80&&rushWindow>0&&rushWindow<18;
+    if(nextRush&&!this.rush){this.events.bloodMoon?.('start');this.events.toast?.('☾ BLOOD MOON · THE DEAD GROW RESTLESS');}
+    if(!nextRush&&this.rush){this.events.bloodMoon?.('end');this.events.toast?.('✦ BLOOD MOON ENDED · SURVIVED THE RUSH');}
+    this.rush=nextRush;
+    this.spawnTimer-=dt;
+    if(this.spawnTimer<=0){const plan=spawnPlan(this.elapsed,this.mutator.spawn,this.rush);const n=Math.ceil((this.overtime?plan.count*1.6:plan.count)*(this.difficulty?.spawnMul||1));for(let i=0;i<n;i++)this.spawnEnemy();this.spawnTimer=plan.interval*(this.overtime?.68:1);}
+    this.chestTimer-=dt;if(this.chestTimer<=0){this.spawnChest();this.chestTimer=rand(35,52);}
+    const nextBoss=Math.floor(this.elapsed/120);if(nextBoss>this.bossWave){this.bossWave=nextBoss;this.spawnEnemy(true);}
+    if(this.elapsed>=540&&!this.finalBossSpawned)this.spawnFinalBoss();
+   }
    this.updatePlayer(dt);this.updateEnemies(dt);
    if(this.status==='playing'){this.updateCombat(dt);this.updateProjectiles(dt);this.updatePickups(dt);this.updateFX(dt);}
-   if(this.portal&&Math.hypot(this.player.pos.x-this.portal.x,this.player.pos.z-this.portal.z)<2.3){this.finish(true,'portal');return;}
-   // V9 ENDLESS NIGHT: past 12:00 (or if you skip the Dawn Portal) the night never ends —
-   // it ramps hard but pours out double XP, just like the real thing. Leave via the portal or fall.
-   if(this.elapsed>=720&&!this.overtime){this.overtime=true;this.events.bloodMoon?.('start');this.events.toast?.('☠ THE NIGHT REFUSES TO END · ENDLESS · DOUBLE XP');this.scene.fog.color.lerp(new THREE.Color(0x3a0a12),.5);}
+   if(this.portal&&Math.hypot(this.player.pos.x-this.portal.x,this.player.pos.z-this.portal.z)<2.3){
+    if(this.portal.descend)this._descend();else{this.finish(true,'portal');return;}
+   }
+   // V9 ENDLESS NIGHT: past 12:00 (or if you skip the Dawn Portal) the survival night never ends —
+   // it ramps hard but pours out double XP. Leave via the portal or fall. (Dungeon mode is exempt.)
+   if(this.mode!=='dungeon'&&this.elapsed>=720&&!this.overtime){this.overtime=true;this.events.bloodMoon?.('start');this.events.toast?.('☠ THE NIGHT REFUSES TO END · ENDLESS · DOUBLE XP');this.scene.fog.color.lerp(new THREE.Color(0x3a0a12),.5);}
    this.uiClock+=dt;if(this.uiClock>.13){this.uiClock=0;this.events.tick?.(this.snapshot());}
   }
   if(this.status==='playing'){for(const ch of this.chests){ch.age+=dt;ch.mesh.rotation.y+=dt*.24;ch.mesh.position.y=.08+Math.sin(ch.age*2)*.055;ch.ring.rotation.z+=dt*.22;}}
@@ -678,6 +752,6 @@ export class GraveyardEngine {
  }
  _buildRadar(){const p=this.player;if(!p)return null;const px=p.pos.x,pz=p.pos.z,R=42;const en=[];for(const e of this.enemies){if(e.dead||e.boss)continue;const dx=e.mesh.position.x-px,dz=e.mesh.position.z-pz;if(dx*dx+dz*dz<R*R){en.push([Math.round(dx),Math.round(dz)]);if(en.length>=40)break;}}
   return {r:R,en,pa:this.partner?[Math.round((this.partner.x||0)-px),Math.round((this.partner.z||0)-pz)]:null,bo:this.finalBoss&&!this.finalBoss.dead?[Math.round(this.finalBoss.mesh.position.x-px),Math.round(this.finalBoss.mesh.position.z-pz)]:null,po:this.portal?[Math.round(this.portal.x-px),Math.round(this.portal.z-pz)]:null};}
- snapshot(){const p=this.player;return {hp:p.hp,maxHp:p.maxHp,frenzy:p.frenzy||0,xp:this.xp,required:this.required,level:this.level,kills:this.kills,coins:this.coins,souls:this.souls,time:this.elapsed,wave:this.wave,weapons:this.weapons,passives:this.passives,enemies:this.enemies.length,dashCooldown:p.dashCooldown,novaCooldown:p.novaCooldown,combo:this.combo,blessing:p.blessing,shrine:!!this.focusedShrine,chest:!!this.closestChest,height:Math.round(p.y*10)/10,jumpReady:p.grounded&&p.jumpCooldown<=0,chests:this.chests.length,rush:this.rush,contract:this.contracts?.[this.contractIndex]||null,fps:this.fps,quality:this.preset,finalBoss:this.finalBoss&&!this.finalBoss.dead?{hp:Math.max(0,this.finalBoss.hp),maxHp:this.finalBoss.maxHp,name:'THE GRAVEKEEPER'}:null,portal:!!this.portal,partner:this.partner?{hp:this.partner.hp,mh:this.partner.mh,lv:this.partner.lv,al:this.partner.al,k:this.partner.k||0}:null,coopKills:this.partner?(this.kills+(this.partner.k||0)):null,overtime:!!this.overtime,radar:this._buildRadar()};}
+ snapshot(){const p=this.player;return {hp:p.hp,maxHp:p.maxHp,frenzy:p.frenzy||0,xp:this.xp,required:this.required,level:this.level,kills:this.kills,coins:this.coins,souls:this.souls,time:this.elapsed,wave:this.wave,weapons:this.weapons,passives:this.passives,enemies:this.enemies.length,dashCooldown:p.dashCooldown,novaCooldown:p.novaCooldown,combo:this.combo,blessing:p.blessing,shrine:!!this.focusedShrine,chest:!!this.closestChest,height:Math.round(p.y*10)/10,jumpReady:p.grounded&&p.jumpCooldown<=0,chests:this.chests.length,rush:this.rush,contract:this.contracts?.[this.contractIndex]||null,fps:this.fps,quality:this.preset,finalBoss:this.finalBoss&&!this.finalBoss.dead?{hp:Math.max(0,this.finalBoss.hp),maxHp:this.finalBoss.maxHp,name:'THE GRAVEKEEPER'}:null,portal:!!this.portal,partner:this.partner?{hp:this.partner.hp,mh:this.partner.mh,lv:this.partner.lv,al:this.partner.al,k:this.partner.k||0}:null,coopKills:this.partner?(this.kills+(this.partner.k||0)):null,overtime:!!this.overtime,mode:this.mode,depth:this.depth||1,chamberLeft:this.mode==='dungeon'?this.aliveEnemies():0,descend:!!this.portal?.descend,radar:this._buildRadar()};}
  destroy(){this.renderer.setAnimationLoop(null);this.renderer.dispose();}
 }
