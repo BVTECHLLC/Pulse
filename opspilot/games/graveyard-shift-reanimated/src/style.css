@@ -77,3 +77,17 @@ html.is-mobile .ability-bar button,html.is-mobile .jump-control{min-height:46px}
 .hud-weapon{border-radius:6px}
 .btn-primary,.btn-ghost{border-radius:7px}
 .health-block.hit{animation:hitFlash .22s}
+
+/* V12 run setup (difficulty + starting weapon) */
+.boon-modal{width:min(100%,860px)}
+.run-setup{display:flex;flex-direction:column;gap:12px;margin:14px 0 6px}
+.setup-block{text-align:left}
+.setup-label{display:block;font-size:10px;font-weight:900;letter-spacing:2px;color:#9fb6ad;margin-bottom:7px}
+.setup-label b{color:#9fffd0}
+.setup-pills,.setup-weapons{display:flex;gap:7px;flex-wrap:wrap}
+.setup-pill{background:rgba(14,26,24,.9);border:1px solid #3c6f6a;color:#cfeee4;padding:9px 13px;border-radius:8px;font-size:11px;font-weight:800;letter-spacing:.4px}
+.setup-pill.on{border-color:#7be6cc;background:rgba(30,60,54,.95);color:#fff;box-shadow:0 0 14px rgba(123,230,204,.3)}
+.setup-pill.locked{opacity:.4}
+.setup-weapon{width:42px;height:42px;display:grid;place-items:center;font-size:20px;background:rgba(14,26,24,.9);border:1px solid #3c5f6a;border-radius:8px;color:#dff3ee}
+.setup-weapon.on{border-color:#7be6cc;background:rgba(30,60,54,.95);box-shadow:0 0 12px rgba(123,230,204,.35)}
+.boon-sub{font-size:12px;color:#9fb0ac;margin:6px 0 2px}

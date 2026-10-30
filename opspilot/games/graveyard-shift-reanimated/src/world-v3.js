@@ -74,19 +74,19 @@ export function buildWorldV3(engine,map){
   const dh=.8+rnd()*1.8;const st=new THREE.Mesh(new THREE.ConeGeometry(.35+rnd()*.3,dh,6),mat(0x3f4953));st.position.set(CX+(rnd()-.5)*18,5.5-dh/2,CZ+(rnd()-.5)*18);st.rotation.x=Math.PI;world.add(st);}
  const cavGlow=new THREE.PointLight(0x6cff9a,1.4,20,2);cavGlow.position.set(CX,2.4,CZ);world.add(cavGlow);
 
- // --- Rock spires for a broken skyline + verticality (varied heights) ---
- for(let i=0;i<11;i++){let x=0,z=0,ok=false;for(let t=0;t<18;t++){const a=rnd()*6.28,r=14+rnd()*28;x=Math.cos(a)*r;z=Math.sin(a)*r;if(!terrain.blocked(x,z,0,2)){ok=true;break;}}
-  if(!ok)continue;const h=3+rnd()*5,rr=.7+rnd()*1.1;const sp=new THREE.Mesh(new THREE.CylinderGeometry(rr*.5,rr,h,6),mat(0x555f5a,.05));sp.position.set(x,h/2,z);sp.rotation.y=rnd()*6.28;sp.castShadow=true;world.add(sp);
+ // --- A few rock spires kept to the OUTER ring so the play space stays open ---
+ for(let i=0;i<6;i++){const a=i/6*Math.PI*2+rnd()*.5,r=30+rnd()*12;const x=Math.cos(a)*r,z=Math.sin(a)*r;if(terrain.blocked(x,z,0,2))continue;
+  const h=3.5+rnd()*5,rr=.7+rnd()*1.1;const sp=new THREE.Mesh(new THREE.CylinderGeometry(rr*.5,rr,h,6),mat(0x555f5a,.05));sp.position.set(x,h/2,z);sp.rotation.y=rnd()*6.28;sp.castShadow=true;world.add(sp);
   const capR=new THREE.Mesh(new THREE.DodecahedronGeometry(rr*1.15,0),mat(0x5d665f));capR.position.set(x,h,z);capR.scale.y=.6;world.add(capR);
-  terrain.addCircle(x,z,rr*.85,h);if(h<4.2)terrain.addPerch(x,z,rr*.7,h);}
+  terrain.addCircle(x,z,rr*.85,h);if(h<4.4)terrain.addPerch(x,z,rr*.7,h);}
 
- // --- Two lower ruined platforms elsewhere + sparse vegetation ---
+ // --- Two lower ruined platforms + edge vegetation (silhouette only) ---
  for(const pos of [{x:-28,z:16,axis:'z',sign:1},{x:-24,z:-22,axis:'x',sign:1}])platform(world,terrain,pos);
- for(let i=0;i<10;i++){const a=i/10*Math.PI*2+rnd()*.4,r=38+rnd()*8;const x=Math.cos(a)*r,z=Math.sin(a)*r;if(terrain.blocked(x,z,0,2))continue;vegetation(world,terrain,x,z,.9+rnd()*.5,(name,height)=>engine.cloneModel(name,height));}
- const props=['Cauldron','WeaponStand','CandleStick_Triple','Barrel'];
- for(let i=0;i<7;i++){const a=i/7*Math.PI*2+1.3,r=18+(i%3)*7;const x=Math.cos(a)*r,z=Math.sin(a)*r;if(terrain.blocked(x,z,0,1.1))continue;
-  const name=props[i%props.length],obj=engine.cloneModel('Fantasy'+name,1.1);if(!obj)continue;obj.position.set(x,0,z);obj.rotation.y=a;world.add(obj);
-  if(name!=='CandleStick_Triple')terrain.addCircle(x,z,.49,1.5);}
+ for(let i=0;i<9;i++){const a=i/9*Math.PI*2+rnd()*.4,r=40+rnd()*7;const x=Math.cos(a)*r,z=Math.sin(a)*r;if(terrain.blocked(x,z,0,2))continue;vegetation(world,terrain,x,z,.9+rnd()*.5,(name,height)=>engine.cloneModel(name,height));}
+ // Decorative props are now flush dressing with NO collision — they never block you.
+ const props=['Cauldron','WeaponStand','CandleStick_Triple','Barrel','Potion_1','Coin_Pile'];
+ for(let i=0;i<8;i++){const a=i/8*Math.PI*2+1.3,r=34+rnd()*9;const x=Math.cos(a)*r,z=Math.sin(a)*r;if(terrain.blocked(x,z,0,1.1))continue;
+  const name=props[i%props.length],obj=engine.cloneModel('Fantasy'+name,1.0);if(!obj)continue;obj.position.set(x,0,z);obj.rotation.y=a;world.add(obj);}
 
  // --- Drifting dust motes for atmosphere ---
  const dustGeo=new THREE.BufferGeometry(),pos=[];for(let i=0;i<120;i++)pos.push((rnd()-.5)*110,.2+rnd()*4,(rnd()-.5)*110);

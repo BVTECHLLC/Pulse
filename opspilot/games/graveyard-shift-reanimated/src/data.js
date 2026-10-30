@@ -23,17 +23,32 @@ export const MUTATORS = [
  {id:'glass',name:'Glass Cannon',icon:'✹',detail:'Deal 40% more damage, but start with 40% less health.',reward:1.25,spawn:1,enemySpeed:1,playerDamage:1.4,playerHp:.6},
  {id:'turbo',name:'Turbo Shift',icon:'ϟ',detail:'Accelerated movement and enemy swarms.',reward:1.2,spawn:1.3,enemySpeed:1.15,playerDamage:1,playerHp:1}
 ];
+// Each skin has a material STYLE so they read as genuinely different looks,
+// not just hue swaps: flat (solid matte), metal (gilded/chrome), ghost
+// (translucent + glow), ember (emissive hot), frost (icy translucent).
 export const SKINS = [
- {id:'default',name:'Original',hex:'#3fd3e8',unlock:0},
- {id:'crimson',name:'Blood Moon',hex:'#ef627b',unlock:0},
- {id:'specter',name:'Specter',hex:'#91f5e7',unlock:2},
- {id:'royal',name:'Royal',hex:'#e8bd72',unlock:3},
- {id:'void',name:'Voidwalker',hex:'#ad88ff',unlock:4},
- {id:'toxic',name:'Biohazard',hex:'#a7ed79',unlock:5},
- {id:'frost',name:'Frostbound',hex:'#89c9ff',unlock:6},
- {id:'ember',name:'Infernal',hex:'#ff955b',unlock:8},
- {id:'pumpkin',name:'Jack-o-Lantern',hex:'#ff7a1a',unlock:0},
- {id:'wraith',name:'Wraith',hex:'#e2fff2',unlock:0}
+ {id:'default',name:'Nightblade',hex:'#3fd3e8',style:'flat',unlock:0},
+ {id:'crimson',name:'Blood Moon',hex:'#ef3d63',style:'flat',unlock:0},
+ {id:'specter',name:'Specter',hex:'#8ffbe8',style:'ghost',unlock:2},
+ {id:'royal',name:'Royal Guard',hex:'#e8bd72',style:'metal',unlock:3},
+ {id:'void',name:'Voidwalker',hex:'#a771ff',style:'ghost',unlock:4},
+ {id:'toxic',name:'Biohazard',hex:'#9cff4e',style:'ember',unlock:5},
+ {id:'frost',name:'Frostbound',hex:'#7cc6ff',style:'frost',unlock:6},
+ {id:'ember',name:'Infernal',hex:'#ff6a2b',style:'ember',unlock:8},
+ {id:'pumpkin',name:'Jack-o-Lantern',hex:'#ff7a1a',style:'ember',unlock:0},
+ {id:'wraith',name:'Wraith',hex:'#dffff4',style:'ghost',unlock:0},
+ {id:'gilded',name:'Gilded King',hex:'#ffd24a',style:'metal',unlock:10},
+ {id:'obsidian',name:'Obsidian',hex:'#5b4b7a',style:'flat',unlock:12},
+ {id:'revenant',name:'Revenant',hex:'#e9e2cf',style:'flat',unlock:9},
+ {id:'chrome',name:'Chrome',hex:'#cfe3ff',style:'metal',unlock:14},
+ {id:'phantomfire',name:'Phantom Fire',hex:'#49e0ff',style:'ember',unlock:16}
+];
+// Difficulty — scales the threat and the payout. Harder = far more coins & XP.
+export const DIFFICULTIES = [
+ {id:'normal',name:'Nightfall',icon:'☾',desc:'The standard shift. A fair fight.',hpMul:1,dmgMul:1,spawnMul:1,rewardMul:1,unlock:0},
+ {id:'hard',name:'Blood Hunt',icon:'☠',desc:'Tougher, faster hordes. +40% coins & XP.',hpMul:1.5,dmgMul:1.4,spawnMul:1.3,rewardMul:1.4,unlock:0},
+ {id:'nightmare',name:'Nightmare',icon:'✖',desc:'Relentless and lethal. DOUBLE coins & XP.',hpMul:2.2,dmgMul:1.9,spawnMul:1.6,rewardMul:2.0,unlock:3},
+ {id:'apocalypse',name:'Apocalypse',icon:'❂',desc:'For legends only. Triple rewards.',hpMul:3.2,dmgMul:2.6,spawnMul:2.0,rewardMul:3.0,unlock:8},
 ];
 // Pre-run blessings — pick one before every run for an instant build-defining edge.
 export const BOONS = [
