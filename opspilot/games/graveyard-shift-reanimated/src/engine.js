@@ -7,6 +7,10 @@ import {EnemyBatch} from './enemy-batch.js';
 import {BUDGETS,graphicsPreset,enemyScale,enemyRadius,spawnPlan,comboMultiplier,safeDelta} from './balance.js';
 import {buildWorldV3} from './world-v3.js';
 import {CHEST_REWARDS} from './v3-content.js';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
+import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 const TAU=Math.PI*2;
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const rand=(a,b)=>a+Math.random()*(b-a);
@@ -15,6 +19,7 @@ const sphere=new THREE.SphereGeometry(1,10,8);
 const cyl=new THREE.CylinderGeometry(1,1,1,7);
 const ico=new THREE.IcosahedronGeometry(1,0);
 const boxgeo=new THREE.BoxGeometry(1,1,1);
+const octa=new THREE.OctahedronGeometry(1,0);
 const enemyTypes=[
  {name:'Wanderer',color:0x778c90,hp:35,speed:1.6,radius:.53,damage:10,reward:1,size:1},
  {name:'Skitter',color:0x7dd9c0,hp:24,speed:2.9,radius:.4,damage:7,reward:2,size:.7},
@@ -68,7 +73,7 @@ export class GraveyardEngine {
   const amber=new THREE.DirectionalLight(0xffb06a,.5);amber.position.set(-16,10,22);this.scene.add(amber);
   this.glow=new THREE.PointLight(0x9fe9c6,24,14,2);this.scene.add(this.glow);
   this.loader=new GLTFLoader();this.models={};this.loading=this.loadAssets();
-  this.keys=new Set();this.touch={x:0,z:0};this.projectileMaterials=new Map();this.projectilePool=[];this.focusedShrine=null;this.combo=0;this.comboClock=0;this.fps=60;this.fpsFrames=0;this.fpsWindow=0;this.currentEnemyCap=this.budget.enemies;this.status='menu';this.previews=[];this.elapsed=0;this.frameCount=0;
+  this.keys=new Set();this.touch={x:0,z:0};this.projectileMaterials=new Map();this.projectilePool=[];this.focusedShrine=null;this.combo=0;this.comboClock=0;this.fps=60;this.fpsFrames=0;this.fpsWindow=0;this.currentEnemyCap=this.budget.enemies;this.status='menu';this.previews=[];this.elapsed=0;this.frameCount=0;this.composer=null;this.useBloom=false;this.bloomPass=null;
   window.addEventListener('keydown',e=>{if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();this.keys.add(e.code);if(!e.repeat&&e.code==='KeyQ')this.activateAbility('dash');if(!e.repeat&&e.code==='KeyE')this.activateAbility('nova');if(!e.repeat&&e.code==='KeyF')this.interact();if(!e.repeat&&e.code==='Space')this.jump();if(e.code==='Escape'&&this.status==='playing')this.pause();else if(e.code==='Escape'&&this.status==='paused')this.resume();});
   window.addEventListener('keyup',e=>this.keys.delete(e.code));
   window.addEventListener('blur',()=>{if(this.status==='playing')this.pause()});
@@ -85,7 +90,8 @@ export class GraveyardEngine {
    try {const data=await this.loader.loadAsync(ASSET_BASE+url);this.models[name]=data;}catch(e){console.warn('Model unavailable; fallback enabled',name,e);}
   }));this.events.assets?.(Object.keys(this.models).length);return this.models;
  }
- resize(){const w=window.innerWidth,h=window.innerHeight;this.renderer.setSize(w,h,false);const width=13.2;if(this.camera.isPerspectiveCamera){this.camera.aspect=w/Math.max(1,h);}else{this.camera.left=-width;this.camera.right=width;this.camera.top=width*h/w;this.camera.bottom=-width*h/w;}this.camera.updateProjectionMatrix();}
+ _setupBloom(){try{const w=window.innerWidth,h=window.innerHeight;const mob=/Mobi|Android|iPhone|iPad|iPod|Silk/i.test(navigator.userAgent||'');this.composer=new EffectComposer(this.renderer);this.composer.addPass(new RenderPass(this.scene,this.camera));this.bloomPass=new UnrealBloomPass(new THREE.Vector2(w,h),mob?.46:.62,.55,.74);this.composer.addPass(this.bloomPass);this.composer.addPass(new OutputPass());this.composer.setSize(w,h);}catch(err){this.composer=null;this.useBloom=false;}}
+ resize(){const w=window.innerWidth,h=window.innerHeight;this.renderer.setSize(w,h,false);if(this.composer){this.composer.setSize(w,h);this.bloomPass?.setSize(w,h);}const width=13.2;if(this.camera.isPerspectiveCamera){this.camera.aspect=w/Math.max(1,h);}else{this.camera.left=-width;this.camera.right=width;this.camera.top=width*h/w;this.camera.bottom=-width*h/w;}this.camera.updateProjectionMatrix();}
  disposeGenerated(root){if(!root)return;root.traverse?.(obj=>{if(!obj.isMesh)return;if(obj.geometry&&!([sphere,boxgeo,ico,cyl].includes(obj.geometry)))obj.geometry.dispose();if(Array.isArray(obj.material))obj.material.forEach(m=>m.dispose());else obj.material?.dispose();});}
 
  clearWorld(){
@@ -241,7 +247,7 @@ export class GraveyardEngine {
   this.loading?.then(()=>{if(this.status!=='menu')return;const hero=this.makePlayerMesh(CHARACTERS[0],'default');this.world.remove(this.menuAvatar);this.menuAvatar=hero;this.world.add(hero);});}
  async start({character='warden',skin='default',map='cemetery',mutator='standard',relic='nightfall',boon=null,weapon=null,difficulty='normal'}={}){
   const char=CHARACTERS.find(c=>c.id===character)||CHARACTERS[0],setting=MAPS.find(m=>m.id===map)||MAPS[0];
-  await this.loading;this.status='initializing';this.clearWorld();this.preset=graphicsPreset(profile.settings.graphics??.5);this.budget=BUDGETS[this.preset];this.currentEnemyCap=this.budget.enemies;this.renderer.setPixelRatio(Math.min(devicePixelRatio||1,this.budget.dpr));this.renderer.shadowMap.enabled=profile.settings.shadows===true&&this.preset==='high';this.resize();
+  await this.loading;this.status='initializing';this.clearWorld();this.preset=graphicsPreset(profile.settings.graphics??.5);this.budget=BUDGETS[this.preset];this.currentEnemyCap=this.budget.enemies;this.renderer.setPixelRatio(Math.min(devicePixelRatio||1,this.budget.dpr));this.renderer.shadowMap.enabled=profile.settings.shadows===true&&this.preset==='high';this.useBloom=this.preset!=='low'&&profile.settings.particles!==false;if(this.useBloom&&!this.composer)this._setupBloom();this.resize();
   this.scene.background.set(setting.color);this.scene.fog.color.set(setting.fog);this.buildFloor(setting);buildWorldV3(this,setting);this.buildDecor(setting);this.buildHalloween(setting);this.enemyBatch=new EnemyBatch(this.world,this.budget.enemies);
   this.hero=this.makePlayerMesh(char,skin);this.world.add(this.hero);this.attachWeapon(char.weapon);this.hero.position.set(0,.01,0);
   this.animMixer=new THREE.AnimationMixer(this.hero);this.animations={};this.animCurrent=null;
@@ -249,7 +255,7 @@ export class GraveyardEngine {
   this.mutator=MUTATORS.find(m=>m.id===mutator)||MUTATORS[0];
   this.difficulty=DIFFICULTIES.find(d=>d.id===difficulty)||DIFFICULTIES[0];
   this.startWeapon=(weapon&&WEAPONS.some(w=>w.id===weapon))?weapon:char.weapon;
-  this.player={pos:new THREE.Vector3(0,0,0),hp:char.hp+8*(profile.upgrades.health||0)+(char.id==='bruiser'?35:0),maxHp:char.hp+8*(profile.upgrades.health||0)+(char.id==='bruiser'?35:0),speed:char.speed*(char.id==='shade'?1.15:1)*(this.mutator.id==='turbo'?1.15:1)*(1+.015*(profile.upgrades.speed||0)),damage:char.damage*this.mutator.playerDamage*(1+.04*(profile.upgrades.power||0)),armor:char.armor,invuln:0,face:new THREE.Vector3(1,0,0),char,skin,regen:(profile.upgrades.resilience||0)*.08+(char.id==='paladin'?.35:0)};
+  this.player={pos:new THREE.Vector3(0,0,0),hp:char.hp+8*(profile.upgrades.health||0)+(char.id==='bruiser'?35:0),maxHp:char.hp+8*(profile.upgrades.health||0)+(char.id==='bruiser'?35:0),speed:char.speed*(char.id==='shade'?1.15:1)*(this.mutator.id==='turbo'?1.15:1)*(1+.015*(profile.upgrades.speed||0)),damage:char.damage*this.mutator.playerDamage*(1+.04*(profile.upgrades.power||0)),armor:char.armor,invuln:0,frenzy:0,face:new THREE.Vector3(1,0,0),char,skin,regen:(profile.upgrades.resilience||0)*.08+(char.id==='paladin'?.35:0)};
   this.player.y=0;this.player.vy=0;this.player.grounded=true;this.player.jumpCooldown=0;this.player.maxHp=Math.round(this.player.maxHp*this.mutator.playerHp);this.player.hp=this.player.maxHp;this.player.dashCooldown=0;this.player.novaCooldown=0;this.player.relic=RELICS.find(r=>r.id===relic)||RELICS[0];this.player.blessing=0;
   this.orbitMeshes=[];this.weapons={[this.startWeapon||char.weapon]:{level:1,next:0,evolved:false}};this.passives={};this.level=1;this.xp=0;this.earnedXP=0;this.required=levelRequired(1);this.kills=0;this.coins=0;this.souls=0;this.bossKills=0;this.evolutions=0;this.elapsed=0;this.spawnTimer=.32;this.bossWave=0;this.chestTimer=21;this.chests=[];this.closestChest=null;this.uiClock=0;this.wave=1;this.combo=0;this.comboClock=0;this.contractIndex=0;this.contracts=[{name:'CLEAR THE GATES',target:35,coins:40,souls:12},{name:'HOLD THE LINE',target:105,coins:75,souls:30},{name:'BREAK THE HORDE',target:220,coins:130,souls:55}];this.rush=false;this.fps=60;this.fpsWindow=0;this.fpsFrames=0;this.banished=new Set();this.rerolls=3;this.banishes=2;this.finalBossSpawned=false;this.finalBoss=null;this.portal=null;this.arenaPillars=[];this.overtime=false;
   // Pre-run blessing
@@ -334,13 +340,15 @@ export class GraveyardEngine {
    const mark=circleRing(1.65,0xff706d,.65);mark.position.y=.045;m.add(mark);
    m.position.copy(position);this.world.add(m);
   }else{m=new THREE.Object3D();m.position.copy(position);}
-  const mod=1+this.elapsed/370+(this.wave-1)*.055,dm=this.difficulty||{};
+  // V13: late game is where the fun lives — enemies get tankier AND their hits
+  // scale with the clock, so a good build (not just a big HP pool) is what keeps you alive.
+  const et=this.elapsed,mod=1+et/330+(et>240?Math.pow((et-240)/300,2)*.9:0)+(this.wave-1)*.05,dmgRamp=1+et/340*.9,dm=this.difficulty||{};
   const hp=(boss?630:t.hp)*mod*(this.overtime?1.55:1)*(dm.hpMul||1);
-  this.enemies.push({mesh:m,type:idx,hp,maxHp:hp,speed:(boss?1.0:t.speed)*(1+this.elapsed/2000)*this.mutator.enemySpeed,radius:enemyRadius(idx,boss),size:scale,damage:(boss?23:t.damage)*(dm.dmgMul||1),value:t.reward*(boss?36:1),dead:false,boss,slow:0,flash:0,phase:rand(0,TAU),orbitCooldown:0});
+  this.enemies.push({mesh:m,type:idx,hp,maxHp:hp,speed:(boss?1.0:t.speed)*(1+this.elapsed/2000)*this.mutator.enemySpeed,radius:enemyRadius(idx,boss),size:scale,damage:(boss?23:t.damage)*(dm.dmgMul||1)*(this.overtime?1.4:1)*dmgRamp,value:t.reward*(boss?36:1),dead:false,boss,slow:0,flash:0,phase:rand(0,TAU),orbitCooldown:0});
   if(boss){this.events.boss?.('warning');this.events.toast?.('☠ GRAVE TITAN · BOSS APPROACHING');}
  }
  damageEnemy(e,amount,kind='normal',knock=0){
-  if(e.dead)return;const crit=Math.random()<(.04+(.05*(this.passives.crit||0)))?2:1;let d=amount*this.player.damage*(this.player.blessing>0?1.35:1)*(1+.1*(this.passives.might||0))*(1+.1*(this.passives.area||0)*(kind==='area'?1:0));if(this.player.char.id==='alchemist'&&(kind==='poison'||kind==='area'))d*=1.18;if(this.player.char.id==='hex')d*=1.12;
+  if(e.dead)return;const crit=Math.random()<(.04+(.05*(this.passives.crit||0)))?2:1;let d=amount*this.player.damage*((this.player.frenzy||0)>0?1.8:1)*(this.player.blessing>0?1.35:1)*(1+.1*(this.passives.might||0))*(1+.1*(this.passives.area||0)*(kind==='area'?1:0));if(this.player.char.id==='alchemist'&&(kind==='poison'||kind==='area'))d*=1.18;if(this.player.char.id==='hex')d*=1.12;
   e.hp-=d*crit;e.flash=.09;if(this.player.lifesteal>0)this.player.hp=Math.min(this.player.maxHp,this.player.hp+d*crit*this.player.lifesteal); if(knock){let v=e.mesh.position.clone().sub(this.player.pos);v.y=0;v.normalize();const px=e.mesh.position.x+v.x*knock,pz=e.mesh.position.z+v.z*knock,allowed=this.terrain?.resolve(px,pz,e.mesh.position.y,e.radius*.7)||{x:px,z:pz};e.mesh.position.x=allowed.x;e.mesh.position.z=allowed.z;}
   if(this.passives.crit&&crit>1||e.boss)this.events.hit?.({x:e.mesh.position.x,z:e.mesh.position.z,amount:Math.round(d*crit),critical:crit>1});
   if(e.hp<=0)this.killEnemy(e);
@@ -352,10 +360,12 @@ export class GraveyardEngine {
   const rew=this.difficulty?.rewardMul||1;
   this.coins+=(e.boss?80:Math.random()<.24?2:0)*this.mutator.reward*(1+.12*(this.passives.fortune||0))*(this.boonReward||1)*rew;
   this.souls+=(e.boss?25:e.value)*this.mutator.reward*rew;
-  if(e.boss){this.bossKills++;this.spawnChest(true);
+  if(e.boss){this.bossKills++;this.spawnChest(true);this.dropPickup(e.mesh.position.clone(),'relic',e.final?3:(Math.random()<.4?2:1));
    if(e.final){this.finalBoss=null;this.coins+=250;this.spawnVictoryPortal(e.mesh.position.clone());}
    else{this.events.boss?.('defeat');this.events.toast?.('TITAN SLAIN · OPEN ITS RELIC');}}
-  else{this.dropPickup(e.mesh.position.clone(),'xp',e.value*2*bonus);const lowHp=this.player.hp/this.player.maxHp<.5;if(Math.random()<(lowHp?.15:.05))this.dropPickup(e.mesh.position.clone(),'heal',26);if(Math.random()<.045)this.dropPickup(e.mesh.position.clone(),'coin',6);}
+  else{this.dropPickup(e.mesh.position.clone(),'xp',e.value*1.6*bonus);const lowHp=this.player.hp/this.player.maxHp<.5;if(Math.random()<(lowHp?.15:.05))this.dropPickup(e.mesh.position.clone(),'heal',26);if(Math.random()<.045)this.dropPickup(e.mesh.position.clone(),'coin',6);
+   // V13 lucky loot — rare chance for a tiered power gem; elites roll far more often, Fortune & hard modes stack the odds.
+   const elite=e.type===2||e.type===3,luck=(elite?.022:.009)*(1+.5*(this.passives.fortune||0))*Math.min(2.4,this.difficulty?.rewardMul||1);if(Math.random()<luck)this.dropPickup(e.mesh.position.clone(),'relic',this.rollRelicTier());}
   const contract=this.contracts?.[this.contractIndex];if(contract&&this.kills>=contract.target){this.coins+=contract.coins;this.souls+=contract.souls;this.contractIndex++;this.events.toast?.(`✦ CONTRACT CLEARED · ${contract.name} · +${contract.coins} COINS`);}
   if(this.kills===1)this.events.toast?.('FIRST BLOOD');
  }
@@ -369,6 +379,14 @@ export class GraveyardEngine {
    if(type==='heal'){this.player.hp=Math.min(this.player.maxHp,this.player.hp+value);return;}
    if(type==='coin'){this.coins+=value;return;}
    const q=this.pickups.find(p=>p.type==='xp');if(q){q.value+=value;return;}
+  }
+  if(type==='relic'){
+   const RC=[0x5db7ff,0xb569ff,0xffb54d,0x8ffff0][value]||0x5db7ff;
+   const gem=new THREE.Mesh(octa,new THREE.MeshStandardMaterial({color:RC,emissive:RC,emissiveIntensity:1.2,roughness:.18,metalness:.35}));
+   gem.scale.setScalar(.34+value*.08);gem.position.set(pos.x,.6,pos.z);this.world.add(gem);
+   let light=null;if(value>=2){light=new THREE.PointLight(RC,value>=3?3.6:2.2,8);light.position.set(pos.x,1.2,pos.z);this.world.add(light);}
+   this.pickups.push({mesh:gem,pos:gem.position,type:'relic',value,tier:value,age:0,light});
+   return;
   }
   const color=type==='chest'?0xe9c677:type==='coin'?0xffcf5a:type==='heal'?0xff718e:value>=10?0xc4abff:0x89e5c0;
   const mesh=new THREE.Mesh(type==='xp'?ico:type==='chest'?boxgeo:sphere,new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:type==='coin'?.6:.43,roughness:.35}));mesh.scale.setScalar(type==='chest'?.47:type==='coin'?.25:type==='heal'?.3:.19);
@@ -386,10 +404,12 @@ export class GraveyardEngine {
   const weaponIdx=pool.map((p,i)=>p.type==='weapon'?i:-1).filter(i=>i>=0);
   if(weaponIdx.length){const local=weaponIdx.map(i=>pool[i]);const li=weightedPick(local);result.push(pool.splice(weaponIdx[li],1)[0]);}
   while(pool.length&&result.length<3){result.push(pool.splice(weightedPick(pool),1)[0]);}
+  // V13: small chance a weapon choice is "empowered" — a +2 level jackpot pick.
+  if(result.length&&Math.random()<.13){const ei=result.findIndex(c=>c.type==='weapon');if(ei>=0)result[ei].empowered=true;}
   return result;
  }
  selectUpgrade(choice){if(this.status!=='levelup')return;
-  if(choice.type==='weapon'){const w=this.weapons[choice.id];if(w)w.level++;else this.weapons[choice.id]={level:1,next:0,evolved:false};}
+  if(choice.type==='weapon'){const inc=choice.empowered?2:1;const w=this.weapons[choice.id];if(w)w.level+=inc;else this.weapons[choice.id]={level:inc,next:0,evolved:false};}
   else{this.passives[choice.id]=(this.passives[choice.id]||0)+1;if(choice.id==='vitality'){this.player.maxHp+=20;this.player.hp+=20;}}
   this.status='playing';this.events.toast?.(`${choice.title.toUpperCase()} · UPGRADED`);
   if(this.xp>=this.required){this.xp-=this.required;this.level++;this.required=levelRequired(this.level);this.status='levelup';this.events.levelUp?.(this.generateChoices());}
@@ -471,7 +491,7 @@ export class GraveyardEngine {
      for(const e of this.enemies)if(!e.dead&&e.orbitCooldown<=0&&Math.hypot(e.mesh.position.x-x,e.mesh.position.z-z)<e.radius+.33){this.damageEnemy(e,(8+w.level*3)*.29,'normal');e.orbitCooldown=.25;}
     }continue;
    }
-   w.next-=dt;if(w.next<=0){this.fire(id,w);const d=findWeapon(id);w.next=Math.max(.16,d.cooldown*(1-.055*(w.level-1))*(w.evolved?.75:1)*Math.max(.35,cdr));}
+   w.next-=dt;if(w.next<=0){this.fire(id,w);const d=findWeapon(id);w.next=Math.max(.16,d.cooldown*(1-.055*(w.level-1))*(w.evolved?.75:1)*Math.max(.35,cdr)*((this.player.frenzy||0)>0?.6:1));}
   }
  }
  updateEnemies(dt){
@@ -507,13 +527,24 @@ export class GraveyardEngine {
    if(b.life<=0){if(b.impact>0)this.pulseAt(b.mesh.position,b.impact,b.damage);b.mesh.visible=false;this.projectilePool.push(b.mesh);this.projectiles.splice(i,1);}
   }
  }
+ rollRelicTier(){const r=Math.random();return r<.55?0:r<.84?1:r<.965?2:3;}
+ grantRelic(tier){
+  // V13: the "jackpot" moment — escalating lucky rewards, capped by a once-in-a-run Mythic Frenzy spike.
+  const p=this.player,heal=f=>{p.hp=Math.min(p.maxHp,p.hp+p.maxHp*f);};
+  const bump=n=>{const owned=Object.entries(this.weapons).filter(([id,w])=>w.level<20);for(let i=0;i<n&&owned.length;i++){const k=Math.floor(Math.random()*owned.length);owned.splice(k,1)[0][1].level++;}};
+  if(tier===0){this.coins+=70;heal(.22);bump(1);this.souls+=18;this.events.relic?.(0);this.events.toast?.('✦ RARE CACHE · +1 WEAPON · +70 COINS');this.pulse(2,10,0x5db7ff,{knock:.1});}
+  else if(tier===1){this.coins+=150;heal(.4);bump(2);const pa=PASSIVES[Math.floor(Math.random()*PASSIVES.length)];this.passives[pa.id]=(this.passives[pa.id]||0)+1;this.souls+=40;this.events.relic?.(1);this.events.toast?.('◆ EPIC HOARD · +2 WEAPONS · +1 PASSIVE · +150 COINS');this.pulse(2.6,16,0xb569ff,{knock:.16});}
+  else if(tier===2){this.coins+=260;heal(1);p.invuln=Math.max(p.invuln,2.6);bump(3);this.addXP(90+this.level*14);this.souls+=75;this.events.relic?.(2);this.events.toast?.('★ LEGENDARY TROVE · FULL HEAL · +3 WEAPONS');this.pulse(3.4,22,0xffb54d,{knock:.22});}
+  else{this.coins+=500;heal(1);p.invuln=Math.max(p.invuln,3.2);p.frenzy=Math.max(p.frenzy||0,13);bump(4);this.addXP(160+this.level*20);this.souls+=140;this.events.relic?.(3);this.events.toast?.('☀ MYTHIC WINDFALL · THE NIGHT BLESSES YOU · FRENZY UNLEASHED');this.pulse(4.6,30,0x8ffff0,{knock:.3});}
+ }
  updatePickups(dt){
   const p=this.player.pos,range=(4.6+.7*(this.passives.magnet||0))*(1+.06*(profile.upgrades.magnet||0));
   for(let i=this.pickups.length-1;i>=0;i--){const o=this.pickups[i];o.age+=dt;const dx=o.pos.x-p.x,dz=o.pos.z-p.z,d=Math.hypot(dx,dz);o.mesh.rotation.y+=dt*1.9;o.mesh.position.y=(o.type==='chest'?.55:.32)+Math.sin(o.age*3)*.06;
    // Generous magnet so loot always comes to you; plus anti-stranding — anything left >6s gets reeled in no matter how far.
    if(o.type!=='chest'&&(d<range||o.age>6)){const pull=Math.max(2.5,14/Math.max(.15,d));o.pos.x-=dx*Math.min(1,dt*pull);o.pos.z-=dz*Math.min(1,dt*pull);}
-   if(d<(.78+(o.type==='chest'?.25:0))){if(o.type==='xp')this.addXP(o.value);else if(o.type==='chest')this.openChest();else if(o.type==='coin'){this.coins+=o.value;this.events.pickup?.();}else{this.player.hp=Math.min(this.player.maxHp,this.player.hp+o.value);this.events.pickup?.();}
-    this.world.remove(o.mesh);o.mesh.material.dispose();this.pickups.splice(i,1);if(this.status==='levelup')break;}
+   if(o.light)o.light.position.set(o.pos.x,1.2,o.pos.z);
+   if(d<(.78+(o.type==='chest'?.25:0))){if(o.type==='xp')this.addXP(o.value);else if(o.type==='chest')this.openChest();else if(o.type==='relic')this.grantRelic(o.tier);else if(o.type==='coin'){this.coins+=o.value;this.events.pickup?.();}else{this.player.hp=Math.min(this.player.maxHp,this.player.hp+o.value);this.events.pickup?.();}
+    this.world.remove(o.mesh);if(o.light)this.world.remove(o.light);o.mesh.material.dispose();this.pickups.splice(i,1);if(this.status==='levelup')break;}
   }
  }
  updateFX(dt){for(let i=this.fx.length-1;i>=0;i--){const f=this.fx[i];f.age+=dt;
@@ -604,7 +635,7 @@ export class GraveyardEngine {
   p.y=Math.max(0,p.y);p.jumpCooldown=Math.max(0,p.jumpCooldown-dt);
   this.hero.position.set(p.pos.x,p.y+.035+Math.sin(this.elapsed*(norm>.1?13:3))*(p.grounded?(norm>.1?.027:.014):0),p.pos.z);
   if(this.animMixer){const type=norm>.1?'run':'idle';if(type!==this.animCurrent){this.animations[this.animCurrent]?.fadeOut(.14);this.animations[type]?.reset().fadeIn(.14).play();this.animCurrent=type;}this.animMixer.update(dt);}
-  p.blessing=Math.max(0,p.blessing-dt);p.invuln=Math.max(0,p.invuln-dt);p.dashCooldown=Math.max(0,p.dashCooldown-dt);p.novaCooldown=Math.max(0,p.novaCooldown-dt);
+  p.blessing=Math.max(0,p.blessing-dt);p.invuln=Math.max(0,p.invuln-dt);p.dashCooldown=Math.max(0,p.dashCooldown-dt);p.novaCooldown=Math.max(0,p.novaCooldown-dt);p.frenzy=Math.max(0,(p.frenzy||0)-dt);
   p.hp=Math.min(p.maxHp,p.hp+dt*(p.regen+.3*(this.passives.regen||0)));
   const pos=new THREE.Vector3(p.pos.x+12.5,p.y+21,p.pos.z+17);this.camera.position.lerp(pos,Math.min(1,dt*4));this.camera.lookAt(p.pos.x,p.y+.38,p.pos.z);
   this.glow.position.set(p.pos.x,p.y+2,p.pos.z);
@@ -616,6 +647,7 @@ export class GraveyardEngine {
   const dt=safeDelta(this.clock.getDelta());this.frameCount++;
   this.fpsWindow+=dt;this.fpsFrames++;
   if(this.fpsWindow>=2){this.fps=Math.round(this.fpsFrames/this.fpsWindow);this.fpsWindow=0;this.fpsFrames=0;
+   if(this.status==='playing'&&this.fps<30&&this.useBloom){this.useBloom=false;this.events.toast?.('PERFORMANCE MODE · BLOOM OFF');}
    if(this.status==='playing'&&this.fps<38)this.currentEnemyCap=Math.max(70,Math.floor(this.currentEnemyCap*.88));
    else if(this.status==='playing'&&this.fps>55)this.currentEnemyCap=Math.min(this.budget.enemies,this.currentEnemyCap+5);
   }
@@ -642,10 +674,10 @@ export class GraveyardEngine {
   if(this.status==='playing'){for(const ch of this.chests){ch.age+=dt;ch.mesh.rotation.y+=dt*.24;ch.mesh.position.y=.08+Math.sin(ch.age*2)*.055;ch.ring.rotation.z+=dt*.22;}}
   this._animAmbience(dt);
   if(this.partnerMesh&&this.partnerTarget){this.partnerMesh.position.lerp(this.partnerTarget,Math.min(1,dt*11));this.partnerMesh.rotation.y+=dt*.3;}
-  this.renderer.render(this.scene,this.camera);
+  if(this.useBloom&&this.composer)this.composer.render();else this.renderer.render(this.scene,this.camera);
  }
  _buildRadar(){const p=this.player;if(!p)return null;const px=p.pos.x,pz=p.pos.z,R=42;const en=[];for(const e of this.enemies){if(e.dead||e.boss)continue;const dx=e.mesh.position.x-px,dz=e.mesh.position.z-pz;if(dx*dx+dz*dz<R*R){en.push([Math.round(dx),Math.round(dz)]);if(en.length>=40)break;}}
   return {r:R,en,pa:this.partner?[Math.round((this.partner.x||0)-px),Math.round((this.partner.z||0)-pz)]:null,bo:this.finalBoss&&!this.finalBoss.dead?[Math.round(this.finalBoss.mesh.position.x-px),Math.round(this.finalBoss.mesh.position.z-pz)]:null,po:this.portal?[Math.round(this.portal.x-px),Math.round(this.portal.z-pz)]:null};}
- snapshot(){const p=this.player;return {hp:p.hp,maxHp:p.maxHp,xp:this.xp,required:this.required,level:this.level,kills:this.kills,coins:this.coins,souls:this.souls,time:this.elapsed,wave:this.wave,weapons:this.weapons,passives:this.passives,enemies:this.enemies.length,dashCooldown:p.dashCooldown,novaCooldown:p.novaCooldown,combo:this.combo,blessing:p.blessing,shrine:!!this.focusedShrine,chest:!!this.closestChest,height:Math.round(p.y*10)/10,jumpReady:p.grounded&&p.jumpCooldown<=0,chests:this.chests.length,rush:this.rush,contract:this.contracts?.[this.contractIndex]||null,fps:this.fps,quality:this.preset,finalBoss:this.finalBoss&&!this.finalBoss.dead?{hp:Math.max(0,this.finalBoss.hp),maxHp:this.finalBoss.maxHp,name:'THE GRAVEKEEPER'}:null,portal:!!this.portal,partner:this.partner?{hp:this.partner.hp,mh:this.partner.mh,lv:this.partner.lv,al:this.partner.al,k:this.partner.k||0}:null,coopKills:this.partner?(this.kills+(this.partner.k||0)):null,overtime:!!this.overtime,radar:this._buildRadar()};}
+ snapshot(){const p=this.player;return {hp:p.hp,maxHp:p.maxHp,frenzy:p.frenzy||0,xp:this.xp,required:this.required,level:this.level,kills:this.kills,coins:this.coins,souls:this.souls,time:this.elapsed,wave:this.wave,weapons:this.weapons,passives:this.passives,enemies:this.enemies.length,dashCooldown:p.dashCooldown,novaCooldown:p.novaCooldown,combo:this.combo,blessing:p.blessing,shrine:!!this.focusedShrine,chest:!!this.closestChest,height:Math.round(p.y*10)/10,jumpReady:p.grounded&&p.jumpCooldown<=0,chests:this.chests.length,rush:this.rush,contract:this.contracts?.[this.contractIndex]||null,fps:this.fps,quality:this.preset,finalBoss:this.finalBoss&&!this.finalBoss.dead?{hp:Math.max(0,this.finalBoss.hp),maxHp:this.finalBoss.maxHp,name:'THE GRAVEKEEPER'}:null,portal:!!this.portal,partner:this.partner?{hp:this.partner.hp,mh:this.partner.mh,lv:this.partner.lv,al:this.partner.al,k:this.partner.k||0}:null,coopKills:this.partner?(this.kills+(this.partner.k||0)):null,overtime:!!this.overtime,radar:this._buildRadar()};}
  destroy(){this.renderer.setAnimationLoop(null);this.renderer.dispose();}
 }

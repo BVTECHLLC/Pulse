@@ -12,8 +12,8 @@ export function enemyRadius(index,boss=false){return boss?1.3:[.46,.39,.69,.43,.
 export function spawnPlan(seconds,spawnModifier=1,rush=false){
  // V11: faster, denser waves — the screen should fill with a real horde.
  const stage=Math.max(0,Math.floor(seconds/60));
- const interval=Math.max(.2,.88-stage*.07);
- const count=Math.max(2,Math.min(16,Math.round((3+Math.floor(seconds/70)) * Math.max(.7,Math.min(1.8,spawnModifier)) * (rush?1.7:1))));
+ const interval=Math.max(.18,.9-stage*.075);
+ const count=Math.max(3,Math.min(20,Math.round((3+Math.floor(seconds/55)) * Math.max(.7,Math.min(1.8,spawnModifier)) * (rush?1.7:1))));
  return {interval,count};
 }
 export function comboMultiplier(streak){return Math.min(2.25,1+Math.max(0,streak-1)*.035);}

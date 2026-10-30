@@ -133,7 +133,8 @@ export const ACHIEVEMENTS = [
 ];
 export const findWeapon=id=>WEAPONS.find(w=>w.id===id);
 export const findPassive=id=>PASSIVES.find(p=>p.id===id);
-export const levelRequired=level=>Math.floor(12+level*6+level**1.38*2.5);
+// V13: steeper curve — level-ups come less often, so each draft pick carries real weight.
+export const levelRequired=level=>Math.floor(14+level*7+level**1.5*3.4);
 export const accountLevel=xp=>Math.floor(1+Math.sqrt(Math.max(0,xp)/140));
 export const metaPrice=(upgrade,rank)=>Math.floor(upgrade.base * (rank+1)**1.6);
 
