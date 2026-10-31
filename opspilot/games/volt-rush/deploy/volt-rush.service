@@ -1,0 +1,24 @@
+[Unit]
+Description=VOLT RUSH - BVTech Arcade Multiplayer Kart Racing
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/volt-rush
+Environment=NODE_ENV=production
+Environment=PORT=3108
+ExecStart=/usr/bin/node /opt/volt-rush/server/index.js
+Restart=always
+RestartSec=4
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/tmp
+LimitNOFILE=8192
+
+[Install]
+WantedBy=multi-user.target

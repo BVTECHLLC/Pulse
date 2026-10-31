@@ -23,7 +23,7 @@ from .api.routes import (
     campaigns, remote, quickbooks, gbp, hubspot, docs, payments, dialer, posture,
     remediation, inventory, autopost, setup, ai, branding, practice, status, users,
     library, academy, website, patching, copilot, psa, vcio, autonomy, incidents,
-    content_autopilot, browser, public_tools, onboarding, answers, coop,
+    content_autopilot, browser, public_tools, onboarding, answers, coop, kart,
 )
 
 _s = get_settings()
@@ -59,6 +59,16 @@ _beta_dir = Path(__file__).resolve().parent.parent / "games" / "graveyard-shift-
 if _beta_dir.is_dir():
     app.mount("/graveyard-shift-beta", StaticFiles(directory=str(_beta_dir), html=True), name="graveyard-beta")
 
+# VOLT RUSH — original 3D multiplayer kart racer. The client is a static Vite
+# bundle served here at /kart (single-player works fully offline); its realtime
+# socket /kart/ws is bridged by kart.router to the authoritative `volt-rush` Node
+# race service (separate compose service, internal-only). The ws route is
+# registered BEFORE the /kart static mount so the mount never shadows it.
+app.include_router(kart.router)
+_kart_dir = Path(__file__).resolve().parent.parent / "games" / "volt-rush" / "dist"
+if _kart_dir.is_dir():
+    app.mount("/kart", StaticFiles(directory=str(_kart_dir), html=True), name="volt-rush")
+
 # Keep the retired /signal path working: redirect it to the new home.
 from fastapi.responses import RedirectResponse as _Redir  # noqa: E402
 @app.get("/signal")
@@ -87,7 +97,7 @@ async def security_headers(request: Request, call_next):
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["X-Frame-Options"] = "DENY"
     resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    _game_path = request.url.path.startswith(("/arena", "/graveyard-shift"))
+    _game_path = request.url.path.startswith(("/arena", "/graveyard-shift", "/kart"))
     resp.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         # the Godot/WASM game shells load their boot splash + icons as blob: images

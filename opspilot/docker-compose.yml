@@ -39,9 +39,27 @@ services:
       - ./games/graveyard-web:/app/games/graveyard-web:ro
       - ./games/graveyard-3d:/app/games/graveyard-3d:ro
       - ./games/graveyard-shift-beta:/app/games/graveyard-shift-beta:ro
+      - ./games/volt-rush/dist:/app/games/volt-rush/dist:ro
     # No host port published — Caddy (or cloudflared) reaches it on the internal network.
     expose:
       - "8000"
+
+  # VOLT RUSH — authoritative Node/ws race server for the /kart multiplayer kart
+  # racer. Internal-only: the api service serves the static client and proxies
+  # /kart/ws to this container. NOT started by the api-only auto-deploy — bring it
+  # up (and after future updates) with:  docker compose up -d --build volt-rush
+  volt-rush:
+    build: ./games/volt-rush
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3108"
+      # Reachable only via the portal's internal proxy, so the server's public
+      # same-origin Origin check (for direct exposure) is turned off here.
+      ALLOW_CROSS_ORIGIN: "true"
+    expose:
+      - "3108"
 
   caddy:
     image: caddy:2-alpine

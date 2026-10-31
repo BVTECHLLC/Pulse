@@ -1,0 +1,26 @@
+{
+  "name": "volt-rush",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Original browser-based 3D multiplayer kart racer built for desktop and mobile.",
+  "scripts": {
+    "dev": "concurrently -k \"node server/index.js\" \"vite --host 0.0.0.0\"",
+    "build": "vite build",
+    "start": "node server/index.js",
+    "test": "node --test tests/*.test.js",
+    "check": "npm run test && npm run build",
+    "smoke": "node deploy/smoke.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "three": "0.186.1",
+    "ws": "8.22.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "vite": "^7.1.12"
+  }
+}

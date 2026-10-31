@@ -8306,6 +8306,33 @@ def main():
     print("v1.113: Graveyard Shift 3D (Godot 4 -> WASM) hosted at /graveyard-shift with "
           "scoped wasm CSP; complete editable project in-repo; featured on Explore OK")
 
+    # ==== v1.114: VOLT RUSH — original 3D multiplayer kart racer at /kart ====
+    # Static Vite client served by the portal; authoritative Node race server runs
+    # as the separate `volt-rush` compose service, proxied at /kart/ws.
+    _vr = _P104(__file__).resolve().parent.parent / "games" / "volt-rush"
+    assert (_vr / "dist" / "index.html").exists(), "volt-rush client build missing"
+    assert "/kart/assets/" in (_vr / "dist" / "index.html").read_text(), \
+        "volt-rush not built with the /kart base path"
+    assert (_vr / "server" / "index.js").exists() and (_vr / "Dockerfile").exists(), \
+        "volt-rush server or Dockerfile missing"
+    assert (_vr / "src" / "shared" / "sim.js").exists(), "volt-rush shared sim missing"
+    _mainsrc_vr = (_P104(__file__).resolve().parent.parent / "app" / "main.py").read_text()
+    assert 'app.include_router(kart.router)' in _mainsrc_vr, "kart ws proxy not wired in main.py"
+    assert 'app.mount("/kart"' in _mainsrc_vr, "volt-rush static mount missing"
+    # ws route MUST be registered before the /kart static mount (else it is shadowed)
+    assert _mainsrc_vr.index('include_router(kart.router)') < _mainsrc_vr.index('app.mount("/kart"'), \
+        "kart ws route must be registered before the /kart static mount"
+    assert '"/kart"' in _mainsrc_vr and 'startswith(("/arena", "/graveyard-shift", "/kart"))' in _mainsrc_vr, \
+        "/kart not added to the relaxed game CSP paths"
+    _compose_vr = (_P104(__file__).resolve().parent.parent / "docker-compose.yml").read_text()
+    assert "volt-rush:" in _compose_vr and "./games/volt-rush/dist:/app/games/volt-rush/dist:ro" in _compose_vr, \
+        "volt-rush service or client bind-mount missing from docker-compose"
+    from app.api.routes import kart as _kart114
+    assert any(getattr(r, "path", None) == "/kart/ws" for r in _kart114.router.routes), \
+        "/kart/ws websocket route missing"
+    print("v1.114: VOLT RUSH kart racer — static client at /kart, Node race server "
+          "proxied at /kart/ws (separate compose service), scoped CSP OK")
+
     # ==== v1.104.1: Tech Dispatch (original takes on the news) ====
     from app.services import news_digest as _ND
     import app.services.ai as _ai104
