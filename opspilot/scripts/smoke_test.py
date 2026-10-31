@@ -8082,7 +8082,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.115.0"
+    assert _gs101().APP_VERSION == "1.116.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8333,6 +8333,36 @@ def main():
     print("v1.114: VOLT RUSH kart racer — static client at /kart, Node race server "
           "proxied at /kart/ws (separate compose service), scoped CSP OK")
 
+    # ==== v1.116: Autumn Polasek memorial — real candle + saved, moderated memories ====
+    _mc116 = TestClient(app); _mc116.cookies.clear()
+    _H116 = {"origin": "https://autumnpolasek.com"}
+    _r = _mc116.post("/api/memorial/candle", json={"who": "Smoke"}, headers=_H116)
+    assert _r.status_code == 200 and _r.json().get("count", 0) >= 1, _r.text
+    assert _r.headers.get("access-control-allow-origin") == "https://autumnpolasek.com", \
+        "memorial CORS must be pinned to autumnpolasek.com"
+    _c0 = _r.json()["count"]
+    assert _mc116.post("/api/memorial/candle", json={}, headers=_H116).json()["count"] == _c0 + 1, \
+        "candle count must be shared/persisted (not browser-local)"
+    _r = _mc116.post("/api/memorial/memory", json={
+        "name": "Smoke Tester", "message": "She rode shotgun on every drive and made the quiet okay.",
+        "relationship": "Friend", "consent": True}, headers=_H116)
+    assert _r.json().get("ok") is True, _r.text
+    _st = _mc116.get("/api/memorial/state", headers=_H116).json()
+    assert _st["candles"] >= 2, _st
+    assert all(m["name"] != "Smoke Tester" for m in _st["memories"]), \
+        "a submitted memory must stay PENDING until reviewed (not auto-published)"
+    # consent is required; moderation + link-spam are blocked
+    assert _mc116.post("/api/memorial/memory", json={"name": "x", "message": "hello", "consent": False},
+                       headers=_H116).json()["ok"] is False, "consent must be required"
+    assert _mc116.post("/api/memorial/memory", json={
+        "name": "x", "message": "buy cheap pills now http://a.co http://b.co http://c.co",
+        "consent": True}, headers=_H116).json()["ok"] is False, "link-spam must be blocked"
+    # the staff review endpoint must require authentication
+    assert _mc116.get("/api/memorial/review/pending").status_code in (401, 403), \
+        "memorial review must be auth-gated"
+    print("v1.116: Autumn memorial — shared candle count + saved, moderated memories held for "
+          "Jordan's review, public wall, CORS pinned to autumnpolasek.com, review auth-gated OK")
+
     # ==== v1.104.1: Tech Dispatch (original takes on the news) ====
     from app.services import news_digest as _ND
     import app.services.ai as _ai104
@@ -8405,7 +8435,7 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.115.0"
+    assert _gs101().APP_VERSION == "1.116.0"
     assert _sr100.REPAIR_EPOCH == "1.112.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
@@ -8441,7 +8471,7 @@ def main():
     assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
     # site nav points to the game home
     assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
-    assert _gs101().APP_VERSION == "1.115.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.116.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
           "Explore features it with a Halloween hero, republish forced OK")
 
@@ -8461,11 +8491,11 @@ def main():
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
     assert "xp-papel" in _xp3 and "Happy Halloween" in _xp3, "spooky Explore theme missing"
-    assert _gs101().APP_VERSION == "1.115.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.116.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
 
-    print("\n=== OpsPilot v1.115.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.116.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
