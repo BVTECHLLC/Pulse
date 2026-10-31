@@ -17,7 +17,7 @@ export function createKart(id,name,avatar=0,color=0,index=0,track=createTrack())
   return {id,name:String(name||'Racer').slice(0,16),avatar:avatar%RACERS.length,color:color%KART_COLORS.length,
     x:p.x+p.nx*row,z:p.z+p.nz*row,heading:Math.atan2(p.tx,p.tz),speed:0,steer:0,
     s:p.s,progress:0,laps:0,completed:false,finishTime:0,boostTimer:0,shieldTimer:0,spinTimer:0,
-    invulnTimer:0,driftCharge:0,drifting:false,item:null,lastItemAt:0,lastS:p.s,
+    invulnTimer:0,driftCharge:0,drifting:false,item:null,lastItemAt:0,lastS:p.s,steerInput:0,
     ai:false,points:0,emote:'',emoteTimer:0};
 }
 export function inputForAI(k,track,seconds){
@@ -25,7 +25,10 @@ export function inputForAI(k,track,seconds){
   const lane=Math.sin(seconds*.27+k.avatar*2.1)*1.5;
   const dx=p.x+p.nx*lane-k.x,dz=p.z+p.nz*lane-k.z;
   const error=normalizeAngle(Math.atan2(dx,dz)-k.heading);
-  return {gas:true,brake:Math.abs(error)>.9,steer:clamp(error*2.7,-1,1),drift:Math.abs(error)>.22 && k.speed>16};
+  // Steering convention: +1 is RIGHT as seen from the rear chase camera.
+  // Positive heading angles rotate visually LEFT (Three.js camera looks down +Z),
+  // so AI must negate its world-space heading error just like human controls.
+  return {gas:true,brake:Math.abs(error)>1.15,steer:clamp(-error*2.35,-1,1),drift:Math.abs(error)>.32 && k.speed>20};
 }
 export function stepKart(k,input,dt,track){
   if(k.completed)return;
@@ -33,36 +36,55 @@ export function stepKart(k,input,dt,track){
   k.boostTimer=Math.max(0,k.boostTimer-dt);k.shieldTimer=Math.max(0,k.shieldTimer-dt);
   k.spinTimer=Math.max(0,k.spinTimer-dt);k.invulnTimer=Math.max(0,k.invulnTimer-dt);
   k.emoteTimer=Math.max(0,k.emoteTimer-dt);
-  const nearestBefore=track.nearest(k.x,k.z), off=nearestBefore.distance>track.width*.48;
+  const nearestBefore=track.nearest(k.x,k.z);
+  const off=nearestBefore.distance>track.width*.48;
   const wasDrifting=k.drifting;
-  k.drifting=!!input.drift && k.speed>9 && Math.abs(input.steer)>.13 && k.spinTimer===0;
-  if(k.drifting)k.driftCharge=clamp(k.driftCharge+dt*(.7+Math.abs(input.steer)*.7),0,2.9);
-  if(wasDrifting&&!k.drifting){if(k.driftCharge>.45)k.boostTimer=Math.max(k.boostTimer,Math.min(1.4,k.driftCharge*.46));k.driftCharge=0;}
+  const request=clamp(Number(input.steer)||0,-1,1);
+  // Progressive steering response eliminates twitchiness from keyboard/touch taps.
+  k.steerInput+= (request-k.steerInput)*Math.min(1,dt*(k.drifting?13:10));
+  k.drifting=!!input.drift && k.speed>10 && Math.abs(request)>.14 && k.spinTimer===0;
+  if(k.drifting)k.driftCharge=clamp(k.driftCharge+dt*(.72+Math.abs(request)*.75),0,2.9);
+  if(wasDrifting&&!k.drifting){if(k.driftCharge>.45)k.boostTimer=Math.max(k.boostTimer,Math.min(1.5,k.driftCharge*.50));k.driftCharge=0;}
   if(k.spinTimer>0){k.speed*=Math.max(0,1-2.2*dt);k.heading+=dt*7.6;}
   else {
-    const boosted=k.boostTimer>0;
-    const maxSpeed=boosted?45:32;
+    const boosted=k.boostTimer>0,maxSpeed=boosted?45:33;
     const gas=!!input.gas,brake=!!input.brake;
-    const acceleration=boosted?25:gas?18:brake?-30:-8;
-    k.speed=clamp(k.speed+dt*(acceleration-(off?16:0)), -9,maxSpeed);
-    if(!gas&&!brake&&Math.abs(k.speed)<.4)k.speed=0;
-    if(off)k.speed*=Math.max(0,1-dt*.7);
-    const steer=clamp(+input.steer||0,-1,1);
-    k.steer=steer;
-    const speedRatio=clamp(Math.abs(k.speed)/12,0,1);
-    k.heading+=steer*(k.drifting?2.35:1.68)*speedRatio*dt*(k.speed<0?-1:1);
+    const acceleration=boosted?26:gas?20:brake?-29:-7;
+    // Gentle off-track slowdown; driveable shoulders rather than instant punishment.
+    k.speed=clamp(k.speed+dt*(acceleration-(off?5:0)),-9,maxSpeed);
+    if(!gas&&!brake&&Math.abs(k.speed)<.35)k.speed=0;
+    if(off)k.speed*=Math.max(0,1-dt*.18);
+    k.steer=k.steerInput;
+    const speedRatio=clamp(Math.abs(k.speed)/10,0,1);
+    const highSpeedGrip=1-.22*clamp((Math.abs(k.speed)-18)/27,0,1);
+    // CRITICAL: right input is a NEGATIVE yaw in chase-camera space.
+    k.heading-=k.steerInput*(k.drifting?2.24:1.85)*speedRatio*highSpeedGrip*dt*(k.speed<0?-1:1);
+    // Mild driver assist: align a little with the road only if not actively drifting.
+    // The correction is stronger as the kart approaches a track boundary.
+    const headingOfRoad=Math.atan2(nearestBefore.tx,nearestBefore.tz);
+    const headingError=normalizeAngle(headingOfRoad-k.heading);
+    if(!k.drifting&&k.speed>7&&Math.abs(headingError)<.94){
+      const edge=clamp((nearestBefore.distance/track.width-.18)*1.9,0,.52);
+      k.heading+=headingError*dt*(.13+edge*.38)*(1-Math.abs(request)*.66);
+    }
   }
   k.x+=Math.sin(k.heading)*k.speed*dt;
   k.z+=Math.cos(k.heading)*k.speed*dt;
-  const closest=track.nearest(k.x,k.z), dist=closest.distance;
-  if(dist>track.width*.59){
-    const pull=clamp((dist-track.width*.5)*dt*.19,0,.11);
+  const closest=track.nearest(k.x,k.z),dist=closest.distance;
+  if(dist>track.width*.46){
+    const excess=dist-track.width*.46;
+    const pull=clamp(excess*dt*.075,0,.13);
     k.x+=(closest.x-k.x)*pull;k.z+=(closest.z-k.z)*pull;
   }
-  if(dist>track.width*1.35){
-    k.x=closest.x+(k.x-closest.x)*(track.width*.7/dist);
-    k.z=closest.z+(k.z-closest.z)*(track.width*.7/dist);
-    k.speed=Math.min(k.speed,9);
+  if(dist>track.width*.64){
+    const maxDist=track.width*.64;
+    const ratio=maxDist/Math.max(dist,.001);
+    k.x=closest.x+(k.x-closest.x)*ratio;
+    k.z=closest.z+(k.z-closest.z)*ratio;
+    k.speed*=Math.max(0,1-dt*1.5);
+    // Rubberized safety rails gently guide the nose back down the circuit.
+    const desired=Math.atan2(closest.tx,closest.tz);
+    k.heading+=normalizeAngle(desired-k.heading)*Math.min(.11,dt*.9);
   }
   // Continuity check prevents skipping sections of the circuit by cutting across nearby turns.
   let ds=closest.s-k.lastS;

@@ -151,5 +151,4 @@ setInterval(()=>{
   for(const client of wss.clients){if(!client.isAlive){client.terminate();continue;}client.isAlive=false;client.ping();}
   for(const [code,r] of rooms)if(!r.connections.size||Date.now()-r.lastActive>12*60*60*1000)rooms.delete(code);
 },30000).unref();
-const HOST=process.env.HOST||'127.0.0.1';
-app.listen(PORT,HOST,()=>console.log(`VOLT RUSH ready: http://${HOST}:${PORT}/kart/`));
+app.listen(PORT,process.env.HOST||'0.0.0.0',()=>console.log(`VOLT RUSH ready: port ${PORT}`));
