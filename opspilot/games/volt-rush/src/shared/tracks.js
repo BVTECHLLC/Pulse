@@ -14,6 +14,21 @@ export const TRACKS = {
     name: 'Neon Metropolis', subtitle:'Midnight city • fast and technical', sky:0x242049, ground:0x27345d, fog:0x332652,
     surface:0x29354f, accent:0xff64d8, environment:'neon', width:24,
     points:[[0,0],[48,-13],[105,-10],[161,16],[179,61],[163,105],[121,130],[50,124],[-14,101],[-50,56],[-36,8]]
+  },
+  candy: {
+    name:'Candy Cloudway',subtitle:'Bubblegum skies • playful wide bends',sky:0xf6b9ed,ground:0xeac2ff,fog:0xffd7ef,
+    surface:0x775c98,accent:0xffe373,environment:'candy',width:24,
+    points:[[0,0],[58,-11],[116,-1],[166,37],[163,91],[119,126],[48,133],[-22,109],[-70,60],[-62,13],[-29,-15]]
+  },
+  moon: {
+    name:'Lunar Loop',subtitle:'Starlight station • gravity-defying turns',sky:0x182b5f,ground:0x58608b,fog:0x243866,
+    surface:0x293956,accent:0x6af6ee,environment:'moon',width:24,
+    points:[[0,0],[61,-9],[127,1],[164,45],[159,99],[117,138],[51,141],[-19,116],[-71,66],[-65,10],[-24,-20]]
+  },
+  volcano: {
+    name:'Ember Ridge',subtitle:'Glowing lava • smooth mountain sweeps',sky:0xfe9878,ground:0x533747,fog:0xec8c6e,
+    surface:0x433d4f,accent:0xffb450,environment:'volcano',width:23,
+    points:[[0,0],[53,-16],[115,-6],[166,31],[177,88],[132,132],[68,140],[-9,122],[-64,78],[-69,22],[-35,-19]]
   }
 };
 const smooth = (a,b,c,d,t) => 0.5*((2*b)+(-a+c)*t+(2*a-5*b+4*c-d)*t*t+(-a+3*b-3*c+d)*t*t*t);

@@ -4,7 +4,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {WebSocketServer,WebSocket} from 'ws';
 import {createTrack,TRACKS} from '../src/shared/tracks.js';
-import {createKart,inputForAI,stepKart,simulatePickups,activateItem,hitKart,resolveKartCollisions,rankings,LAPS,RACERS} from '../src/shared/sim.js';
+import {createKart,inputForAI,stepKart,simulatePickups,activateItem,hitKart,resolveKartCollisions,stepObstacles,rankings,LAPS,RACERS,NET_PROTOCOL} from '../src/shared/sim.js';
 
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const DIST=path.join(ROOT,'dist');
@@ -14,7 +14,7 @@ const rooms=new Map(), peers=new Map(), ipCounts=new Map();
 const cleanName=v=>String(v||'Guest').replace(/[^\p{L}\p{N} _-]/gu,'').trim().slice(0,16)||'Guest';
 const randCode=()=>Array.from({length:5},()=> 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random()*32)]).join('');
 const json=(ws,data)=>{if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(data));};
-const publicKart=(k)=>({id:k.id,name:k.name,avatar:k.avatar,color:k.color,x:+k.x.toFixed(3),z:+k.z.toFixed(3),heading:+k.heading.toFixed(3),speed:+k.speed.toFixed(2),steer:+k.steer.toFixed(2),s:+k.s.toFixed(2),progress:+k.progress.toFixed(2),laps:k.laps,completed:k.completed,finishTime:k.finishTime,boostTimer:k.boostTimer,shieldTimer:k.shieldTimer,spinTimer:k.spinTimer,driftCharge:k.driftCharge,drifting:k.drifting,item:k.item,ai:k.ai,emote:k.emoteTimer>0?k.emote:''});
+const publicKart=(k)=>({id:k.id,name:k.name,avatar:k.avatar,color:k.color,x:+k.x.toFixed(3),z:+k.z.toFixed(3),heading:+k.heading.toFixed(3),speed:+k.speed.toFixed(2),steer:+k.steer.toFixed(2),s:+k.s.toFixed(2),progress:+k.progress.toFixed(2),laps:k.laps,completed:k.completed,finishTime:k.finishTime,boostTimer:k.boostTimer,shieldTimer:k.shieldTimer,spinTimer:k.spinTimer,driftCharge:k.driftCharge,drifting:k.drifting,item:k.item,overdriveTimer:k.overdriveTimer,itemSerial:k.itemSerial,useSerial:k.useSerial,usedItem:k.usedItem,hitSerial:k.hitSerial,ai:k.ai,emote:k.emoteTimer>0?k.emote:''});
 const state=r=>({type:'state',room:r.code,track:r.trackId,host:r.host,phase:r.phase,countdown:r.phase==='countdown'?Math.max(0,(r.countdownEnd-Date.now())/1000):0,seconds:r.seconds,laps:LAPS,players:r.players.map(publicKart),obstacles:r.obstacles,finishSeconds:r.finishSeconds});
 function broadcast(r,payload){for(const id of r.connections){const ws=peers.get(id)?.ws;if(ws)json(ws,payload);}}
 function roster(r){broadcast(r,state(r));}
@@ -86,7 +86,7 @@ app.on('upgrade',(req,socket,head)=>{
 let nextId=1;
 wss.on('connection',ws=>{
   const id='p'+(nextId++).toString(36);peers.set(id,{ws,room:null,input:{},lastMsg:0});ipCounts.set(ws.ip,(ipCounts.get(ws.ip)||0)+1);
-  ws.isAlive=true;ws.on('pong',()=>{ws.isAlive=true;});json(ws,{type:'welcome',id});
+  ws.isAlive=true;ws.on('pong',()=>{ws.isAlive=true;});json(ws,{type:'welcome',id,protocol:NET_PROTOCOL});
   ws.on('message',buf=>{
     let msg;try{msg=JSON.parse(String(buf));}catch{return;}
     if(typeof msg!=='object'||!msg||typeof msg.type!=='string')return;
@@ -94,11 +94,13 @@ wss.on('connection',ws=>{
     const now=Date.now();if(msg.type==='input'){
       if(now-peer.lastMsg<25)return;peer.lastMsg=now;
       const r=rooms.get(peer.room);if(!r||r.phase!=='racing')return;
+      r.lastActive=now;
       r.inputs.set(id,{gas:!!msg.gas,brake:!!msg.brake,drift:!!msg.drift,
         steer:Math.max(-1,Math.min(1,Number.isFinite(msg.steer)?msg.steer:0)),item:!!msg.item});
       return;
     }
     if(['create','join'].includes(msg.type)){
+      if(msg.protocol!==NET_PROTOCOL){json(ws,{type:'error',message:'A game update is available. Refresh VOLT RUSH on both devices.'});return;}
       if(peer.room)leaveRoom(id);
       if(msg.type==='create')createRoom(ws,id,msg);else joinRoom(ws,id,msg);
       return;
@@ -130,14 +132,13 @@ setInterval(()=>{
       for(const k of r.players){
         const input=k.ai?inputForAI(k,r.track,r.seconds):r.inputs.get(k.id)||{};
         stepKart(k,input,dt,r.track);
-        simulatePickups(k,r.track,r.seconds);
+        simulatePickups(k,r.track,r.seconds,Math.random,r.players);
         if(input.item) {activateItem(k,r.players,r.seconds,r.obstacles);if(!k.ai)r.inputs.set(k.id,{...input,item:false});}
         if(k.ai&&k.item&&Math.random()<.007)activateItem(k,r.players,r.seconds,r.obstacles);
         if(k.completed&&!k.finishTime)k.finishTime=r.seconds;
       }
       resolveKartCollisions(r.players);
-      for(const o of r.obstacles){o.ttl-=dt;for(const k of r.players){if(o.owner!==k.id&&Math.hypot(k.x-o.x,k.z-o.z)<2.6){hitKart(k);o.ttl=0;break;}}}
-      r.obstacles=r.obstacles.filter(o=>o.ttl>0);
+      r.obstacles=stepObstacles(r.obstacles,r.players,dt);
       if(!r.finishSeconds&&r.players.some(k=>k.completed))r.finishSeconds=r.seconds;
       if((r.finishSeconds&&r.seconds-r.finishSeconds>24)||r.players.every(k=>k.completed)||r.seconds>450){
         r.phase='finished';broadcast(r,state(r));

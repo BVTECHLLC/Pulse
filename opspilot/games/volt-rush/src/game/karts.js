@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {RACERS,KART_COLORS} from '../shared/sim.js';
+import {installHeroModel} from './hero-assets.js';
 const m=(color,metalness=0,roughness=.6)=>new THREE.MeshStandardMaterial({color,metalness,roughness});
 const sphere=(r,mat)=>new THREE.Mesh(new THREE.SphereGeometry(r,12,8),mat);
 const cube=(w,h,d,mat)=>new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
@@ -37,10 +38,38 @@ export function createKartVisual(k,isSelf=false){
   }
   // Original pilot silhouette, detailed enough to be read at racing camera distance.
   capsule(root,.65,.7,suit,0,2.12,-.45);
-  part(root,sphere(.69,skin),0,3.2,-.35);
-  part(root,sphere(.78,helmet),0,3.48,-.43);
+  // Friendly original collectible-toy pilots: big head, huge eyes, cheek blush,
+  // and six distinctive costume headpieces. All geometry built in Three.js.
+  part(root,sphere(.72,skin),0,3.28,-.36);
+  const capShell=part(root,sphere(.82,helmet),0,3.56,-.45);capShell.scale.set(1.1,1.02,.98);
+  const face=part(root,sphere(.60,skin),0,3.31,.11);face.scale.set(1.09,.92,.42);
+  const white=m(0xffffff),pupil=m(0x20223d),blush=m(0xff859f),smile=m(0x753957);
+  for(const side of [-1,1]){
+    const eye=part(root,sphere(.18,white),side*.27,3.41,.34);eye.scale.set(.9,1.18,.48);
+    const dot=part(root,sphere(.108,pupil),side*.29,3.41,.438);dot.scale.z=.65;
+    const shine=part(root,sphere(.046,white),side*.32-.022,3.48,.50);
+    const cheek=part(root,sphere(.16,blush),side*.47,3.13,.30);cheek.scale.set(1.05,.5,.35);
+  }
+  const happy=part(root,new THREE.Mesh(new THREE.TorusGeometry(.19,.036,5,13,Math.PI),smile),0,3.15,.425);
+  happy.rotation.z=Math.PI;
+  // Distinct facial accessories and novelty head silhouettes, not franchise likenesses.
+  const trimHat=m(racer.suit,.16,.45);
+  if(k.avatar===0){
+    const star=new THREE.Mesh(new THREE.OctahedronGeometry(.4,0),m(0xffec73));star.position.set(0,4.55,-.45);root.add(star);
+    part(root,cube(.08,.38,.09,chrome),0,4.25,-.45);
+  }else if(k.avatar===1){
+    for(const side of [-1,1]){const ear=new THREE.Mesh(new THREE.ConeGeometry(.37,.9,4),trimHat);ear.position.set(side*.65,4.18,-.65);ear.rotation.z=-side*.25;root.add(ear);}
+  }else if(k.avatar===2){
+    for(const side of [-1,1]){const leaf=new THREE.Mesh(new THREE.ConeGeometry(.24,.92,5),trimHat);leaf.position.set(side*.34,4.28,-.42);leaf.rotation.z=side*.55;root.add(leaf);}
+  }else if(k.avatar===3){
+    for(const side of [-1,1]){const horn=new THREE.Mesh(new THREE.ConeGeometry(.22,.66,5),m(0xffec92));horn.position.set(side*.47,4.25,-.55);root.add(horn);}
+  }else if(k.avatar===4){
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(.39,.115,5,18),trimHat);ring.position.set(0,4.27,-.44);ring.rotation.y=.4;root.add(ring);
+  }else{
+    for(const side of [-1,1])part(root,sphere(.31,trimHat),side*.68,4.07,-.46);
+  }
   const visor=m(0x10263e,.74,.16);visor.emissive=new THREE.Color(0x113c58);visor.emissiveIntensity=.5;
-  const v=part(root,sphere(.52,visor),0,3.42,.09);v.scale.set(1.13,.54,.25);
+  const v=part(root,sphere(.48,visor),0,3.77,-.035);v.scale.set(1.12,.32,.20);
   if(racer.style==='mohawk'){
     for(let i=0;i<5;i++)part(root,new THREE.Mesh(new THREE.ConeGeometry(.18,.37,5),suit),0,4.1,-.86+i*.24);
   }else if(racer.style==='pony'){
@@ -102,6 +131,7 @@ export function createKartVisual(k,isSelf=false){
   }
   const label=makeLabel(k.name);g.add(label);if(isSelf)label.visible=false;
   g.userData={wheels,shield,shieldBand,flames,root,label};
+  installHeroModel(g,k);
   return g;
 }
 export function updateKartVisual(g,k,dt,time){
@@ -110,8 +140,10 @@ export function updateKartVisual(g,k,dt,time){
   root.rotation.z=THREE.MathUtils.lerp(root.rotation.z,(k.steer||0)*(k.drifting?.11:.055),.13);
   root.rotation.x=THREE.MathUtils.lerp(root.rotation.x,-Math.abs(k.speed)/300,.1);
   for(const w of wheels){w.tire.rotation.x+=k.speed*dt*.9;w.rim.rotation.x+=k.speed*dt*.9;}
+  for(const w of (g.userData.heroWheels||[]))w.rotation.x+=k.speed*dt*.9;
+  if(g.userData.hero)g.userData.hero.position.y=Math.sin(time*5+k.avatar)*.035;
   shield.visible=k.shieldTimer>0;shieldBand.visible=shield.visible;if(shield.visible){shield.rotation.y+=dt;shieldBand.rotation.y+=dt*2.8;shield.material.opacity=.10+.09*Math.sin(time*8)**2;}
   for(const f of flames){const enabled=k.boostTimer>0;f.visible=enabled;f.scale.y=enabled?.6+Math.sin(time*41)*.25:1;}
   root.rotation.y=k.spinTimer>0?Math.sin(time*12)*.6:0;
 }
-export function disposeKart(g){g.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){o.material.map?.dispose();o.material.dispose();}});}
+export function disposeKart(g){g.traverse(o=>{if(o.geometry&&!o.geometry.userData.voltShared)o.geometry.dispose();if(o.material){for(const m of (Array.isArray(o.material)?o.material:[o.material])){if(!m.userData.voltShared){m.map?.dispose();m.dispose();}}}});}

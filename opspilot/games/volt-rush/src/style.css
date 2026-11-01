@@ -49,3 +49,18 @@ html[data-screen="menu"] .menu-card{border-color:#61eefe77;box-shadow:0 12px 42p
   .hud-exit{top:12px;left:12px}.race-status{top:55px!important;font-size:12px}
   .touch-controls{padding-left:max(9px,env(safe-area-inset-left));padding-right:max(9px,env(safe-area-inset-right));}
 }
+/* V3 DELUXE: authentic BVTech mascot illustrations and bespoke track covers. */
+.graphics-btn{height:38px;min-width:53px;border:1px solid #98eafd80;border-radius:8px;background:#102943dd;color:#a1faf7;font:900 10px 'DM Sans',system-ui;letter-spacing:.8px;padding:0 7px;box-shadow:0 2px 12px #080e1c7d}
+.graphics-btn:focus-visible{outline:2px solid #fff}
+.avatar{padding:5px 5px 7px;min-height:111px;transition:transform .15s,background .15s;overflow:hidden}
+.avatar:hover{transform:translateY(-2px)}
+.avatar-portrait{width:66px;height:66px;max-width:100%;border-radius:50%;object-fit:cover;border:2px solid #8de8f970;display:block;margin:0 auto 5px;box-shadow:0 4px 12px #020a19aa}
+.avatar.selected .avatar-portrait{border-color:#f6feff;box-shadow:0 0 12px #63eefeaa}
+.track-card{padding:0 0 9px;overflow:hidden;min-height:119px;transition:transform .15s}
+.track-card:hover{transform:translateY(-2px)}
+.track-art{width:100%;height:55px;display:block;object-fit:cover;border-radius:8px 8px 0 0;margin-bottom:6px}
+.track-card strong,.track-card span,.track-card small{display:block;margin:2px 8px}
+.track-card small{font-size:8px;color:#82f4ee}
+.track-card.selected .track-art{filter:saturate(1.2)}
+@media(max-width:800px){.avatar{min-height:88px}.avatar-portrait{width:50px;height:50px}.track-card{min-height:97px}.track-art{height:42px}}
+@media(any-pointer:coarse) and (orientation:landscape) and (max-height:500px){.avatar{min-height:70px}.avatar-portrait{width:38px;height:38px}.track-card{min-height:90px}.track-art{height:39px}}

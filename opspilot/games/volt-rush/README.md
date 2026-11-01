@@ -1,30 +1,35 @@
-# VOLT RUSH v2 — original multiplayer 3D kart racing
+# VOLT RUSH V3 DELUXE — original-art browser kart racer
 
-**BVTech portal game at `https://portal.bvtech.org/kart/`** (FastAPI static mount + WebSocket proxy to independent Node service). **Not** the Cloudflare Workers static website at `bvtech.org`.
+A visually richer continuation of the previous V3 authoritative multiplayer racing game, intended to be merged into `opspilot/games/volt-rush/` in the `bvtechllc/pulse` repository and served from `https://portal.bvtech.org/kart/`.
 
-This is a *source-code overhaul and repo integration patch*, not a verified live deployment. See [`PORTAL_INTEGRATION.md`](./PORTAL_INTEGRATION.md) for the required Git -> `main` -> API cron -> separate `volt-rush` container workflow and production verification steps.
+### Original art shipped
 
-## Gameplay
+| Asset family | Desktop | Mobile |
+|---|---|---|
+| Fully modeled karts and chibi pilots | 6 GLBs, 8–9k triangles each | 6 GLBs, reduced poly count |
+| Six unique road themes | 6 × 1024px WebP | 6 × 512px WebP |
+| Driver selection portraits | 6 × WebP | Same compressed portraits |
+| Track selection illustrations | 6 × WebP | Same compressed thumbnails |
 
-- Three original, widened 22–24 unit circuits with beginner-friendly steering and shoulder assist.
-- Six custom procedural drivers/karts; vivid scenery, spectators, signs and animated hologram item crates.
-- Three laps, AI fill to eight, private multiplayer rooms, server-authoritative racing, boost/pulse/shield/oil power-ups, synthesized sounds, drift particles and finish confetti.
-- Keyboard: **W / ↑** accelerate, **S / ↓** brake, **A / ←** steer left, **D / →** steer right, **SPACE** drift, **SHIFT** use power-up, **E** camera, **M** mute.
-- Touch: dedicated steering, GO, BRAKE, DRIFT, and power-up controls. Landscape recommended for phones.
+Models have individualized helmet/headpieces, eye/face parts, chassis details, colored body panels, 4 independent animated wheel assemblies and per-player custom paint. Loading falls back to the old procedural vehicles when assets are unavailable. All tracks retain their distinct original gameplay layout and power-ups.
 
-## Local development (Node ≥20)
+### Quality settings
+
+`AUTO`: reduced mobile detail / full desktop detail. `ECO`: low track prop detail and reduced resolution. `ULTRA`: high props / textures, with desktop shadows and bloom when available. A rolling FPS check automatically reduces rendering pixel ratio when necessary. These are performance strategies, **not measured 60 FPS claims**.
+
+### Commands
+
+Run from this directory with Node 20+ and network package registry access:
 
 ```bash
-npm ci                # use the EXISTING repository package-lock.json
-npm test              # includes steering, AI and track physics
-npm run build         # Vite base=/kart/ ; check in generated dist/
-npm start             # Node game service on 0.0.0.0:3108
-# In a second terminal:
-npm run smoke         # complete real-time two-human-client 3-lap race
+npm install
+npm test
+npm run build
+node server/index.js
 ```
 
-For hot reload: `npm run dev` (Vite on 5173 and websocket/health proxy to Node 3108). To screenshot basic desktop/touch UI, with Vite running: `python deploy/browser_check.py` (Python Playwright + Chromium required).
+Run `npm run smoke` while Node is serving, and use a separate Vite server for `deploy/browser_check.py` / `deploy/browser_multiplayer.py`. The `dist/` directory must be built and committed before Linode deployment. See `START_HERE.md` for real repo and server requirements.
 
-## License and deployment boundaries
+### Licensing
 
-All game art/model/audio generation in this revision is original; see [`LICENSES.md`](./LICENSES.md). Engine and libraries use their own software licenses. **Never replace the whole OpsPilot compose setup or give `api` a dependency on `volt-rush`.** New Node builds require `docker compose up -d --build volt-rush` on the Linode machine after the Git/API auto-deploy.
+All bundled art, models and sound design are authored for this game. No Nintendo content or copied game art. See `LICENSES.md`.

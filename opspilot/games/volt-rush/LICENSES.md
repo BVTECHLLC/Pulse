@@ -1,19 +1,17 @@
-# VOLT RUSH art, audio and dependency licenses — v2
+# VOLT RUSH V3 DELUXE — asset rights and provenance
 
-## Game assets
+**All original game models, art, textures, 2D character portraits, and track illustrations are generated specifically for this VOLT RUSH project.** No art, likenesses, sound recordings, music, models, files or other material from Nintendo, Mario Kart, or third-party game packs is bundled.
 
-- **All racer and kart models:** original procedurally constructed Three.js geometry in `src/game/karts.js`.
-- **Tracks, landscape, buildings, spectators, billboards:** original procedural geometry and canvas-made track signs in `src/game/world.js` and `src/shared/tracks.js`.
-- **Power-ups, FX, flare and particles:** original procedural geometry and a canvas-generated radial glow texture in `src/game/world.js` and `src/game/fx.js`.
-- **Engine, countdown, boost, shield, pulse, hit, oil and victory sounds:** synthesized with the browser Web Audio API in `src/game/audio.js`. No recorded samples or music files.
-- **UI artwork/icons:** CSS, text, Unicode glyphs, and in-repository SVGs. No Nintendo or other franchise assets.
+The asset construction files are included and reproducible:
 
-**No downloaded or externally licensed game art/audio files are bundled in this revision.**
+- `tools/generate_original_art.py` creates **12 original GLB models** (six desktop + six mobile), **12 road surface WebP textures** (6 themes × 2 resolutions), **6 original pilot portraits**, and an original track accent texture atlas.
+- `tools/generate_track_cards.py` creates **6 original track illustrations**.
+- `src/game/hero-assets.js` loads the GLB meshes, safely reuses geometry, and recolors each player's kart paint.
+- `src/game/world.js` creates the 3D racetracks, props, pickup sculptures, signage, spectators, lighting and other procedural scenery.
+- `src/game/fx.js` and `src/game/audio.js` create effects and all audio procedurally using Three.js and Web Audio; no music recordings or sound packs are included.
 
-## Software packages
+**Font information:** PNG/WebP track-card letters are rasterized from the locally installed DejaVu Sans Bold font, a permissively licensed Bitstream Vera derivative; used only as rendered text, not redistributed as a font file. The existing UI requests Barlow Condensed and DM Sans through Google Fonts, distributed under the SIL Open Font License; external font loading is not required for gameplay because system fallbacks are present. All game art is original, and these fonts are explicitly permitted for commercial use.
 
-- Three.js — MIT license (see installed `node_modules/three/LICENSE` when dependencies are installed).
-- ws — MIT license.
-- Vite / build tooling — MIT and upstream dependency notices in `node_modules` and npm's dependency tree.
+**Non-art runtime dependencies:** Three.js (MIT), ws (MIT), Vite (MIT) and dependencies under their respective package licenses. No third-party asset models used. Check npm installed LICENSE files after installation.
 
-The *CC0/public-domain/free-for-commercial-use* rule applies to any assets added in the future. Record source URL, author, exact license and retrieval date before bundling third-party art or sound. "Free download" alone does not establish commercial reuse rights.
+Asset generation uses Pillow, NumPy and trimesh as **development-time** tools only. They are not loaded by the game browser and are not needed to deploy already generated assets. No font files are bundled.

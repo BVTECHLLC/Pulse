@@ -41,6 +41,10 @@ export class Sound {
       case 'boost':this.noise(.35,.065,3200);this.tone(110,.39,'sawtooth',.11,790);this.tone(360,.3,'triangle',.14,850,.04);break;
       case 'shield':this.tone(380,.29,'sine',.19,1040);this.tone(770,.4,'triangle',.16,1390,.1);break;
       case 'pulse':this.tone(1150,.23,'sawtooth',.14,190);this.noise(.23,.09,4200);break;
+      case 'rocket':this.noise(.32,.075,2400);this.tone(270,.43,'sawtooth',.12,1150);break;
+      case 'shockwave':this.tone(980,.22,'sawtooth',.16,130);this.noise(.38,.09,3600);break;
+      case 'repair':this.tone(440,.20,'triangle',.15,880);this.tone(660,.3,'sine',.14,1320,.11);break;
+      case 'overdrive':this.noise(.45,.085,5000);this.tone(260,.38,'sawtooth',.16,1100);this.tone(700,.42,'triangle',.13,1500,.12);break;
       case 'oil':this.tone(380,.12,'square',.13,160);this.tone(200,.16,'triangle',.09,100,.11);break;
       case 'drift':this.tone(980,.10,'triangle',.09,1250);break;
       case 'hit':this.noise(.33,.13,900);this.tone(240,.32,'sawtooth',.18,60);break;

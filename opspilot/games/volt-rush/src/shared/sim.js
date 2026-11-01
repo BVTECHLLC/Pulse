@@ -1,5 +1,6 @@
 import {createTrack} from './tracks.js';
 export const LAPS=3;
+export const NET_PROTOCOL=3;
 export const RACERS = [
   {id:'nova',name:'Nova',tag:'The comet',suit:0x39d8fa,helmet:0xe6faff,skin:0xdfad8b,style:'visor'},
   {id:'jax',name:'Jax',tag:'Street legend',suit:0xfd9d3c,helmet:0x222d43,skin:0x8e593e,style:'mohawk'},
@@ -9,7 +10,17 @@ export const RACERS = [
   {id:'rook',name:'Rook',tag:'The challenger',suit:0xeb7271,helmet:0xe8e8e9,skin:0x946d55,style:'cap'}
 ];
 export const KART_COLORS=['#19d8fb','#fe9653','#85db9a','#f3cb5f','#ba90fc','#fb6e95'];
-export const ITEMS = ['boost','pulse','shield','oil'];
+export const ITEMS = ['boost','pulse','shield','oil','rocket','shockwave','repair','overdrive'];
+export const ITEM_GATES = [.13,.31,.49,.67,.86];
+// Catch-up balance without hiding races behind powerful guaranteed hits.
+const ITEM_WEIGHTS = {boost:16,pulse:12,shield:15,oil:12,rocket:11,shockwave:8,repair:13,overdrive:6};
+export function rollItem(placing=1,total=8,rng=Math.random){
+  const behind=total>1?clamp((placing-1)/(total-1),0,1):0;
+  const weights=ITEMS.map(id=>{let w=ITEM_WEIGHTS[id];if(['boost','overdrive','rocket'].includes(id))w*=.8+behind*1.7;if(id==='oil')w*=1.5-behind*.9;if(id==='repair'||id==='shield')w*=.85+behind*.5;return w;});
+  let t=clamp(Number(rng())||0,0,.999999)*weights.reduce((a,b)=>a+b,0);
+  for(let i=0;i<weights.length;i++){t-=weights[i];if(t<0)return ITEMS[i];}
+  return ITEMS[0];
+}
 export const normalizeAngle=(v)=>Math.atan2(Math.sin(v),Math.cos(v));
 export const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export function createKart(id,name,avatar=0,color=0,index=0,track=createTrack()){
@@ -17,7 +28,8 @@ export function createKart(id,name,avatar=0,color=0,index=0,track=createTrack())
   return {id,name:String(name||'Racer').slice(0,16),avatar:avatar%RACERS.length,color:color%KART_COLORS.length,
     x:p.x+p.nx*row,z:p.z+p.nz*row,heading:Math.atan2(p.tx,p.tz),speed:0,steer:0,
     s:p.s,progress:0,laps:0,completed:false,finishTime:0,boostTimer:0,shieldTimer:0,spinTimer:0,
-    invulnTimer:0,driftCharge:0,drifting:false,item:null,lastItemAt:0,lastS:p.s,steerInput:0,
+    invulnTimer:0,driftCharge:0,drifting:false,item:null,lastItemAt:-100,lastPickupKey:null,lastS:p.s,steerInput:0,
+    overdriveTimer:0,itemSerial:0,useSerial:0,usedItem:null,hitSerial:0,prevX:p.x+p.nx*row,prevZ:p.z+p.nz*row,
     ai:false,points:0,emote:'',emoteTimer:0};
 }
 export function inputForAI(k,track,seconds){
@@ -33,8 +45,9 @@ export function inputForAI(k,track,seconds){
 export function stepKart(k,input,dt,track){
   if(k.completed)return;
   dt=clamp(dt,0,.05);
+  k.prevX=k.x;k.prevZ=k.z;
   k.boostTimer=Math.max(0,k.boostTimer-dt);k.shieldTimer=Math.max(0,k.shieldTimer-dt);
-  k.spinTimer=Math.max(0,k.spinTimer-dt);k.invulnTimer=Math.max(0,k.invulnTimer-dt);
+  k.spinTimer=Math.max(0,k.spinTimer-dt);k.overdriveTimer=Math.max(0,k.overdriveTimer-dt);k.invulnTimer=Math.max(0,k.invulnTimer-dt);
   k.emoteTimer=Math.max(0,k.emoteTimer-dt);
   const nearestBefore=track.nearest(k.x,k.z);
   const off=nearestBefore.distance>track.width*.48;
@@ -47,7 +60,7 @@ export function stepKart(k,input,dt,track){
   if(wasDrifting&&!k.drifting){if(k.driftCharge>.45)k.boostTimer=Math.max(k.boostTimer,Math.min(1.5,k.driftCharge*.50));k.driftCharge=0;}
   if(k.spinTimer>0){k.speed*=Math.max(0,1-2.2*dt);k.heading+=dt*7.6;}
   else {
-    const boosted=k.boostTimer>0,maxSpeed=boosted?45:33;
+    const boosted=k.boostTimer>0,maxSpeed=k.overdriveTimer>0?51:boosted?45:33;
     const gas=!!input.gas,brake=!!input.brake;
     const acceleration=boosted?26:gas?20:brake?-29:-7;
     // Gentle off-track slowdown; driveable shoulders rather than instant punishment.
@@ -100,45 +113,99 @@ export function stepKart(k,input,dt,track){
 }
 export function hitKart(k){
   if(k.completed||k.invulnTimer>0)return false;
-  if(k.shieldTimer>0){k.shieldTimer=0;k.invulnTimer=.8;return false;}
-  k.spinTimer=1.45;k.invulnTimer=2.8;k.speed*=.42;k.drifting=false;k.driftCharge=0;return true;
+  if(k.shieldTimer>0){k.shieldTimer=0;k.invulnTimer=.8;k.hitSerial=(k.hitSerial||0)+1;return false;}
+  k.hitSerial=(k.hitSerial||0)+1;k.spinTimer=1.45;k.invulnTimer=2.8;k.speed*=.42;k.drifting=false;k.driftCharge=0;return true;
 }
-export function simulatePickups(k,track,seconds){
-  const cells=[.13,.31,.49,.67,.86];
-  if(k.item||seconds-k.lastItemAt<4)return false;
-  for(let i=0;i<cells.length;i++){
-    let d=Math.abs(k.s-track.length*cells[i]);d=Math.min(d,track.length-d);
-    if(d<3.2 && Math.abs(track.nearest(k.x,k.z).lateral)<track.width*.49){
-      k.item=ITEMS[Math.floor(Math.random()*ITEMS.length)];k.lastItemAt=seconds;return true;
+/** Five full-road pickup gates. Crossing any gate with an empty slot awards exactly one item.
+ * Full road width is intentional: no invisible precision-hit requirement on touchscreens.
+ * A per-gate-per-lap key prevents stationary farming, while a short cooldown blocks spam.
+ */
+export function simulatePickups(k,track,seconds,rng=Math.random,players=[]){
+  if(k.completed||k.item||seconds-k.lastItemAt<1.15)return false;
+  const lap=Math.floor(Math.max(0,k.progress)/track.length);
+  for(let i=0;i<ITEM_GATES.length;i++){
+    const at=track.length*ITEM_GATES[i];
+    let d=Math.abs(k.s-at);d=Math.min(d,track.length-d);
+    const key=`${lap}:${i}`;
+    if(d<Math.max(4.8,Math.abs(k.speed)*.14)&&k.lastPickupKey!==key){
+      const order=players.length?rankings(players).findIndex(p=>p.id===k.id)+1:1;
+      k.item=rollItem(order||1,players.length||8,rng);
+      k.lastItemAt=seconds;k.lastPickupKey=key;k.itemSerial=(k.itemSerial||0)+1;
+      return true;
     }
   }
   return false;
 }
+const nearestRival=(k,all,range,frontOnly=false)=>all.filter(o=>o.id!==k.id&&!o.completed&&
+  Math.hypot(o.x-k.x,o.z-k.z)<range&&(!frontOnly||((o.x-k.x)*Math.sin(k.heading)+(o.z-k.z)*Math.cos(k.heading))>0))
+  .sort((a,b)=>Math.hypot(a.x-k.x,a.z-k.z)-Math.hypot(b.x-k.x,b.z-k.z))[0];
 export function activateItem(k,all,seconds,obstacles){
   if(!k.item||k.completed)return null;
-  const used=k.item;k.item=null;
-  if(used==='boost')k.boostTimer=3;
-  else if(used==='shield')k.shieldTimer=7;
+  const used=k.item;k.item=null;k.usedItem=used;k.useSerial=(k.useSerial||0)+1;
+  if(used==='boost')k.boostTimer=Math.max(k.boostTimer,2.9);
+  else if(used==='overdrive'){k.boostTimer=Math.max(k.boostTimer,4.1);k.overdriveTimer=4.1;}
+  else if(used==='shield')k.shieldTimer=Math.max(k.shieldTimer,7.5);
+  else if(used==='repair'){k.spinTimer=0;k.invulnTimer=Math.max(k.invulnTimer,2.1);k.boostTimer=Math.max(k.boostTimer,1.05);}
   else if(used==='pulse'){
-    // Electric pulse strikes the nearest unshielded rival ahead or alongside.
-    const targets=all.filter(o=>o.id!==k.id&&!o.completed&&Math.hypot(o.x-k.x,o.z-k.z)<40)
-      .sort((a,b)=>Math.hypot(a.x-k.x,a.z-k.z)-Math.hypot(b.x-k.x,b.z-k.z));
-    if(targets[0])hitKart(targets[0]);
+    const target=nearestRival(k,all,37);if(target)hitKart(target);
+    else k.boostTimer=Math.max(k.boostTimer,1.15);
+  }else if(used==='shockwave'){
+    for(const target of all)if(target.id!==k.id&&Math.hypot(target.x-k.x,target.z-k.z)<19)hitKart(target);
+    k.shieldTimer=Math.max(k.shieldTimer,.6);
+  }else if(used==='rocket'){
+    const target=nearestRival(k,all,70,true);
+    obstacles.push({id:`rocket-${k.id}-${k.useSerial}`,type:'rocket',x:k.x+Math.sin(k.heading)*4,
+      z:k.z+Math.cos(k.heading)*4,heading:k.heading,targetId:target?.id||null,owner:k.id,ttl:3.4});
   }else if(used==='oil'){
-    obstacles.push({id:`o${Math.floor(seconds*1000)}-${k.id}`,x:k.x-Math.sin(k.heading)*4,z:k.z-Math.cos(k.heading)*4,owner:k.id,ttl:16});
+    obstacles.push({id:`oil-${k.id}-${k.useSerial}`,type:'oil',x:k.x-Math.sin(k.heading)*4,
+      z:k.z-Math.cos(k.heading)*4,owner:k.id,ttl:16});
   }
   return used;
 }
+export function stepObstacles(obstacles,all,dt){
+  for(const o of obstacles){
+    o.ttl-=dt;
+    if(o.type==='rocket'){
+      const target=all.find(k=>k.id===o.targetId&&!k.completed);
+      if(target){const desired=Math.atan2(target.x-o.x,target.z-o.z);o.heading+=clamp(normalizeAngle(desired-o.heading),-dt*2.7,dt*2.7);}
+      o.x+=Math.sin(o.heading)*dt*64;o.z+=Math.cos(o.heading)*dt*64;
+    }
+    for(const k of all){
+      if(k.id===o.owner||k.completed)continue;
+      if(Math.hypot(k.x-o.x,k.z-o.z)<(o.type==='rocket'?3.8:3.1)){
+        hitKart(k);o.ttl=0;break;
+      }
+    }
+  }
+  return obstacles.filter(o=>o.ttl>0);
+}
 export function rankings(karts){return [...karts].sort((a,b)=>a.completed&&b.completed?(a.finishTime||Infinity)-(b.finishTime||Infinity):a.completed?-1:b.completed?1:b.progress-a.progress);}
-/** Resolve gentle kart bumping; authoritative host applies once per fixed simulation step. */
+/** Server-authoritative, swept-circle kart contact. Prevent high-speed pass-throughs.
+ * Collision resolution is also called by solo races so online and offline feel alike.
+ */
 export function resolveKartCollisions(karts){
+  const diameter=4.05;
   for(let i=0;i<karts.length;i++)for(let j=i+1;j<karts.length;j++){
     const a=karts[i],b=karts[j];if(a.completed||b.completed)continue;
     let dx=b.x-a.x,dz=b.z-a.z,d=Math.hypot(dx,dz);
-    if(d>=3.3)continue;
-    if(d<.001){dx=1;dz=0;d=1;}
-    const nx=dx/d,nz=dz/d,push=(3.3-d)*.42;
-    a.x-=nx*push;a.z-=nz*push;b.x+=nx*push;b.z+=nz*push;
-    a.speed*=.994;b.speed*=.994;
+    const ax=Number.isFinite(a.prevX)?a.prevX:a.x,az=Number.isFinite(a.prevZ)?a.prevZ:a.z;
+    const bx=Number.isFinite(b.prevX)?b.prevX:b.x,bz=Number.isFinite(b.prevZ)?b.prevZ:b.z;
+    const rx=bx-ax,rz=bz-az,vx=dx-rx,vz=dz-rz,denom=vx*vx+vz*vz;
+    const t=denom>.00001?clamp(-(rx*vx+rz*vz)/denom,0,1):0;
+    const closest=Math.hypot(rx+vx*t,rz+vz*t);
+    if(d>=diameter && (closest>=diameter||t<=0||t>=1))continue;
+    if(d>=diameter){ // Swept impact: rewind to first contact rather than letting karts tunnel.
+      a.x=ax+(a.x-ax)*t;a.z=az+(a.z-az)*t;
+      b.x=bx+(b.x-bx)*t;b.z=bz+(b.z-bz)*t;
+      dx=b.x-a.x;dz=b.z-a.z;d=Math.hypot(dx,dz);
+    }
+    if(d<.0001){const prevDistance=Math.hypot(rx,rz);if(prevDistance>.0001){dx=rx/prevDistance;dz=rz/prevDistance;}else{const ang=a.heading||0;dx=Math.cos(ang);dz=-Math.sin(ang);}d=0;}
+    const nx=dx/(d||1),nz=dz/(d||1),correction=(diameter-d)*.505;
+    a.x-=nx*correction;a.z-=nz*correction;b.x+=nx*correction;b.z+=nz*correction;
+    // Reduce closing velocity while allowing tactical blocking and gentle bumping.
+    const close=Math.abs(a.speed-b.speed);
+    const penalty=clamp(.92-close*.005,.76,.94);
+    a.speed*=penalty;b.speed*=penalty;
+    a.driftCharge*=.95;b.driftCharge*=.95;
   }
 }
