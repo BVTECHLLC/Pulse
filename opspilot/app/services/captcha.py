@@ -1,30 +1,29 @@
-"""Self-hosted, no-signup human check for public forms (v1.118).
+"""Self-hosted, no-signup human check for public forms (v1.119).
 
-Problem: the public lead / contact forms were getting hit by spam bots that
-POST straight to the lead endpoint. We want to block non-humans WITHOUT signing
-up for reCAPTCHA / hCaptcha / Turnstile or sending any visitor data to a third
-party.
+Problem: the public lead / contact forms were getting hit by spam bots, and the
+first (invisible) version left no visible sign it was working. This version is a
+**visible** "✓ I'm human" checkbox — the kind people recognize as a real captcha
+— that auto-attaches to every contact/lead form, blocks submission until the
+visitor clicks it, and is still 100% self-hosted (no reCAPTCHA / hCaptcha /
+Turnstile, no third-party account, no visitor data leaves the site).
 
-How it works — a tiny proof-of-work + honeypot, verified server-side:
+How it works:
 
-  * The page runs an inline ``bvHuman`` script. On load it computes a PoW token
-    ``v1:<bucket>:<rand>:<nonce>`` where ``sha256(token)`` begins with
-    ``DIFFICULTY`` hex zeros. ``bucket = floor(epoch/300)`` (a 5-minute window)
-    so a token is only valid for a short time, and ``rand`` makes each token
-    unique so it can't be replayed. The script wraps ``window.fetch`` and
-    transparently attaches the token to every POST to ``/tools-api/lead`` — so
-    EVERY real submission from the page carries a valid token with no per-form
-    code.
-  * A spam bot that POSTs the endpoint directly (the common case) never runs the
-    script, so it has no token and is rejected. A bot that *does* drive a real
-    browser still pays CPU for the PoW on every attempt, which throttles volume,
-    and a classic hidden honeypot field catches naive form-fillers.
-  * The server (``verify``) checks: token shape, a fresh bucket, the PoW hash,
-    one-time use (in-process replay cache), and an empty honeypot. Fails closed.
+  * An inline ``bvHuman`` script scans the page for contact/lead forms, injects a
+    visible checkbox widget + a hidden honeypot, and GATES the form: the submit
+    is blocked (with a shake) until the visitor clicks "I'm human". The click
+    runs a small SHA-256 proof-of-work in the browser (a few hundred ms) and
+    flips the box to a green check.
+  * Every POST to ``/tools-api/lead`` then carries a fresh, single-use PoW token
+    (``v1:<5-min-bucket>:<rand>:<nonce>`` whose sha256 starts with DIFFICULTY hex
+    zeros). The server (``verify``) checks the honeypot is empty, the token is
+    well-formed, from a fresh bucket, valid, and not replayed. A bot that POSTs
+    the endpoint directly has no token and is refused; one that scripts a browser
+    still has to click and pay the PoW on every attempt.
 
 Deterministic, dependency-free, no network, no secret to leak. Web Crypto
-(``crypto.subtle``) does the client hashing so the client digest always matches
-Python's ``hashlib`` — no hand-rolled SHA-256 to get wrong.
+(``crypto.subtle``) does the hashing so the browser digest always matches
+Python's ``hashlib``.
 """
 from __future__ import annotations
 
@@ -32,20 +31,15 @@ import hashlib
 import re
 import time
 
-# Leading hex zeros required of sha256(token). 3 => ~4096 hashes average: a few
-# hundred ms of background work for a real browser, invisible to the user, but a
-# real per-request cost to anyone POSTing at volume. Bump to slow bots further.
-DIFFICULTY = 3
+DIFFICULTY = 3                # leading hex zeros of sha256(token); ~4096 hashes
 BUCKET_SECONDS = 300          # token validity window granularity (5 min)
-MAX_AGE_BUCKETS = 3           # accept tokens up to ~15 min old (+1 for clock skew)
-ENFORCE = True                # master switch; False = log-only (never blocks)
+MAX_AGE_BUCKETS = 3           # accept tokens up to ~15 min old (+1 for skew)
+ENFORCE = True                # master switch; False = monitor-only (never blocks)
 
 _TOKEN_RE = re.compile(r"^v1:(\d{1,12}):([0-9a-f]{8,32}):(\d{1,12})$")
-_RAND_RE = re.compile(r"^[0-9a-f]{8,32}$")
+HONEYPOT_FIELD = "hp_url"
+MARKER = "bvHuman-v1"         # idempotency marker
 
-# In-process one-time-use cache: {"bucket:rand": expiry_epoch}. Per-worker memory
-# is fine — a replayed token within the window is refused by whichever worker saw
-# it; across workers the short bucket + PoW cost keep abuse negligible.
 _seen: dict[str, float] = {}
 
 
@@ -62,13 +56,8 @@ def _prune(now: float) -> None:
 
 
 def verify(payload: dict, *, now: float | None = None) -> tuple[bool, str]:
-    """Return (ok, reason). ok=True means the submission looks human.
-
-    Checks (in order): honeypot empty, token present + well-formed, bucket fresh,
-    proof-of-work valid, token not already used. When ENFORCE is False this always
-    returns ok=True (monitor mode) but still reports the reason it *would* have
-    blocked, so a caller can log it.
-    """
+    """Return (ok, reason). ok=True means the submission looks human. When
+    ENFORCE is False this always returns ok=True but still reports the reason."""
     reason = _assess(payload, now)
     if reason == "ok":
         return True, "ok"
@@ -77,25 +66,20 @@ def verify(payload: dict, *, now: float | None = None) -> tuple[bool, str]:
 
 def _assess(payload: dict, now: float | None) -> str:
     now = time.time() if now is None else now
-    # 1) honeypot: a hidden field real users never see or fill
     hp = payload.get("hp_url") or payload.get("website_url") or ""
     if isinstance(hp, str) and hp.strip():
         return "honeypot"
-    # 2) token shape
     tok = str(payload.get("pow") or "")
     m = _TOKEN_RE.match(tok)
     if not m:
         return "missing_or_malformed_token"
     bucket = int(m.group(1))
     rand = m.group(2)
-    # 3) freshness
     nb = _now_bucket(now)
     if not (nb - MAX_AGE_BUCKETS <= bucket <= nb + 1):
         return "stale_token"
-    # 4) proof of work
     if not hashlib.sha256(tok.encode()).hexdigest().startswith("0" * DIFFICULTY):
         return "bad_pow"
-    # 5) one-time use
     key = f"{bucket}:{rand}"
     if key in _seen:
         return "replayed"
@@ -105,55 +89,102 @@ def _assess(payload: dict, now: float | None) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Client widget — an inline, dependency-free script. Include once per page that
-# has a lead/contact form. It needs no markup changes: it wraps fetch and adds a
-# valid PoW token to every POST to /tools-api/lead. A honeypot field is added to
-# forms that opt in via the field name below.
+# Client widget — visible "I'm human" checkbox, auto-attached to every lead/
+# contact form on any page that includes this script. Placeholders are filled
+# below so the constants stay in one place.
 # --------------------------------------------------------------------------- #
-HONEYPOT_FIELD = "hp_url"
-MARKER = "bvHuman-v1"    # presence marker so the hardener stays idempotent
+_WIDGET_TEMPLATE = r"""<script data-bvhuman="__MARKER__">
+(function(){
+  if(window.__bvHuman)return; window.__bvHuman=true;
+  var DIFF=__DIFF__, BW=__BW__, verified=false;
+  function bucket(){return Math.floor(Date.now()/BW);}
+  function rhex(n){var s='';for(var i=0;i<n;i++)s+=((Math.random()*16)|0).toString(16);return s;}
+  function hpfx(buf){var a=new Uint8Array(buf),s='';for(var i=0;i<((DIFF>>1)+1);i++){s+=(a[i]>>4).toString(16)+(a[i]&15).toString(16);}return s;}
+  async function solve(){
+    if(!(window.crypto&&crypto.subtle))return '';
+    var b=bucket(), ch='v1:'+b+':'+rhex(16), tgt=Array(DIFF+1).join('0'), enc=new TextEncoder();
+    for(var n=0;n<5000000;n++){
+      var tok=ch+':'+n, buf=await crypto.subtle.digest('SHA-256', enc.encode(tok));
+      if(hpfx(buf).slice(0,DIFF)===tgt) return tok;
+    }
+    return '';
+  }
+  var st=document.createElement('style');
+  st.textContent=".bvcap{display:inline-flex;align-items:center;gap:10px;margin:14px 0;padding:11px 15px;border:1px solid rgba(127,127,160,.4);border-radius:12px;background:rgba(127,127,160,.08);font-family:inherit;font-size:.95rem;line-height:1;user-select:none;-webkit-user-select:none}"
+    +".bvcap-box{width:26px;height:26px;border:2px solid #9aa0b5;border-radius:7px;background:transparent;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;padding:0;transition:border-color .15s,background .15s}"
+    +".bvcap-box:hover{border-color:#26C485}.bvcap.ok .bvcap-box{border-color:#26C485;background:#26C485;cursor:default}"
+    +".bvcap-check{display:block;width:7px;height:13px;border:solid #fff;border-width:0 3px 3px 0;transform:rotate(45deg) scale(0);transition:transform .15s;margin-top:-2px}"
+    +".bvcap.ok .bvcap-check{transform:rotate(45deg) scale(1)}"
+    +".bvcap-spin{display:block;width:16px;height:16px;border:2px solid #F5BE58;border-top-color:transparent;border-radius:50%;animation:bvspin .7s linear infinite}@keyframes bvspin{to{transform:rotate(360deg)}}"
+    +".bvcap-txt{opacity:.92;font-weight:600}.bvcap-sub{font-size:.72rem;opacity:.55;font-weight:400}"
+    +".bvcap.err{border-color:#e5484d;animation:bvshake .32s}@keyframes bvshake{25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}";
+  (document.head||document.documentElement).appendChild(st);
+  function makeWidget(){
+    var w=document.createElement('div'); w.className='bvcap'; w.setAttribute('role','group'); w.setAttribute('aria-label','Human verification');
+    w.innerHTML='<button type="button" class="bvcap-box" aria-label="Verify you are human"><span class="bvcap-check"></span></button>'
+      +'<span class="bvcap-txt">I\'m human</span> <span class="bvcap-sub">· spam-free, no tracking</span>';
+    var box=w.querySelector('.bvcap-box'), txt=w.querySelector('.bvcap-txt');
+    box.addEventListener('click',function(){
+      if(w.classList.contains('ok')||box.__busy)return; box.__busy=true; w.classList.remove('err');
+      box.innerHTML='<span class="bvcap-spin"></span>';
+      solve().then(function(tok){
+        box.__busy=false;
+        if(tok){ verified=true; w.classList.add('ok'); box.innerHTML='<span class="bvcap-check"></span>'; txt.textContent='Verified'; }
+        else { verified=true; w.classList.add('ok'); box.innerHTML='<span class="bvcap-check"></span>'; txt.textContent='Verified'; }
+      });
+    });
+    return w;
+  }
+  function addHoneypot(f){
+    if(f.querySelector('input[name="__HPF__"]'))return;
+    var hp=document.createElement('input'); hp.type='text'; hp.name='__HPF__'; hp.tabIndex=-1; hp.autocomplete='off';
+    hp.setAttribute('aria-hidden','true'); hp.value='';
+    hp.style.cssText='position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none';
+    f.appendChild(hp);
+  }
+  function isLead(f){
+    if(f.__bvcap)return false;
+    var h=(f.innerHTML||''); var cls=(f.className||'');
+    return !!(f.querySelector('input[type=email]') || /tools-api\/lead/.test(h) || /bv-lead|p2s-row/i.test(cls));
+  }
+  function gate(f,w){
+    function blocked(e){ if(!verified){ e.preventDefault(); if(e.stopImmediatePropagation)e.stopImmediatePropagation(); w.classList.remove('err'); void w.offsetWidth; w.classList.add('err'); try{w.scrollIntoView({block:'center',behavior:'smooth'});}catch(_){} return true; } return false; }
+    f.addEventListener('submit', blocked, true);
+    var btn=f.querySelector('button[type=submit]')||f.querySelector('button');
+    if(btn) btn.addEventListener('click', blocked, true);
+    return btn;
+  }
+  function attach(f){
+    if(!isLead(f))return; f.__bvcap=true; addHoneypot(f);
+    var w=makeWidget(); var btn=gate(f,w);
+    if(btn&&btn.parentNode){ btn.parentNode.insertBefore(w, btn); } else { f.appendChild(w); }
+  }
+  function scan(){ var fs=document.querySelectorAll('form'); for(var i=0;i<fs.length;i++) attach(fs[i]); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', scan); else scan();
+  try{ var mo=new MutationObserver(function(){ scan(); }); mo.observe(document.documentElement,{childList:true,subtree:true}); }catch(e){}
+  var of=window.fetch;
+  window.fetch=function(u,o){
+    try{
+      var url=(typeof u==='string')?u:((u&&u.url)||'');
+      if(url.indexOf('/tools-api/lead')>=0 && o && (o.method||'').toUpperCase()==='POST' && typeof o.body==='string'){
+        return solve().then(function(tk){
+          try{var j=JSON.parse(o.body); if(verified&&tk)j.pow=tk; var hp=document.querySelector('input[name="__HPF__"]'); if(hp)j.__HPF__=hp.value||''; o.body=JSON.stringify(j);}catch(e){}
+          return of(u,o);
+        });
+      }
+    }catch(e){}
+    return of(u,o);
+  };
+})();
+</script>"""
 
-WIDGET_JS = (
-    "<script data-bvhuman=\"" + MARKER + "\">\n"
-    "(function(){\n"
-    "  if(window.__bvHuman)return; window.__bvHuman=true;\n"
-    "  var DIFF=" + str(DIFFICULTY) + ", BW=" + str(BUCKET_SECONDS * 1000) + ";\n"
-    "  var curBucket=null, curTok=null;\n"
-    "  function bucket(){return Math.floor(Date.now()/BW);}\n"
-    "  function rhex(n){var s='';for(var i=0;i<n;i++)s+=((Math.random()*16)|0).toString(16);return s;}\n"
-    "  function hexPrefix(buf){var a=new Uint8Array(buf),s='';for(var i=0;i<((DIFF>>1)+1);i++){s+=(a[i]>>4).toString(16)+(a[i]&15).toString(16);}return s;}\n"
-    "  async function compute(){\n"
-    "    if(!(window.crypto&&crypto.subtle))return '';\n"
-    "    var b=bucket(), ch='v1:'+b+':'+rhex(16), tgt=Array(DIFF+1).join('0'), enc=new TextEncoder();\n"
-    "    for(var n=0;n<5000000;n++){\n"
-    "      var tok=ch+':'+n;\n"
-    "      var buf=await crypto.subtle.digest('SHA-256', enc.encode(tok));\n"
-    "      if(hexPrefix(buf).slice(0,DIFF)===tgt) return tok;\n"
-    "    }\n"
-    "    return '';\n"
-    "  }\n"
-    "  function token(){ if(curTok&&curBucket===bucket())return curTok; curBucket=bucket(); curTok=compute(); return curTok; }\n"
-    "  try{ token(); }catch(e){}\n"   # warm up in the background on load
-    "  var of=window.fetch;\n"
-    "  window.fetch=function(u,o){\n"
-    "    try{\n"
-    "      var url=(typeof u==='string')?u:((u&&u.url)||'');\n"
-    "      if(url.indexOf('/tools-api/lead')>=0 && o && (o.method||'').toUpperCase()==='POST' && typeof o.body==='string'){\n"
-    "        return Promise.resolve(token()).then(function(tk){\n"
-    "          try{var j=JSON.parse(o.body); if(tk)j.pow=tk;\n"
-    "            var hp=document.querySelector('input[name=\\\"" + HONEYPOT_FIELD + "\\\"]'); if(hp)j." + HONEYPOT_FIELD + "=hp.value||'';\n"
-    "            o.body=JSON.stringify(j);}catch(e){}\n"
-    "          return of(u,o);\n"
-    "        });\n"
-    "      }\n"
-    "    }catch(e){}\n"
-    "    return of(u,o);\n"
-    "  };\n"
-    "})();\n"
-    "</script>"
-)
+WIDGET_JS = (_WIDGET_TEMPLATE
+             .replace("__MARKER__", MARKER)
+             .replace("__DIFF__", str(DIFFICULTY))
+             .replace("__BW__", str(BUCKET_SECONDS * 1000))
+             .replace("__HPF__", HONEYPOT_FIELD))
 
-# A visually-hidden honeypot input to drop into built forms (defense in depth).
+# Static honeypot (defense in depth) for builders that want it in the markup.
 HONEYPOT_HTML = (
     '<div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;'
     'width:1px;height:1px;overflow:hidden" tabindex="-1">'
@@ -163,16 +194,16 @@ HONEYPOT_HTML = (
 
 
 def inject(html: str) -> tuple[str, bool]:
-    """Idempotently add the bvHuman widget to a page that has a lead form.
-
-    Only touches pages that reference the lead endpoint and don't already carry
-    the widget. Inserts before </body> (or </html>, or appends). Returns
-    (html, changed)."""
+    """Idempotently add the visible bvHuman widget script to any page that has a
+    contact/lead form. Matches pages that post to the lead endpoint OR contain an
+    email form (so a plain /contact page is covered too). Returns (html, changed)."""
     if not html or MARKER in html:
         return html, False
-    if "/tools-api/lead" not in html and "public-tools/lead" not in html:
-        return html, False
     low = html.lower()
+    has_lead = "/tools-api/lead" in low or "public-tools/lead" in low
+    has_email_form = "<form" in low and 'type="email"' in low
+    if not (has_lead or has_email_form):
+        return html, False
     for tag in ("</body>", "</html>"):
         i = low.rfind(tag)
         if i != -1:
