@@ -23,7 +23,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from . import pages_explore, pages_labs, pages_tools, pages_game
+from . import pages_explore, pages_labs, pages_tools, pages_game, pages_local, captcha
 
 AUTHOR = "Jordan Polasek"
 ORG = "BVTech LLC"
@@ -60,15 +60,57 @@ def _pages() -> list[dict]:
         out.append({"path": f"tools/{t['slug']}/index.html",
                     "url": f"{SITE}/tools/{t['slug']}/", "title": t["title"],
                     "desc": t["desc"], "body": t["body"]})
+    out += pages_local.city_pages()          # local service-area SEO pages
     return out
+
+
+# BVTech's local identity — one shared ProfessionalService node every page points
+# at, so search + AI engines read a single, consistent business with explicit
+# Texas service areas (Houston / Austin / San Antonio). No street/phone is
+# fabricated; add real NAP here when a Google Business Profile is set up.
+SERVICE_CITIES = ["Houston", "Austin", "San Antonio", "Sugar Land"]
+SERVICE_TYPES = ["Managed IT Services", "Cybersecurity", "Cloud Migration",
+                 "Microsoft 365 Management", "IT Support & Helpdesk",
+                 "Network & Server Management", "Compliance (HIPAA, PCI, CMMC)",
+                 "Backup & Disaster Recovery", "vCIO / IT Strategy"]
+
+
+def _org_node() -> dict:
+    return {
+        "@type": ["Organization", "ProfessionalService"],
+        "@id": SITE + "/#org", "name": ORG, "alternateName": "BVTech",
+        "url": SITE, "email": "help@bvtech.org",
+        "slogan": "Managed IT & cybersecurity for Texas small businesses",
+        "description": ("Texas-based managed IT services provider (MSP) and "
+                        "cybersecurity company serving small and mid-sized "
+                        "businesses in Houston, Austin, San Antonio and across Texas."),
+        "areaServed": ([{"@type": "City", "name": c} for c in SERVICE_CITIES]
+                       + [{"@type": "State", "name": "Texas"}]),
+        "serviceType": SERVICE_TYPES, "knowsAbout": SERVICE_TYPES,
+        "address": {"@type": "PostalAddress", "addressRegion": "TX", "addressCountry": "US"},
+        "founder": {"@type": "Person", "name": AUTHOR},
+    }
 
 
 def _schema(p: dict) -> str:
     import json as _json
-    data = {"@context": "https://schema.org", "@type": "WebPage", "name": p["title"].split("|")[0].strip(),
-            "description": p["desc"], "url": p["url"],
-            "author": {"@type": "Person", "name": AUTHOR, "url": SITE},
-            "publisher": {"@type": "Organization", "name": ORG, "url": SITE}}
+    graph = [
+        {"@type": "WebPage", "@id": p["url"] + "#webpage",
+         "name": p["title"].split("|")[0].strip(), "description": p["desc"],
+         "url": p["url"], "isPartOf": {"@id": SITE + "/#website"},
+         "about": {"@id": SITE + "/#org"}, "publisher": {"@id": SITE + "/#org"},
+         "author": {"@type": "Person", "name": AUTHOR, "url": SITE}},
+        {"@type": "WebSite", "@id": SITE + "/#website", "url": SITE, "name": ORG,
+         "publisher": {"@id": SITE + "/#org"}},
+        _org_node(),
+    ]
+    faqs = p.get("faqs")
+    if faqs:
+        graph.append({"@type": "FAQPage", "@id": p["url"] + "#faq",
+                      "mainEntity": [{"@type": "Question", "name": q,
+                                      "acceptedAnswer": {"@type": "Answer", "text": a}}
+                                     for q, a in faqs]})
+    data = {"@context": "https://schema.org", "@graph": graph}
     return '<script type="application/ld+json">' + _json.dumps(data) + "</script>"
 
 
@@ -332,22 +374,37 @@ def publish(db: Session) -> dict:
 
 
 def _apply_nav_everywhere(cfg: dict, files: dict) -> int:
-    """Add the new nav links to every HTML page in the repo (additive). Pages we
-    already rebuilt in `files` get edited in memory; the rest are fetched. Bounded
-    and best-effort; a page we can't parse is left untouched."""
+    """Add the new nav links to every HTML page in the repo (additive) AND harden
+    every page that has a lead/contact form with the bvHuman anti-spam widget.
+    Pages we already rebuilt in `files` get edited in memory; the rest are
+    fetched. Bounded and best-effort; a page we can't parse is left untouched."""
     from . import jp_site
     hits = 0
+    # 1) harden the pages we just built (city pages, tools, explore, …) in memory
+    for path in list(files.keys()):
+        if path.endswith(".html"):
+            h, ch = captcha.inject(files[path])
+            if ch:
+                files[path] = h
+    # 2) sweep the live repo: nav links + CAPTCHA on existing forms
     paths = [p for p in jp_site._list_all_html(cfg) if not p.startswith("worker-tools/")]
     for path in paths[:600]:
         base = files.get(path)
         if base is None:
             base = jp_site._fetch_file(cfg, path)
-        if not base or 'class="nav' not in base and "<nav" not in base and "/tools/" not in base:
+        if not base:
             continue
-        h, c1 = apply_nav(base)
-        h, c2 = apply_top_nav(h)
-        if c1 or c2:
-            files[path] = h
+        changed = False
+        if 'class="nav' in base or "<nav" in base or "/tools/" in base:
+            h, c1 = apply_nav(base)
+            h, c2 = apply_top_nav(h)
+            if c1 or c2:
+                base, changed = h, True
+        h, c3 = captcha.inject(base)        # idempotent; only touches lead-form pages
+        if c3:
+            base, changed = h, True
+        if changed:
+            files[path] = base
             hits += 1
     return hits
 

@@ -51,13 +51,24 @@ SEO_PROFILE = {
         "name": "BVTech",
         "tagline": "Managed IT services & cybersecurity for Texas small businesses",
         "summary": ("BVTech LLC is a Texas-based managed IT services provider "
-                    "(MSP) serving small and mid-sized businesses in Sugar Land, "
-                    "Houston, Austin, and San Antonio. Services include managed "
-                    "IT support, cybersecurity, cloud, compliance, and a daily "
-                    "CISA Known-Exploited-Vulnerabilities (KEV) threat feed."),
+                    "(MSP) and cybersecurity company serving small and mid-sized "
+                    "businesses in Houston, Austin, San Antonio, Sugar Land and "
+                    "across Texas. Services include managed IT support, "
+                    "cybersecurity, Microsoft 365 and cloud, compliance (HIPAA, "
+                    "PCI, CMMC), backup and disaster recovery, and vCIO/IT "
+                    "strategy. BVTech bills flat-rate, responds fast with real "
+                    "technicians, and publishes a daily CISA Known-Exploited-"
+                    "Vulnerabilities (KEV) threat feed."),
+        "services": ["Managed IT support & helpdesk", "Cybersecurity",
+                     "Microsoft 365 & cloud", "Compliance (HIPAA, PCI, CMMC)",
+                     "Backup & disaster recovery", "vCIO / IT strategy"],
+        "areas": [("Managed IT in Houston", "/managed-it-houston/"),
+                  ("Managed IT in Austin", "/managed-it-austin/"),
+                  ("Managed IT in San Antonio", "/managed-it-san-antonio/")],
         "links": [("Blog", "/blog/"), ("Services", "/services"),
                   ("Why BVTech", "/why-us"), ("Contact", "/contact"),
-                  ("Book a consultation", "/book")],
+                  ("Book a consultation", "/book"),
+                  ("Explore — the fun side of tech", "/explore/")],
     },
     "jp": {
         "name": "Jordan Polasek",
@@ -141,11 +152,22 @@ def build_llms_txt(site: str, now: datetime) -> str:
     prof = SEO_PROFILE[site]
     base = jp_site.SITES[site]["site"].rstrip("/")
     lines = [f"# {prof['name']}", "", f"> {prof['tagline']}", "",
-             prof["summary"], "", "## Key pages", ""]
+             prof["summary"], ""]
+    if prof.get("services"):
+        lines += ["## Services", ""]
+        lines += [f"- {s}" for s in prof["services"]]
+        lines.append("")
+    if prof.get("areas"):
+        lines += ["## Service areas", ""]
+        for label, path in prof["areas"]:
+            url = path if path.startswith("http") else base + path
+            lines.append(f"- [{label}]({url})")
+        lines.append("")
+    lines += ["## Key pages", ""]
     for label, path in prof["links"]:
         url = path if path.startswith("http") else base + path
         lines.append(f"- [{label}]({url})")
-    lines += ["", f"## Sitemap", "", f"- [Full sitemap]({base}/sitemap.xml)", "",
+    lines += ["", "## Sitemap", "", f"- [Full sitemap]({base}/sitemap.xml)", "",
               f"_Last updated {now.date().isoformat()}._", ""]
     return "\n".join(lines)
 

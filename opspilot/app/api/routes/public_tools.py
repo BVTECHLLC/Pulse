@@ -377,6 +377,14 @@ async def capture_lead(request: Request, resp: Response):
         body = await request.json()
     except Exception:  # noqa: BLE001
         body = {}
+    # Human check: self-hosted proof-of-work + honeypot (no third party). Blocks
+    # bots that POST this endpoint directly without running the page's bvHuman
+    # script. Fails closed; the message is intentionally generic.
+    from ...services import captcha as _captcha
+    _human, _why = _captcha.verify(body)
+    if not _human:
+        return {"ok": False, "error": "We couldn't verify your browser. "
+                "Please reload the page and submit again, or email help@bvtech.org."}
     email = str(body.get("email") or "").strip().lower()[:255]
     if not _EMAIL_RE.fullmatch(email):
         return {"ok": False, "error": "Please enter a valid email address."}

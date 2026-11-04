@@ -3993,12 +3993,26 @@ def main():
         from app.core.db import SessionLocal as _ESL   # this block runs before the later _ESL import
         from app.models import CrmContact as _CC62, CrmActivity as _CA62, Notification as _N62
         _LH = {"origin": "https://bvtech.org", "cf-connecting-ip": "203.0.113.62"}
-        # bad email rejected, nothing created
-        assert c.post("/api/public-tools/lead", json={"email": "nope", "tool": "SSL Checker"},
+        # self-hosted human check (proof-of-work): forge a fresh valid token per call
+        import hashlib as _hl62, secrets as _sec62, time as _tm62
+        from app.services import captcha as _cap62
+        def _pow62():
+            _b = int(_tm62.time() // _cap62.BUCKET_SECONDS); _r = _sec62.token_hex(8); _n = 0
+            while True:
+                _tok = f"v1:{_b}:{_r}:{_n}"
+                if _hl62.sha256(_tok.encode()).hexdigest().startswith("0" * _cap62.DIFFICULTY):
+                    return _tok
+                _n += 1
+        # bad email rejected, nothing created (but passes the human check first)
+        assert c.post("/api/public-tools/lead", json={"email": "nope", "tool": "SSL Checker", "pow": _pow62()},
                       headers=_LH).json()["ok"] is False
+        # a direct POST with no human-check token is refused (anti-spam)
+        assert c.post("/api/public-tools/lead", json={"email": "bot@spam.example", "tool": "x"},
+                      headers={"origin": "https://bvtech.org", "cf-connecting-ip": "203.0.113.64"}
+                      ).json()["ok"] is False
         # a real submission creates a scored inbound lead tagged with the tool
         _lr = c.post("/api/public-tools/lead", headers=_LH, json={
-            "email": "owner@lonestarcpa.com", "company": "Lone Star CPA",
+            "email": "owner@lonestarcpa.com", "company": "Lone Star CPA", "pow": _pow62(),
             "tool": "Security Scoreboard", "result": "Grade D - no DMARC, MFA gaps"}).json()
         assert _lr["ok"] is True and "way" in _lr["message"].lower(), _lr
         _sess62 = _ESL()
@@ -4026,7 +4040,7 @@ def main():
         finally:
             _sess62.close()
         c.post("/api/public-tools/lead", headers=_LH, json={
-            "email": "cfo@currentclient.com", "tool": "Password Breach Checker"})
+            "email": "cfo@currentclient.com", "tool": "Password Breach Checker", "pow": _pow62()})
         _sess62b = _ESL()
         try:
             _cust62b = _sess62b.query(_CC62).filter(
@@ -8082,7 +8096,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.117.0"
+    assert _gs101().APP_VERSION == "1.118.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8435,7 +8449,7 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.117.0"
+    assert _gs101().APP_VERSION == "1.118.0"
     assert _sr100.REPAIR_EPOCH == "1.112.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
@@ -8471,7 +8485,7 @@ def main():
     assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
     # site nav points to the game home
     assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
-    assert _gs101().APP_VERSION == "1.117.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.118.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
           "Explore features it with a Halloween hero, republish forced OK")
 
@@ -8491,11 +8505,11 @@ def main():
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
     assert "xp-papel" in _xp3 and "Happy Halloween" in _xp3, "spooky Explore theme missing"
-    assert _gs101().APP_VERSION == "1.117.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.118.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
 
-    print("\n=== OpsPilot v1.117.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.118.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

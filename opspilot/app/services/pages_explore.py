@@ -33,8 +33,8 @@ _TABS = "".join(
     f'<button class="xp-tab{" on" if i == 0 else ""}" data-cat="{c}">{label}</button>'
     for i, (c, label) in enumerate(CATS))
 
-# spooky Halloween bunting — orange / purple / black pennants
-_PAPEL_COLORS = ["#e8721f", "#6a2fa0", "#241a33", "#c2410c", "#4a1d6e", "#1c1430"]
+# warm Thanksgiving bunting — amber / rust / gold / cranberry pennants
+_PAPEL_COLORS = ["#d97706", "#b45309", "#c2410c", "#a3561f", "#d4a017", "#7c2d12"]
 _PAPEL = ('<div class="xp-papel" aria-hidden="true">'
           + "".join(f'<i style="background:{_PAPEL_COLORS[i % 6]}"></i>' for i in range(20))
           + "</div>")
@@ -81,28 +81,60 @@ def body() -> str:
 .xp-q{font-size:.86rem;color:var(--text);font-variant-numeric:tabular-nums}
 .xp-q b{color:var(--white);font-weight:800;margin-right:7px;font-family:var(--fh)}
 .xp-q .up{color:var(--up);font-weight:700}.xp-q .dn{color:var(--dn);font-weight:700}
-/* ---- featured game (Halloween) ---- */
+/* ---- featured game (VOLT RUSH — 3D multiplayer racer) ---- */
 .xp-feature{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:0;border-radius:20px;overflow:hidden;
-  border:1px solid rgba(159,123,255,.4);margin:0 0 30px;background:#0c0a22;transition:.18s}
-.xp-feature:hover{transform:translateY(-2px);border-color:rgba(159,123,255,.7)}
+  border:1px solid rgba(80,190,255,.4);margin:0 0 14px;background:#07132a;transition:.18s}
+.xp-feature:hover{transform:translateY(-2px);border-color:rgba(80,190,255,.75)}
 @media(max-width:760px){.xp-feature{grid-template-columns:1fr}}
-.xp-feature .art{position:relative;min-height:210px;background:radial-gradient(130% 120% at 70% 0%,#2a1a55 0%,#120e30 55%,#0a0820 100%);overflow:hidden}
-.xp-feature .moon{position:absolute;top:26px;right:34px;width:64px;height:64px;border-radius:50%;
-  background:radial-gradient(circle at 38% 38%,#fdfbe6,#d7d5ad);box-shadow:0 0 44px 10px rgba(245,240,200,.25)}
-.xp-feature .bat{position:absolute;font-size:1.3rem;opacity:.85;animation:xp-fly 7s ease-in-out infinite}
-.xp-feature .bat.a{top:34%;left:16%}.xp-feature .bat.b{top:60%;left:40%;animation-delay:1.3s;font-size:1rem}
-.xp-feature .bat.c{top:26%;left:66%;animation-delay:.7s;font-size:1.1rem}.xp-feature .bat.d{top:68%;left:74%;animation-delay:2s;font-size:.95rem}
-.xp-feature .stones{position:absolute;bottom:0;left:0;right:0;height:60px;background:
-  linear-gradient(transparent,rgba(0,0,0,.5)),repeating-linear-gradient(90deg,transparent 0 44px,rgba(120,110,160,.18) 44px 58px)}
-@keyframes xp-fly{0%{transform:translate(0,0)}25%{transform:translate(14px,-10px)}50%{transform:translate(-8px,7px)}75%{transform:translate(10px,9px)}100%{transform:translate(0,0)}}
-.xp-feature .txt{padding:26px 28px;display:flex;flex-direction:column;justify-content:center;background:linear-gradient(135deg,rgba(159,123,255,.12),rgba(235,111,36,.08))}
-.xp-feature .kick{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:#c89bff;font-weight:800}
-.xp-feature h2{font-family:var(--fh);color:#fff;font-size:clamp(1.5rem,3vw,2rem);margin:10px 0 8px;line-height:1.1}
+.xp-feature .art{position:relative;min-height:210px;overflow:hidden;
+  background:radial-gradient(130% 120% at 50% 118%,#1b3b6b 0%,#0e2347 55%,#07132a 100%)}
+.xp-feature .sky{position:absolute;inset:0;background:
+  radial-gradient(2px 2px at 20% 28%,rgba(255,255,255,.75),transparent),
+  radial-gradient(2px 2px at 68% 18%,rgba(255,255,255,.5),transparent),
+  radial-gradient(1.5px 1.5px at 44% 12%,rgba(255,255,255,.6),transparent),
+  radial-gradient(1.5px 1.5px at 85% 34%,rgba(255,255,255,.45),transparent)}
+.xp-feature .road{position:absolute;left:50%;bottom:0;width:155%;height:150px;transform:translateX(-50%);
+  background:linear-gradient(#24487f,#0b1c3a);clip-path:polygon(38% 0,62% 0,100% 100%,0 100%)}
+.xp-feature .road::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:7px;transform:translateX(-50%);
+  background:repeating-linear-gradient(#ffd34d 0 16px,transparent 16px 36px)}
+.xp-feature .flag{position:absolute;top:2px;left:50%;transform:translateX(-50%);width:22%;height:15px;opacity:.9;
+  background:repeating-conic-gradient(#fff 0 25%,#0b1c3a 0 50%) 0 0/12px 12px}
+.xp-feature .kart{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);font-size:2.7rem;
+  filter:drop-shadow(0 7px 10px rgba(0,0,0,.55));animation:xp-rev 2.4s ease-in-out infinite}
+@keyframes xp-rev{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(-5px)}}
+.xp-feature .streak{position:absolute;height:3px;border-radius:3px;opacity:.7;
+  background:linear-gradient(90deg,transparent,#52beff);animation:xp-zoom 1.1s linear infinite}
+.xp-feature .streak.a{top:40%;left:-40%;width:42%;animation-delay:0s}
+.xp-feature .streak.b{top:55%;left:-40%;width:28%;animation-delay:.45s}
+.xp-feature .streak.c{top:70%;left:-40%;width:34%;animation-delay:.85s}
+@keyframes xp-zoom{0%{transform:translateX(0)}100%{transform:translateX(380%)}}
+.xp-feature .txt{padding:26px 28px;display:flex;flex-direction:column;justify-content:center;background:linear-gradient(135deg,rgba(80,190,255,.12),rgba(245,190,88,.08))}
+.xp-feature .kick{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:#7fd0ff;font-weight:800}
+.xp-feature h2{font-family:var(--fh);color:#fff;font-size:clamp(1.5rem,3vw,2rem);margin:10px 0 8px;line-height:1.1;letter-spacing:.02em}
 .xp-feature p{color:var(--text);font-size:.95rem;line-height:1.6;margin:0 0 16px}
-.xp-feature .play{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;background:linear-gradient(135deg,#9f7bff,#EB6F24);
-  color:#0E0D2C;font-weight:800;font-size:1rem;padding:12px 26px;border-radius:12px}
-.xp-season{display:inline-flex;align-items:center;gap:7px;background:rgba(159,123,255,.14);border:1px solid rgba(159,123,255,.35);
-  color:#c89bff;font-weight:800;font-size:.72rem;letter-spacing:.06em;padding:5px 12px;border-radius:999px;margin-bottom:10px}
+.xp-feature .play{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;background:linear-gradient(135deg,#52beff,#EB6F24);
+  color:#06122a;font-weight:800;font-size:1rem;padding:12px 26px;border-radius:12px}
+@media(prefers-reduced-motion:reduce){.xp-feature .kart,.xp-feature .streak{animation:none}}
+.xp-season{display:inline-flex;align-items:center;gap:7px;background:rgba(80,190,255,.15);border:1px solid rgba(80,190,255,.38);
+  color:#7fd0ff;font-weight:800;font-size:.72rem;letter-spacing:.06em;padding:5px 12px;border-radius:999px;margin-bottom:10px}
+/* previously-featured strip (old news) */
+.xp-encore{display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;margin:0 0 30px;padding:11px 18px;border-radius:12px;
+  border:1px dashed var(--border);background:rgba(255,255,255,.02)}
+.xp-encore .lab{font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:800}
+.xp-encore a{color:var(--o2);font-weight:800;font-size:.92rem}
+.xp-encore .m{color:var(--muted);font-size:.84rem}
+/* NASA photo of the day — top feature */
+.xp-apod{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:0;border-radius:18px;overflow:hidden;
+  border:1px solid rgba(68,64,219,.4);margin:0 0 26px;background:#0a0920;transition:.18s}
+.xp-apod:hover{transform:translateY(-2px);border-color:rgba(120,120,255,.6)}
+@media(max-width:760px){.xp-apod{grid-template-columns:1fr}}
+.xp-apod .xp-apod-img{position:relative;min-height:210px;background:#05040f}
+.xp-apod .xp-apod-img img{width:100%;height:100%;object-fit:cover;display:block;min-height:210px;max-height:300px}
+.xp-apod .xp-apod-txt{padding:24px 26px;display:flex;flex-direction:column;justify-content:center;background:linear-gradient(135deg,rgba(68,64,219,.16),rgba(80,140,255,.08))}
+.xp-apod .kick{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:#8fb3ff;font-weight:800}
+.xp-apod h2{font-family:var(--fh);color:#fff;font-size:clamp(1.25rem,2.6vw,1.65rem);margin:9px 0 8px;line-height:1.15}
+.xp-apod p{color:var(--text);font-size:.9rem;line-height:1.55;margin:0 0 12px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.xp-apod .xp-apod-go{color:#8fb3ff;font-weight:800;font-size:.92rem}
 /* papel-picado festive bunting */
 .xp-papel{display:flex;gap:2px;height:26px;margin:0 0 16px;overflow:hidden;opacity:.92}
 .xp-papel i{flex:1;height:24px;clip-path:polygon(0 0,100% 0,100% 64%,50% 100%,0 64%);position:relative}
@@ -211,8 +243,8 @@ def body() -> str:
 .xp-three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin:4px 0 8px}
 @media(max-width:860px){.xp-three{grid-template-columns:1fr}}
 .xp-three .xp-card{margin:0;height:100%}
-.xp-games{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:30px 0 8px}
-@media(max-width:700px){.xp-games{grid-template-columns:1fr}}
+.xp-games{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin:30px 0 8px}
+@media(max-width:860px){.xp-games{grid-template-columns:1fr}}
 .xp-gcard{display:block;border-radius:18px;border:1px solid var(--border);padding:26px 28px;transition:.18s;position:relative;overflow:hidden}
 .xp-gcard:hover{transform:translateY(-3px)}
 .xp-gcard .k{font-size:.7rem;letter-spacing:.12em;font-weight:800;text-transform:uppercase}
@@ -245,8 +277,8 @@ def body() -> str:
 <!-- HERO -->
 <div class="xp-hero">
   <div>
-    <h1 class="xp-hello"><span id="xp-greet">Welcome</span> to Explore <span class="xp-greet-season">🎃👻🦇</span></h1>
-    <p class="xp-sub">The fun, useful side of tech — curated by <b>Jordan Polasek</b> at BVTech. No politics, no doomscroll. <span style="color:#e8721f">Happy Halloween! 👻</span> <span class="xp-clock" id="xp-clock"></span></p>
+    <h1 class="xp-hello"><span id="xp-greet">Welcome</span> to Explore <span class="xp-greet-season">🦃🍂🥧</span></h1>
+    <p class="xp-sub">The fun, useful side of tech — curated by <b>Jordan Polasek</b> at BVTech. No politics, no doomscroll. <span style="color:#d97706">Happy Thanksgiving! 🦃</span> <span class="xp-clock" id="xp-clock"></span></p>
   </div>
   <div class="xp-wx" id="xp-wx" hidden>
     <div class="e" id="xp-wx-e">🌡️</div>
@@ -275,20 +307,42 @@ def body() -> str:
   <div class="track"><div class="scroll" id="xp-mkt-scroll"></div></div>
 </div>
 
-<!-- FEATURED GAME (Halloween) -->
-<a class="xp-feature" href="/graveyard-shift/">
-  <div class="art">
-    <div class="moon"></div>
-    <span class="bat a">🦇</span><span class="bat b">🦇</span><span class="bat c">🦇</span><span class="bat d">🦇</span>
-    <div class="stones"></div>
-  </div>
-  <div class="txt">
-    <span class="kick">🎃 Featured Game · Halloween</span>
-    <h2>Graveyard Shift</h2>
-    <p>Survive the night in our own 3D vampire-survivors game — swarms of undead, soul-shard level-ups and tech-flavored blessings, boss after boss until dawn. Free, in your browser.</p>
-    <span class="play">▶ Play now →</span>
+<!-- NASA PHOTO OF THE DAY (top feature) -->
+<a class="xp-apod" id="xp-apod" target="_blank" rel="noopener" hidden>
+  <div class="xp-apod-img"><img id="xp-apod-img" alt="" loading="lazy"></div>
+  <div class="xp-apod-txt">
+    <span class="kick">🔭 NASA · Astronomy Photo of the Day</span>
+    <h2 id="xp-apod-title">Today's view of the universe</h2>
+    <p id="xp-apod-desc"></p>
+    <span class="xp-apod-go">See it full-size →</span>
   </div>
 </a>
+
+<!-- FEATURED GAME (VOLT RUSH — 3D multiplayer racer) -->
+<a class="xp-feature" href="https://portal.bvtech.org/kart/">
+  <div class="art">
+    <div class="sky"></div>
+    <div class="road"></div>
+    <div class="flag"></div>
+    <span class="streak a"></span><span class="streak b"></span><span class="streak c"></span>
+    <span class="kart">🏎️</span>
+  </div>
+  <div class="txt">
+    <span class="season">🆕 Just launched · V3</span>
+    <span class="kick">🏁 Featured Game</span>
+    <h2>VOLT RUSH</h2>
+    <p>Our brand-new 3D multiplayer kart racer — six neon circuits, eight wild power-ups and hand-made racers, with real-time online races against your friends. Free, right in your browser, on phone or desktop.</p>
+    <span class="play">▶ Race now →</span>
+  </div>
+</a>
+
+<!-- PREVIOUSLY FEATURED (old news) -->
+<div class="xp-encore">
+  <span class="lab">🍂 Previously featured</span>
+  <span class="m">Last season's hit —</span>
+  <a href="/graveyard-shift/">🧛 Graveyard Shift →</a>
+  <span class="m">our 3D vampire-survivors game is still in the arcade below.</span>
+</div>
 
 <!-- THE BVTECH TAKE -->
 <div class="xp-take-band" id="xp-take">
@@ -346,11 +400,6 @@ def body() -> str:
 <div class="xp-band" id="xp-discover">
   <div class="xp-h"><span class="pre"></span><h2>Discover</h2></div>
   <div class="xp-three">
-    <div class="xp-card lift xp-photo" id="xp-photo-card" hidden>
-      <h3>🔭 NASA Photo of the Day</h3>
-      <a id="xp-photo-link" target="_blank" rel="noopener"><img id="xp-photo-img" alt="" loading="lazy"></a>
-      <div class="cap" id="xp-photo-cap"></div>
-    </div>
     <div class="xp-card lift" id="xp-launch-card" hidden>
       <h3>🚀 Next Rocket Launches</h3>
       <div id="xp-launches"></div>
@@ -366,6 +415,12 @@ def body() -> str:
 <div class="xp-band" id="xp-games">
   <div class="xp-h"><span class="pre"></span><h2>Play — Free, in your browser</h2></div>
   <div class="xp-games">
+    <a class="xp-gcard" href="https://portal.bvtech.org/kart/" style="background:linear-gradient(135deg,rgba(80,190,255,.16),rgba(245,190,88,.10));border-color:rgba(80,190,255,.45)">
+      <div class="k" style="color:#7fd0ff">🏁 NEW · 3D MULTIPLAYER RACER</div>
+      <h3>VOLT RUSH</h3>
+      <p>Race friends in real time across six neon tracks with eight wild power-ups and hand-made 3D racers. Phone or desktop, free in your browser.</p>
+      <span class="go" style="color:#7fd0ff">▶ Race now →</span>
+    </a>
     <a class="xp-gcard" href="https://portal.bvtech.org/arena/" style="background:linear-gradient(135deg,rgba(57,192,255,.16),rgba(245,190,88,.10));border-color:rgba(57,192,255,.4)">
       <div class="k" style="color:#39c0ff">⚔️ ORIGINAL · RUST + WEBASSEMBLY</div>
       <h3>Breach Protocol</h3>
@@ -373,9 +428,9 @@ def body() -> str:
       <span class="go" style="color:#39c0ff">▶ Play Breach Protocol →</span>
     </a>
     <a class="xp-gcard" href="/graveyard-shift/" style="background:linear-gradient(135deg,rgba(130,40,160,.18),rgba(40,30,70,.2));border-color:rgba(160,110,200,.45)">
-      <div class="k" style="color:#c89bff">🧛 ORIGINAL · VAMPIRE SURVIVORS</div>
+      <div class="k" style="color:#c89bff">🍂 SEASONAL ENCORE · VAMPIRE SURVIVORS</div>
       <h3>Graveyard Shift</h3>
-      <p>Survive the night in our own 3D bullet-heaven — swarms of undead, soul-shard level-ups and tech-flavored blessings, boss after boss till dawn. Free, in your browser.</p>
+      <p>Last season's featured game lives on — survive the night in our 3D bullet-heaven: swarms of undead, soul-shard level-ups and tech-flavored blessings, boss after boss till dawn.</p>
       <span class="go" style="color:#c89bff">▶ Start the night shift →</span>
     </a>
   </div>
@@ -402,7 +457,7 @@ def body() -> str:
   <a class="s" href="https://portal.bvtech.org/answers">💬 BVTech Answers</a>
   <a class="s" href="/tools/">🧰 Free Tools</a>
 </div>
-<p class="xp-foot">"The BVTech Take" is our own original commentary, written by Jordan Polasek, with every source linked and credited. News headlines link out to their original publishers — we curate the good ones, we don't copy them. Market data is delayed and for information only, not advice. Photos courtesy of NASA. Refreshed through the day. <a href="/blog/">Read all our takes →</a></p>
+<p class="xp-foot"><b>Our take, not a reprint.</b> "The BVTech Take" is original commentary written by Jordan Polasek at BVTech — we read the day's news, write our own analysis, and link every source so you can read the original yourself. We never republish other outlets' articles; the headlines here link straight out to the publisher that reported them.<br><br><b>Sources &amp; data:</b> tech headlines and "Trending" come from publishers' own feeds and Hacker News (each links to its source) · market quotes are delayed and for information only, not advice · space imagery is NASA's Astronomy Picture of the Day (APOD) · rocket launches from The Space Devs Launch Library · "On this day in tech" from public historical records · weather from Open-Meteo. Refreshed through the day. <a href="/blog/">Read all our takes →</a></p>
 </section>
 
 <script>
@@ -591,14 +646,13 @@ def body() -> str:
     });
   }).catch(function(){document.getElementById("xp-game").innerHTML='<div class="xp-sk">Game unavailable.</div>';});
 
-  // ---- NASA photo ----
+  // ---- NASA photo of the day (top feature) ----
   get("explore/photos").then(function(d){
     var it=(d&&d.items||[])[0];if(!it)return;
-    document.getElementById("xp-photo-img").src=it.img;
-    document.getElementById("xp-photo-img").alt=it.title;
-    document.getElementById("xp-photo-link").href=it.link||it.img;
-    document.getElementById("xp-photo-cap").innerHTML="<b>"+it.title+"</b> — "+(it.desc||"");
-    document.getElementById("xp-photo-card").hidden=false;
+    var img=document.getElementById("xp-apod-img");if(img){img.src=it.img;img.alt=it.title||"";}
+    var t=document.getElementById("xp-apod-title");if(t&&it.title)t.textContent=it.title;
+    var ds=document.getElementById("xp-apod-desc");if(ds)ds.textContent=it.desc||"";
+    var a=document.getElementById("xp-apod");if(a){a.href=it.link||it.img;a.hidden=false;}
   }).catch(function(){});
 
   // ---- launches ----
