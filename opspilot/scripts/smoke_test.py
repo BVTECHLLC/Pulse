@@ -8174,9 +8174,18 @@ def main():
         _J102._HTTP = _http102
         _CF102.purge_urls = lambda *a, **k: {"ok": True}
         _rp = _D102.publish(None)
-        assert _rp["ok"] and len(_rp["pages"]) == 7, _rp
+        assert _rp["ok"] and len(_rp["pages"]) == 10, _rp
         assert "explore/index.html" in _sent102 and "academy/lightning-labs/index.html" in _sent102
         assert "graveyard-shift/index.html" in _sent102
+        # v1.118: local service-area pages (Houston/Austin/San Antonio) +
+        # ProfessionalService/FAQ schema + self-hosted anti-spam widget on lead forms
+        assert all(f"managed-it-{_m}/index.html" in _sent102
+                   for _m in ("houston", "austin", "san-antonio")), "city pages not published"
+        _hou = _sent102["managed-it-houston/index.html"]
+        assert "ProfessionalService" in _hou and "areaServed" in _hou and "FAQPage" in _hou, \
+            "local business / FAQ schema missing on city page"
+        assert "bvHuman-v1" in _hou and "/tools-api/lead" in _hou, \
+            "CAPTCHA (bvHuman) widget not injected onto the lead-form page"
         assert "tools/whats-my-ip/index.html" in _sent102 and "tools/speed-test/index.html" in _sent102
         for _w in ("index", "feeds", "explore", "netinfo", "labs", "daily"):
             assert f"worker-tools/{_w}.js" in _sent102, _w
