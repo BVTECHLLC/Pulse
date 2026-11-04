@@ -8513,7 +8513,7 @@ def main():
     assert _gv2wasm.exists() and _gv2wasm.stat().st_size > 50000 and _gv2wasm.read_bytes()[:4] == b"\x00asm"
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
-    assert "xp-papel" in _xp3 and "Happy Halloween" in _xp3, "spooky Explore theme missing"
+    assert "xp-papel" in _xp3 and "Happy Thanksgiving" in _xp3, "seasonal Explore theme missing"
     assert _gs101().APP_VERSION == "1.121.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
