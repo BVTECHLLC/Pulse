@@ -17,23 +17,27 @@ import re
 import urllib.request
 from datetime import datetime
 
-# A small, reliable set of positive-leaning tech sources. Headlines only.
+# Non-political, IT-focused sources. Headlines only (we link out, never copy).
+# The Verge is intentionally excluded — too political for BVTech's apolitical page.
 FEEDS = [
-    ("The Verge", "https://www.theverge.com/rss/index.xml"),
+    ("Hacker News", "https://hnrss.org/frontpage?points=120"),
     ("Ars Technica", "https://feeds.arstechnica.com/arstechnica/index"),
     ("TechCrunch", "https://techcrunch.com/feed/"),
-    ("Engadget", "https://www.engadget.com/rss.xml"),
     ("BleepingComputer", "https://www.bleepingcomputer.com/feed/"),
-    ("Electrek", "https://electrek.co/guides/tesla/feed/"),
+    ("The Hacker News", "https://feeds.feedburner.com/TheHackersNews"),
+    ("ScienceDaily — Computer Science", "https://www.sciencedaily.com/rss/computers_math/computer_science.xml"),
+    ("Engadget", "https://www.engadget.com/rss.xml"),
     ("NASA", "https://www.nasa.gov/news-release/feed/"),
 ]
 
-# Keep it positive and on-topic: no politics, tragedy or doom.
+# Keep it positive and on-topic: absolutely no politics, tragedy or doom.
 _BLOCK = re.compile(
-    r"\b(trump|biden|harris|election|politic|republican|democrat|congress|senate|"
-    r"war|missile|ukrain|russia|israel|gaza|hamas|abortion|immigration|shooting|"
-    r"killed|dead|death|dies|murder|lawsuit|sued|indict|arrest|layoff|fired|"
-    r"recession|crash(es|ed)?|scandal|controvers|boycott)\b", re.I)
+    r"\b(trump|biden|harris|vance|obama|election|ballot|politic|republican|democrat|gop|"
+    r"maga|congress|senate|white house|partisan|president|governor|war|warfare|missile|"
+    r"ukrain|russia|putin|israel|gaza|hamas|iran|china tariff|abortion|immigration|"
+    r"migrant|deport|tariff|sanction|protest|riot|shooting|gunman|killed|dead|death|dies|"
+    r"murder|assault|lawsuit|sued|indict|arrest|convicted|prison|layoff|fired|recession|"
+    r"crash(es|ed)?|scandal|controvers|boycott|racis\w*|sexual|abuse)\b", re.I)
 
 _UA = "Mozilla/5.0 (compatible; BVTech-Dispatch/1.0; +https://bvtech.org)"
 
@@ -109,13 +113,20 @@ def gather(limit: int = 9) -> list[dict]:
 _SYSTEM = (
     "You are Jordan Polasek, Founder of BVTech LLC — a Texas managed-IT and "
     "cybersecurity company. You write 'The BVTech Dispatch': a short, friendly, "
-    "first-person round-up of what caught your eye in tech today and why it "
-    "matters to a normal small business. You are NOT a news site. RULES:\n"
+    "first-person round-up of the coolest things in technology today and why they "
+    "matter to a normal small business. Think of it as our own smarter, calmer "
+    "'Yahoo for IT' — a safe space for tech and innovation with ZERO politics. RULES:\n"
+    "- Topics we love: AI and machine learning, computer science, cybersecurity and "
+    "ethical hacking, business IT and productivity, cloud, gadgets, and genuinely fun "
+    "science and innovation. If a story is political, divisive, violent, or about "
+    "layoffs/scandals/lawsuits, SKIP it entirely and pick something hopeful and useful.\n"
+    "- This page is strictly APOLITICAL. Never mention politicians, parties, elections, "
+    "wars or culture-war topics, even in passing.\n"
     "- Write ORIGINAL commentary in your own voice. Do NOT reproduce article text.\n"
     "- Paraphrase each story in your own words; you may quote at most 8 words from a "
     "headline, in quotes, with the source named. Never copy a paragraph.\n"
     "- For each pick, add YOUR take: why it's interesting or what it means for a "
-    "small business owner. Be practical and upbeat. No politics, no doom.\n"
+    "small business owner. Be practical, upbeat and apolitical.\n"
     "- Never invent facts; only use the headlines/summaries provided.\n"
     "Reply EXACTLY in this format:\n"
     "TITLE: <catchy dispatch title with today's date after an em dash>\n"

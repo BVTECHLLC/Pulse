@@ -9,19 +9,19 @@
 // minutes, so publishers see at most a few requests per hour per data center.
 
 export const FEEDS = {
-  tech: [["The Verge", "https://www.theverge.com/rss/index.xml"],
-         ["Ars Technica", "https://feeds.arstechnica.com/arstechnica/index"],
+  tech: [["Ars Technica", "https://feeds.arstechnica.com/arstechnica/index"],
          ["TechCrunch", "https://techcrunch.com/feed/"],
-         ["Engadget", "https://www.engadget.com/rss.xml"]],
+         ["Engadget", "https://www.engadget.com/rss.xml"],
+         ["Hacker News", "https://hnrss.org/frontpage?points=100"]],
   tesla: [["Electrek", "https://electrek.co/guides/tesla/feed/"],
           ["Teslarati", "https://www.teslarati.com/feed/"],
           ["Not a Tesla App", "https://www.notateslaapp.com/rss"],
           ["InsideEVs", "https://insideevs.com/rss/news/all/"]],
   space: [["NASA", "https://www.nasa.gov/news-release/feed/"],
           ["Space.com", "https://www.space.com/feeds/news"]],
-  ai: [["The Verge", "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"],
-       ["TechCrunch", "https://techcrunch.com/feed/"],
-       ["Ars Technica", "https://feeds.arstechnica.com/arstechnica/index"]],
+  ai: [["TechCrunch", "https://techcrunch.com/feed/"],
+       ["Ars Technica", "https://feeds.arstechnica.com/arstechnica/index"],
+       ["VentureBeat AI", "https://venturebeat.com/category/ai/feed/"]],
   science: [["ScienceDaily", "https://www.sciencedaily.com/rss/top/technology.xml"],
             ["Live Science", "https://www.livescience.com/feeds/all"],
             ["Popular Science", "https://www.popsci.com/feed/"]],
@@ -39,6 +39,7 @@ export const FEEDS = {
 // Whole words, plus a few stems (\w* suffix) - "war" must not block "warning".
 const BLOCK_WORDS = ["trump", "biden", "harris", "vance", "obama", "democrats?", "republicans?",
   "gop", "maga", "elections?", "ballots?", "congress", "white house", "partisan",
+  "president", "senators?", "governors?", "lawmakers?", "protests?", "riots?", "migrants?",
   "wars?", "warfare", "missiles?", "gaza", "israel", "hamas", "putin", "iran",
   "abortion", "tariffs?", "sanctions?", "kill", "killed", "kills", "killing", "dead",
   "deaths?", "dies", "died", "die", "murders?", "shooting", "shooter", "gunman",
