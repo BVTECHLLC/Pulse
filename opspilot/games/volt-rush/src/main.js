@@ -10,7 +10,7 @@ import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
 import {TRACKS,createTrack} from './shared/tracks.js';
 import {steeringFromControls} from './shared/input.js';
 import {interpolateSnapshot} from './shared/network.js';
-import {RACERS,KART_COLORS,createKart,stepKart,inputForAI,simulatePickups,activateItem,hitKart,stepObstacles,resolveKartCollisions,rankings,LAPS,NET_PROTOCOL,normalizeAngle} from './shared/sim.js';
+import {RACERS,KART_COLORS,createKart,stepKart,inputForAI,simulatePickups,stepGates,activateItem,hitKart,stepObstacles,resolveKartCollisions,rankings,LAPS,NET_PROTOCOL,normalizeAngle} from './shared/sim.js';
 import './style.css';
 
 const $=s=>document.querySelector(s);
@@ -167,26 +167,53 @@ function spawnVisuals(){
   for(const k of state.players){if(!state.visuals.has(k.id)){const v=createKartVisual(k,k.id===state.id);state.visuals.set(k.id,v);scene.add(v);}}
   for(const [id,v]of state.visuals)if(!state.players.some(k=>k.id===id)){scene.remove(v);disposeKart(v);state.visuals.delete(id);}
 }
+function serverMessage(ws,data){
+  if(data.type==='welcome'){
+    state.id=data.id;
+    if(data.protocol!==NET_PROTOCOL){toast('Game updated — refresh your page to race online.');try{ws.close();}catch(e){}return;}
+    if(state._pendingRejoin){ws.send(JSON.stringify({type:'rejoin',room:state._pendingRejoin.room,token:state._pendingRejoin.token,protocol:NET_PROTOCOL}));state._pendingRejoin=null;}
+  }
+  else if(data.type==='joined'){state.room=data.room;state.id=data.id;if(data.token)state.reconnectToken=data.token;state.reconnectFails=0;toast('Room connected!');}
+  else if(data.type==='error'){toast(data.message);if(state.phase==='menu'){try{ws.close();}catch(e){}state.mode='menu';}if(/ended|finished|rejoin that race/i.test(data.message||'')){state.reconnectToken=null;exitToMenu(false);}}
+  else if(data.type==='state')receiveState(data);
+  else if(data.type==='left')exitToMenu();
+}
+function wireSocket(ws){
+  ws.onmessage=event=>{let data;try{data=JSON.parse(event.data);}catch{return;}serverMessage(ws,data);};
+  ws.onerror=()=>{};
+  ws.onclose=()=>{
+    if(state.ws!==ws)return;state.ws=null;
+    if(state.mode==='online'&&state.reconnectToken&&state.room&&state.phase!=='menu'){
+      setTimeout(reconnectOnline,Math.min(5000,400*Math.pow(1.7,state.reconnectFails||0)));
+    }else if(state.mode==='online'){toast('Disconnected from the race server.');exitToMenu(false);}
+  };
+}
+function reconnectOnline(){
+  if(state.mode!=='online'||!state.reconnectToken||!state.room)return;
+  state.reconnectFails=(state.reconnectFails||0)+1;
+  if(state.reconnectFails>9){toast('Could not reconnect — returning to menu.');state.reconnectToken=null;exitToMenu(false);return;}
+  toast(state.reconnectFails>1?('Reconnecting to your race… ('+state.reconnectFails+')'):'Connection dropped — reconnecting…');
+  const proto=location.protocol==='https:'?'wss:':'ws:';
+  const ws=new WebSocket(proto+'//'+location.host+'/kart/ws');state.ws=ws;
+  state._pendingRejoin={room:state.room,token:state.reconnectToken};
+  ws.onopen=()=>{};   // rejoin is sent when 'welcome' arrives
+  wireSocket(ws);
+}
 function connectOnline(msg){
-  if(state.ws){state.ws.close();state.ws=null;}
-  state.mode='online';toast('Connecting to the race server…');
+  if(state.ws){try{state.ws.close();}catch(e){}state.ws=null;}
+  state.mode='online';state.reconnectToken=null;state.reconnectFails=0;state._pendingRejoin=null;
+  toast('Connecting to the race server…');
   const proto=location.protocol==='https:'?'wss:':'ws:';
   const ws=new WebSocket(proto+'//'+location.host+'/kart/ws');state.ws=ws;
   ws.onopen=()=>{ws.send(JSON.stringify({...msg,protocol:NET_PROTOCOL}));};
-  ws.onmessage=event=>{
-    let data;try{data=JSON.parse(event.data);}catch{return;}
-    if(data.type==='welcome'){state.id=data.id;if(data.protocol!==NET_PROTOCOL){toast('Game updated — refresh your page to race online.');ws.close();}}
-    else if(data.type==='joined'){state.room=data.room;state.id=data.id;toast('Room connected!');}
-    else if(data.type==='error'){toast(data.message);if(state.phase==='menu'){ws.close();state.mode='menu';}}
-    else if(data.type==='state')receiveState(data);
-    else if(data.type==='left')exitToMenu();
-  };
-  ws.onerror=()=>toast('Connection failed. Check the multiplayer server and HTTPS.');
-  ws.onclose=()=>{if(state.ws!==ws)return;state.ws=null;if(state.mode==='online'){toast('Disconnected from the race server.');exitToMenu(false);}};
+  wireSocket(ws);
 }
 function receiveState(data){
   if(state.mode!=='online')return;
-  state.lastPacketAt=performance.now();
+  const nowp=performance.now();
+  if(state.lastSnapAt){const gap=(nowp-state.lastSnapAt)/1000;if(gap>.01&&gap<.5)state.snapInterval=(state.snapInterval||gap)*.85+gap*.15;}
+  state.lastSnapAt=nowp;state.lastPacketAt=nowp;
+  state.gates=data.gates||state.gates||[];
   if(data.track!==state.track.id)loadWorld(data.track);
   const oldPhase=state.phase;
   state.phase=data.phase;state.host=data.host;state.room=data.room;state.seconds=data.seconds;state.countdown=data.countdown;state.obstacles=data.obstacles||[];state.finishSeconds=data.finishSeconds;
@@ -218,7 +245,7 @@ function receiveState(data){
 }
 const escapeText=(s)=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function startSolo(){
-  state.mode='solo';state.id='local';state.host='local';state.phase='countdown';state.seconds=0;state.finishSeconds=0;state.soloClock=0;state.soloCountdown=3.5;state.lastCount=4;state.obstacles=[];
+  state.mode='solo';state.id='local';state.host='local';state.phase='countdown';state.seconds=0;state.finishSeconds=0;state.soloClock=0;state.soloCountdown=3.5;state.lastCount=4;state.obstacles=[];state.gateTimers=[0,0,0,0,0];
   loadWorld(state.trackId);
   state.players=[];
   const own=createKart('local',state.name,state.avatar,state.color,0,state.track);state.players.push(own);
@@ -237,8 +264,9 @@ function exitToMenu(close=true){
 function showResults(players){
   if(state.phase!=='finished')state.phase='finished';
   const standings=rankings(players),me=standings.findIndex(k=>k.id===state.id),winner=standings[0];
-  $('#finishTitle').innerHTML=me===0?'YOU <em>DOMINATED.</em>':'RACE <em>COMPLETE.</em>';
-  $('#finishText').textContent=me===0?'The podium belongs to you.':`${winner?.name||'A racer'} takes the win. Refuel and try again.`;
+  const place=me>=0?me+1:standings.length;
+  $('#finishTitle').innerHTML=me===0?'🏆 YOU <em>WON!</em>':`FINISHED <em>#${place}</em>`;
+  $('#finishText').textContent=me===0?`You took the checkered flag${standings[1]?' ahead of '+standings[1].name:''}! 🎉`:`${winner?winner.name:'A racer'} wins — you placed ${ordinal(place)} of ${standings.length}. Run it back!`;
   const own=standings.find(k=>k.id===state.id);
   if(state.mode==='solo'&&own?.completed&&own.finishTime>0){
     const prev=bestTimes[state.track.id];if(!prev||own.finishTime<prev){
@@ -247,12 +275,14 @@ function showResults(players){
     }else $('#finishText').textContent+=' Personal best: '+formatTime(prev);
     renderSelections();
   }
-  $('#resultsBoard').innerHTML=standings.map((k,i)=>`<div class="result-person ${k.id===state.id?'me':''}"><b>${String(i+1).padStart(2,'0')}</b><span class="roster-dot" style="background:${KART_COLORS[k.color]}"></span><strong>${escapeText(k.name)}</strong><small>${k.completed?formatTime(k.finishTime):'DNF'}</small></div>`).join('');
+  const medal=['🥇','🥈','🥉'];
+  $('#resultsBoard').innerHTML=standings.map((k,i)=>`<div class="result-person ${k.id===state.id?'me':''} ${i===0?'win':''}"><b>${i<3?medal[i]:String(i+1).padStart(2,'0')}</b><span class="roster-dot" style="background:${KART_COLORS[k.color]}"></span><strong>${escapeText(k.name)}${k.ai?' <small class="ai-tag">AI</small>':''}</strong><small>${k.completed?formatTime(k.finishTime):'DNF'}</small></div>`).join('');
   $('#again').textContent=state.mode==='solo'?'RESTART QUICK RACE':state.host===state.id?'SET UP REMATCH':'WAIT FOR HOST';
   $('#again').disabled=state.mode==='online'&&state.host!==state.id;
   sound.play('finish');for(const racer of players.slice(0,8))fx?.burst('finish',racer.x,racer.z,3.2,54,1.65);show('results');
 }
 function formatTime(t){const m=Math.floor(t/60),s=Math.floor(t%60),ds=Math.floor((t%1)*10);return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+'.'+ds;}
+function ordinal(n){const s=['th','st','nd','rd'],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0]);}
 function getInput(){return {
   gas:state.mobile.gas||state.keys.has('ArrowUp')||state.keys.has('KeyW'),
   brake:state.mobile.brake||state.keys.has('ArrowDown')||state.keys.has('KeyS'),
@@ -276,7 +306,15 @@ for(const b of document.querySelectorAll('.touch')){
   const press=e=>{e.preventDefault();if(key==='item')state.itemQueued=true;else state.mobile[key]=true;b.classList.add('pressed');try{b.setPointerCapture(e.pointerId);}catch{}};
   const release=e=>{e.preventDefault();if(key!=='item')state.mobile[key]=false;b.classList.remove('pressed');};
   b.addEventListener('pointerdown',press);b.addEventListener('pointerup',release);b.addEventListener('pointercancel',release);b.addEventListener('lostpointercapture',release);
+  b.addEventListener('contextmenu',e=>e.preventDefault());
 }
+// Mobile hardening: stop the iOS/Android long-press "save image / copy / open" callout
+// and block page scroll/pinch-zoom while touching the track or the controls.
+document.addEventListener('contextmenu',e=>{if(e.target.closest('canvas,.touch,.touch-controls,.hud'))e.preventDefault();},{passive:false});
+['touchstart','touchmove'].forEach(ev=>document.addEventListener(ev,e=>{
+  if(e.target.closest('canvas,.touch,.touch-controls'))try{e.preventDefault();}catch(_){}
+},{passive:false}));
+window.addEventListener('gesturestart',e=>e.preventDefault());
 function stepSolo(dt){
   if(state.phase==='countdown'){
     state.soloCountdown-=dt;
@@ -287,13 +325,13 @@ function stepSolo(dt){
     return;
   }
   if(state.phase!=='racing')return;
-  state.seconds+=dt;
+  state.seconds+=dt;stepGates(state.gateTimers,dt);
   const input=getInput();
   for(const k of state.players){
-    const control=k.ai?inputForAI(k,state.track,state.seconds):input;
+    const control=k.ai?inputForAI(k,state.track,state.seconds,state.players):input;
     stepKart(k,control,dt,state.track);
     const oldItem=k.item;
-    simulatePickups(k,state.track,state.seconds,Math.random,state.players);
+    simulatePickups(k,state.track,state.seconds,Math.random,state.players,state.gateTimers);
     if(!oldItem&&k.item&&k.id===state.id){sound.play('pickup');fx?.burst('boost',k.x,k.z,2.7,12,.35);}
     if(control.item&&k.item){const used=activateItem(k,state.players,state.seconds,state.obstacles);itemEffect(k,used,k.id===state.id);}
     if(k.ai&&k.item&&Math.random()<dt*.2){const used=activateItem(k,state.players,state.seconds,state.obstacles);itemEffect(k,used,false);}
@@ -315,8 +353,11 @@ function stepOnline(dt,t){
   }
   if(state.phase!=='racing')return;
   // Visual smoothing only: physics and pickups remain authoritative on Node.
-  const f=Math.min(1,dt*15);
-  for(const pair of state.targets.values()){
+  // Interval-based interpolation (uses the measured snapshot gap) replaces fixed
+  // exponential smoothing, so karts glide instead of catching-up-then-waiting.
+  const interval=Math.max(.03,Math.min(.2,state.snapInterval||.066));
+  for(const [id,pair] of state.targets){
+    const f=Math.min(1,dt/(id===state.id?interval*.55:interval));   // your own kart tracks tighter
     pair.current=interpolateSnapshot(pair.current,pair.target,f);
   }
   const input=getInput();
@@ -363,7 +404,7 @@ function animate(){
   requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.05);renderedTime+=dt;
   if(state.mode==='solo')stepSolo(dt);
   if(state.mode==='online')stepOnline(dt,renderedTime);
-  state.world?.update(renderedTime);
+  state.world?.update(renderedTime,state.mode==='online'?state.gates:state.gateTimers);
   // Rolling 3-second GPU/load approximation. One-way emergency resolution reduction
   // during races; safe recovery only during menus, avoiding mobile oscillation.
   if(!document.hidden){fpsTime+=dt;frames++;}

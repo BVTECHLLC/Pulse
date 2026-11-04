@@ -64,3 +64,15 @@ html[data-screen="menu"] .menu-card{border-color:#61eefe77;box-shadow:0 12px 42p
 .track-card.selected .track-art{filter:saturate(1.2)}
 @media(max-width:800px){.avatar{min-height:88px}.avatar-portrait{width:50px;height:50px}.track-card{min-height:97px}.track-art{height:42px}}
 @media(any-pointer:coarse) and (orientation:landscape) and (max-height:500px){.avatar{min-height:70px}.avatar-portrait{width:38px;height:38px}.track-card{min-height:90px}.track-art{height:39px}}
+/* V4: block the long-press "save/copy/open" callout + page scroll on touch, polish the win screen, enlarge controls on phones held upright */
+html,body{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+canvas{touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.result-person.win{border:1px solid #f5be5880;background:linear-gradient(90deg,#f5be5826,#0b2138)}
+.result-person .ai-tag{opacity:.45;font-weight:400;font-size:9px;margin-left:5px}
+@media(pointer:coarse) and (min-height:520px){
+  .touch{width:84px!important;height:84px!important;font-size:27px!important}
+  .actions{grid-template-columns:82px 104px!important;grid-template-rows:72px 72px!important;gap:11px!important}
+  .touch.smallTouch,.touch.itemTouch,.touch.goTouch{height:72px!important}
+  .touch.goTouch{font-size:26px!important}.touch.itemTouch{font-size:33px!important}
+  .steering{gap:13px!important}
+}

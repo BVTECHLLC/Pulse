@@ -22,9 +22,9 @@ async function until(c,fn,timeout=8500){const start=Date.now();while(Date.now()-
 const host=await client(),friend=await client();let run;
 try{
   await until(host,m=>m.type==='welcome');await until(friend,m=>m.type==='welcome');
-  host.send({type:'create',protocol:3,name:'Host Smoke',avatar:0,color:1,track:'coast'});
+  host.send({type:"create",protocol:4,name:'Host Smoke',avatar:0,color:1,track:'coast'});
   const j=await until(host,m=>m.type==='joined');assert.equal(j.room.length,5);
-  friend.send({type:'join',protocol:3,name:'Friend Smoke',room:j.room,avatar:2,color:3});
+  friend.send({type:'join',protocol:4,name:'Friend Smoke',room:j.room,avatar:2,color:3});
   await until(friend,m=>m.type==='joined');await until(host,m=>m.type==='state'&&m.players.length===2);
   host.send({type:'start'});
   await until(host,m=>m.type==='state'&&m.phase==='countdown');

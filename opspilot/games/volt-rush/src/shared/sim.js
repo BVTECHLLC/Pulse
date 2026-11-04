@@ -1,6 +1,6 @@
 import {createTrack} from './tracks.js';
 export const LAPS=3;
-export const NET_PROTOCOL=3;
+export const NET_PROTOCOL=4;
 export const RACERS = [
   {id:'nova',name:'Nova',tag:'The comet',suit:0x39d8fa,helmet:0xe6faff,skin:0xdfad8b,style:'visor'},
   {id:'jax',name:'Jax',tag:'Street legend',suit:0xfd9d3c,helmet:0x222d43,skin:0x8e593e,style:'mohawk'},
@@ -32,15 +32,35 @@ export function createKart(id,name,avatar=0,color=0,index=0,track=createTrack())
     overdriveTimer:0,itemSerial:0,useSerial:0,usedItem:null,hitSerial:0,prevX:p.x+p.nx*row,prevZ:p.z+p.nz*row,
     ai:false,points:0,emote:'',emoteTimer:0};
 }
-export function inputForAI(k,track,seconds){
+export function inputForAI(k,track,seconds,all=[]){
   const ahead=clamp(12+k.speed*.35,14,26), p=track.sample(k.s+ahead);
-  const lane=Math.sin(seconds*.27+k.avatar*2.1)*1.5;
+  // Each bot holds its own racing lane so they fan out instead of stacking on one line.
+  const lane=Math.sin(seconds*.45+k.avatar*2.1)*2.3 + (((k.avatar%3)-1)*1.6);
   const dx=p.x+p.nx*lane-k.x,dz=p.z+p.nz*lane-k.z;
+  // Local avoidance: steer away from any rival that's close, so bots don't grind on each other.
+  let avoid=0, crowdedAhead=false;
+  for(let i=0;i<all.length;i++){
+    const o=all[i]; if(!o||o.id===k.id||o.completed)continue;
+    const rx=o.x-k.x,rz=o.z-k.z,dd=Math.hypot(rx,rz);
+    if(dd<8){
+      const side=rx*Math.cos(k.heading)-rz*Math.sin(k.heading);   // >0 => rival on my right
+      const fwd =rx*Math.sin(k.heading)+rz*Math.cos(k.heading);   // >0 => rival ahead of me
+      avoid += (side>0?-1:1)*(1-dd/8)*(fwd>0?1.25:.5);
+      if(fwd>0 && dd<5.2) crowdedAhead=true;
+    }
+  }
   const error=normalizeAngle(Math.atan2(dx,dz)-k.heading);
   // Steering convention: +1 is RIGHT as seen from the rear chase camera.
-  // Positive heading angles rotate visually LEFT (Three.js camera looks down +Z),
-  // so AI must negate its world-space heading error just like human controls.
-  return {gas:true,brake:Math.abs(error)>1.15,steer:clamp(-error*2.35,-1,1),drift:Math.abs(error)>.32 && k.speed>20};
+  let steer=clamp(-error*2.35 + avoid*1.35, -1, 1);
+  // Unstick: if a bot is pinned near-stationary while trying to drive, reverse and
+  // turn out of the jam for a moment (brake with ~0 speed reverses in stepKart).
+  k.aiStuck = (Math.abs(k.speed)<2.4) ? ((k.aiStuck||0)+1) : 0;
+  if(k.aiStuck>16){
+    if(k.aiStuck>52) k.aiStuck=0;   // give the forward plan another shot after ~1.2s
+    const out = avoid!==0 ? Math.sign(avoid) : (k.avatar%2?1:-1);
+    return {gas:false,brake:true,steer:clamp(out,-1,1),drift:false};
+  }
+  return {gas:true,brake:Math.abs(error)>1.2,steer,drift:!crowdedAhead && Math.abs(error)>.34 && k.speed>22};
 }
 export function stepKart(k,input,dt,track){
   if(k.completed)return;
@@ -120,17 +140,21 @@ export function hitKart(k){
  * Full road width is intentional: no invisible precision-hit requirement on touchscreens.
  * A per-gate-per-lap key prevents stationary farming, while a short cooldown blocks spam.
  */
-export function simulatePickups(k,track,seconds,rng=Math.random,players=[]){
-  if(k.completed||k.item||seconds-k.lastItemAt<1.15)return false;
+export const GATE_RESPAWN=3.0;   // seconds a used item box stays gone (Mario-Kart style)
+export function stepGates(gateTimers,dt){if(gateTimers)for(let i=0;i<gateTimers.length;i++)if(gateTimers[i]>0)gateTimers[i]=Math.max(0,gateTimers[i]-dt);}
+export function simulatePickups(k,track,seconds,rng=Math.random,players=[],gateTimers=null){
+  if(k.completed||k.item||seconds-k.lastItemAt<.8)return false;
   const lap=Math.floor(Math.max(0,k.progress)/track.length);
   for(let i=0;i<ITEM_GATES.length;i++){
+    if(gateTimers&&gateTimers[i]>0)continue;       // Mario-Kart: box was just taken — hidden for everyone until it respawns
     const at=track.length*ITEM_GATES[i];
     let d=Math.abs(k.s-at);d=Math.min(d,track.length-d);
-    const key=`${lap}:${i}`;
+    const key=`${lap}:${i}`;                        // this kart gets one box per gate per lap (no double-dip on one crossing)
     if(d<Math.max(4.8,Math.abs(k.speed)*.14)&&k.lastPickupKey!==key){
       const order=players.length?rankings(players).findIndex(p=>p.id===k.id)+1:1;
       k.item=rollItem(order||1,players.length||8,rng);
       k.lastItemAt=seconds;k.lastPickupKey=key;k.itemSerial=(k.itemSerial||0)+1;
+      if(gateTimers)gateTimers[i]=GATE_RESPAWN;
       return true;
     }
   }
@@ -202,10 +226,10 @@ export function resolveKartCollisions(karts){
     if(d<.0001){const prevDistance=Math.hypot(rx,rz);if(prevDistance>.0001){dx=rx/prevDistance;dz=rz/prevDistance;}else{const ang=a.heading||0;dx=Math.cos(ang);dz=-Math.sin(ang);}d=0;}
     const nx=dx/(d||1),nz=dz/(d||1),correction=(diameter-d)*.505;
     a.x-=nx*correction;a.z-=nz*correction;b.x+=nx*correction;b.z+=nz*correction;
-    // Reduce closing velocity while allowing tactical blocking and gentle bumping.
+    // Forgiving contact: bump and slide past instead of bogging down and sticking.
     const close=Math.abs(a.speed-b.speed);
-    const penalty=clamp(.92-close*.005,.76,.94);
+    const penalty=clamp(.975-close*.0028,.9,.99);
     a.speed*=penalty;b.speed*=penalty;
-    a.driftCharge*=.95;b.driftCharge*=.95;
+    a.driftCharge*=.97;b.driftCharge*=.97;
   }
 }

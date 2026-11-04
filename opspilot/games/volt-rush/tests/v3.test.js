@@ -112,7 +112,7 @@ test('all six circuits finish with AI, collisions, and pickups enabled',()=>{
 });
 
 test('protocol guard rejects stale clients, Node binds to Docker network',()=>{
-  assert.equal(NET_PROTOCOL,3);
+  assert.equal(NET_PROTOCOL,4);
   const server=readFileSync(new URL('../server/index.js',import.meta.url),'utf8');
   assert.ok(server.includes('msg.protocol!==NET_PROTOCOL'));
   assert.ok(server.includes("process.env.HOST||'0.0.0.0'"));
