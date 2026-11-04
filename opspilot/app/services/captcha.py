@@ -193,19 +193,30 @@ HONEYPOT_HTML = (
 )
 
 
+_SCRIPT_RE = re.compile(r'<script data-bvhuman="[^"]*">.*?</script>\s*', re.S)
+
+
 def inject(html: str) -> tuple[str, bool]:
-    """Idempotently add the visible bvHuman widget script to any page that has a
-    contact/lead form. Matches pages that post to the lead endpoint OR contain an
-    email form (so a plain /contact page is covered too). Returns (html, changed)."""
-    if not html or MARKER in html:
+    """Idempotently ensure the CURRENT bvHuman widget is on any page with a
+    contact/lead form. Strips any previous widget first, so republishing
+    UPGRADES an older (e.g. invisible) widget in place instead of skipping the
+    page. Matches lead-endpoint pages and plain email/contact forms. Returns
+    (html, changed) where changed is False when the page is already current."""
+    if not html:
         return html, False
-    low = html.lower()
-    has_lead = "/tools-api/lead" in low or "public-tools/lead" in low
-    has_email_form = "<form" in low and 'type="email"' in low
-    if not (has_lead or has_email_form):
-        return html, False
-    for tag in ("</body>", "</html>"):
-        i = low.rfind(tag)
-        if i != -1:
-            return html[:i] + WIDGET_JS + "\n" + html[i:], True
-    return html + "\n" + WIDGET_JS, True
+    orig = html
+    work = _SCRIPT_RE.sub("", html) if "data-bvhuman" in html else html
+    low = work.lower()
+    needs = (("/tools-api/lead" in low or "public-tools/lead" in low)
+             or ("<form" in low and 'type="email"' in low))
+    if needs:
+        placed = False
+        for tag in ("</body>", "</html>"):
+            i = work.lower().rfind(tag)
+            if i != -1:
+                work = work[:i] + WIDGET_JS + "\n" + work[i:]
+                placed = True
+                break
+        if not placed:
+            work = work + "\n" + WIDGET_JS
+    return work, (work != orig)
