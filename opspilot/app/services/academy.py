@@ -2408,7 +2408,191 @@ def profile_view(db: Session, user: User) -> dict:
         "badges": [{**BADGES[b], "id": b} for b in _badges(prof) if b in BADGES],
         "all_badges": [{**v, "id": k, "earned": k in _badges(prof)}
                        for k, v in BADGES.items()],
+        "certificates": certificates_for(db, user),
     }
+
+
+# --------------------------------------------------------------------------- #
+# Certificates (v1.126) — real, shareable, verifiable completion certificates.
+# Derived from completions (no new table): a module certificate is earned when
+# every lesson in that module is complete; the Graduate certificate when ALL
+# lessons are complete. Each carries an HMAC-signed code so anyone can verify it
+# at a public URL (/academy/certificate/<code>) without us storing per-cert rows.
+# --------------------------------------------------------------------------- #
+import base64 as _b64      # noqa: E402
+import hashlib as _hl      # noqa: E402
+import hmac as _hmac       # noqa: E402
+
+
+def _cert_defs() -> dict:
+    """cert_id -> {title, short, kind, lessons[...]}. Built from MODULES so new
+    lessons/modules extend the certificate program automatically."""
+    defs: dict = {}
+    for m in MODULES:
+        defs[f"module:{m['id']}"] = {
+            "title": f"{m['title']} — Module Certificate",
+            "short": m["title"], "kind": "module",
+            "lessons": [l["id"] for l in m["lessons"]],
+        }
+    defs["grad:all"] = {
+        "title": "BVTech Cyber Academy — Certificate of Completion",
+        "short": "Cyber Academy Graduate", "kind": "graduate",
+        "lessons": list(_LESSONS),
+    }
+    return defs
+
+
+CERT_DEFS = _cert_defs()
+
+
+def _cert_secret() -> bytes:
+    from ..core.config import get_settings
+    return (get_settings().SECRET_KEY or "bvtech").encode()
+
+
+def cert_code(user_id: int, cert_id: str) -> str:
+    raw = f"{user_id}.{cert_id}"
+    sig = _hmac.new(_cert_secret(), raw.encode(), _hl.sha256).hexdigest()[:16]
+    body = _b64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+    return f"{body}.{sig}"
+
+
+def _decode_cert_code(code: str) -> tuple[int, str] | None:
+    try:
+        body, sig = (code or "").rsplit(".", 1)
+        raw = _b64.urlsafe_b64decode(body + "=" * (-len(body) % 4)).decode()
+        exp = _hmac.new(_cert_secret(), raw.encode(), _hl.sha256).hexdigest()[:16]
+        if not _hmac.compare_digest(sig, exp):
+            return None
+        uid, cert_id = raw.split(".", 1)
+        return int(uid), cert_id
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _earned_certs(db: Session, user: User) -> dict:
+    """cert_id -> issued_on datetime, for every certificate this user has earned
+    (all required lessons complete). Re-derived live, so an incomplete learner
+    never validates."""
+    done = {c.item_id: c.created_at for c in db.query(AcademyCompletion)
+            .filter(AcademyCompletion.user_id == user.id,
+                    AcademyCompletion.kind == "lesson")}
+    out: dict = {}
+    for cid, d in CERT_DEFS.items():
+        need = d["lessons"]
+        if need and all(l in done for l in need):
+            out[cid] = max(done[l] for l in need)
+    return out
+
+
+def _recipient_name(user: User) -> str:
+    return (user.full_name or (user.email or "Learner").split("@")[0]).strip() or "Learner"
+
+
+def certificates_for(db: Session, user: User) -> list[dict]:
+    earned = _earned_certs(db, user)
+    name = _recipient_name(user)
+    out = [{"id": cid, "title": CERT_DEFS[cid]["title"], "short": CERT_DEFS[cid]["short"],
+            "kind": CERT_DEFS[cid]["kind"], "name": name,
+            "issued_on": issued.date().isoformat(), "code": cert_code(user.id, cid),
+            "url": f"/academy/certificate/{cert_code(user.id, cid)}"}
+           for cid, issued in earned.items()]
+    out.sort(key=lambda c: (c["kind"] == "graduate", c["id"]))
+    return out
+
+
+def certificate_by_code(db: Session, code: str) -> dict | None:
+    dec = _decode_cert_code(code)
+    if not dec:
+        return None
+    uid, cert_id = dec
+    if cert_id not in CERT_DEFS:
+        return None
+    user = db.get(User, uid)
+    if not user:
+        return None
+    earned = _earned_certs(db, user)
+    if cert_id not in earned:
+        return None
+    d = CERT_DEFS[cert_id]
+    return {"id": cert_id, "title": d["title"], "short": d["short"], "kind": d["kind"],
+            "name": _recipient_name(user), "issued_on": earned[cert_id].date().isoformat(),
+            "code": code}
+
+
+def render_certificate_html(cert: dict) -> str:
+    """A self-contained, printable, shareable certificate page. Verifiable: it is
+    only served when certificate_by_code re-confirmed the completion."""
+    import html as _h
+    from datetime import date as _date
+    name = _h.escape(cert["name"]); title = _h.escape(cert["title"])
+    short = _h.escape(cert["short"]); code = _h.escape(cert["code"])
+    try:
+        y, m, dd = cert["issued_on"].split("-")
+        issued = _date(int(y), int(m), int(dd)).strftime("%B %-d, %Y")
+    except Exception:  # noqa: BLE001
+        issued = cert["issued_on"]
+    grad = cert["kind"] == "graduate"
+    seal = "🎓" if grad else "⚡"
+    return f"""<!doctype html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>{short} — BVTech Cyber Academy Certificate</title>
+<meta name=robots content="noindex">
+<meta name=description content="Verified BVTech Cyber Academy certificate awarded to {name}.">
+<style>
+:root{{--ink:#0e1b2e;--gold:#c8912a;--gold2:#f2c766;--paper:#fbf7ee}}
+*{{box-sizing:border-box}}
+body{{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+gap:18px;padding:24px 14px;background:radial-gradient(1200px 600px at 50% -10%,#15325c,#0a1424 60%);
+font-family:Georgia,'Times New Roman',serif;color:var(--ink)}}
+.cert{{width:min(920px,100%);aspect-ratio:1.414/1;background:
+linear-gradient(135deg,#fffdf8,var(--paper));border-radius:14px;position:relative;overflow:hidden;
+box-shadow:0 30px 90px rgba(0,0,0,.55);padding:clamp(22px,5vw,60px);display:flex;flex-direction:column;
+align-items:center;justify-content:center;text-align:center}}
+.cert::before{{content:"";position:absolute;inset:14px;border:2px solid var(--gold);border-radius:8px;pointer-events:none}}
+.cert::after{{content:"";position:absolute;inset:20px;border:1px solid rgba(200,145,42,.4);border-radius:5px;pointer-events:none}}
+.seal{{font-size:clamp(30px,6vw,52px);line-height:1}}
+.brand{{letter-spacing:.32em;font-size:clamp(9px,1.6vw,12px);font-weight:bold;text-transform:uppercase;
+color:var(--gold);margin:10px 0 4px}}
+.ttl{{font-size:clamp(13px,2.3vw,19px);letter-spacing:.18em;text-transform:uppercase;color:#4a5b72;margin:0}}
+.awarded{{margin:clamp(14px,3vw,26px) 0 6px;font-size:clamp(11px,1.7vw,14px);color:#6a7890;font-style:italic}}
+.name{{font-size:clamp(30px,7vw,60px);color:var(--ink);margin:0 0 6px;font-weight:bold;
+border-bottom:2px solid var(--gold);padding-bottom:8px;display:inline-block;max-width:92%}}
+.for{{margin:clamp(14px,3vw,24px) 0 0;font-size:clamp(12px,1.9vw,16px);color:#2b3a52;line-height:1.5;max-width:80%}}
+.for b{{color:var(--ink)}}
+.meta{{display:flex;gap:clamp(18px,6vw,70px);margin-top:clamp(18px,4vw,34px);flex-wrap:wrap;justify-content:center}}
+.meta div{{text-align:center}}
+.meta .k{{font-size:clamp(8px,1.3vw,10px);letter-spacing:.18em;text-transform:uppercase;color:#8a96a8}}
+.meta .v{{font-size:clamp(11px,1.7vw,14px);color:var(--ink);border-top:1px solid #c9cfd8;padding-top:5px;margin-top:4px}}
+.sig{{font-family:'Segoe Script','Brush Script MT',cursive;font-size:clamp(16px,2.6vw,22px);color:#1b2b45}}
+.verify{{display:flex;align-items:center;gap:7px;font-family:system-ui,sans-serif;font-size:13px;color:#2fbf71;
+background:#fff;border:1px solid #cfe9d8;border-radius:999px;padding:7px 15px}}
+.code{{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#8a96a8;word-break:break-all;max-width:min(600px,92%);text-align:center}}
+.actions{{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;font-family:system-ui,sans-serif}}
+.actions a,.actions button{{font:inherit;font-size:14px;font-weight:600;cursor:pointer;border-radius:10px;
+border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#eaf1ff;padding:10px 18px;text-decoration:none}}
+.actions .p{{background:linear-gradient(135deg,var(--gold2),var(--gold));border:0;color:#2a1c00}}
+@media print{{body{{background:#fff;padding:0}}.actions,.verify,.code{{display:none}}.cert{{box-shadow:none}}}}
+</style></head><body>
+<div class=cert role=img aria-label="Certificate for {name}">
+  <div class=seal>{seal}</div>
+  <div class=brand>BVTech Cyber Academy</div>
+  <p class=ttl>Certificate {"of Completion" if grad else "of Achievement"}</p>
+  <p class=awarded>This certifies that</p>
+  <div class=name>{name}</div>
+  <p class=for>has successfully completed <b>{short}</b>{" and every module of the BVTech Cyber Academy" if grad else ""}, demonstrating hands-on skill in modern cybersecurity.</p>
+  <div class=meta>
+    <div><div class=v>{issued}</div><div class=k>Date Issued</div></div>
+    <div><div class="v sig">Jordan Polasek</div><div class=k>BVTech · Instructor</div></div>
+  </div>
+</div>
+<div class=verify>✓ Verified authentic · bvtech.org</div>
+<div class=code>Verification code: {code}</div>
+<div class=actions>
+  <button class=p onclick="window.print()">🖨️ Print / Save PDF</button>
+  <a href="/academy">← Back to Academy</a>
+</div>
+</body></html>"""
 
 
 def catalog_view(db: Session, user: User) -> dict:

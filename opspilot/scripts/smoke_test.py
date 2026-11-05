@@ -6077,6 +6077,31 @@ def main():
         print("login doors: chooser(/) + /login + open /join; staff->/dashboard, "
               "client->/portal, self-signup student->/academy (isolated tenant), dup-guard OK")
 
+        # ---- v1.126: real, verifiable completion certificates ----
+        import datetime as _dtime
+        from app.services import academy as _acad
+        from app.models import AcademyCompletion as _AC
+        _cdb = _SLsch()
+        _learner = _cdb.query(User).filter(User.email == "player1@example.org").first()
+        # before any lessons: no certificates
+        assert _stu.get("/api/academy/certificates").json()["certificates"] == []
+        # complete every lesson in the first module -> that module's certificate
+        _mod0 = _acad.MODULES[0]
+        for _l in _mod0["lessons"]:
+            _cdb.add(_AC(user_id=_learner.id, item_id=_l["id"], kind="lesson", score=1, xp=50,
+                         created_at=_dtime.datetime.now(_dtime.timezone.utc)))
+        _cdb.commit(); _cdb.close()
+        _certs = _stu.get("/api/academy/certificates").json()["certificates"]
+        _mcert = next((x for x in _certs if x["id"] == f"module:{_mod0['id']}"), None)
+        assert _mcert, _certs
+        # the public certificate page renders and is verifiable...
+        _cp = c.get(_mcert["url"])
+        assert _cp.status_code == 200 and "Certificate" in _cp.text and _mod0["title"] in _cp.text
+        # ...but a tampered code is rejected (404), so certs can't be forged
+        _bad = _mcert["code"][:-1] + ("0" if _mcert["code"][-1] != "0" else "1")
+        assert c.get(f"/academy/certificate/{_bad}").status_code == 404, "forged cert accepted!"
+        print("academy certificates: earned per module, verifiable public page, forgery rejected OK")
+
         # ===================== v1.3: compliance + streak savers + AI questions ==========
         import datetime as _dt13
 
@@ -8122,7 +8147,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.125.0"
+    assert _gs101().APP_VERSION == "1.126.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8132,7 +8157,7 @@ def main():
     from app.services import pages_explore as _PE, pages_labs as _PL, pages_tools as _PT
     # (1) pages build standalone (titles/desc/bodies present, Jordan Polasek authored)
     assert "Explore" in _PE.TITLE and "Jordan Polasek" in _PE.body()
-    assert "Lightning Labs" in _PL.TITLE and len(_PT.all_tools()) == 4
+    assert "Lightning Labs" in _PL.TITLE and len(_PT.all_tools()) == 7
     for _t in _PT.all_tools():
         assert _t["slug"] and _t["title"] and _t["body"] and _t["card_excerpt"]
     assert "/tools-api/net/whoami" in _PT.whats_my_ip()["body"]
@@ -8200,7 +8225,7 @@ def main():
         _J102._HTTP = _http102
         _CF102.purge_urls = lambda *a, **k: {"ok": True}
         _rp = _D102.publish(None)
-        assert _rp["ok"] and len(_rp["pages"]) == 10, _rp
+        assert _rp["ok"] and len(_rp["pages"]) == 13, _rp
         assert "explore/index.html" in _sent102 and "academy/lightning-labs/index.html" in _sent102
         assert "graveyard-shift/index.html" in _sent102
         # v1.118: local service-area pages (Houston/Austin/San Antonio) +
@@ -8213,6 +8238,13 @@ def main():
         assert "bvHuman-v1" in _hou and "/tools-api/lead" in _hou, \
             "CAPTCHA (bvHuman) widget not injected onto the lead-form page"
         assert "tools/whats-my-ip/index.html" in _sent102 and "tools/speed-test/index.html" in _sent102
+        # v1.126: new client-side tools published with FAQ schema + viewport
+        assert ("tools/password-strength/index.html" in _sent102
+                and "tools/password-generator/index.html" in _sent102
+                and "tools/subnet-calculator/index.html" in _sent102), "new tools not published"
+        assert "FAQPage" in _sent102["tools/password-strength/index.html"], "new tool FAQ schema missing"
+        assert 'name="viewport"' in _sent102["tools/subnet-calculator/index.html"] and \
+            "width=device-width" in _sent102["tools/subnet-calculator/index.html"], "viewport missing"
         for _w in ("index", "feeds", "explore", "netinfo", "labs", "daily"):
             assert f"worker-tools/{_w}.js" in _sent102, _w
         _exp = _sent102["explore/index.html"]
@@ -8244,7 +8276,7 @@ def main():
     assert _sr100.REPAIR_EPOCH == "1.112.0"
     import inspect as _insp102
     assert "destination" in _insp102.getsource(_sr100.run_full_repair)
-    print("v1.102: Explore hub, Lightning Labs (edge-graded), 4 new tools, edge API, "
+    print("v1.102: Explore hub, Lightning Labs (edge-graded), 7 tools, edge API, "
           "additive idempotent nav, 404 telemetry + broken-link scan, one-commit publish OK")
 
     # ==== v1.103.0: moderation engine + BVTech Answers community ====
@@ -8484,7 +8516,7 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.125.0"
+    assert _gs101().APP_VERSION == "1.126.0"
     assert _sr100.REPAIR_EPOCH == "1.112.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
@@ -8520,7 +8552,7 @@ def main():
     assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
     # site nav points to the game home
     assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
-    assert _gs101().APP_VERSION == "1.125.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.126.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
           "Explore features it with a Halloween hero, republish forced OK")
 
@@ -8540,11 +8572,11 @@ def main():
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
     assert "xp-papel" in _xp3 and "Happy Thanksgiving" in _xp3, "seasonal Explore theme missing"
-    assert _gs101().APP_VERSION == "1.125.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.126.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
 
-    print("\n=== OpsPilot v1.125.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.126.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

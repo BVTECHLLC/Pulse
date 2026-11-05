@@ -66,6 +66,12 @@ border-radius:14px;padding:14px;font-size:15px;margin-bottom:10px;cursor:pointer
 .badge{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:12px 8px;text-align:center}
 .badge .i{font-size:30px}.badge b{display:block;font-size:12px;margin-top:4px}.badge .d{font-size:10.5px;color:var(--mut)}
 .badge.locked{opacity:.35;filter:grayscale(1)}
+/* certificates */
+.cert-row{display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,rgba(242,199,102,.08),var(--card2));border:1px solid rgba(242,199,102,.35);border-radius:14px;padding:12px 14px;margin-bottom:10px;text-decoration:none;color:inherit}
+.cert-row:active{transform:scale(.99)}
+.cert-row .ci{font-size:26px}
+.cert-row .cc{flex:1;min-width:0}.cert-row .cc b{display:block;font-size:14px}.cert-row .cc span{font-size:11px;color:var(--mut)}
+.cert-row .cgo{font-size:12px;font-weight:800;color:#f2c766;white-space:nowrap}
 /* bottom nav */
 nav{position:fixed;bottom:0;left:0;right:0;background:rgba(13,19,44,.96);backdrop-filter:blur(10px);
 border-top:1px solid var(--line);display:flex;z-index:50;padding-bottom:env(safe-area-inset-bottom)}
@@ -179,6 +185,8 @@ font-size:14px;cursor:pointer;flex:none}
       <div class="xpbar"><div id="m-xpbar" style="width:0%"></div></div>
       <div class="mut" id="m-active"></div>
     </div>
+    <h2>🎓 Certificates</h2>
+    <div id="m-certs"></div>
     <h2>Badges</h2>
     <div class="badges" id="m-badges"></div>
     <div style="margin-top:16px"><a class="btn ghost" id="back-portal" href="/portal" style="text-decoration:none">← Back to portal</a></div>
@@ -650,7 +658,13 @@ function renderMe(){if(!PROF)return;
   $('m-xpbar').style.width=pct+'%';
   $('m-active').textContent=PROF.active_today?'✅ Streak safe — you trained today.':'⏳ Complete anything today to keep your streak.';
   $('m-badges').innerHTML=(PROF.all_badges||[]).map(b=>`<div class="badge ${b.earned?'':'locked'}">
-    <div class="i">${b.icon}</div><b>${esc(b.name)}</b><div class="d">${esc(b.desc)}</div></div>`).join('')}
+    <div class="i">${b.icon}</div><b>${esc(b.name)}</b><div class="d">${esc(b.desc)}</div></div>`).join('');
+  var certs=PROF.certificates||[];
+  $('m-certs').innerHTML=certs.length?certs.map(c=>`<a class="cert-row" href="${esc(c.url)}" target="_blank" rel="noopener">
+    <span class="ci">${c.kind==='graduate'?'🎓':'⚡'}</span>
+    <span class="cc"><b>${esc(c.short)}</b><span>Issued ${esc(c.issued_on)} · tap to view &amp; print</span></span>
+    <span class="cgo">View →</span></a>`).join('')
+    :`<div class="mut" style="padding:4px 0 2px">Finish every lesson in a module to earn your first certificate — complete all modules for the full BVTech Cyber Academy certificate. 🎓</div>`}
 
 load();
 </script>

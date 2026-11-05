@@ -52,6 +52,12 @@ def me(db: Session = Depends(get_db), user: User = Depends(current_user)):
     return academy.profile_view(db, user)
 
 
+@router.get("/certificates")
+def certificates(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """The learner's earned, shareable completion certificates."""
+    return {"certificates": academy.certificates_for(db, user)}
+
+
 @router.get("/catalog")
 def catalog(db: Session = Depends(get_db), user: User = Depends(current_user)):
     out = academy.catalog_view(db, user)

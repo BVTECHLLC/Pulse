@@ -5,11 +5,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
 
 from ...core.config import get_settings
+from ...core.db import get_db
 
 router = APIRouter(tags=["ui"])
 _templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[2] / "templates"))
@@ -40,6 +42,24 @@ def human_js():
     from ...services import captcha
     return Response(content=captcha.WIDGET_SRC_JS, media_type="application/javascript; charset=utf-8",
                     headers={"Cache-Control": "public, max-age=86400"})
+
+
+@router.get("/academy/certificate/{code}", response_class=HTMLResponse, include_in_schema=False)
+def academy_certificate(code: str, db: Session = Depends(get_db)):
+    """Public, shareable, verifiable Academy certificate. Only renders when the
+    HMAC-signed code re-confirms the learner actually completed the requirement."""
+    from ...services import academy
+    cert = academy.certificate_by_code(db, code)
+    if not cert:
+        return HTMLResponse(
+            "<!doctype html><meta charset=utf-8><title>Certificate not found</title>"
+            "<body style='font-family:system-ui;background:#0a1424;color:#eaf1ff;text-align:center;padding:12vh 20px'>"
+            "<div style='font-size:46px'>🔍</div><h1>Certificate not found</h1>"
+            "<p style='color:#9fb0c9'>This certificate link is invalid or has expired.</p>"
+            "<p><a style='color:#f2c766' href='/academy'>Go to the Academy →</a></p></body>",
+            status_code=404)
+    return HTMLResponse(academy.render_certificate_html(cert),
+                        headers={"Cache-Control": "public, max-age=300"})
 
 
 @router.get("/", response_class=HTMLResponse)

@@ -263,5 +263,256 @@ purchase price) — but EVs usually win on those too. BVTech runs on American-ma
                 body=body)
 
 
+# --------------------------------------------------------- Password Strength
+def password_strength():
+    body = _wrap(
+        "🔒 Free privacy tool", "Password Strength Checker",
+        "See how strong a password really is — its estimated entropy and how long it would take "
+        "an attacker to crack it. It's checked <b>entirely in your browser</b> and never sent "
+        "anywhere, so it's safe to test your real passwords.",
+        r"""
+<div class="card">
+  <label for="pw">Password to test</label>
+  <div style="position:relative">
+    <input id="pw" type="password" autocomplete="off" spellcheck="false" placeholder="Type or paste a password">
+    <button id="pw-eye" type="button" style="position:absolute;right:8px;top:8px;background:transparent;border:0;color:var(--o2);font-size:1.1rem;cursor:pointer">👁</button>
+  </div>
+  <div class="pw-meter"><div id="pw-bar"></div></div>
+  <div id="pw-verdict" class="pw-verdict">Enter a password to begin.</div>
+  <div class="pw-grid" id="pw-stats"></div>
+  <ul id="pw-tips" class="pw-tips"></ul>
+</div>
+<div class="card"><strong style="color:var(--white)">Running a business?</strong>
+<p class="muted" style="margin:8px 0 0">Weak and reused passwords are the #1 way companies get breached. We roll out password managers, MFA and dark-web monitoring for Texas teams — <a href="/contact/">let's lock it down</a>.</p></div>
+<style>
+.pw-meter{height:12px;border-radius:7px;background:rgba(255,255,255,.08);overflow:hidden;margin:16px 0 10px}
+#pw-bar{height:100%;width:0;border-radius:7px;transition:.25s}
+.pw-verdict{font-weight:800;font-size:1.05rem;margin-bottom:2px}
+.pw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0 0}
+.pw-grid div{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.pw-grid span{display:block;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.06em}
+.pw-grid b{color:var(--white);font-size:1rem}
+.pw-tips{margin:14px 0 0;padding-left:18px;color:var(--text);font-size:.9rem;line-height:1.6}
+</style>
+<script>
+(function(){
+  var pw=document.getElementById("pw"),bar=document.getElementById("pw-bar"),ver=document.getElementById("pw-verdict"),
+      stats=document.getElementById("pw-stats"),tips=document.getElementById("pw-tips");
+  document.getElementById("pw-eye").onclick=function(){pw.type=pw.type==="password"?"text":"password";};
+  var COMMON=["password","123456","12345678","qwerty","111111","letmein","admin","welcome","iloveyou","monkey","dragon","abc123","000000","password1","football","baseball","superman","trustno1","sunshine","princess"];
+  function human(sec){
+    if(sec<1)return "instantly";
+    var u=[["second",60],["minute",60],["hour",24],["day",365],["year",1e12]];var v=sec;
+    for(var i=0;i<u.length;i++){if(v<u[i][1]||i===u.length-1){var n=Math.round(v);return (n>=1e9?"billions of years":(n.toLocaleString()+" "+u[i][0]+(n===1?"":"s")));}v/=u[i][1];}
+  }
+  function score(p){
+    if(!p)return null;
+    var pool=0;
+    if(/[a-z]/.test(p))pool+=26; if(/[A-Z]/.test(p))pool+=26; if(/[0-9]/.test(p))pool+=10;
+    if(/[^a-zA-Z0-9]/.test(p))pool+=33;
+    var bits=p.length*(Math.log(pool||2)/Math.log(2));
+    var low=p.toLowerCase();var common=COMMON.some(function(c){return low.indexOf(c)>=0;});
+    if(common)bits=Math.min(bits,16);
+    if(/^(.)\1+$/.test(p))bits=Math.min(bits,10);
+    if(/^[0-9]+$/.test(p))bits=Math.min(bits,p.length*3.3);
+    var sec=Math.pow(2,bits)/1e10;
+    return {bits:bits,sec:sec,common:common};
+  }
+  function tier(b){
+    if(b<28)return ["Very weak","#ff6b6b",16];
+    if(b<40)return ["Weak","#f59e42",38];
+    if(b<60)return ["Fair","#f5be58",64];
+    if(b<80)return ["Strong","#4ad6a0",85];
+    return ["Very strong","#26C485",100];
+  }
+  function upd(){
+    var p=pw.value,s=score(p);
+    if(!s){bar.style.width="0";ver.textContent="Enter a password to begin.";ver.style.color="var(--muted)";stats.innerHTML="";tips.innerHTML="";return;}
+    var t=tier(s.bits);
+    bar.style.width=t[2]+"%";bar.style.background=t[1];
+    ver.textContent=t[0];ver.style.color=t[1];
+    stats.innerHTML='<div><span>Length</span><b>'+p.length+'</b></div>'
+      +'<div><span>Entropy</span><b>'+Math.round(s.bits)+' bits</b></div>'
+      +'<div><span>Est. time to crack</span><b>'+human(s.sec)+'</b></div>';
+    var tp=[];
+    if(p.length<12)tp.push("Use at least 12–16 characters — length matters most.");
+    if(!/[A-Z]/.test(p)||!/[a-z]/.test(p))tp.push("Mix upper and lower case.");
+    if(!/[0-9]/.test(p))tp.push("Add some numbers.");
+    if(!/[^a-zA-Z0-9]/.test(p))tp.push("Add a symbol like ! or #.");
+    if(s.common)tp.push("Avoid common words and patterns — attackers try these first.");
+    if(!tp.length)tp.push("Great password! Use a unique one per site and keep them in a password manager.");
+    tips.innerHTML=tp.map(function(x){return "<li>"+x+"</li>";}).join("");
+  }
+  pw.addEventListener("input",upd);
+})();
+</script>""")
+    return dict(slug="password-strength", title="Password Strength Checker | Free & Private | BVTech",
+                desc="Test how strong your password is — entropy and estimated crack time, checked "
+                     "entirely in your browser and never sent anywhere. Free tool by BVTech.",
+                card_title="Password Strength Checker", icon="🔒",
+                card_excerpt="How strong is your password really? See its entropy and crack time — "
+                             "checked in your browser, never sent anywhere.",
+                faqs=[("Is my password sent to BVTech or stored anywhere?",
+                       "No. The entire check runs in your browser — your password never leaves your device and nothing is stored or logged."),
+                      ("How is the crack time estimated?",
+                       "We estimate entropy from the password's length and character variety, then assume a fast offline attack of about 10 billion guesses per second. Real times vary, but it's a solid guide to relative strength."),
+                      ("What makes a strong password?",
+                       "Length first — aim for 12–16+ characters, mix character types, avoid common words and reuse, and store unique passwords in a password manager with MFA turned on.")],
+                body=body)
+
+
+# ------------------------------------------------------- Password Generator
+def password_generator():
+    body = _wrap(
+        "🔑 Free privacy tool", "Secure Password Generator",
+        "Create strong, random passwords and passphrases generated <b>in your browser</b> with "
+        "cryptographically-secure randomness — never sent anywhere. Copy and go.",
+        r"""
+<div class="card">
+  <div id="pg-out" class="pg-out" tabindex="0">press Generate…</div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+    <button class="btn" id="pg-gen">🎲 Generate</button>
+    <button class="btn" id="pg-copy" style="background:var(--o2)">📋 Copy</button>
+    <span id="pg-copied" class="muted" style="align-self:center;opacity:0;transition:.2s">Copied!</span>
+  </div>
+  <div class="pg-opts">
+    <label class="pg-range">Length: <b id="pg-lenv">18</b><input id="pg-len" type="range" min="6" max="48" value="18"></label>
+    <label class="pg-chk"><input type="checkbox" id="pg-upper" checked> Uppercase</label>
+    <label class="pg-chk"><input type="checkbox" id="pg-lower" checked> Lowercase</label>
+    <label class="pg-chk"><input type="checkbox" id="pg-num" checked> Numbers</label>
+    <label class="pg-chk"><input type="checkbox" id="pg-sym" checked> Symbols</label>
+    <label class="pg-chk"><input type="checkbox" id="pg-amb" checked> Avoid look-alikes</label>
+    <label class="pg-chk"><input type="checkbox" id="pg-phrase"> Passphrase mode</label>
+  </div>
+</div>
+<style>
+.pg-out{font-family:ui-monospace,Menlo,monospace;font-size:clamp(1.1rem,3.5vw,1.6rem);color:var(--o2);word-break:break-all;background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:10px;padding:16px;min-height:1.6em}
+.pg-opts{margin-top:18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.pg-range{grid-column:1/-1;color:var(--text);font-weight:600;display:flex;align-items:center;gap:10px}
+.pg-range input{flex:1}
+.pg-chk{display:flex;align-items:center;gap:8px;color:var(--text);font-weight:600}
+.pg-chk input{width:auto}
+</style>
+<script>
+(function(){
+  var WORDS=["anchor","bridge","canyon","copper","dragon","ember","falcon","garden","harbor","island","jungle","kettle","lantern","meadow","nebula","orbit","pebble","quartz","rocket","saddle","timber","umbra","velvet","willow","yonder","zephyr","basil","cobalt","dapper","fable","granite","hazel","indigo","jasper","kelvin","lunar","maple","nickel","onyx","pepper","quiver","ripple","summit","tundra","valor","walnut","amber","breeze","cactus","dune"];
+  var U="ABCDEFGHIJKLMNOPQRSTUVWXYZ",L="abcdefghijklmnopqrstuvwxyz",N="0123456789",S="!@#$%^&*-_=+?";
+  var AMB=/[l1IO0o]/g;
+  function rnd(max){var a=new Uint32Array(1);crypto.getRandomValues(a);return a[0]%max;}
+  function pick(set){return set.charAt(rnd(set.length));}
+  var out=document.getElementById("pg-out");
+  function gen(){
+    var phrase=document.getElementById("pg-phrase").checked;
+    if(phrase){
+      var n=4,parts=[];for(var i=0;i<n;i++){var w=WORDS[rnd(WORDS.length)];parts.push(w.charAt(0).toUpperCase()+w.slice(1));}
+      out.textContent=parts.join("-")+rnd(100);return;
+    }
+    var pool="";
+    if(document.getElementById("pg-upper").checked)pool+=U;
+    if(document.getElementById("pg-lower").checked)pool+=L;
+    if(document.getElementById("pg-num").checked)pool+=N;
+    if(document.getElementById("pg-sym").checked)pool+=S;
+    if(document.getElementById("pg-amb").checked)pool=pool.replace(AMB,"");
+    if(!pool){out.textContent="pick at least one character set";return;}
+    var len=+document.getElementById("pg-len").value,s="";
+    for(var i=0;i<len;i++)s+=pick(pool);
+    out.textContent=s;
+  }
+  document.getElementById("pg-len").addEventListener("input",function(){document.getElementById("pg-lenv").textContent=this.value;});
+  document.getElementById("pg-gen").onclick=gen;
+  document.getElementById("pg-copy").onclick=function(){
+    var t=out.textContent||"";if(!t||t.indexOf("press")===0)return;
+    (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(function(){
+      var c=document.getElementById("pg-copied");c.style.opacity=1;setTimeout(function(){c.style.opacity=0;},1200);
+    }).catch(function(){});
+  };
+  gen();
+})();
+</script>""")
+    return dict(slug="password-generator", title="Secure Password Generator | Free & Private | BVTech",
+                desc="Generate strong random passwords and easy-to-type passphrases in your browser "
+                     "with secure randomness — nothing is sent or stored. Free tool by BVTech.",
+                card_title="Secure Password Generator", icon="🔑",
+                card_excerpt="Create strong random passwords or passphrases with one tap — generated "
+                             "in your browser, never sent anywhere.",
+                faqs=[("Are the generated passwords safe to use?",
+                       "Yes. They're created with your browser's cryptographically-secure random generator (crypto.getRandomValues) and never transmitted or logged."),
+                      ("What is passphrase mode?",
+                       "It strings together several random words plus a number — easier to type and remember than a symbol soup, while still being very hard to guess. Great for device logins and master passwords."),
+                      ("How long should my password be?",
+                       "12–16 characters is a good minimum; longer is stronger. Use a unique password for every account and store them in a password manager.")],
+                body=body)
+
+
+# ----------------------------------------------------------- Subnet Calculator
+def subnet_calculator():
+    body = _wrap(
+        "🧮 Free IT tool", "Subnet / CIDR Calculator",
+        "Enter an IPv4 address in CIDR notation (like <code>192.168.1.0/24</code>) and instantly "
+        "get the network address, broadcast, usable host range, subnet mask and host count. "
+        "Runs entirely in your browser.",
+        r"""
+<div class="card">
+  <label for="sn-in">IP address / CIDR</label>
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <input id="sn-in" value="192.168.1.0/24" spellcheck="false" style="flex:1;min-width:200px">
+    <button class="btn" id="sn-go">Calculate</button>
+  </div>
+  <div id="sn-err" class="muted" style="color:#ff8f8f;margin-top:10px;display:none"></div>
+  <div class="sn-grid" id="sn-out"></div>
+</div>
+<style>
+.sn-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:18px}
+.sn-grid div{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:11px 13px}
+.sn-grid span{display:block;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.06em}
+.sn-grid b{color:var(--white);font-size:1rem;font-family:ui-monospace,Menlo,monospace;word-break:break-all}
+#sn-in{font-family:ui-monospace,Menlo,monospace}
+</style>
+<script>
+(function(){
+  function toInt(ip){var p=ip.split(".");if(p.length!==4)return null;var n=0;for(var i=0;i<4;i++){var o=+p[i];if(!(o>=0&&o<=255)||p[i]==="")return null;n=(n*256)+o;}return n>>>0;}
+  function toIp(n){return [(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255].join(".");}
+  function calc(){
+    var err=document.getElementById("sn-err"),out=document.getElementById("sn-out");
+    err.style.display="none";out.innerHTML="";
+    var raw=(document.getElementById("sn-in").value||"").trim();
+    var m=raw.split("/");var ip=toInt(m[0]);var bits=m.length>1?+m[1]:32;
+    if(ip===null||!(bits>=0&&bits<=32)||m[1]===""){err.textContent="Enter a valid IPv4 address and prefix, e.g. 10.0.0.0/24";err.style.display="block";return;}
+    var mask=bits===0?0:(0xFFFFFFFF<<(32-bits))>>>0;
+    var net=(ip&mask)>>>0,bc=(net|(~mask>>>0))>>>0;
+    var total=Math.pow(2,32-bits);
+    var usable=bits>=31?0:total-2;
+    var first=bits>=31?net:(net+1)>>>0,last=bits>=31?bc:(bc-1)>>>0;
+    function row(k,v){return '<div><span>'+k+'</span><b>'+v+'</b></div>';}
+    out.innerHTML=row("Network address",toIp(net)+"/"+bits)
+      +row("Usable host range",usable?(toIp(first)+" – "+toIp(last)):"—")
+      +row("Broadcast",toIp(bc))
+      +row("Subnet mask",toIp(mask))
+      +row("Wildcard",toIp(~mask>>>0))
+      +row("Total addresses",total.toLocaleString())
+      +row("Usable hosts",usable.toLocaleString())
+      +row("Prefix",("/"+bits));
+  }
+  document.getElementById("sn-go").onclick=calc;
+  document.getElementById("sn-in").addEventListener("keydown",function(e){if(e.key==="Enter")calc();});
+  calc();
+})();
+</script>""")
+    return dict(slug="subnet-calculator", title="Subnet / CIDR Calculator | Free IPv4 Tool | BVTech",
+                desc="Free IPv4 subnet calculator: enter CIDR like 192.168.1.0/24 to get the network, "
+                     "broadcast, usable host range, subnet mask and host count. Runs in your browser.",
+                card_title="Subnet / CIDR Calculator", icon="🧮",
+                card_excerpt="Enter a CIDR like 192.168.1.0/24 and get the network, broadcast, host "
+                             "range, mask and host count — instantly.",
+                faqs=[("What does this subnet calculator do?",
+                       "Given an IPv4 address and prefix length (CIDR), it computes the network address, broadcast address, usable host range, subnet mask, wildcard mask and the number of hosts — all in your browser."),
+                      ("What is CIDR notation?",
+                       "CIDR (Classless Inter-Domain Routing) writes a network as an address plus a prefix length, like 10.0.0.0/24. The /24 means the first 24 bits are the network portion, leaving 254 usable host addresses."),
+                      ("Does it support IPv6?",
+                       "This calculator is IPv4-only today. Need help planning IPv4 or IPv6 addressing for your business network? BVTech designs and documents networks for Texas companies — reach out.")],
+                body=body)
+
+
 def all_tools():
-    return [whats_my_ip(), speed_test(), is_it_down(), ev_savings()]
+    return [whats_my_ip(), speed_test(), is_it_down(), ev_savings(),
+            password_strength(), password_generator(), subnet_calculator()]
