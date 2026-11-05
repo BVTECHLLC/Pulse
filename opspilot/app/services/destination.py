@@ -114,11 +114,33 @@ def _schema(p: dict) -> str:
     return '<script type="application/ld+json">' + _json.dumps(data) + "</script>"
 
 
+_VIEWPORT_META = ('<meta name="viewport" content="width=device-width, initial-scale=1, '
+                  'viewport-fit=cover">')
+
+
+def ensure_viewport(h: str) -> tuple[str, bool]:
+    """Guarantee a correct, mobile/Tesla-friendly viewport on any page. The site
+    chrome's own tag may be missing or weak (e.g. a fixed width), which makes a
+    page render desktop-zoomed on phones and in-car browsers. Idempotent: a tag
+    that already says width=device-width is left alone. Returns (html, changed)."""
+    if not h or "<head" not in h.lower():
+        return h, False
+    m = re.search(r'<meta\s+name=["\']viewport["\'][^>]*>', h, re.I)
+    if m:
+        if "width=device-width" in m.group(0).lower():
+            return h, False
+        return h[:m.start()] + _VIEWPORT_META + h[m.end():], True
+    hm = re.search(r'<head[^>]*>', h, re.I)
+    if hm:
+        return h[:hm.end()] + "\n" + _VIEWPORT_META + h[hm.end():], True
+    return h, False
+
+
 def build_page(chrome: str, p: dict) -> str:
     """Put a page body into the site chrome and fix head (title, desc, canonical,
     OG, one fresh schema block). Never touches nav/footer."""
     from . import content_studio
-    h = chrome
+    h, _ = ensure_viewport(chrome)
     t = _html.escape(p["title"]); d = _html.escape(p["desc"], quote=True)
     h = re.sub(r"<title>.*?</title>", f"<title>{t}</title>", h, count=1, flags=re.S | re.I)
     h = re.sub(r'(<meta\s+name="description"\s+content=")[^"]*(")', lambda m: m.group(1) + d + m.group(2),
@@ -402,6 +424,9 @@ def _apply_nav_everywhere(cfg: dict, files: dict) -> int:
                 base, changed = h, True
         h, c3 = captcha.inject(base)        # idempotent; only touches lead-form pages
         if c3:
+            base, changed = h, True
+        h, c4 = ensure_viewport(base)       # idempotent; mobile/Tesla viewport on every page
+        if c4:
             base, changed = h, True
         if changed:
             files[path] = base
