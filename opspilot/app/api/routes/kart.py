@@ -28,19 +28,16 @@ router = APIRouter()
 _UPSTREAM = os.getenv("KART_WS_UPSTREAM", "ws://volt-rush:3108/kart/ws")
 _HTTP_BASE = os.getenv("KART_HTTP_UPSTREAM", "http://volt-rush:3108")
 
-# The Vite build hashes every JS/CSS/asset filename, so those are safe to cache
-# forever (a new build = new names). The ENTRY HTML must never be cached, or an
-# edge/browser keeps serving an old index.html that points at a stale bundle and
-# players never see the update. Serve /kart/ and /kart/index.html ourselves with
-# no-store (incl. the Cloudflare-specific CDN header) so the latest build always
-# wins. Registered before the /kart static mount so these take precedence.
+# The Vite build hashes every JS/CSS/asset filename (new build = new names), so
+# the entry HTML only needs to refresh often enough to pick up the latest hashes.
+# We serve /kart/ with a SHORT cacheable TTL on purpose: the portal sits behind
+# Cloudflare Bot Fight Mode, which serves cached static responses without a bot
+# challenge but challenges (and 403s) uncached HTML — so a `no-store` entry page
+# would be blocked at the edge. A 60s cache lets Cloudflare serve the page as
+# static (no challenge), and the deploy-time cache purge makes a new build show
+# immediately. Registered before the /kart static mount so these take precedence.
 _KART_DIST = Path(__file__).resolve().parents[3] / "games" / "volt-rush" / "dist"
-_HTML_NOSTORE = {
-    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-    "CDN-Cache-Control": "no-store",
-    "Cloudflare-CDN-Cache-Control": "no-store",
-    "Pragma": "no-cache",
-}
+_HTML_CACHE = {"Cache-Control": "public, max-age=60"}
 
 
 @router.get("/kart/", include_in_schema=False, response_model=None)
@@ -50,19 +47,22 @@ def kart_index():
     if not idx.is_file():
         return JSONResponse(status_code=503, content={
             "ok": False, "error": "VOLT RUSH build missing — run npm run build"})
-    return FileResponse(str(idx), media_type="text/html; charset=utf-8", headers=_HTML_NOSTORE)
+    return FileResponse(str(idx), media_type="text/html; charset=utf-8", headers=_HTML_CACHE)
 
 
 @router.get("/kart/health")
 async def kart_health() -> JSONResponse:
-    """Report whether the VOLT RUSH race server is reachable (and its load)."""
+    """Report whether the VOLT RUSH race server is reachable (and its load).
+    Short cache so Cloudflare serves it as cacheable content (its Bot Fight Mode
+    would otherwise 403 this uncached, extension-less path for the browser)."""
+    _h = {"Cache-Control": "public, max-age=10"}
     try:
         async with httpx.AsyncClient(timeout=4.0) as c:
             r = await c.get(_HTTP_BASE + "/kart/health")
-        return JSONResponse(status_code=r.status_code, content=r.json())
+        return JSONResponse(status_code=r.status_code, content=r.json(), headers=_h)
     except Exception:
         return JSONResponse(
-            status_code=503,
+            status_code=503, headers=_h,
             content={"ok": False, "race_server": "down",
                      "hint": "docker compose up -d --build volt-rush"},
         )
