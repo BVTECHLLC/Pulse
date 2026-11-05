@@ -227,6 +227,14 @@ def body() -> str:
 .xp-trow p{margin:3px 0 0;color:var(--muted);font-size:.78rem;line-height:1.35}
 .xp-trow .lang{display:inline-block;margin-top:5px;font-size:.68rem;color:var(--text);border:1px solid var(--border);border-radius:999px;padding:1px 8px}
 .xp-trend-foot{margin-top:12px;font-size:.7rem;color:var(--muted);border-top:1px solid var(--border);padding-top:9px}
+/* active threats (CISA KEV) */
+.xp-kev-row{display:block;padding:9px 0;border-top:1px solid var(--border);text-decoration:none}
+.xp-kev-row:first-child{border-top:0}
+.xp-kev-row .cve{color:#ff8f8f;font-weight:800;font-family:ui-monospace,Menlo,monospace;font-size:.8rem}
+.xp-kev-row .nm{display:block;color:var(--text);font-size:.84rem;line-height:1.35;margin-top:2px}
+.xp-kev-row .vp{color:var(--muted);font-size:.72rem}
+.xp-kev-row .rw{display:inline-block;margin-left:6px;font-size:.64rem;font-weight:800;color:#ff6b6b;border:1px solid rgba(255,107,107,.5);border-radius:999px;padding:0 6px;vertical-align:middle}
+.xp-kev-foot{margin-top:12px;font-size:.7rem;color:var(--muted);border-top:1px solid var(--border);padding-top:9px;line-height:1.5}
 /* trending */
 .xp-tr a{display:flex;gap:10px;align-items:baseline;padding:9px 0;border-top:1px solid var(--border);color:var(--text);font-size:.86rem;line-height:1.4}
 .xp-tr a:first-child{border-top:0}.xp-tr a:hover{color:var(--o2)}
@@ -378,6 +386,11 @@ def body() -> str:
   </div>
 
   <aside class="xp-side">
+    <div class="xp-card lift" id="xp-kev-card" hidden style="border-color:rgba(255,107,107,.4)">
+      <h3>🚨 Active Threats <span class="tag" id="xp-kev-tag" style="color:#ff6b6b">CISA KEV</span></h3>
+      <div id="xp-kev"></div>
+      <div class="xp-kev-foot">Vulnerabilities being exploited right now · <a id="xp-kev-src" href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" rel="noopener">CISA</a>. <b>Patch fast.</b> <a href="/managed-it-houston/">BVTech can help →</a></div>
+    </div>
     <div class="xp-card lift" id="xp-mkt-card" hidden>
       <h3>📈 Markets <span class="tag" id="xp-mkt-tag">LIVE</span></h3>
       <div id="xp-mkt-list"></div>
@@ -711,6 +724,23 @@ def body() -> str:
       box.appendChild(a);
     });
     document.getElementById("xp-trend-card").hidden=false;
+  }).catch(function(){});
+
+  // ---- active threats (CISA KEV) ----
+  get("explore/kev").then(function(d){
+    var items=(d&&d.items)||[];if(!items.length)return;
+    var box=document.getElementById("xp-kev");
+    items.forEach(function(v){
+      var a=el("a","xp-kev-row");a.href="https://nvd.nist.gov/vuln/detail/"+encodeURIComponent(v.cve);a.target="_blank";a.rel="noopener";
+      var top=el("div");var c=el("span","cve",v.cve);top.appendChild(c);
+      if(v.ransomware)top.appendChild(el("span","rw","RANSOMWARE"));
+      a.appendChild(top);
+      a.appendChild(el("span","nm",v.name||((v.vendor||"")+" "+(v.product||""))));
+      a.appendChild(el("span","vp",(v.vendor||"")+(v.product?(" · "+v.product):"")+(v.added?(" · added "+v.added):"")));
+      box.appendChild(a);
+    });
+    if(d.source_url){var s=document.getElementById("xp-kev-src");if(s)s.href=d.source_url;}
+    document.getElementById("xp-kev-card").hidden=false;
   }).catch(function(){});
 
   // ---- answers ----

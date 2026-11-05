@@ -165,6 +165,16 @@ export async function trending() {
   });
 }
 
+// "Active Threats" — the newest actively-exploited CVEs (CISA KEV), proxied from
+// the portal (which does the heavy catalog fetch + hourly cache). On-brand for a
+// cybersecurity company. Best-effort: failure returns empty and the widget hides.
+export async function kev() {
+  return cached("explore-v1-kev", 3 * 3600, async () => {
+    const r = JSON.parse(await getText("https://portal.bvtech.org/api/public-tools/kev", 8000));
+    return { items: (r.items || []).slice(0, 6), source: r.source, source_url: r.source_url };
+  });
+}
+
 async function img(request) {
   const u = new URL(request.url).searchParams.get("u") || "";
   if (!IMG_HOSTS.some((h) => u.startsWith(h)) || u.includes(".."))
@@ -191,6 +201,7 @@ export async function onRequestGet({ request }) {
     if (what === "markets") return json(await markets(), 200, 120);
     if (what === "takes") return json(await takes(), 200, 600);
     if (what === "trending") return json(await trending(), 200, 1800);
+    if (what === "kev") return json(await kev(), 200, 1800);
   } catch (e) {
     return json({ items: [], error: "temporarily unavailable" }, 200, 60);
   }

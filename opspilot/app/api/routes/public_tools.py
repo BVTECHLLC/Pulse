@@ -323,6 +323,38 @@ def answers_trending(request: Request, resp: Response):
     return out
 
 
+_KEV_CACHE: dict = {"at": 0.0, "items": []}
+
+
+@router.get("/kev")
+def kev_latest(request: Request, resp: Response):
+    """PUBLIC, read-only: the most recently ADDED actively-exploited CVEs from
+    CISA's Known Exploited Vulnerabilities catalog, for the Explore 'Active
+    Threats' widget (proxied same-origin by the site Worker). The full catalog
+    fetch is heavy, so it is cached in-process for an hour."""
+    _cors(request, resp)
+    import time as _t
+    now = _t.time()
+    if now - _KEV_CACHE["at"] > 3600 or not _KEV_CACHE["items"]:
+        try:
+            from ...services import jp_site as _jp
+            vulns = sorted(_jp._KEV_FEED(), key=lambda v: v.get("dateAdded", ""), reverse=True)[:8]
+            _KEV_CACHE["items"] = [{
+                "cve": v.get("cveID"), "vendor": v.get("vendorProject"),
+                "product": v.get("product"),
+                "name": (v.get("vulnerabilityName") or "")[:90],
+                "added": v.get("dateAdded"),
+                "ransomware": (v.get("knownRansomwareCampaignUse") or "").strip().lower() == "known",
+            } for v in vulns if v.get("cveID")]
+            _KEV_CACHE["at"] = now
+        except Exception:  # noqa: BLE001 — keep any stale cache; widget hides if empty
+            pass
+    resp.headers["Cache-Control"] = "public, max-age=1800"
+    return {"items": _KEV_CACHE["items"],
+            "source": "CISA Known Exploited Vulnerabilities Catalog",
+            "source_url": "https://www.cisa.gov/known-exploited-vulnerabilities-catalog"}
+
+
 @router.post("/notfound")
 async def report_notfound(request: Request, resp: Response):
     """The bvtech.org 404 page reports the path it couldn't find here (relayed
