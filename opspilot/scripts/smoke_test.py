@@ -8152,7 +8152,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.128.0"
+    assert _gs101().APP_VERSION == "1.129.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8162,7 +8162,7 @@ def main():
     from app.services import pages_explore as _PE, pages_labs as _PL, pages_tools as _PT
     # (1) pages build standalone (titles/desc/bodies present, Jordan Polasek authored)
     assert "Explore" in _PE.TITLE and "Jordan Polasek" in _PE.body()
-    assert "Lightning Labs" in _PL.TITLE and len(_PT.all_tools()) == 7
+    assert "Lightning Labs" in _PL.TITLE and len(_PT.all_tools()) == 11
     for _t in _PT.all_tools():
         assert _t["slug"] and _t["title"] and _t["body"] and _t["card_excerpt"]
     assert "/tools-api/net/whoami" in _PT.whats_my_ip()["body"]
@@ -8230,7 +8230,7 @@ def main():
         _J102._HTTP = _http102
         _CF102.purge_urls = lambda *a, **k: {"ok": True}
         _rp = _D102.publish(None)
-        assert _rp["ok"] and len(_rp["pages"]) == 13, _rp
+        assert _rp["ok"] and len(_rp["pages"]) == 17, _rp
         assert "explore/index.html" in _sent102 and "academy/lightning-labs/index.html" in _sent102
         assert "graveyard-shift/index.html" in _sent102
         # v1.118: local service-area pages (Houston/Austin/San Antonio) +
@@ -8261,6 +8261,7 @@ def main():
         # schema block silently kills rich results), and carry a viewport + the
         # a11y focus style.
         import json as _json102, re as _re102
+        _built_paths = {_pg["path"] for _pg in _D102._pages()}   # pages through build_page
         _ldcount = 0
         for _pp, _cc in _sent102.items():
             if not _pp.endswith("index.html"):
@@ -8268,7 +8269,7 @@ def main():
             for _blk in _re102.findall(r'<script type="application/ld\+json">(.*?)</script>', _cc, _re102.S):
                 _json102.loads(_blk)          # raises if the schema is malformed
                 _ldcount += 1
-            if _pp.startswith(("tools/", "explore", "managed-it-", "academy/")):
+            if _pp in _built_paths:            # only build_page output gets viewport + a11y
                 assert 'name="viewport"' in _cc and "width=device-width" in _cc, ("no viewport", _pp)
                 assert 'id="bv-a11y"' in _cc, ("no a11y focus style", _pp)
         assert _ldcount >= 10, ("too few JSON-LD blocks parsed", _ldcount)
@@ -8296,7 +8297,7 @@ def main():
     assert _sr100.REPAIR_EPOCH == "1.112.0"
     import inspect as _insp102
     assert "destination" in _insp102.getsource(_sr100.run_full_repair)
-    print("v1.102: Explore hub, Lightning Labs (edge-graded), 7 tools, edge API, "
+    print("v1.102: Explore hub, Lightning Labs (edge-graded), 11 tools, edge API, "
           "additive idempotent nav, 404 telemetry + broken-link scan, one-commit publish OK")
 
     # ==== v1.103.0: moderation engine + BVTech Answers community ====
@@ -8536,7 +8537,7 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.128.0"
+    assert _gs101().APP_VERSION == "1.129.0"
     assert _sr100.REPAIR_EPOCH == "1.112.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
@@ -8572,7 +8573,7 @@ def main():
     assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
     # site nav points to the game home
     assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
-    assert _gs101().APP_VERSION == "1.128.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.129.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
           "Explore features it with a Halloween hero, republish forced OK")
 
@@ -8592,11 +8593,11 @@ def main():
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
     assert "xp-papel" in _xp3 and "Happy Thanksgiving" in _xp3, "seasonal Explore theme missing"
-    assert _gs101().APP_VERSION == "1.128.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.129.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
 
-    print("\n=== OpsPilot v1.128.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.129.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -513,6 +513,205 @@ def subnet_calculator():
                 body=body)
 
 
+# ----------------------------------------------------------- Hash Generator
+def hash_generator():
+    body = _wrap(
+        "🔐 Free dev tool", "Hash Generator — SHA-256, SHA-1 &amp; SHA-512",
+        "Generate cryptographic hashes of any text, computed <b>in your browser</b> "
+        "with the Web Crypto API — nothing is uploaded. Great for checksums, file "
+        "integrity, and quick fingerprints.",
+        r"""
+<div class="card">
+  <label for="hg-in">Text to hash</label>
+  <textarea id="hg-in" rows="4" placeholder="Type or paste text…" style="width:100%;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--white);font-family:inherit;font-size:1rem;resize:vertical">hello world</textarea>
+  <div class="hg-rows" id="hg-out" style="margin-top:16px"></div>
+</div>
+<style>
+.hg-row{display:flex;gap:12px;align-items:baseline;padding:10px 0;border-top:1px solid var(--border)}
+.hg-row:first-child{border-top:0}
+.hg-row span{flex:0 0 80px;color:var(--o2);font-weight:800;font-size:.82rem}
+.hg-row code{font-family:ui-monospace,Menlo,monospace;font-size:.82rem;color:var(--text);word-break:break-all;line-height:1.5}
+</style>
+<script>
+(function(){
+  var inp=document.getElementById('hg-in'),out=document.getElementById('hg-out');
+  var ALGOS=['SHA-256','SHA-1','SHA-512'];
+  function hex(buf){var a=new Uint8Array(buf),s='';for(var i=0;i<a.length;i++)s+=a[i].toString(16).padStart(2,'0');return s;}
+  async function run(){
+    if(!(window.crypto&&crypto.subtle)){out.innerHTML='<div class="muted">Web Crypto is unavailable in this browser.</div>';return;}
+    var data=new TextEncoder().encode(inp.value||'');var rows='';
+    for(var i=0;i<ALGOS.length;i++){try{var d=await crypto.subtle.digest(ALGOS[i],data);rows+='<div class="hg-row"><span>'+ALGOS[i]+'</span><code>'+hex(d)+'</code></div>';}catch(e){}}
+    out.innerHTML=rows;
+  }
+  inp.addEventListener('input',run);run();
+})();
+</script>""")
+    return dict(slug="hash-generator", title="Hash Generator — SHA-256 / SHA-1 / SHA-512 | Free | BVTech",
+                desc="Free online hash generator: get the SHA-256, SHA-1 and SHA-512 hash of any "
+                     "text, computed in your browser with Web Crypto. Nothing uploaded. By BVTech.",
+                card_title="Hash Generator", icon="🔐",
+                card_excerpt="SHA-256, SHA-1 & SHA-512 hashes of any text — computed in your browser, "
+                             "nothing uploaded.",
+                faqs=[("Is my text uploaded anywhere?",
+                       "No. Hashing runs entirely in your browser via the Web Crypto API — your text never leaves your device."),
+                      ("Which hash algorithms are supported?",
+                       "SHA-256, SHA-1 and SHA-512. SHA-256 is the modern default; SHA-1 is shown for legacy checksums (it is no longer considered collision-resistant for security use)."),
+                      ("What can I use a hash for?",
+                       "Verifying a download matches its published checksum, fingerprinting data, and integrity checks. For storing passwords, use a slow password hash (bcrypt/argon2) server-side — not a raw SHA.")],
+                body=body)
+
+
+# -------------------------------------------------------- Base64 Encode/Decode
+def base64_tool():
+    body = _wrap(
+        "🔁 Free dev tool", "Base64 Encoder &amp; Decoder",
+        "Encode text to Base64 or decode Base64 back to text — UTF-8 safe, all "
+        "<b>in your browser</b>. No uploads, no limits.",
+        r"""
+<div class="card">
+  <div style="display:flex;gap:8px;margin-bottom:12px">
+    <button class="btn b64-mode on" data-mode="enc">Encode →</button>
+    <button class="btn b64-mode" data-mode="dec" style="background:#1d2742;color:var(--white)">← Decode</button>
+  </div>
+  <label for="b64-in">Input</label>
+  <textarea id="b64-in" rows="4" placeholder="Type or paste…" style="width:100%;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--white);font-family:ui-monospace,Menlo,monospace;font-size:.95rem;resize:vertical">BVTech</textarea>
+  <label for="b64-out" style="margin-top:12px">Output</label>
+  <textarea id="b64-out" rows="4" readonly style="width:100%;background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--o2);font-family:ui-monospace,Menlo,monospace;font-size:.95rem;resize:vertical"></textarea>
+  <div class="muted" id="b64-err" style="color:#ff8f8f;margin-top:8px"></div>
+</div>
+<style>.b64-mode.on{background:var(--o);color:#0E0D2C}</style>
+<script>
+(function(){
+  var mode='enc',inp=document.getElementById('b64-in'),out=document.getElementById('b64-out'),err=document.getElementById('b64-err');
+  function run(){
+    err.textContent='';var v=inp.value||'';
+    try{
+      if(mode==='enc'){out.value=btoa(unescape(encodeURIComponent(v)));}
+      else{out.value=decodeURIComponent(escape(atob(v.replace(/\s+/g,''))));}
+    }catch(e){out.value='';err.textContent=(mode==='dec'?'That is not valid Base64.':'Could not encode.');}
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.b64-mode'),function(b){
+    b.onclick=function(){mode=b.getAttribute('data-mode');
+      Array.prototype.forEach.call(document.querySelectorAll('.b64-mode'),function(x){x.classList.toggle('on',x===b);x.style.background=x===b?'var(--o)':'#1d2742';x.style.color=x===b?'#0E0D2C':'var(--white)';});run();};
+  });
+  inp.addEventListener('input',run);run();
+})();
+</script>""")
+    return dict(slug="base64-encode-decode", title="Base64 Encoder & Decoder — Free Online Tool | BVTech",
+                desc="Free Base64 encoder and decoder: convert text to Base64 and back, UTF-8 safe, "
+                     "entirely in your browser. Nothing uploaded. By BVTech.",
+                card_title="Base64 Encode / Decode", icon="🔁",
+                card_excerpt="Convert text to Base64 and back — UTF-8 safe, in your browser, nothing "
+                             "uploaded.",
+                faqs=[("Is my data sent to a server?",
+                       "No — encoding and decoding happen in your browser. Nothing is uploaded or stored."),
+                      ("Does it handle non-English characters?",
+                       "Yes. The tool is UTF-8 safe, so emoji and accented characters encode and decode correctly."),
+                      ("Is Base64 encryption?",
+                       "No. Base64 is an encoding, not encryption — anyone can decode it. Use it for transport/formatting, never to protect secrets.")],
+                body=body)
+
+
+# ----------------------------------------------------------- JSON Formatter
+def json_formatter():
+    body = _wrap(
+        "🧩 Free dev tool", "JSON Formatter &amp; Validator",
+        "Pretty-print, minify and validate JSON — <b>in your browser</b>, nothing "
+        "uploaded. Catches the exact line of a syntax error so you can fix it fast.",
+        r"""
+<div class="card">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    <button class="btn" id="jf-pretty">✨ Format</button>
+    <button class="btn" id="jf-min" style="background:#1d2742;color:var(--white)">⚊ Minify</button>
+    <span id="jf-status" class="muted" style="align-self:center"></span>
+  </div>
+  <textarea id="jf-in" rows="12" spellcheck="false" placeholder='{"paste":"your JSON here"}' style="width:100%;background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:10px;padding:14px;color:var(--white);font-family:ui-monospace,Menlo,monospace;font-size:.9rem;line-height:1.55;resize:vertical">{"bvtech":"IT & cybersecurity","services":["managed IT","security","cloud"],"texas":true}</textarea>
+</div>
+<script>
+(function(){
+  var ta=document.getElementById('jf-in'),st=document.getElementById('jf-status');
+  function go(min){
+    st.textContent='';st.style.color='';
+    var raw=ta.value;
+    try{var obj=JSON.parse(raw);ta.value=min?JSON.stringify(obj):JSON.stringify(obj,null,2);st.textContent='✓ Valid JSON';st.style.color='#4ad6a0';}
+    catch(e){var m=String(e.message||e);st.textContent='✗ '+m;st.style.color='#ff8f8f';}
+  }
+  document.getElementById('jf-pretty').onclick=function(){go(false);};
+  document.getElementById('jf-min').onclick=function(){go(true);};
+  go(false);
+})();
+</script>""")
+    return dict(slug="json-formatter", title="JSON Formatter & Validator — Free Online | BVTech",
+                desc="Free JSON formatter, minifier and validator that runs entirely in your browser. "
+                     "Pretty-print or minify JSON and catch syntax errors instantly. By BVTech.",
+                card_title="JSON Formatter / Validator", icon="🧩",
+                card_excerpt="Pretty-print, minify and validate JSON in your browser — it points to "
+                             "the exact syntax error.",
+                faqs=[("Is my JSON uploaded anywhere?",
+                       "No. Formatting and validation run in your browser — your data never leaves your device."),
+                      ("What does the validator catch?",
+                       "Any JSON syntax error — trailing commas, unquoted keys, mismatched brackets — and it shows the error message so you can locate it."),
+                      ("What's the difference between format and minify?",
+                       "Format pretty-prints with 2-space indentation for readability; minify strips all whitespace to the smallest valid JSON for transport.")],
+                body=body)
+
+
+# ------------------------------------------------------------- UUID Generator
+def uuid_generator():
+    body = _wrap(
+        "🆔 Free dev tool", "UUID / GUID Generator",
+        "Generate RFC-4122 version-4 UUIDs with cryptographically-secure randomness, "
+        "<b>in your browser</b>. Click to copy. Great for IDs, keys and test data.",
+        r"""
+<div class="card">
+  <div id="ug-out" class="ug-out">—</div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
+    <button class="btn" id="ug-gen">🎲 New UUID</button>
+    <button class="btn" id="ug-copy" style="background:var(--o2)">📋 Copy</button>
+    <label class="muted" style="align-self:center;display:flex;align-items:center;gap:6px">How many: <input id="ug-n" type="number" min="1" max="50" value="1" style="width:70px;padding:7px 9px"></label>
+  </div>
+  <div id="ug-list" style="margin-top:14px"></div>
+</div>
+<style>
+.ug-out{font-family:ui-monospace,Menlo,monospace;font-size:clamp(1rem,3vw,1.4rem);color:var(--o2);word-break:break-all;background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:10px;padding:16px}
+#ug-list div{font-family:ui-monospace,Menlo,monospace;font-size:.86rem;color:var(--text);padding:6px 0;border-top:1px solid var(--border);word-break:break-all}
+</style>
+<script>
+(function(){
+  function uuid(){
+    if(crypto.randomUUID)return crypto.randomUUID();
+    var b=new Uint8Array(16);crypto.getRandomValues(b);b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;
+    var h=[];for(var i=0;i<16;i++)h.push(b[i].toString(16).padStart(2,'0'));
+    return h.slice(0,4).join('')+'-'+h.slice(4,6).join('')+'-'+h.slice(6,8).join('')+'-'+h.slice(8,10).join('')+'-'+h.slice(10).join('');
+  }
+  var out=document.getElementById('ug-out'),list=document.getElementById('ug-list');
+  function gen(){
+    var n=Math.max(1,Math.min(50,+document.getElementById('ug-n').value||1));
+    var first=uuid();out.textContent=first;
+    if(n>1){var rows='';for(var i=1;i<n;i++)rows+='<div>'+uuid()+'</div>';list.innerHTML=rows;}else list.innerHTML='';
+  }
+  document.getElementById('ug-gen').onclick=gen;
+  document.getElementById('ug-copy').onclick=function(){
+    var t=out.textContent;var all=[t].concat(Array.prototype.map.call(list.querySelectorAll('div'),function(d){return d.textContent;})).join('\n');
+    (navigator.clipboard?navigator.clipboard.writeText(all):Promise.reject()).catch(function(){});
+  };
+  gen();
+})();
+</script>""")
+    return dict(slug="uuid-generator", title="UUID / GUID Generator — Free v4 UUIDs | BVTech",
+                desc="Free online UUID/GUID generator: create RFC-4122 version-4 UUIDs with secure "
+                     "randomness in your browser. Generate one or many, click to copy. By BVTech.",
+                card_title="UUID / GUID Generator", icon="🆔",
+                card_excerpt="Generate secure RFC-4122 v4 UUIDs — one or many — right in your browser.",
+                faqs=[("Are these UUIDs cryptographically random?",
+                       "Yes. They use your browser's secure random generator (crypto.randomUUID / getRandomValues), so collisions are astronomically unlikely."),
+                      ("What version of UUID is this?",
+                       "Version 4 (random), the most common form for database keys, correlation IDs and test data."),
+                      ("Can I generate many at once?",
+                       "Yes — set the count (up to 50) and copy them all with one click.")],
+                body=body)
+
+
 def _faq_block(faqs):
     """Render a visible FAQ section so the on-page content matches the FAQPage
     JSON-LD (answer engines and Google want the schema to reflect visible text)."""
@@ -537,7 +736,8 @@ def _faq_block(faqs):
 
 def all_tools():
     tools = [whats_my_ip(), speed_test(), is_it_down(), ev_savings(),
-             password_strength(), password_generator(), subnet_calculator()]
+             password_strength(), password_generator(), subnet_calculator(),
+             hash_generator(), base64_tool(), json_formatter(), uuid_generator()]
     # Append a VISIBLE FAQ to any tool that declares faqs, so the page text
     # matches its FAQPage schema (schema must reflect visible content).
     for t in tools:
