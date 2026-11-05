@@ -29,7 +29,7 @@ const driftPool=Array.from({length:90},()=>({x:0,y:-100,z:0,vx:0,vy:0,vz:0,life:
 const root=$('#app');root.innerHTML=`
 <canvas id="viewport" aria-label="VOLT RUSH 3D racing track"></canvas>
 <div id="vignette"></div>
-<header id="brand"><div class="logo-mark">V<span>↗</span></div><div><strong>VOLT<span>RUSH</span></strong><small>BY BVTECH ARCADE</small></div></header>
+<header id="brand"><div class="logo-mark">V<span>↗</span></div><div><strong>VOLT<span>RUSH</span></strong><small>BY BVTECH ARCADE · <b class="verstamp">V4</b></small></div></header>
 <div id="topActions"><button class="graphics-btn" id="graphics" aria-label="Cycle graphics quality" title="Graphics quality: Auto / Eco / Ultra">AUTO</button><button class="circle-btn" id="audio" aria-label="Toggle sound">♫</button><button class="circle-btn" id="camera" title="Change camera" aria-label="Change camera">◉</button></div>
 <section id="menu" class="panel-layout">
  <div class="intro"><div class="eyebrow"><i></i> THE NEXT LAP STARTS HERE</div><h1>OWN THE<br/><em>RACE.</em></h1><p>Precision drifting. Wild power-ups. Full-throttle racing with friends — anywhere, on any screen.</p>

@@ -130,6 +130,27 @@ def purge_urls(db: Session, site: str, urls: list[str]) -> dict:
         return {"ok": False, "detail": str(e)[:160]}
 
 
+def purge_everything(db: Session, site: str) -> dict:
+    """Nuclear option: purge the ENTIRE Cloudflare cache for a site's zone.
+    Use when per-URL purges aren't clearing stale HTML (e.g. tiered cache or a
+    'cache everything' rule). Clears all cached assets; the edge refills from the
+    origin on the next request."""
+    token = get_token(db)
+    if not token:
+        return {"ok": False, "detail": "Cloudflare not connected"}
+    zid = _zone_id(db, site)
+    if not zid:
+        return {"ok": False, "detail": f"no Cloudflare zone for {SITE_DOMAINS.get(site)}"}
+    try:
+        out = _HTTP("POST", f"{API}/zones/{zid}/purge_cache", token,
+                    {"purge_everything": True}, email=get_auth_email(db))
+        if out.get("success"):
+            return {"ok": True, "detail": f"purged EVERYTHING for {SITE_DOMAINS.get(site)}"}
+        return {"ok": False, "detail": str(out.get("errors"))[:200]}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "detail": str(e)[:200]}
+
+
 def verify(db: Session) -> dict:
     """Live check: credential valid + which of our zones it can reach. Handles
     BOTH credential types and tells the operator exactly what's missing."""
