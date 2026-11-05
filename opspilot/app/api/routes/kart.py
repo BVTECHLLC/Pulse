@@ -16,16 +16,41 @@ from __future__ import annotations
 
 import asyncio
 import os
+from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 router = APIRouter()
 
 # Internal compose address of the authoritative race server. Override via env.
 _UPSTREAM = os.getenv("KART_WS_UPSTREAM", "ws://volt-rush:3108/kart/ws")
 _HTTP_BASE = os.getenv("KART_HTTP_UPSTREAM", "http://volt-rush:3108")
+
+# The Vite build hashes every JS/CSS/asset filename, so those are safe to cache
+# forever (a new build = new names). The ENTRY HTML must never be cached, or an
+# edge/browser keeps serving an old index.html that points at a stale bundle and
+# players never see the update. Serve /kart/ and /kart/index.html ourselves with
+# no-store (incl. the Cloudflare-specific CDN header) so the latest build always
+# wins. Registered before the /kart static mount so these take precedence.
+_KART_DIST = Path(__file__).resolve().parents[3] / "games" / "volt-rush" / "dist"
+_HTML_NOSTORE = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "CDN-Cache-Control": "no-store",
+    "Cloudflare-CDN-Cache-Control": "no-store",
+    "Pragma": "no-cache",
+}
+
+
+@router.get("/kart/", include_in_schema=False)
+@router.get("/kart/index.html", include_in_schema=False)
+def kart_index() -> FileResponse | JSONResponse:
+    idx = _KART_DIST / "index.html"
+    if not idx.is_file():
+        return JSONResponse(status_code=503, content={
+            "ok": False, "error": "VOLT RUSH build missing — run npm run build"})
+    return FileResponse(str(idx), media_type="text/html; charset=utf-8", headers=_HTML_NOSTORE)
 
 
 @router.get("/kart/health")

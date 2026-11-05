@@ -386,8 +386,13 @@ async def capture_lead(request: Request, resp: Response):
         return {"ok": False, "error": "We couldn't verify your browser. "
                 "Please reload the page and submit again, or email help@bvtech.org."}
     email = str(body.get("email") or "").strip().lower()[:255]
-    if not _EMAIL_RE.fullmatch(email):
-        return {"ok": False, "error": "Please enter a valid email address."}
+    from ...services import email_guard as _eg
+    _eok, _ereason = _eg.check(email)
+    if not _eok:
+        return {"ok": False, "error": (
+            "Please use a permanent email address — temporary/disposable inboxes "
+            "aren't accepted." if _ereason == "disposable"
+            else "Please enter a valid email address.")}
     name = str(body.get("name") or "").strip()[:200] or None
     company = str(body.get("company") or "").strip()[:200] or None
     tool = str(body.get("tool") or "free tool").strip()[:80]

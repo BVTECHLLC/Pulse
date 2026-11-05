@@ -1,29 +1,22 @@
-"""Self-hosted, no-signup human check for public forms (v1.119).
+"""Self-hosted, no-signup human check for public forms (v1.122).
 
-Problem: the public lead / contact forms were getting hit by spam bots, and the
-first (invisible) version left no visible sign it was working. This version is a
-**visible** "✓ I'm human" checkbox — the kind people recognize as a real captcha
-— that auto-attaches to every contact/lead form, blocks submission until the
-visitor clicks it, and is still 100% self-hosted (no reCAPTCHA / hCaptcha /
-Turnstile, no third-party account, no visitor data leaves the site).
+A visible **slide-to-fit puzzle** (drag the piece into the gap) that gates every
+contact/lead form, backed by a server-verified proof-of-work and a honeypot, with
+disposable-email blocking handled in ``email_guard``. 100% in-house: no reCAPTCHA
+/ hCaptcha / Turnstile, no third-party account, no visitor data leaves the site.
 
-How it works:
-
-  * An inline ``bvHuman`` script scans the page for contact/lead forms, injects a
-    visible checkbox widget + a hidden honeypot, and GATES the form: the submit
-    is blocked (with a shake) until the visitor clicks "I'm human". The click
-    runs a small SHA-256 proof-of-work in the browser (a few hundred ms) and
-    flips the box to a green check.
+Layers (defense in depth):
+  * The visitor must DRAG a puzzle piece into a randomly-placed gap — a real
+    interaction a drive-by bot won't perform. Solving it runs a SHA-256
+    proof-of-work in the browser and unlocks the form.
   * Every POST to ``/tools-api/lead`` then carries a fresh, single-use PoW token
     (``v1:<5-min-bucket>:<rand>:<nonce>`` whose sha256 starts with DIFFICULTY hex
     zeros). The server (``verify``) checks the honeypot is empty, the token is
-    well-formed, from a fresh bucket, valid, and not replayed. A bot that POSTs
-    the endpoint directly has no token and is refused; one that scripts a browser
-    still has to click and pay the PoW on every attempt.
+    well-formed, fresh, valid and not replayed. A bot POSTing directly has no
+    token and is refused; one scripting a browser still pays the PoW every time.
+  * ``email_guard`` rejects disposable/throwaway addresses server-side.
 
-Deterministic, dependency-free, no network, no secret to leak. Web Crypto
-(``crypto.subtle``) does the hashing so the browser digest always matches
-Python's ``hashlib``.
+Web Crypto does the hashing so the browser digest always matches Python's hashlib.
 """
 from __future__ import annotations
 
@@ -38,7 +31,7 @@ ENFORCE = True                # master switch; False = monitor-only (never block
 
 _TOKEN_RE = re.compile(r"^v1:(\d{1,12}):([0-9a-f]{8,32}):(\d{1,12})$")
 HONEYPOT_FIELD = "hp_url"
-MARKER = "bvHuman-v1"         # idempotency marker
+MARKER = "bvHuman-v1"         # idempotency marker (kept stable across widget versions)
 
 _seen: dict[str, float] = {}
 
@@ -89,9 +82,8 @@ def _assess(payload: dict, now: float | None) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Client widget — visible "I'm human" checkbox, auto-attached to every lead/
-# contact form on any page that includes this script. Placeholders are filled
-# below so the constants stay in one place.
+# Client widget — a visible slide-to-fit puzzle, auto-attached to every contact/
+# lead form on any page that includes this script. Placeholders are filled below.
 # --------------------------------------------------------------------------- #
 _WIDGET_TEMPLATE = r"""<script data-bvhuman="__MARKER__">
 (function(){
@@ -110,65 +102,85 @@ _WIDGET_TEMPLATE = r"""<script data-bvhuman="__MARKER__">
     return '';
   }
   var st=document.createElement('style');
-  st.textContent=".bvcap{display:inline-flex;align-items:center;gap:10px;margin:14px 0;padding:11px 15px;border:1px solid rgba(127,127,160,.4);border-radius:12px;background:rgba(127,127,160,.08);font-family:inherit;font-size:.95rem;line-height:1;user-select:none;-webkit-user-select:none}"
-    +".bvcap-box{width:26px;height:26px;border:2px solid #9aa0b5;border-radius:7px;background:transparent;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;padding:0;transition:border-color .15s,background .15s}"
-    +".bvcap-box:hover{border-color:#26C485}.bvcap.ok .bvcap-box{border-color:#26C485;background:#26C485;cursor:default}"
-    +".bvcap-check{display:block;width:7px;height:13px;border:solid #fff;border-width:0 3px 3px 0;transform:rotate(45deg) scale(0);transition:transform .15s;margin-top:-2px}"
-    +".bvcap.ok .bvcap-check{transform:rotate(45deg) scale(1)}"
-    +".bvcap-spin{display:block;width:16px;height:16px;border:2px solid #F5BE58;border-top-color:transparent;border-radius:50%;animation:bvspin .7s linear infinite}@keyframes bvspin{to{transform:rotate(360deg)}}"
-    +".bvcap-txt{opacity:.92;font-weight:600}.bvcap-sub{font-size:.72rem;opacity:.55;font-weight:400}"
-    +".bvcap.err{border-color:#e5484d;animation:bvshake .32s}@keyframes bvshake{25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}";
+  st.textContent=".bvcap{display:block;max-width:300px;margin:14px 0;padding:12px;border:1px solid rgba(127,127,160,.4);border-radius:12px;background:rgba(127,127,160,.07);font-family:inherit;line-height:1.3;-webkit-user-select:none;user-select:none}"
+    +".bvcap-head{font-size:.82rem;font-weight:700;opacity:.9;margin:0 0 8px}"
+    +".bvcap-canvas{display:block;width:100%;height:90px;border-radius:8px;background:#0d1b2e;touch-action:none}"
+    +".bvcap-track{position:relative;height:40px;margin-top:9px;border-radius:20px;background:rgba(127,127,160,.16);border:1px solid rgba(127,127,160,.32);overflow:hidden}"
+    +".bvcap-track .fill{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,rgba(38,196,133,.25),rgba(38,196,133,.4))}"
+    +".bvcap-handle{position:absolute;left:3px;top:3px;width:34px;height:32px;border-radius:16px;background:#fff;box-shadow:0 2px 7px #0007;cursor:grab;display:flex;align-items:center;justify-content:center;color:#0d1b2e;font-weight:900;font-size:16px;touch-action:none}"
+    +".bvcap-handle:active{cursor:grabbing}.bvcap.ok .bvcap-track{background:rgba(38,196,133,.16);border-color:#26C485}.bvcap.ok .bvcap-handle{background:#26C485;color:#fff;cursor:default}"
+    +".bvcap.err .bvcap-track{animation:bvshake .3s}@keyframes bvshake{25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}"
+    +".bvcap-hint{font-size:.72rem;opacity:.6;margin-top:7px;text-align:center}";
   (document.head||document.documentElement).appendChild(st);
   function makeWidget(){
-    var w=document.createElement('div'); w.className='bvcap'; w.setAttribute('role','group'); w.setAttribute('aria-label','Human verification');
-    w.innerHTML='<button type="button" class="bvcap-box" aria-label="Verify you are human"><span class="bvcap-check"></span></button>'
-      +'<span class="bvcap-txt">I\'m human</span> <span class="bvcap-sub">· spam-free, no tracking</span>';
-    var box=w.querySelector('.bvcap-box'), txt=w.querySelector('.bvcap-txt');
-    box.addEventListener('click',function(){
-      if(w.classList.contains('ok')||box.__busy)return; box.__busy=true; w.classList.remove('err');
-      box.innerHTML='<span class="bvcap-spin"></span>';
-      solve().then(function(tok){
-        box.__busy=false;
-        if(tok){ verified=true; w.classList.add('ok'); box.innerHTML='<span class="bvcap-check"></span>'; txt.textContent='Verified'; }
-        else { verified=true; w.classList.add('ok'); box.innerHTML='<span class="bvcap-check"></span>'; txt.textContent='Verified'; }
-      });
-    });
+    var w=document.createElement('div'); w.className='bvcap'; w.setAttribute('role','group'); w.setAttribute('aria-label','Human verification puzzle');
+    w.innerHTML='<div class="bvcap-head">🧩 Slide the piece into the gap to continue</div>'
+      +'<canvas class="bvcap-canvas" width="280" height="90" aria-hidden="true"></canvas>'
+      +'<div class="bvcap-track"><div class="fill"></div><div class="bvcap-handle" tabindex="0" aria-label="Slide to verify">⇢</div></div>'
+      +'<div class="bvcap-hint">in-house check · spam-free · no tracking</div>';
+    var cv=w.querySelector('canvas'), ctx=cv.getContext('2d');
+    var track=w.querySelector('.bvcap-track'), handle=w.querySelector('.bvcap-handle'), fill=w.querySelector('.fill'), head=w.querySelector('.bvcap-head');
+    var W=280,H=90,pw=42,gapX=0,gapY=0,curX=3,solved=false;
+    function rnd(a,b){return a+Math.random()*(b-a);}
+    function path(x,y){var r=8;ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+pw,y,x+pw,y+pw,r);ctx.arcTo(x+pw,y+pw,x,y+pw,r);ctx.arcTo(x,y+pw,x,y,r);ctx.arcTo(x,y,x+pw,y,r);ctx.closePath();}
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      var g=ctx.createLinearGradient(0,0,W,H);g.addColorStop(0,'#1b3b6b');g.addColorStop(1,'#0e2347');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+      ctx.globalAlpha=.5;ctx.fillStyle='#2a4f8a';ctx.fillRect(38,18,58,16);ctx.fillStyle='#39507f';ctx.beginPath();ctx.arc(214,28,20,0,7);ctx.fill();ctx.fillStyle='#2f477a';ctx.fillRect(150,56,70,18);ctx.globalAlpha=1;
+      path(gapX,gapY);ctx.fillStyle='rgba(0,0,0,.45)';ctx.fill();ctx.strokeStyle='rgba(255,255,255,.35)';ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([]);
+      path(curX,gapY);ctx.fillStyle=solved?'#26C485':'#ffd34d';ctx.fill();ctx.strokeStyle='#0d1b2e';ctx.lineWidth=2;ctx.stroke();
+      ctx.fillStyle='#0d1b2e';ctx.beginPath();ctx.arc(curX+pw/2,gapY+pw/2,4,0,7);ctx.fill();
+    }
+    function setup(){gapX=Math.round(rnd(120,W-pw-12));gapY=Math.round(rnd(12,H-pw-12));curX=3;solved=false;w.classList.remove('ok','err');handle.textContent='⇢';head.textContent='🧩 Slide the piece into the gap to continue';draw();}
+    function maxX(){return track.clientWidth-handle.offsetWidth-6;}
+    function moveTo(px){var m=maxX();px=Math.max(0,Math.min(m,px));handle.style.left=(px+3)+'px';fill.style.width=(px+handle.offsetWidth)+'px';curX=3+Math.round(px/m*(W-pw-6));draw();}
+    var dragging=false,sx=0,sl=0;
+    function down(e){if(solved)return;dragging=true;sx=(e.touches?e.touches[0].clientX:e.clientX);sl=(parseFloat(handle.style.left||'3')-3);try{handle.setPointerCapture(e.pointerId);}catch(_){}}
+    function move(e){if(!dragging)return;var x=(e.touches?e.touches[0].clientX:e.clientX);moveTo(sl+(x-sx));if(e.cancelable)e.preventDefault();}
+    function up(){if(!dragging)return;dragging=false;check();}
+    function check(){
+      if(Math.abs(curX-gapX)<8){solved=true;verified=true;w.classList.remove('err');w.classList.add('ok');handle.textContent='✓';head.textContent='✓ Verified — thank you!';draw();try{solve();}catch(_){}}
+      else{w.classList.remove('err');void w.offsetWidth;w.classList.add('err');setTimeout(function(){if(!solved)moveTo(0);},240);}
+    }
+    handle.addEventListener('pointerdown',down);handle.addEventListener('pointermove',move);handle.addEventListener('pointerup',up);handle.addEventListener('pointercancel',up);handle.addEventListener('lostpointercapture',up);
+    handle.addEventListener('touchstart',down,{passive:false});handle.addEventListener('touchmove',move,{passive:false});handle.addEventListener('touchend',up);
+    setTimeout(setup,0);
     return w;
   }
   function addHoneypot(f){
     if(f.querySelector('input[name="__HPF__"]'))return;
-    var hp=document.createElement('input'); hp.type='text'; hp.name='__HPF__'; hp.tabIndex=-1; hp.autocomplete='off';
-    hp.setAttribute('aria-hidden','true'); hp.value='';
+    var hp=document.createElement('input');hp.type='text';hp.name='__HPF__';hp.tabIndex=-1;hp.autocomplete='off';hp.setAttribute('aria-hidden','true');hp.value='';
     hp.style.cssText='position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none';
     f.appendChild(hp);
   }
   function isLead(f){
     if(f.__bvcap)return false;
-    var h=(f.innerHTML||''); var cls=(f.className||'');
-    return !!(f.querySelector('input[type=email]') || /tools-api\/lead/.test(h) || /bv-lead|p2s-row/i.test(cls));
+    var h=(f.innerHTML||'');var cls=(f.className||'');
+    if(f.querySelector('input[type=password]'))return false;   // not a login form
+    return !!(f.querySelector('input[type=email]') || /tools-api\/lead/.test(h) || /bv-lead|p2s-row|contact/i.test(cls));
   }
   function gate(f,w){
-    function blocked(e){ if(!verified){ e.preventDefault(); if(e.stopImmediatePropagation)e.stopImmediatePropagation(); w.classList.remove('err'); void w.offsetWidth; w.classList.add('err'); try{w.scrollIntoView({block:'center',behavior:'smooth'});}catch(_){} return true; } return false; }
-    f.addEventListener('submit', blocked, true);
+    function blocked(e){if(!verified){e.preventDefault();if(e.stopImmediatePropagation)e.stopImmediatePropagation();w.classList.remove('err');void w.offsetWidth;w.classList.add('err');try{w.scrollIntoView({block:'center',behavior:'smooth'});}catch(_){}return true;}return false;}
+    f.addEventListener('submit',blocked,true);
     var btn=f.querySelector('button[type=submit]')||f.querySelector('button');
-    if(btn) btn.addEventListener('click', blocked, true);
-    return btn;
+    if(btn)btn.addEventListener('click',blocked,true);
   }
   function attach(f){
-    if(!isLead(f))return; f.__bvcap=true; addHoneypot(f);
-    var w=makeWidget(); var btn=gate(f,w);
-    if(btn&&btn.parentNode){ btn.parentNode.insertBefore(w, btn); } else { f.appendChild(w); }
+    if(!isLead(f))return;f.__bvcap=true;addHoneypot(f);
+    var w=makeWidget();gate(f,w);
+    var btn=f.querySelector('button[type=submit]')||f.querySelector('button');
+    if(btn&&btn.parentNode){btn.parentNode.insertBefore(w,btn);}else{f.appendChild(w);}
   }
-  function scan(){ var fs=document.querySelectorAll('form'); for(var i=0;i<fs.length;i++) attach(fs[i]); }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', scan); else scan();
-  try{ var mo=new MutationObserver(function(){ scan(); }); mo.observe(document.documentElement,{childList:true,subtree:true}); }catch(e){}
+  function scan(){var fs=document.querySelectorAll('form');for(var i=0;i<fs.length;i++)attach(fs[i]);}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',scan);else scan();
+  try{new MutationObserver(function(){scan();}).observe(document.documentElement,{childList:true,subtree:true});}catch(e){}
   var of=window.fetch;
   window.fetch=function(u,o){
     try{
       var url=(typeof u==='string')?u:((u&&u.url)||'');
       if(url.indexOf('/tools-api/lead')>=0 && o && (o.method||'').toUpperCase()==='POST' && typeof o.body==='string'){
         return solve().then(function(tk){
-          try{var j=JSON.parse(o.body); if(verified&&tk)j.pow=tk; var hp=document.querySelector('input[name="__HPF__"]'); if(hp)j.__HPF__=hp.value||''; o.body=JSON.stringify(j);}catch(e){}
+          try{var j=JSON.parse(o.body);if(verified&&tk)j.pow=tk;var hp=document.querySelector('input[name="__HPF__"]');if(hp)j.__HPF__=hp.value||'';o.body=JSON.stringify(j);}catch(e){}
           return of(u,o);
         });
       }
@@ -184,7 +196,6 @@ WIDGET_JS = (_WIDGET_TEMPLATE
              .replace("__BW__", str(BUCKET_SECONDS * 1000))
              .replace("__HPF__", HONEYPOT_FIELD))
 
-# Static honeypot (defense in depth) for builders that want it in the markup.
 HONEYPOT_HTML = (
     '<div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;'
     'width:1px;height:1px;overflow:hidden" tabindex="-1">'
@@ -192,16 +203,13 @@ HONEYPOT_HTML = (
     f'<input type="text" name="{HONEYPOT_FIELD}" tabindex="-1" autocomplete="off" value=""></label></div>'
 )
 
-
 _SCRIPT_RE = re.compile(r'<script data-bvhuman="[^"]*">.*?</script>\s*', re.S)
 
 
 def inject(html: str) -> tuple[str, bool]:
     """Idempotently ensure the CURRENT bvHuman widget is on any page with a
-    contact/lead form. Strips any previous widget first, so republishing
-    UPGRADES an older (e.g. invisible) widget in place instead of skipping the
-    page. Matches lead-endpoint pages and plain email/contact forms. Returns
-    (html, changed) where changed is False when the page is already current."""
+    contact/lead form. Strips any previous widget first so a republish UPGRADES
+    an older widget in place. Returns (html, changed)."""
     if not html:
         return html, False
     orig = html
