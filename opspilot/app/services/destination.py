@@ -120,6 +120,19 @@ def _schema(p: dict) -> str:
 _VIEWPORT_META = ('<meta name="viewport" content="width=device-width, initial-scale=1, '
                   'viewport-fit=cover">')
 
+# WCAG 2.2 AA quick wins applied to every built page: a visible keyboard focus
+# ring on all interactive elements (2.4.7 / 2.4.11) and honouring reduced-motion
+# (2.3.3). Scoped so it never fights the page's own :hover styles.
+_A11Y_CSS = (
+    '<style id="bv-a11y">'
+    'a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,'
+    'textarea:focus-visible,summary:focus-visible,[tabindex]:focus-visible{'
+    'outline:3px solid #F5BE58!important;outline-offset:2px!important;border-radius:4px}'
+    '@media (prefers-reduced-motion:reduce){*,*::before,*::after{'
+    'animation-duration:.001ms!important;animation-iteration-count:1!important;'
+    'transition-duration:.001ms!important;scroll-behavior:auto!important}}'
+    '</style>')
+
 
 def ensure_viewport(h: str) -> tuple[str, bool]:
     """Guarantee a correct, mobile/Tesla-friendly viewport on any page. The site
@@ -155,7 +168,7 @@ def build_page(chrome: str, p: dict) -> str:
                h, count=1, flags=re.I)
     # drop existing page-level ld+json blocks that describe the CLONED page, add ours
     h = re.sub(r'<script type="application/ld\+json">.*?</script>', "", h, flags=re.S)
-    h = h.replace("</head>", _schema(p) + "\n</head>", 1)
+    h = h.replace("</head>", _schema(p) + "\n" + _A11Y_CSS + "\n</head>", 1)
     return content_studio._swap_main(h, p["body"])
 
 
