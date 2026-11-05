@@ -9,7 +9,7 @@
 </head>
 <body>
 <div class="login-shell">
-  <div class="login-card">
+  <div class="login-card" data-bv-protect>
     <a class="lockup" href="/">
       <img src="/static/img/mark.svg" alt="BVTech OpsPilot">
       <span class="wm"><b>BVTech</b> Cyber Academy<span>Learn to hack &amp; defend</span></span>
@@ -61,5 +61,6 @@ async function doJoin(){
 document.addEventListener('keydown',e=>{if(e.key==='Enter')doJoin();});
 </script>
 <script src="/static/js/brand.js?v={{ version }}"></script>
+<script src="/human.js?v={{ version }}" defer></script>
 </body>
 </html>

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from ...core.db import get_db
 from ...core.deps import require_roles
 from ...models import Role, SignupRequest, User
-from ...services import audit, email
+from ...services import audit, captcha, email
 
 router = APIRouter(prefix="/api", tags=["signup"])
 
@@ -27,13 +27,21 @@ class SignupIn(BaseModel):
     email: EmailStr
     company: str | None = None
     message: str | None = None
+    # In-house human check (filled by /human.js). Optional on the model so a
+    # malformed/absent token yields a friendly 400 rather than a 422.
+    pow: str | None = None
+    hp_url: str | None = None
 
 
 @router.post("/signup", status_code=201)
 def submit_signup(body: SignupIn, request: Request, db: Session = Depends(get_db)):
-    """PUBLIC — no auth. Rate-limited in middleware (see main.py)."""
+    """PUBLIC — no auth. Rate-limited in middleware (see main.py), gated by the
+    in-house bot check + disposable-email block so the inbox stays spam-free."""
     if not body.name.strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Name is required")
+    ok, why = captcha.guard({"pow": body.pow, "hp_url": body.hp_url}, email=str(body.email))
+    if not ok:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, why)
     req = SignupRequest(name=body.name.strip()[:200], email=str(body.email).lower(),
                         company=(body.company or None), message=(body.message or None),
                         ip=_ip(request))

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from ...core.db import get_db
 from ...core.deps import current_user, is_staff, require_roles
 from ...models import Role, User
-from ...services import academy
+from ...services import academy, captcha
 
 router = APIRouter(prefix="/api/academy", tags=["academy"])
 
@@ -23,6 +23,8 @@ class RegisterIn(BaseModel):
     email: EmailStr
     password: str
     full_name: str | None = None
+    pow: str | None = None
+    hp_url: str | None = None
 
 
 @router.post("/register", status_code=201)
@@ -31,7 +33,10 @@ def register(body: RegisterIn, request: Request, response: Response,
     """PUBLIC, open self-registration for the Academy (students, CTF players,
     anyone). Creates an isolated Academy-tenant learner and signs them straight
     in — hack-this-site style. Never creates staff or real-client access.
-    Rate-limited in middleware."""
+    Rate-limited in middleware + gated by the in-house bot check."""
+    ok, why = captcha.guard({"pow": body.pow, "hp_url": body.hp_url}, email=str(body.email))
+    if not ok:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, why)
     from ...services import school
     from .auth import issue_session
     user, err = school.register_student(

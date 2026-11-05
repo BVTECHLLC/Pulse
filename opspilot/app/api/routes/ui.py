@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from ...core.config import get_settings
@@ -30,6 +30,16 @@ def _page(name: str, request: Request, **extra) -> HTMLResponse:
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     resp.headers["Pragma"] = "no-cache"
     return resp
+
+
+@router.get("/human.js", include_in_schema=False)
+def human_js():
+    """The in-house bot-check widget (slide-puzzle + proof-of-work) as a standalone
+    script, so server-rendered portal pages can protect their public forms with
+    <script src="/human.js">. Cacheable for a day — the logic is version-stable."""
+    from ...services import captcha
+    return Response(content=captcha.WIDGET_SRC_JS, media_type="application/javascript; charset=utf-8",
+                    headers={"Cache-Control": "public, max-age=86400"})
 
 
 @router.get("/", response_class=HTMLResponse)

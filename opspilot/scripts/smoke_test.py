@@ -15,6 +15,21 @@ os.environ["PULSE_DISABLE_SITE_REPAIR"] = "1"   # v1.99: no background repair in
 from fastapi.testclient import TestClient
 from app.main import app
 
+
+def _human_pow():
+    """Forge a fresh, valid in-house human-check (proof-of-work) token, exactly
+    as /human.js would compute one in the browser. Used to exercise the public
+    forms (signup, academy register, lead) that now require it."""
+    import hashlib as _h, secrets as _s, time as _t
+    from app.services import captcha as _cap
+    b = int(_t.time() // _cap.BUCKET_SECONDS); r = _s.token_hex(8); n = 0
+    while True:
+        tok = f"v1:{b}:{r}:{n}"
+        if _h.sha256(tok.encode()).hexdigest().startswith("0" * _cap.DIFFICULTY):
+            return tok
+        n += 1
+
+
 def main():
     with TestClient(app) as c:
         assert c.get("/api/health").json()["ok"], "health failed"
@@ -448,9 +463,16 @@ def main():
         # ===================== v0.8: public signup + email =====================
         from app.services import email as _email
         assert _email.send("nobody@example.com","Test","Body") is False, "email should no-op without SMTP"
-        # public signup (no auth) creates a reviewable lead
+        # public signup (no auth) creates a reviewable lead — now gated by the
+        # in-house human check: a tokenless bot POST is refused (400)...
         pub=TestClient(app); pub.cookies.clear()
-        sr=pub.post("/api/signup", json={"name":"Pat Lead","email":"pat@acme.com","company":"Acme","message":"Need RMM"})
+        assert pub.post("/api/signup", json={"name":"Bot","email":"bot@acme.com"}).status_code==400, \
+            "signup must require the human-check token"
+        # ...a disposable address is refused even WITH a valid token...
+        assert pub.post("/api/signup", json={"name":"Bot","email":"x@mailinator.com","pow":_human_pow()}
+                        ).status_code==400, "signup must reject disposable email"
+        # ...and a real human with a valid token succeeds.
+        sr=pub.post("/api/signup", json={"name":"Pat Lead","email":"pat@acme.com","company":"Acme","message":"Need RMM","pow":_human_pow()})
         assert sr.status_code==201 and sr.json()["ok"] is True, sr.text
         reqs=c.get("/api/signup-requests").json()
         sid=next(r["id"] for r in reqs if r["email"]=="pat@acme.com")
@@ -6023,9 +6045,13 @@ def main():
         assert _school.home_for(_sdb, _owner) == "/dashboard"
         _sdb.close()
         # OPEN self-registration: anyone, any email -> isolated Academy learner + auto-login
+        # Now gated by the in-house human check: a tokenless bot POST is refused.
         _stu = TestClient(app)
+        assert _stu.post("/api/academy/register",
+                         json={"email": "botplayer@example.org", "password": "hackme12"}).status_code == 400, \
+            "academy register must require the human-check token"
         _rr = _stu.post("/api/academy/register",
-                        json={"email": "player1@example.org", "password": "hackme12", "full_name": "P1"})
+                        json={"email": "player1@example.org", "password": "hackme12", "full_name": "P1", "pow": _human_pow()})
         assert _rr.status_code == 201 and _rr.json()["home"] == "/academy", _rr.text
         assert _stu.get("/api/academy/catalog").status_code == 200          # signed in, can train
         _sme = _stu.get("/api/auth/me").json()
@@ -6041,9 +6067,9 @@ def main():
         _adb.close()
         # a learner cannot see another tenant's data (isolation holds through the school)
         assert _stu.get(f"/api/onboarding/{cid}").status_code in (403, 404)
-        # duplicate email is rejected cleanly
+        # duplicate email is rejected cleanly (valid token so it reaches the dup check)
         assert _stu.post("/api/academy/register",
-                         json={"email": "player1@example.org", "password": "hackme12"}).status_code == 400
+                         json={"email": "player1@example.org", "password": "hackme12", "pow": _human_pow()}).status_code == 400
         # password login returns the server-decided home
         _stu2 = TestClient(app)
         assert _stu2.post("/api/auth/login",
@@ -8096,7 +8122,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.124.0"
+    assert _gs101().APP_VERSION == "1.125.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8458,7 +8484,7 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.124.0"
+    assert _gs101().APP_VERSION == "1.125.0"
     assert _sr100.REPAIR_EPOCH == "1.112.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
@@ -8494,7 +8520,7 @@ def main():
     assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
     # site nav points to the game home
     assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
-    assert _gs101().APP_VERSION == "1.124.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.125.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
           "Explore features it with a Halloween hero, republish forced OK")
 
@@ -8514,11 +8540,11 @@ def main():
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
     assert "xp-papel" in _xp3 and "Happy Thanksgiving" in _xp3, "seasonal Explore theme missing"
-    assert _gs101().APP_VERSION == "1.124.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.125.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
 
-    print("\n=== OpsPilot v1.124.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.125.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

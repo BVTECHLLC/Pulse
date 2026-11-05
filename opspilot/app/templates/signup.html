@@ -17,7 +17,7 @@
     <h1>Request access</h1>
     <p class="sub">Tell us a bit about you and we'll reach out.</p>
 
-    <div id="form">
+    <div id="form" data-bv-protect>
       <label>Full name</label>
       <input id="name" placeholder="Jane Smith">
       <label>Work email</label>
@@ -55,5 +55,6 @@ async function submitSignup(){
 }
 document.addEventListener('keydown',e=>{if(e.key==='Enter')submitSignup();});
 </script>
+<script src="/human.js?v={{ version }}" defer></script>
 </body>
 </html>

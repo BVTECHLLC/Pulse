@@ -33,6 +33,15 @@ _TOKEN_RE = re.compile(r"^v1:(\d{1,12}):([0-9a-f]{8,32}):(\d{1,12})$")
 HONEYPOT_FIELD = "hp_url"
 MARKER = "bvHuman-v1"         # idempotency marker (kept stable across widget versions)
 
+# POST endpoints the browser widget gates: it blocks the request until the
+# puzzle is solved, then attaches a fresh PoW token + honeypot to the JSON body.
+# Covers the static site's lead form AND the portal's public account forms.
+PROTECTED_POST_PATHS = [
+    "/tools-api/lead", "/api/public-tools/lead",   # contact / lead capture
+    "/api/signup",                                  # portal access request
+    "/api/academy/register",                        # academy open self-registration
+]
+
 _seen: dict[str, float] = {}
 
 
@@ -79,6 +88,41 @@ def _assess(payload: dict, now: float | None) -> str:
     _prune(now)
     _seen[key] = now + (MAX_AGE_BUCKETS + 2) * BUCKET_SECONDS
     return "ok"
+
+
+# Human-readable messages for each failure reason, safe to show a real visitor.
+_FRIENDLY = {
+    "honeypot": "Submission blocked. Please try again from a normal browser.",
+    "missing_or_malformed_token": "Please slide the puzzle piece to confirm you're human, then try again.",
+    "stale_token": "That took a moment too long — please slide the puzzle again and resubmit.",
+    "bad_pow": "Human check failed — please slide the puzzle again and resubmit.",
+    "replayed": "Please slide the puzzle again and resubmit.",
+    "disposable": "Please use a real, permanent email address (temporary/disposable inboxes aren't accepted).",
+    "invalid": "That email address doesn't look valid — please double-check it.",
+}
+
+
+def friendly(reason: str) -> str:
+    return _FRIENDLY.get(reason, "Please complete the human check and try again.")
+
+
+def guard(payload: dict, *, email: str | None = None, now: float | None = None) -> tuple[bool, str]:
+    """One call for public form endpoints: proof-of-work + honeypot (via verify)
+    AND disposable-email rejection (via email_guard). Returns (ok, reason) where
+    reason is already a visitor-friendly message when ok is False. Fails closed
+    on bot signals; honours the ENFORCE master switch through verify()."""
+    ok, reason = verify(payload, now=now)
+    if not ok:
+        return False, friendly(reason)
+    if email:
+        try:
+            from . import email_guard
+            eok, ereason = email_guard.check(email)
+            if not eok:
+                return False, friendly(ereason)
+        except Exception:  # noqa: BLE001 — never let the guard crash a submission path
+            pass
+    return True, "ok"
 
 
 # --------------------------------------------------------------------------- #
@@ -155,8 +199,12 @@ _WIDGET_TEMPLATE = r"""<script data-bvhuman="__MARKER__">
   }
   function isLead(f){
     if(f.__bvcap)return false;
+    // Explicit opt-out / opt-in (opt-in wins even when a password field is present,
+    // e.g. the Academy open-registration form we DO want gated).
+    if(f.getAttribute&&f.getAttribute('data-bv-no-captcha')!==null)return false;
+    if(f.getAttribute&&f.getAttribute('data-bv-protect')!==null)return true;
     var h=(f.innerHTML||'');var cls=(f.className||'');
-    if(f.querySelector('input[type=password]'))return false;   // not a login form
+    if(f.querySelector('input[type=password]'))return false;   // plain login form — left puzzle-free
     return !!(f.querySelector('input[type=email]') || /tools-api\/lead/.test(h) || /bv-lead|p2s-row|contact/i.test(cls));
   }
   function gate(f,w){
@@ -174,27 +222,41 @@ _WIDGET_TEMPLATE = r"""<script data-bvhuman="__MARKER__">
   function scan(){var fs=document.querySelectorAll('form');for(var i=0;i<fs.length;i++)attach(fs[i]);}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',scan);else scan();
   try{new MutationObserver(function(){scan();}).observe(document.documentElement,{childList:true,subtree:true});}catch(e){}
+  var PATHS=__POST_PATHS__;
+  function isProtectedUrl(url){for(var i=0;i<PATHS.length;i++){if(url.indexOf(PATHS[i])>=0)return true;}return false;}
+  function flashAll(){var ws=document.querySelectorAll('.bvcap');for(var i=0;i<ws.length;i++){var w=ws[i];w.classList.remove('err');void w.offsetWidth;w.classList.add('err');if(i===0){try{w.scrollIntoView({block:'center',behavior:'smooth'});}catch(_){}}}}
   var of=window.fetch;
   window.fetch=function(u,o){
     try{
       var url=(typeof u==='string')?u:((u&&u.url)||'');
-      if(url.indexOf('/tools-api/lead')>=0 && o && (o.method||'').toUpperCase()==='POST' && typeof o.body==='string'){
+      var method=((o&&o.method)||(u&&u.method)||'GET').toUpperCase();
+      if(method==='POST' && isProtectedUrl(url) && (!o || typeof o.body==='string' || o.body==null)){
+        if(!verified){flashAll();return Promise.resolve(new Response(JSON.stringify({ok:false,detail:'Please slide the puzzle piece below to confirm you are human, then try again.'}),{status:403,headers:{'Content-Type':'application/json'}}));}
         return solve().then(function(tk){
-          try{var j=JSON.parse(o.body);if(verified&&tk)j.pow=tk;var hp=document.querySelector('input[name="__HPF__"]');if(hp)j.__HPF__=hp.value||'';o.body=JSON.stringify(j);}catch(e){}
+          try{if(o&&typeof o.body==='string'){var j=JSON.parse(o.body);if(tk)j.pow=tk;var hp=document.querySelector('input[name="__HPF__"]');j.__HPF__=hp?(hp.value||''):'';o.body=JSON.stringify(j);}}catch(e){}
           return of(u,o);
         });
       }
     }catch(e){}
     return of(u,o);
   };
+  window.bvHuman={ready:function(){return verified;},token:solve,rescan:scan};
 })();
 </script>"""
+
+import json as _json
 
 WIDGET_JS = (_WIDGET_TEMPLATE
              .replace("__MARKER__", MARKER)
              .replace("__DIFF__", str(DIFFICULTY))
              .replace("__BW__", str(BUCKET_SECONDS * 1000))
+             .replace("__POST_PATHS__", _json.dumps(PROTECTED_POST_PATHS))
              .replace("__HPF__", HONEYPOT_FIELD))
+
+# The same widget as a bare JS body (no <script> wrapper), for serving as a
+# standalone file that server-rendered portal templates include with
+# <script src="/human.js">. Strips the opening/closing <script> tags.
+WIDGET_SRC_JS = re.sub(r"^<script[^>]*>\s*|\s*</script>\s*$", "", WIDGET_JS).strip()
 
 HONEYPOT_HTML = (
     '<div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;'
