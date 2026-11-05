@@ -1,0 +1,10 @@
+url,canonical,indexable,template_type,locale,notes
+# Phase 1 deliverable. Canonical rules enforced in destination.build_page:
+# HTTPS only; one lowercase trailing-slash convention; self-referencing canonical
+# on indexable pages; /api/* and query-filter combos are non-indexable.
+/explore/,https://bvtech.org/explore/,yes,explore,en,
+/tools/password-strength/,https://bvtech.org/tools/password-strength/,yes,tool,en,
+/tools/password-generator/,https://bvtech.org/tools/password-generator/,yes,tool,en,
+/tools/subnet-calculator/,https://bvtech.org/tools/subnet-calculator/,yes,tool,en,
+/managed-it-houston/,https://bvtech.org/managed-it-houston/,yes,location,en,
+/academy/certificate/{code},,no,certificate,en,permanent verifier route - never delete
