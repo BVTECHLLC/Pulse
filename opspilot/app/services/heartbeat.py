@@ -291,6 +291,13 @@ def run_all(db: Session, now: datetime | None = None) -> dict:
         _nd.maybe_run_daily(db, now)
     except Exception:  # noqa: BLE001
         db.rollback()
+    # 13.557c) v1.122 INBOX GUARDIAN — AI email filter. No-ops cleanly until the
+    #          owner enables it in the portal; then scans the mailbox ~every 10 min.
+    try:
+        from . import email_filter as _ef
+        _ef.maybe_run(db, now)
+    except Exception:  # noqa: BLE001
+        db.rollback()
     # 13.5575) v1.99 ONE-TIME SITE REPAIR - re-renders damaged bvtech.org post
     #          pages, repairs every listing, runs the AI self-test and the audit,
     #          then EMAILS the report. Background thread; never blocks the tick.

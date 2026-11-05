@@ -198,6 +198,22 @@ class GraphClient:
         }
         self._post(f"/users/{mb}/sendMail", msg)
 
+    def ensure_folder(self, mailbox: str, name: str) -> str | None:
+        """Return the id of the mailbox folder named `name`, creating it if absent."""
+        mb = parse.quote(mailbox)
+        data = self._get(f"/users/{mb}/mailFolders?$top=100&$select=id,displayName")
+        for f in data.get("value", []):
+            if (f.get("displayName") or "").strip().lower() == name.strip().lower():
+                return f.get("id")
+        created = self._post(f"/users/{mb}/mailFolders", {"displayName": name})
+        return (created or {}).get("id")
+
+    def move_message(self, mailbox: str, message_id: str, dest_folder_id: str) -> dict | None:
+        """Move a message to another folder (e.g. a 'BVTech Filtered' folder)."""
+        mb = parse.quote(mailbox)
+        mid = parse.quote(message_id, safe="")
+        return self._post(f"/users/{mb}/messages/{mid}/move", {"destinationId": dest_folder_id})
+
     def mark_read(self, mailbox: str, message_id: str, is_read: bool = True) -> None:
         mb = parse.quote(mailbox)
         mid = parse.quote(message_id, safe="")

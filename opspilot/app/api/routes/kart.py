@@ -43,9 +43,9 @@ _HTML_NOSTORE = {
 }
 
 
-@router.get("/kart/", include_in_schema=False)
-@router.get("/kart/index.html", include_in_schema=False)
-def kart_index() -> FileResponse | JSONResponse:
+@router.get("/kart/", include_in_schema=False, response_model=None)
+@router.get("/kart/index.html", include_in_schema=False, response_model=None)
+def kart_index():
     idx = _KART_DIST / "index.html"
     if not idx.is_file():
         return JSONResponse(status_code=503, content={

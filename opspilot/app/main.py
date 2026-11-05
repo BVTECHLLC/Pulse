@@ -24,6 +24,7 @@ from .api.routes import (
     remediation, inventory, autopost, setup, ai, branding, practice, status, users,
     library, academy, website, patching, copilot, psa, vcio, autonomy, incidents,
     content_autopilot, browser, public_tools, onboarding, answers, coop, kart, memorial,
+    email_filter,
 )
 
 _s = get_settings()
@@ -191,6 +192,7 @@ app.include_router(vcio.router)
 app.include_router(onboarding.router)
 app.include_router(coop.router)
 app.include_router(memorial.router)
+app.include_router(email_filter.router)
 app.include_router(autonomy.router)
 app.include_router(incidents.router)
 app.include_router(content_autopilot.router)
