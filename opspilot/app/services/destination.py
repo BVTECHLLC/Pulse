@@ -57,9 +57,12 @@ def _pages() -> list[dict]:
          "title": pages_game.TITLE, "desc": pages_game.DESC, "body": pages_game.body()},
     ]
     for t in pages_tools.all_tools():
-        out.append({"path": f"tools/{t['slug']}/index.html",
-                    "url": f"{SITE}/tools/{t['slug']}/", "title": t["title"],
-                    "desc": t["desc"], "body": t["body"]})
+        page = {"path": f"tools/{t['slug']}/index.html",
+                "url": f"{SITE}/tools/{t['slug']}/", "title": t["title"],
+                "desc": t["desc"], "body": t["body"]}
+        if t.get("faqs"):            # forward FAQ -> FAQPage schema (_schema)
+            page["faqs"] = t["faqs"]
+        out.append(page)
     out += pages_local.city_pages()          # local service-area SEO pages
     return out
 
