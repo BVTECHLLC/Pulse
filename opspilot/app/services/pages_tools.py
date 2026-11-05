@@ -513,6 +513,34 @@ def subnet_calculator():
                 body=body)
 
 
+def _faq_block(faqs):
+    """Render a visible FAQ section so the on-page content matches the FAQPage
+    JSON-LD (answer engines and Google want the schema to reflect visible text)."""
+    import html as _h
+    items = "".join(
+        f'<details class="tl-faq"><summary>{_h.escape(q)}</summary>'
+        f'<div class="tl-faq-a">{_h.escape(a)}</div></details>'
+        for q, a in faqs)
+    return (
+        '<div class="tl-faqs"><h2>Frequently asked questions</h2>'
+        '<style>'
+        '.tl-faqs{margin:34px 0 0}'
+        '.tl-faqs h2{font-family:var(--fh);color:var(--white);font-size:1.3rem;margin:0 0 14px}'
+        '.tl-faq{border:1px solid var(--border);border-radius:12px;background:var(--card);margin:0 0 10px;padding:0 16px}'
+        '.tl-faq summary{cursor:pointer;padding:14px 0;color:var(--white);font-weight:700;font-size:1rem;list-style:none}'
+        '.tl-faq summary::-webkit-details-marker{display:none}'
+        '.tl-faq summary::before{content:"+";color:var(--o2);font-weight:800;margin-right:10px}'
+        '.tl-faq[open] summary::before{content:"–"}'
+        '.tl-faq-a{color:var(--text);font-size:.94rem;line-height:1.65;padding:0 0 14px}'
+        '</style>' + items + '</div>')
+
+
 def all_tools():
-    return [whats_my_ip(), speed_test(), is_it_down(), ev_savings(),
-            password_strength(), password_generator(), subnet_calculator()]
+    tools = [whats_my_ip(), speed_test(), is_it_down(), ev_savings(),
+             password_strength(), password_generator(), subnet_calculator()]
+    # Append a VISIBLE FAQ to any tool that declares faqs, so the page text
+    # matches its FAQPage schema (schema must reflect visible content).
+    for t in tools:
+        if t.get("faqs"):
+            t["body"] = t["body"] + _faq_block(t["faqs"])
+    return tools
