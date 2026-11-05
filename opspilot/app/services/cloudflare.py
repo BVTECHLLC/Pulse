@@ -151,6 +151,38 @@ def purge_everything(db: Session, site: str) -> dict:
         return {"ok": False, "detail": str(e)[:200]}
 
 
+def purge_on_deploy(db: Session) -> dict:
+    """Run ONCE per app version, from the api startup hook. When the running
+    APP_VERSION differs from the version we last purged for, do a full-zone purge
+    of bvtech + jp so a fresh deploy's HTML/game/forms are never masked by
+    Cloudflare's edge cache. The api container restarts on every deploy, so this
+    fires right after new code boots — no bash/cron timing to get wrong, and the
+    token + DB live right here in the container.
+
+    Idempotent: records the version it purged under the internal `cache_state`
+    row, so a plain restart (same version) won't re-purge, and a missing/broken
+    token won't make us retry on every boot — the next version bump tries again.
+    """
+    from ..core.config import get_settings
+    ver = get_settings().APP_VERSION
+    conn = secure_config.get_platform(db, "cache_state")
+    last = ((conn.config if conn else None) or {}).get("last_purged_version")
+    if last == ver:
+        return {"ok": True, "skipped": True, "detail": f"cache already purged for v{ver}"}
+    results = {}
+    for site in ("bvtech", "jp"):
+        try:
+            results[site] = purge_everything(db, site)
+        except Exception as e:  # noqa: BLE001
+            results[site] = {"ok": False, "detail": str(e)[:120]}
+    try:
+        secure_config.upsert_platform(db, "cache_state", "Cache State", "Internal",
+                                      {"last_purged_version": ver})
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "detail": f"purge-on-deploy v{ver}", "results": results}
+
+
 def verify(db: Session) -> dict:
     """Live check: credential valid + which of our zones it can reach. Handles
     BOTH credential types and tells the operator exactly what's missing."""

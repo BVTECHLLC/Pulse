@@ -404,6 +404,18 @@ def _startup():
                       ", ".join(f"{k}({len(v)})" for k, v in applied.items()))
         except Exception as e:  # noqa: BLE001
             print(f"[env-creds] warning: {e}")
+
+        # v1.124: on a fresh deploy (new APP_VERSION), bust Cloudflare's edge
+        # cache ONCE so the new game build, /explore/, and lead forms show
+        # immediately instead of serving hours-old cached HTML. Version-gated,
+        # so a plain restart is a no-op. Best-effort: never blocks startup.
+        try:
+            from .services import cloudflare as _cf
+            r = _cf.purge_on_deploy(db)
+            if not r.get("skipped"):
+                print(f"[cache] {r.get('detail')} :: {r.get('results')}")
+        except Exception as e:  # noqa: BLE001
+            print(f"[cache] purge-on-deploy warning: {e}")
     finally:
         db.close()
 

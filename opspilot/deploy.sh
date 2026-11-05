@@ -55,3 +55,25 @@ log "DEPLOY COMPLETE — running version now: ${NOW_VER:-unknown}"
 if [ -n "$REPO_VER" ] && [ "$NOW_VER" != "$REPO_VER" ]; then
   log "ERROR: running version ($NOW_VER) still != repo version ($REPO_VER) — check 'docker compose logs api' and disk space (df -h)"
 fi
+
+# v1.124: bust Cloudflare's edge cache on every real deploy. The portal and
+# bvtech.org both sit behind Cloudflare, whose edge kept serving OLD /kart/,
+# /explore/, and lead-form HTML for hours after a deploy (reads as "I pushed
+# but the site didn't change"). A full-zone purge on bvtech.org clears the
+# portal.bvtech.org subdomain too, so the game, explore, and forms all go
+# fresh at once. Best-effort: a missing/invalid token just logs and moves on.
+log "purging Cloudflare edge cache (bvtech + jp zones)..."
+docker compose exec -T api python - <<'PYPURGE' 2>&1 | sed 's/^/  /' || log "WARN: cache purge step failed"
+from app.core.db import SessionLocal
+from app.services import cloudflare
+db = SessionLocal()
+try:
+    for site in ("bvtech", "jp"):
+        try:
+            r = cloudflare.purge_everything(db, site)
+            print(f"{site}: {r.get('detail')}")
+        except Exception as e:
+            print(f"{site}: purge error {e}")
+finally:
+    db.close()
+PYPURGE
