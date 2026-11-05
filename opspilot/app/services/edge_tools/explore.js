@@ -147,6 +147,24 @@ export async function takes() {
   });
 }
 
+// "What devs are building" — the week's fastest-rising new open-source repos,
+// from GitHub's public search API (keyless; cached 3h at the edge so GitHub sees
+// a trickle). Best-effort: any failure returns empty and the widget stays hidden.
+export async function trending() {
+  return cached("explore-v1-trending", 3 * 3600, async () => {
+    const since = new Date(Date.now() - 21 * 86400 * 1000).toISOString().slice(0, 10);
+    const r = JSON.parse(await getText(
+      "https://api.github.com/search/repositories?q=created:%3E" + since
+      + "+stars:%3E25&sort=stars&order=desc&per_page=10", 8000));
+    const items = (r.items || []).slice(0, 7).map((it) => ({
+      name: it.full_name, url: it.html_url,
+      desc: (it.description || "").replace(/[\u{1F000}-\u{1FFFF}]/gu, "").trim().slice(0, 110),
+      stars: it.stargazers_count, lang: it.language || "",
+    })).filter((x) => x.name && /^https:\/\/github\.com\//.test(x.url));
+    return { items };
+  });
+}
+
 async function img(request) {
   const u = new URL(request.url).searchParams.get("u") || "";
   if (!IMG_HOSTS.some((h) => u.startsWith(h)) || u.includes(".."))
@@ -172,6 +190,7 @@ export async function onRequestGet({ request }) {
     if (what === "onthisday") return json(await onThisDay(), 200, 3600);
     if (what === "markets") return json(await markets(), 200, 120);
     if (what === "takes") return json(await takes(), 200, 600);
+    if (what === "trending") return json(await trending(), 200, 1800);
   } catch (e) {
     return json({ items: [], error: "temporarily unavailable" }, 200, 60);
   }

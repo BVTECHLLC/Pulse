@@ -217,6 +217,16 @@ def body() -> str:
 .xp-otd li{color:var(--text);font-size:.9rem;line-height:1.5;margin:0 0 10px;list-style:none;padding-left:52px;position:relative;min-height:1.2em}
 .xp-otd li b{position:absolute;left:0;top:0;color:var(--o2);font-family:var(--fh);font-weight:800}
 .xp-otd a{color:inherit}.xp-otd a:hover{color:var(--o2)}
+/* what devs are building (GitHub trending) */
+.xp-trow{display:block;padding:10px 0;border-top:1px solid var(--border);text-decoration:none}
+.xp-trow:first-child{border-top:0}
+.xp-trow .t{display:flex;gap:10px;align-items:baseline;justify-content:space-between}
+.xp-trow .t b{color:var(--white);font-size:.9rem;font-weight:700;word-break:break-word}
+.xp-trow:hover .t b{color:var(--o2)}
+.xp-trow .st{color:var(--o2);font-size:.76rem;font-weight:800;white-space:nowrap;flex:0 0 auto}
+.xp-trow p{margin:3px 0 0;color:var(--muted);font-size:.78rem;line-height:1.35}
+.xp-trow .lang{display:inline-block;margin-top:5px;font-size:.68rem;color:var(--text);border:1px solid var(--border);border-radius:999px;padding:1px 8px}
+.xp-trend-foot{margin-top:12px;font-size:.7rem;color:var(--muted);border-top:1px solid var(--border);padding-top:9px}
 /* trending */
 .xp-tr a{display:flex;gap:10px;align-items:baseline;padding:9px 0;border-top:1px solid var(--border);color:var(--text);font-size:.86rem;line-height:1.4}
 .xp-tr a:first-child{border-top:0}.xp-tr a:hover{color:var(--o2)}
@@ -407,6 +417,11 @@ def body() -> str:
     <div class="xp-card lift" id="xp-otd-card" hidden>
       <h3>📅 On This Day in Tech</h3>
       <ul class="xp-otd" id="xp-otd" style="margin:0;padding:0"></ul>
+    </div>
+    <div class="xp-card lift" id="xp-trend-card" hidden>
+      <h3>🛠️ What Devs Are Building</h3>
+      <div id="xp-trend"></div>
+      <div class="xp-trend-foot">Fastest-rising new open-source projects · via GitHub</div>
     </div>
   </div>
 </div>
@@ -680,6 +695,22 @@ def body() -> str:
       else li.appendChild(document.createTextNode(e.text));ul.appendChild(li);
     });
     document.getElementById("xp-otd-card").hidden=false;
+  }).catch(function(){});
+
+  // ---- what devs are building (GitHub trending) ----
+  get("explore/trending").then(function(d){
+    var items=(d&&d.items)||[];if(!items.length)return;
+    var box=document.getElementById("xp-trend");
+    items.forEach(function(r){
+      var a=el("a","xp-trow");a.href=r.url;a.target="_blank";a.rel="noopener";
+      var top=el("div","t");top.appendChild(el("b",null,r.name));
+      top.appendChild(el("span","st","★ "+(r.stars>=1000?(r.stars/1000).toFixed(1)+"k":r.stars)));
+      a.appendChild(top);
+      if(r.desc)a.appendChild(el("p",null,r.desc));
+      if(r.lang)a.appendChild(el("span","lang",r.lang));
+      box.appendChild(a);
+    });
+    document.getElementById("xp-trend-card").hidden=false;
   }).catch(function(){});
 
   // ---- answers ----
