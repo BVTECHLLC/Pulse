@@ -6213,7 +6213,12 @@ def main():
             _ap131.publish_one(_sdb, post_obj, posters={"linkedin": _fail_poster})
             r3 = _ap131.publish_one(_sdb, post_obj, posters={"linkedin": _fail_poster})
             assert post_obj.status == "failed" and post_obj.attempts == 3, (post_obj.status, post_obj.attempts)
-            note = (_sdb.query(_N131).filter(_N131.kind == "autopost")
+            # Filter by THIS post's id in the message, not just the latest autopost
+            # notification: the background scheduler can create an unrelated autopost
+            # notification mid-run and race this assertion (previously flaky).
+            note = (_sdb.query(_N131)
+                    .filter(_N131.kind == "autopost",
+                            _N131.message.contains(str(rp["id"])))
                     .order_by(_N131.id.desc()).first())
             assert note and str(rp["id"]) in note.message, "failure notification missing"
             # Double-publish race: a non-queued post cannot be claimed again.
