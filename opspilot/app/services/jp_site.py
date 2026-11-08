@@ -126,7 +126,10 @@ def _http(method: str, url: str, token: str, payload: dict | None = None) -> dic
     hourly sweeps were tripping GitLab's limits and silently skipping listings."""
     import time as _time
     data = json.dumps(payload).encode() if payload is not None else None
-    for attempt in range(4):
+    # v1.133: 6 attempts (was 4) with a higher 429 backoff ceiling, so a sustained
+    # rate limit during a big publish sweep rides out instead of aborting the job.
+    _ATTEMPTS = 6
+    for attempt in range(_ATTEMPTS):
         req = urllib.request.Request(url, method=method,
                                      headers={"PRIVATE-TOKEN": token,
                                               "Content-Type": "application/json"})
@@ -135,12 +138,12 @@ def _http(method: str, url: str, token: str, payload: dict | None = None) -> dic
                 body = r.read().decode()
             break
         except urllib.error.HTTPError as e:
-            if e.code in _RETRY_STATUS and attempt < 3:
+            if e.code in _RETRY_STATUS and attempt < _ATTEMPTS - 1:
                 try:
                     wait = float(e.headers.get("Retry-After") or 0)
                 except (TypeError, ValueError):
                     wait = 0
-                _time.sleep(min(max(wait, 2 ** attempt * 2), 20))
+                _time.sleep(min(max(wait, 2 ** attempt * 2), 30))
                 continue
             _raise_gitlab(e)
     return json.loads(body) if body else {}

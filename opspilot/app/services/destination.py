@@ -558,12 +558,19 @@ def _apply_nav_everywhere(cfg: dict, files: dict) -> int:
             h, ch = captcha.inject(files[path])
             if ch:
                 files[path] = h
-    # 2) sweep the live repo: nav links + CAPTCHA on existing forms
+    # 2) sweep the live repo: nav links + CAPTCHA on existing forms.
+    #    v1.133: the per-file fetches below are a burst (up to 600 calls) that can
+    #    trip GitLab's rate limit even with per-call retry, aborting the publish.
+    #    Throttle only the calls that actually hit the network so the sweep spreads
+    #    out instead of hammering GitLab; in-memory pages (already in `files`) are
+    #    free and never sleep.
+    import time as _time
     paths = [p for p in jp_site._list_all_html(cfg) if not p.startswith("worker-tools/")]
     for path in paths[:600]:
         base = files.get(path)
         if base is None:
             base = jp_site._fetch_file(cfg, path)
+            _time.sleep(0.035)              # gentle throttle: ~spreads 600 fetches over ~20s
         if not base:
             continue
         changed = False
