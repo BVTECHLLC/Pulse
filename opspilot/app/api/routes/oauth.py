@@ -164,9 +164,12 @@ def sso_diagnostics(request: Request, db: Session = Depends(get_db),
             "detail": d,
             "emails_returned": [],
             "resolved_now": False,
-            "hint": ("The OAuth app's client secret is wrong or expired — create a "
-                     "fresh secret on THAT app and set M365_SSO_CLIENT_SECRET, then "
-                     "restart." if invalid_secret else
+            "hint": ("The Entra app's client secret is wrong or expired (Entra secrets "
+                     "expire — this is the usual cause). In Microsoft Entra → App "
+                     "registrations → your app → Certificates & secrets, create a NEW "
+                     "client secret and copy its Value; then paste it in Settings → "
+                     "Connections → Microsoft 365 and try signing in again. No restart "
+                     "needed." if invalid_secret else
                      "Redirect URI or PKCE mismatch — confirm the Entra app's Web "
                      "redirect URI is exactly the one shown below." if redirect_pkce else
                      "Sign-in failed at token exchange. See the reason in `detail`."),
