@@ -116,6 +116,8 @@ def connection_center(db: Session = Depends(get_db),
         "dialpad": vault_has("dialpad", "api_key"),
         "google_places": vault_has("google_places", "api_key"),
         "tacticalrmm": vault_has("tacticalrmm", "api_key"),
+        "groq": vault_has("groq", "api_key"),
+        "custom_api": vault_has("custom_api", "api_key"),
     }
     items = []
     for spec in CONNECTORS:
@@ -133,7 +135,7 @@ def connection_center(db: Session = Depends(get_db),
             cfg = (conn.config if conn else None) or {}
             it["credential_state"] = secure_config.secret_state(cfg, spec["secret_field"])
         it["testable"] = spec["key"] in ("gitlab_sites", "anthropic", "stripe", "hubspot",
-                                         "cloudflare", "bvtech_github")
+                                         "cloudflare", "bvtech_github", "groq")
         items.append(it)
     p1 = [i for i in items if i["priority"] == 1]
     done = sum(1 for i in items if i["connected"])
@@ -257,6 +259,29 @@ CONNECTORS = [
      "save": "tacticalrmm",
      "fields": [{"key": "base_url", "label": "TRMM API base URL", "secret": False},
                 {"key": "api_key", "label": "TRMM API key", "secret": True}]},
+    {"key": "groq", "name": "Groq (FREE AI engine)", "priority": 2,
+     "unlocks": "FREE AI: runs daily posts, Copilot, ticket triage and all content "
+                "writing on Groq's free API instead of spending paid Claude tokens. "
+                "Claude stays as the premium fallback when Groq is down.",
+     "console_url": "https://console.groq.com/keys",
+     "console_hint": "console.groq.com -> API Keys -> Create API Key -> copy (starts gsk_...). "
+                     "Free to create; no credit card.",
+     "save": "groq", "secret_provider": "groq", "secret_field": "api_key",
+     "fields": [{"key": "api_key", "label": "Groq API key (gsk_...)", "secret": True},
+                {"key": "model",
+                 "label": "Model (optional - default llama-3.3-70b-versatile)", "secret": False}]},
+    {"key": "custom_api", "name": "Custom API key (general slot)", "priority": 3,
+     "unlocks": "A general-purpose, encrypted slot to store ANY API key or token you "
+                "want Pulse to keep safe. Label what it's for and paste it - then tell "
+                "me and I'll wire it into a feature.",
+     "console_url": None,
+     "console_hint": "Paste any key you want stored securely (encrypted at rest). Add a "
+                     "label and, if the service needs one, a base URL.",
+     "save": "custom_api", "secret_provider": "custom_api", "secret_field": "api_key",
+     "fields": [{"key": "label", "label": "What is this key for? (e.g. OpenAI, Twilio, SendGrid)",
+                 "secret": False},
+                {"key": "api_key", "label": "API key / token", "secret": True},
+                {"key": "base_url", "label": "Base URL (optional)", "secret": False}]},
 ]
 
 _CONNECTOR_BY_KEY = {c["key"]: c for c in CONNECTORS}
@@ -293,6 +318,20 @@ def save_connection(key: str, body: SaveCredIn, db: Session = Depends(get_db),
         v = _verify_connector(db, "anthropic")
         return {"key": key, "connected": ai_svc.enabled(),
                 "verified": v.get("ok"), "detail": v.get("detail")}
+    if prov == "groq":
+        from ...services import ai as ai_svc
+        gp = {k: v for k, v in payload.items() if k in ("api_key", "model")}
+        secure_config.upsert_platform(db, "groq", "Groq (free AI)", "AI", gp)
+        ai_svc.refresh_key_cache()            # pick up the new key immediately
+        try:
+            st = ai_svc.free_llm_selftest()
+            detail = (f"Groq live — using {st.get('model_used')}" if st.get("ok")
+                      else "Saved, but the live test failed: " + (st.get("error") or "unknown")[:160])
+            ok = bool(st.get("ok"))
+        except Exception as e:  # noqa: BLE001
+            ok, detail = False, f"Saved, but could not reach Groq: {str(e)[:160]}"
+        return {"key": key, "connected": ai_svc.free_llm_enabled(),
+                "verified": ok, "detail": detail}
     if prov == "gitlab_sites":
         from ...services import jp_site
         jp_site.save_shared_token(db, payload["token"])
@@ -337,7 +376,9 @@ def save_connection(key: str, body: SaveCredIn, db: Session = Depends(get_db),
               "hubspot": ("HubSpot", "CRM"),
               "dialpad": ("Dialpad", "Telephony"),
               "google_places": ("Google Places", "Prospecting"),
-              "tacticalrmm": ("TacticalRMM", "RMM")}
+              "tacticalrmm": ("TacticalRMM", "RMM"),
+              "groq": ("Groq (free AI)", "AI"),
+              "custom_api": ("Custom API key", "Integration")}
     nm, cat = _names.get(prov, (spec["name"], "Integration"))
     secure_config.upsert_platform(db, prov, nm, cat, payload)
     if prov in ("gbp", "pub_linkedin"):

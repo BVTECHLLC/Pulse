@@ -84,6 +84,8 @@ def refresh_key_cache() -> None:
     """Call after saving a new key so it takes effect immediately."""
     _KEY_CACHE["key"] = None
     _KEY_CACHE["ts"] = 0.0
+    _FREE_VAULT_CACHE["providers"] = None
+    _FREE_VAULT_CACHE["ts"] = 0.0
 
 
 def key_source() -> str | None:
@@ -215,9 +217,44 @@ def _http_complete(system: str, user: str, *, model: str, max_tokens: int) -> st
     return text
 
 
+_FREE_VAULT_CACHE: dict = {"providers": None, "ts": 0.0}
+
+
+def _vault_free_providers() -> list[dict]:
+    """Free-LLM providers stored in the Settings vault (the 'groq' connector), so
+    an operator can paste a Groq API key in Settings → Connections and have it
+    persist in the DB instead of needing an env var on the box. Cached briefly
+    like the Anthropic key. Falls back to the env default base/model."""
+    import time as _t
+    if _FREE_VAULT_CACHE["providers"] is not None and (_t.monotonic() - _FREE_VAULT_CACHE["ts"]) < _KEY_TTL:
+        return _FREE_VAULT_CACHE["providers"]
+    out: list[dict] = []
+    try:
+        from ..core.db import SessionLocal
+        from . import secure_config
+        s = get_settings()
+        db = SessionLocal()
+        try:
+            conn = secure_config.get_platform(db, "groq")
+            cfg = (conn.config if conn else None) or {}
+            key = secure_config.get_secret(cfg, "api_key")
+            if key:
+                base = str(cfg.get("base_url") or s.FREE_LLM_BASE).rstrip("/")
+                model = cfg.get("model") or s.FREE_LLM_MODEL
+                out.append({"base": base, "key": str(key), "model": model or ""})
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001
+        out = []
+    _FREE_VAULT_CACHE["providers"] = out
+    _FREE_VAULT_CACHE["ts"] = _t.monotonic()
+    return out
+
+
 def free_llm_enabled() -> bool:
-    """A free (non-Claude) LLM is configured — used to spare paid tokens."""
-    return bool(get_settings().free_llm_enabled)
+    """A free (non-Claude) LLM is configured — via the Settings vault ('groq')
+    OR an env var — used to spare paid tokens."""
+    return bool(_providers())
 
 
 # v1.98 SELF-HEALING free model + v1.101 PROVIDER REDUNDANCY. Groq retires
@@ -237,7 +274,7 @@ _UA = "BVTech-OpsPilot/1.0 (+https://bvtech.org)"
 
 def _providers() -> list[dict]:
     s = get_settings()
-    out = []
+    out = list(_vault_free_providers())   # vault (Settings → Connections) first
     for base, key, model in ((s.FREE_LLM_BASE, s.FREE_LLM_KEY, s.FREE_LLM_MODEL),
                              (s.FREE_LLM2_BASE, s.FREE_LLM2_KEY, s.FREE_LLM2_MODEL),
                              (s.FREE_LLM3_BASE, s.FREE_LLM3_KEY, s.FREE_LLM3_MODEL)):
@@ -410,7 +447,7 @@ def complete(system: str, user: str, *, smart: bool = False, max_tokens: int = 1
     AIError propagates so the caller can use its deterministic composer."""
     s = get_settings()
     model = s.AI_MODEL_SMART if smart else s.AI_MODEL
-    if s.free_llm_enabled:
+    if free_llm_enabled():
         try:
             return _FREE_CALLER(system, user, model=model, max_tokens=max_tokens)
         except AIError:

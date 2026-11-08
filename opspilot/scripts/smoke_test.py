@@ -2377,15 +2377,47 @@ def main():
         assert c.post("/api/setup/connections/nope", json={"values": {"a": "b"}}).status_code == 404
         # OWNER-only save; staff can still read the Center.
         assert ca_c.post("/api/setup/connections/stripe", json={"values": {"secret_key": "x"}}).status_code == 403
+        # v1.142: Groq (FREE AI) slot + general custom-API slot — both encrypt at
+        # rest, and a saved Groq key drives the AI engine from the DB (no env var).
+        _b24b = {i["key"]: i for i in c.get("/api/setup/connections").json()["items"]}
+        assert _b24b["groq"]["can_enter"] and _b24b["custom_api"]["can_enter"], "new slots missing"
+        assert [f["key"] for f in _b24b["custom_api"]["fields"]] == ["label", "api_key", "base_url"]
+        assert _b24b["groq"]["testable"] is True
+        c.post("/api/setup/connections/custom_api",
+               json={"values": {"label": "OpenAI", "api_key": "sk-customSECRET24",
+                                "base_url": "https://api.openai.com"}})
+        from app.services import ai as _AI24
+        _old_st24 = _AI24.free_llm_selftest
+        _AI24.free_llm_selftest = lambda: {"ok": True, "model_used": "llama-3.3-70b-versatile", "providers": []}
+        try:
+            _gr24 = c.post("/api/setup/connections/groq",
+                           json={"values": {"api_key": "gsk_SMOKEKEY24",
+                                            "model": "llama-3.3-70b-versatile"}}).json()
+            assert _gr24["connected"] is True, _gr24
+        finally:
+            _AI24.free_llm_selftest = _old_st24
+        _AI24.refresh_key_cache()
+        _s24c = _SL24()
+        try:
+            for _pv, _sec in [("custom_api", "sk-customSECRET24"), ("groq", "gsk_SMOKEKEY24")]:
+                _raw = _s24c.query(_IC24).filter(_IC24.provider == _pv).first()
+                assert _raw and _sec not in str(_raw.config), f"{_pv} secret stored in plaintext!"
+                assert _sc24.get_secret(_raw.config, "api_key") == _sec, f"{_pv} decrypt failed"
+        finally:
+            _s24c.close()
+        assert _AI24._providers() and _AI24._providers()[0]["key"] == "gsk_SMOKEKEY24", \
+            "Groq vault key must drive the AI engine"
+        assert _AI24.free_llm_enabled() is True
         # Clean up so later blocks see a pristine vault.
         _s24b = _SL24()
         try:
             (_s24b.query(_IC24)
-                  .filter(_IC24.provider.in_(["gitlab", "stripe", "m365_mailbox"]))
+                  .filter(_IC24.provider.in_(["gitlab", "stripe", "m365_mailbox", "groq", "custom_api"]))
                   .delete(synchronize_session=False))
             _s24b.commit()
         finally:
             _s24b.close()
+        _AI24.refresh_key_cache()   # forget the Groq key so later AI tests are pristine
         print("Connection Center Enter-credential: per-connector fields + generic save "
               "ENCRYPTED at rest (identifiers plain) + blank-ignore + env-only/unknown "
               "rejected + OWNER-only RBAC OK")
@@ -8197,7 +8229,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.141.0"
+    assert _gs101().APP_VERSION == "1.142.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8646,7 +8678,7 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.141.0"
+    assert _gs101().APP_VERSION == "1.142.0"
     assert _sr100.REPAIR_EPOCH == "1.112.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
@@ -8682,7 +8714,7 @@ def main():
     assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
     # site nav points to the game home
     assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
-    assert _gs101().APP_VERSION == "1.141.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.142.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
           "Explore features it with a Halloween hero, republish forced OK")
 
@@ -8702,11 +8734,11 @@ def main():
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
     assert "xp-papel" in _xp3 and "Happy Thanksgiving" in _xp3, "seasonal Explore theme missing"
-    assert _gs101().APP_VERSION == "1.141.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.142.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
 
-    print("\n=== OpsPilot v1.141.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.142.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
