@@ -514,7 +514,7 @@ def _compose_news_deterministic(now: datetime, kev: list[dict]) -> dict | None:
         "but the deadline length is CISA telling <em>everyone</em> how fast the "
         "house is burning. If you're not sure whether any of this hardware or "
         "software is in your environment, that's exactly the question we answer "
-        'for Texas businesses every day. <a href="/contact/">Ask us</a>.</p>')
+        'for Texas businesses every day. <a href="/free-review/">Ask us</a>.</p>')
     return {"title": title, "excerpt": excerpt, "html": "\n".join(parts),
             "date": now.date().isoformat(),
             # v1.101: hero tag chips + crumb, like the hand-built editions
@@ -545,10 +545,10 @@ def _render_evergreen(topic: dict, *, byline: str, cta_html: str,
 
 
 _BV_CTA = ('<p>If any of this hits close to home, that’s exactly what we help '
-           'Texas businesses with every day. <a href="/contact/">Book a free '
+           'Texas businesses with every day. <a href="/free-review/">Book a free '
            '15-minute IT assessment</a> — no pressure, no sales theater.</p>')
 _JP_CTA = ('<p>That’s how I think about it, anyway. If you want a second set of '
-           'eyes on your own setup, <a href="https://bvtech.org/contact/">reach '
+           'eyes on your own setup, <a href="https://bvtech.org/free-review/">reach '
            'out</a> — happy to talk it through.</p>')
 # tx-plants CTA doubles as the sister-site interlink block (SEO + the network the
 # owner asked to keep connected): reciprocal links, a short Scripture, and the

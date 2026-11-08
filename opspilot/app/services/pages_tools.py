@@ -39,7 +39,7 @@ def whats_my_ip():
 <div class="card"><strong style="color:var(--white)">Want to be harder to track?</strong>
 <p class="muted" style="margin:8px 0 0">A VPN hides your IP and city from the sites you visit.
 Our team sets up business-grade VPNs and privacy hardening for Texas companies —
-<a href="/contact/">ask us how</a>.</p></div>
+<a href="/free-review/">ask us how</a>.</p></div>
 <style>
 .ip-big{font-family:var(--fh);font-size:clamp(1.6rem,5vw,2.4rem);color:var(--o2);font-weight:800;line-height:1;word-break:break-all}
 .ip-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-top:18px}
@@ -86,7 +86,7 @@ def speed_test():
   <div><span>Ping</span><b id="sp-ping">—</b> ms</div>
 </div>
 <p class="muted" style="margin-top:18px">Results depend on your Wi-Fi, device and current traffic.
-Slow? <a href="/contact/">We help Texas businesses fix slow, flaky internet</a> for good.</p>
+Slow? <a href="/free-review/">We help Texas businesses fix slow, flaky internet</a> for good.</p>
 <style>
 .sp-dial{width:200px;height:200px;margin:0 auto 10px;border-radius:50%;border:8px solid var(--border);
   display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle,rgba(235,111,36,.08),transparent)}
@@ -283,7 +283,7 @@ def password_strength():
   <ul id="pw-tips" class="pw-tips"></ul>
 </div>
 <div class="card"><strong style="color:var(--white)">Running a business?</strong>
-<p class="muted" style="margin:8px 0 0">Weak and reused passwords are the #1 way companies get breached. We roll out password managers, MFA and dark-web monitoring for Texas teams — <a href="/contact/">let's lock it down</a>.</p></div>
+<p class="muted" style="margin:8px 0 0">Weak and reused passwords are the #1 way companies get breached. We roll out password managers, MFA and dark-web monitoring for Texas teams — <a href="/free-review/">let's lock it down</a>.</p></div>
 <style>
 .pw-meter{height:12px;border-radius:7px;background:rgba(255,255,255,.08);overflow:hidden;margin:16px 0 10px}
 #pw-bar{height:100%;width:0;border-radius:7px;transition:.25s}

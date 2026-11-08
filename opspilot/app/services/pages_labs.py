@@ -86,7 +86,7 @@ makes, and get instant feedback on every choice.</p>
 
 <p class="ll-note">These labs are a free taste of the BVTech Academy. Want the real thing
 for your team? BVTech runs private, hands-on security training for Texas businesses —
-<a href="/contact/" style="color:var(--o2)">get in touch</a>.</p>
+<a href="/free-review/" style="color:var(--o2)">get in touch</a>.</p>
 </section>
 
 <script>

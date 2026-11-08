@@ -385,7 +385,7 @@ _CHROME_CSS = """<style>
 _CTA_HTML = ('<div class="pp-cta"><h3>Want a second set of eyes on your setup?</h3>'
              '<p>BVTech has kept Texas businesses secure and running since 2013. Book a free '
              'assessment or try one of our free security tools.</p>'
-             '<a class="pp-btn" href="/contact/">Book a Free Assessment</a>'
+             '<a class="pp-btn" href="/free-review/">Book a Free Assessment</a>'
              '<a class="pp-btn pp-btn2" href="/tools/">Free Security Tools</a></div>')
 
 

@@ -243,7 +243,7 @@ PHP2SHELL_CTA = ('<div class="pp-cta"><h3>Not sure if your site runs PHP?</h3>'
                  '<p>Run our free checker, or let BVTech look at it for you. We have kept '
                  'Texas businesses secure and running since 2013.</p>'
                  '<a class="pp-btn" href="/tools/php2shell-check.html">Free PHP2Shell Check</a>'
-                 '<a class="pp-btn pp-btn2" href="/contact/">Talk to BVTech</a></div>')
+                 '<a class="pp-btn pp-btn2" href="/free-review/">Talk to BVTech</a></div>')
 
 
 def php2shell_post() -> dict:
