@@ -98,6 +98,7 @@ def connection_center(db: Session = Depends(get_db),
 
     li = db.query(OAuthToken).filter(OAuthToken.provider == "linkedin").count() > 0
     gbp = db.query(OAuthToken).filter(OAuthToken.provider == "google_gbp").count() > 0
+    gbp_p = db.query(OAuthToken).filter(OAuthToken.provider == "google_gbp_personal").count() > 0
     qb = db.query(OAuthToken).filter(OAuthToken.provider == "quickbooks").count() > 0
 
     status = {
@@ -109,6 +110,7 @@ def connection_center(db: Session = Depends(get_db),
                         or bool(_s.M365_CLIENT_ID and _s.M365_CLIENT_SECRET),
         "pub_linkedin": li or vault_has("pub_linkedin", "li_client_id"),
         "gbp": gbp or vault_has("gbp", "client_id"),
+        "gbp_personal": gbp_p or vault_has("gbp_personal", "client_id"),
         "stripe": vault_has("stripe", "secret_key"),
         "smtp": bool(_s.SMTP_HOST),
         "quickbooks": qb or vault_has("quickbooks", "client_id"),
@@ -206,14 +208,32 @@ CONNECTORS = [
      "save": "pub_linkedin", "needs_connect": True,
      "fields": [{"key": "li_client_id", "label": "LinkedIn Client ID", "secret": False},
                 {"key": "li_client_secret", "label": "LinkedIn Client Secret", "secret": True}]},
-    {"key": "gbp", "name": "Google Business Profile", "priority": 2,
-     "unlocks": "Daily local updates on your Google listing (huge local-SEO lever).",
+    {"key": "gbp", "name": "Google Business Profile (Business)", "priority": 2,
+     "unlocks": "WEEKLY local update on your BVTech Google listing (big local-SEO lever). "
+                "Google is intentionally capped at one post per week so you never risk spam.",
      "console_url": "https://console.cloud.google.com/apis/credentials",
      "console_hint": "OAuth client (Web) -> add the redirect URL from One-click Connect -> copy "
-                     "ID + secret. After saving, Connect on the GBP tile, then pick your location.",
+                     "ID + secret. After saving, Connect on the GBP tile, then fill Account + "
+                     "Location name below (from Business Profile Manager).",
      "save": "gbp", "needs_connect": True,
      "fields": [{"key": "client_id", "label": "OAuth Client ID", "secret": False},
-                {"key": "client_secret", "label": "OAuth Client Secret", "secret": True}]},
+                {"key": "client_secret", "label": "OAuth Client Secret", "secret": True},
+                {"key": "account_name", "label": "Account name (accounts/123…)", "secret": False},
+                {"key": "location_name", "label": "Location name (locations/456…)", "secret": False}]},
+    {"key": "gbp_personal", "name": "Google Business Profile (Personal — jordanpolasek.com)",
+     "priority": 2,
+     "unlocks": "WEEKLY update on your PERSONAL Google listing (jordanpolasek.com), separate "
+                "from the BVTech business listing. Also one post per week max — never spammed.",
+     "console_url": "https://console.cloud.google.com/apis/credentials",
+     "console_hint": "Use the SAME Google Cloud project as the business listing — just add this "
+                     "tile's redirect URL as a second Authorized redirect URI, then Connect here "
+                     "with your personal Google account (hydro77845@gmail.com) and fill Account + "
+                     "Location below.",
+     "save": "gbp_personal", "needs_connect": True,
+     "fields": [{"key": "client_id", "label": "OAuth Client ID", "secret": False},
+                {"key": "client_secret", "label": "OAuth Client Secret", "secret": True},
+                {"key": "account_name", "label": "Account name (accounts/123…)", "secret": False},
+                {"key": "location_name", "label": "Location name (locations/456…)", "secret": False}]},
     {"key": "stripe", "name": "Stripe payments", "priority": 2,
      "unlocks": "Clients pay invoices online; payments auto-reconcile.",
      "console_url": "https://dashboard.stripe.com/apikeys",
@@ -371,6 +391,7 @@ def save_connection(key: str, body: SaveCredIn, db: Session = Depends(get_db),
     _names = {"m365_mailbox": ("M365 Mailbox", "Mail"),
               "pub_linkedin": ("LinkedIn", "Publishing"),
               "gbp": ("Google Business Profile", "Publishing"),
+              "gbp_personal": ("Google Business Profile (Personal)", "Publishing"),
               "stripe": ("Stripe", "Payments"),
               "quickbooks": ("QuickBooks", "Accounting"),
               "hubspot": ("HubSpot", "CRM"),
@@ -381,7 +402,7 @@ def save_connection(key: str, body: SaveCredIn, db: Session = Depends(get_db),
               "custom_api": ("Custom API key", "Integration")}
     nm, cat = _names.get(prov, (spec["name"], "Integration"))
     secure_config.upsert_platform(db, prov, nm, cat, payload)
-    if prov in ("gbp", "pub_linkedin"):
+    if prov in ("gbp", "gbp_personal", "pub_linkedin"):
         # New credentials lift the delivery pause; queued posts resume next tick.
         autopost.clear_reauth(db, prov)
     return {"key": key, "connected": True, "needs_connect": spec.get("needs_connect", False)}

@@ -389,7 +389,12 @@ def sync_connect_providers(db) -> None:
                 secure_config.get_secret(cfg, secret_key), cfg)
 
     li_id, li_secret, _ = creds("pub_linkedin", "li_client_id", "li_client_secret")
-    if li_id and li_secret:
+    # GUARD: only register a one-click Connect button when the stored app
+    # credentials are REAL. Placeholder/instruction text (e.g. "#paste
+    # GOOGLE_CLIENT_ID value again") must never register a provider, or the
+    # Connect button sends the browser to the IdP with a garbage client_id and
+    # the user hits "Access blocked: invalid_client". (v1.144)
+    if _is_real_cred(li_id) and _is_real_cred(li_secret):
         register_provider("linkedin", {
             "name": "LinkedIn",
             "authorize_url": "https://www.linkedin.com/oauth/v2/authorization",
@@ -400,7 +405,7 @@ def sync_connect_providers(db) -> None:
             "no_pkce": True,
         })
     g_id, g_secret, _ = creds("gbp")
-    if g_id and g_secret:
+    if _is_real_cred(g_id) and _is_real_cred(g_secret):
         register_provider("google_gbp", {
             "name": "Google Business Profile",
             "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
@@ -409,8 +414,21 @@ def sync_connect_providers(db) -> None:
             "client_id": str(g_id), "client_secret": str(g_secret),
             "extra_authorize": {"access_type": "offline", "prompt": "consent"},
         })
+    # Personal Google Business listing (Jordan's own profile) — a SECOND GBP
+    # app-credential slot so the business listing and the personal listing each
+    # connect independently. (v1.144)
+    gp_id, gp_secret, _ = creds("gbp_personal")
+    if _is_real_cred(gp_id) and _is_real_cred(gp_secret):
+        register_provider("google_gbp_personal", {
+            "name": "Google Business Profile (Personal)",
+            "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+            "token_url": "https://oauth2.googleapis.com/token",
+            "scopes": ["https://www.googleapis.com/auth/business.manage"],
+            "client_id": str(gp_id), "client_secret": str(gp_secret),
+            "extra_authorize": {"access_type": "offline", "prompt": "consent"},
+        })
     q_id, q_secret, qcfg = creds("quickbooks")
-    if q_id and q_secret:
+    if _is_real_cred(q_id) and _is_real_cred(q_secret):
         sandbox = bool(qcfg.get("sandbox"))
         register_provider("quickbooks", {
             "name": "QuickBooks",

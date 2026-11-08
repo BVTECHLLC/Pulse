@@ -40,12 +40,14 @@ def get_settings(db: Session = Depends(get_db),
     ready = autopost.channel_readiness(db)
     return {**cfg, "channels": list(autopost.CHANNELS), "ready": ready,
             "linkedin_ready": ready.get("linkedin", False),
-            "google_business_ready": ready.get("google_business", False)}
+            "google_business_ready": ready.get("google_business", False),
+            "google_business_personal_ready": ready.get("google_business_personal", False)}
 
 
 class SettingsIn(BaseModel):
     enabled: bool | None = None
-    gap_hours: int | None = None
+    gap_hours: int | None = None          # LinkedIn / default cadence (hours); 24 = daily
+    gbp_gap_hours: int | None = None      # Google Business cadence (hours); 168 = weekly (never spam)
     auto_generate: bool | None = None
     min_queue: int | None = None
     city: str | None = None          # comma-separated target metros

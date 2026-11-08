@@ -18,9 +18,12 @@ from ..models import SocialPost
 from . import secure_config
 
 PROVIDER = "autopost"
-# Default cadence is WEEKLY (168h). BVTech runs a once-a-week marketing drip to
-# LinkedIn + Google Business; an explicit gap_hours in Settings overrides this.
-_DEFAULT_GAP_HOURS = 168
+# v1.144 PER-CHANNEL CADENCE. The user's hard rule: "google only likes once a
+# week so never ever spam there — the rest one a day is fine." So the default
+# gap is DAILY (24h) for LinkedIn and every non-Google channel, and Google
+# Business has its OWN weekly gap (168h). Each is overridable in Settings.
+_DEFAULT_GAP_HOURS = 24           # LinkedIn + default: one post per day
+_DEFAULT_GBP_GAP_HOURS = 168      # Google Business: at most one post per WEEK
 
 
 def _aware(dt):
@@ -42,6 +45,9 @@ def get_config(db: Session) -> dict:
     chans = [c.strip() for c in (cfg.get("gen_channels") or "linkedin,google_business").split(",") if c.strip()]
     return {"enabled": _truthy(cfg.get("enabled")),
             "gap_hours": int(cfg.get("gap_hours") or _DEFAULT_GAP_HOURS),
+            # Google Business gets its own (much longer) gap so it is NEVER
+            # spammed: at most one GBP post per gbp_gap_hours (default weekly).
+            "gbp_gap_hours": int(cfg.get("gbp_gap_hours") or _DEFAULT_GBP_GAP_HOURS),
             # Auto-generate ("runs itself"): brand profile used to top up the queue.
             "auto_generate": _truthy(cfg.get("auto_generate")),
             "min_queue": int(cfg.get("min_queue") or 3),
@@ -62,6 +68,10 @@ def save_config(db: Session, **fields) -> dict:
         payload["enabled"] = "true" if fields["enabled"] else "false"
     if "gap_hours" in fields and fields["gap_hours"] is not None:
         payload["gap_hours"] = str(max(1, int(fields["gap_hours"])))
+    if "gbp_gap_hours" in fields and fields["gbp_gap_hours"] is not None:
+        # Floor the Google gap at 24h so it can never be turned into a spammer,
+        # even by a mis-click in Settings.
+        payload["gbp_gap_hours"] = str(max(24, int(fields["gbp_gap_hours"])))
     if "auto_generate" in fields:
         payload["auto_generate"] = "true" if fields["auto_generate"] else "false"
     if "min_queue" in fields and fields["min_queue"] is not None:
@@ -84,7 +94,7 @@ def save_config(db: Session, **fields) -> dict:
     return get_config(db)
 
 
-CHANNELS = ("linkedin", "google_business")
+CHANNELS = ("linkedin", "google_business", "google_business_personal")
 
 
 def _linkedin_poster(db: Session):
@@ -108,11 +118,12 @@ def _linkedin_poster(db: Session):
     return lambda text, url, image=None: publishers.post_linkedin(str(token), str(urn), text, url or "")
 
 
-def _gbp_poster(db: Session):
-    """Google Business poster: callable(text, url, image) -> ref, or None if the
-    GBP connection isn't fully configured. Publishes a localPost (with photo)."""
+def _gbp_poster_from(db: Session, vault_key: str):
+    """Google Business poster for a given vault entry ("gbp" = business listing,
+    "gbp_personal" = personal listing): callable(text, url, image) -> ref, or
+    None if that connection isn't fully configured. Publishes a localPost."""
     from . import gbp
-    conn = secure_config.get_platform(db, "gbp")
+    conn = secure_config.get_platform(db, vault_key)
     cfg = (conn.config if conn else None) or {}
     req = ("client_id", "client_secret", "refresh_token", "account_name", "location_name")
     if not secure_config.configured(cfg, req):
@@ -129,11 +140,21 @@ def _gbp_poster(db: Session):
     return _post
 
 
+def _gbp_poster(db: Session):
+    return _gbp_poster_from(db, "gbp")
+
+
+def _gbp_personal_poster(db: Session):
+    return _gbp_poster_from(db, "gbp_personal")
+
+
 def _poster_for(db: Session, channel: str):
     if channel == "linkedin":
         return _linkedin_poster(db)
     if channel == "google_business":
         return _gbp_poster(db)
+    if channel == "google_business_personal":
+        return _gbp_personal_poster(db)
     return None
 
 
@@ -145,7 +166,8 @@ def _poster_for(db: Session, channel: str):
 # UI/Doctor say exactly which button to click, and the moment a new credential
 # is saved or a one-click Connect completes, the queue drains automatically.
 # --------------------------------------------------------------------------- #
-_REAUTH_PROVIDER = {"linkedin": "pub_linkedin", "google_business": "gbp"}
+_REAUTH_PROVIDER = {"linkedin": "pub_linkedin", "google_business": "gbp",
+                    "google_business_personal": "gbp_personal"}
 _AUTH_HINTS = ("invalid_grant", "invalid_client", "http 401", "(401", "401)",
                "unauthorized", "expired or revoked", "token is likely expired")
 
@@ -157,10 +179,11 @@ def _is_auth_error(msg: str) -> bool:
 
 def _reauth_message(channel: str, raw: str) -> str:
     low = str(raw or "").lower()
-    if channel == "google_business":
-        base = ("Google needs a one-click re-connect: Settings -> One-click Connect -> "
-                "Google Business. Your posts are safe in the queue and send automatically "
-                "after you reconnect.")
+    if channel in ("google_business", "google_business_personal"):
+        which = "Google Business (Personal)" if channel == "google_business_personal" else "Google Business"
+        base = (f"Google needs a one-click re-connect: Settings -> One-click Connect -> "
+                f"{which}. Your posts are safe in the queue and send automatically "
+                f"after you reconnect.")
         if "invalid_grant" in low:
             base += (" (If this happens again in ~a week: your Google OAuth consent screen "
                      "is in 'Testing' mode - Google expires Testing tokens after 7 days. "
@@ -215,6 +238,75 @@ def _last_posted_at(db: Session) -> datetime | None:
     return _aware(row.posted_at) if row and row.posted_at else None
 
 
+# --------------------------------------------------------------------------- #
+# v1.144 PER-CHANNEL cadence state. We record the moment a channel ACTUALLY
+# delivers (not merely when a post that *listed* the channel went out) in the
+# autopost vault as `last_post_<channel>`. This is what lets LinkedIn run daily
+# while Google Business is gated to weekly: a both-channels post that only
+# reached LinkedIn on a non-Google day must NOT reset Google's weekly clock.
+# These keys aren't secret-looking, so they store + read back as plain ISO text.
+# --------------------------------------------------------------------------- #
+def _mark_channel_posted(db: Session, channel: str, when: datetime) -> None:
+    secure_config.upsert_platform(db, PROVIDER, "Auto-posting", "Marketing",
+                                  {f"last_post_{channel}": when.isoformat()})
+
+
+def _last_posted_channel(db: Session, channel: str) -> datetime | None:
+    conn = secure_config.get_platform(db, PROVIDER)
+    cfg = (conn.config if conn else None) or {}
+    raw = cfg.get(f"last_post_{channel}")
+    if raw:
+        try:
+            return _aware(datetime.fromisoformat(str(raw)))
+        except Exception:
+            pass
+    # Back-compat: before per-channel tracking existed, fall back to the newest
+    # posted row that listed this channel (approximate, but only used once until
+    # the first real per-channel delivery stamps the vault).
+    rows = (db.query(SocialPost).filter(SocialPost.status == "posted")
+            .order_by(SocialPost.posted_at.desc()).limit(50).all())
+    for r in rows:
+        if channel in (r.channels or []) and r.posted_at:
+            return _aware(r.posted_at)
+    return None
+
+
+def _channel_gap_hours(cfg: dict, channel: str) -> int:
+    # Both Google listings (business + personal) are weekly-gated so neither is
+    # ever spammed; everything else (LinkedIn) is daily.
+    if channel in ("google_business", "google_business_personal"):
+        return cfg["gbp_gap_hours"]
+    return cfg["gap_hours"]
+
+
+def _due_channels(db: Session, cfg: dict, now: datetime) -> list[str]:
+    """Channels whose cadence gap has elapsed, so a post may go there now.
+    LinkedIn (and any non-Google channel) = daily; Google Business = weekly."""
+    due = []
+    for ch in CHANNELS:
+        last = _last_posted_channel(db, ch)
+        if last is None or (now - last) >= timedelta(hours=_channel_gap_hours(cfg, ch)):
+            due.append(ch)
+    return due
+
+
+def _next_due_for_channels(db: Session, now: datetime, channels: list[str]) -> SocialPost | None:
+    """Oldest queued, schedule-ready post that targets at least one due channel.
+    Skips a post whose only channel isn't due yet (so a Google-only post never
+    stalls the daily LinkedIn drip, and vice-versa)."""
+    want = {c for c in channels if c in CHANNELS}
+    rows = (db.query(SocialPost).filter(SocialPost.status == "queued")
+            .order_by(SocialPost.created_at.asc()).all())
+    for p in rows:
+        sf = _aware(p.scheduled_for)
+        if sf is not None and sf > now:
+            continue
+        pch = {c for c in (p.channels or ["linkedin"]) if c in CHANNELS} or {"linkedin"}
+        if pch & want:
+            return p
+    return None
+
+
 def next_due(db: Session, now: datetime) -> SocialPost | None:
     """Oldest queued post whose scheduled_for (if any) has arrived."""
     q = db.query(SocialPost).filter(SocialPost.status == "queued")
@@ -261,7 +353,8 @@ def _notify_reauth(db: Session, channel: str, reason: str) -> None:
     of retry errors. Sent once because the breaker prevents repeat detections."""
     try:
         from ..models import Notification
-        pretty = {"linkedin": "LinkedIn", "google_business": "Google Business"}.get(channel, channel)
+        pretty = {"linkedin": "LinkedIn", "google_business": "Google Business",
+                  "google_business_personal": "Google Business (Personal)"}.get(channel, channel)
         db.add(Notification(client_id=None, target_user_id=None, kind="autopost",
                             severity="warning",
                             message=f"🔑 {pretty} paused - {reason}"[:1000]))
@@ -325,6 +418,7 @@ def publish_one(db: Session, post: SocialPost, now: datetime | None = None, *,
             ref = fn(post.body, post.link or "", post.image_url or None)
             results[ch] = str(ref)[:160]
             any_ok = True
+            _mark_channel_posted(db, ch, now)   # per-channel cadence clock
             clear_reauth(db, _REAUTH_PROVIDER.get(ch, ""))   # success proves auth is good
         except Exception as e:  # noqa: BLE001 — record + surface, never crash the tick
             msg = str(e)
@@ -429,14 +523,21 @@ def publish_due(db: Session, now: datetime | None = None, *, posters: dict | Non
         maybe_refill(db, now)
     except Exception:
         pass
-    last = _last_posted_at(db)
-    if last and (now - last) < timedelta(hours=cfg["gap_hours"]):
+    # v1.144 PER-CHANNEL cadence: find which channels are due (LinkedIn daily,
+    # Google Business weekly), pick the oldest queued post that targets one of
+    # them, and publish ONLY to the due channels. On an ordinary day only
+    # LinkedIn is due, so even a both-channels post goes to LinkedIn alone —
+    # Google stays at one post per week, exactly as required.
+    due = _due_channels(db, cfg, now)
+    if not due:
         return []
-    post = next_due(db, now)
+    post = _next_due_for_channels(db, now, due)
     if not post:
         return []
-    chans = [c for c in (post.channels or ["linkedin"]) if c in CHANNELS] or ["linkedin"]
-    built = {ch: ((posters or {}).get(ch) if posters is not None else _poster_for(db, ch)) for ch in chans}
+    target = [c for c in (post.channels or ["linkedin"]) if c in CHANNELS and c in due]
+    if not target:
+        return []
+    built = {ch: ((posters or {}).get(ch) if posters is not None else _poster_for(db, ch)) for ch in target}
     if not any(v is not None for v in built.values()):
         return []   # nothing ready for this post — wait, don't consume the gap
     return [publish_one(db, post, now, posters=built)]

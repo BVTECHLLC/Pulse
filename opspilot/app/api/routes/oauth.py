@@ -248,6 +248,10 @@ def connections(request: Request, db: Session = Depends(get_db),
                     "'Authorized redirect URLs for your app' → Add, paste EXACTLY this URL, Update.",
         "google_gbp": "Google Cloud Console → APIs & Services → Credentials → your OAuth 2.0 "
                       "Client → 'Authorized redirect URIs' → Add URI, paste EXACTLY this URL, Save.",
+        "google_gbp_personal": "Google Cloud Console → APIs & Services → Credentials → your OAuth 2.0 "
+                      "Client → 'Authorized redirect URIs' → Add URI, paste EXACTLY this URL, Save. "
+                      "(Use the SAME Google Cloud project/consent screen as the business listing — "
+                      "just add this second redirect URI.)",
         "quickbooks": "Intuit Developer → your app → Keys & OAuth → 'Redirect URIs' → "
                       "Add URI, paste EXACTLY this URL, Save.",
         "microsoft": "Microsoft Entra → App registrations → your app → Authentication → "
@@ -257,6 +261,7 @@ def connections(request: Request, db: Session = Depends(get_db),
     }
     out = []
     for key, label in (("linkedin", "LinkedIn"), ("google_gbp", "Google Business Profile"),
+                       ("google_gbp_personal", "Google Business Profile (Personal)"),
                        ("quickbooks", "QuickBooks"), ("microsoft", "Microsoft (SSO + M365)"),
                        ("google", "Google (SSO)")):
         tok = (db.query(OAuthToken).filter(OAuthToken.provider == key)
@@ -514,6 +519,14 @@ def callback(provider: str, request: Request, response: Response,
             if rt:
                 secure_config.upsert_platform(db, "gbp", "Google Business Profile", "Marketing",
                                               {"refresh_token": rt})
+        elif provider == "google_gbp_personal":
+            # Personal Google Business listing → its own vault entry so the two
+            # listings post independently. (v1.144)
+            rt = tok.get("refresh_token")
+            if rt:
+                secure_config.upsert_platform(db, "gbp_personal",
+                                              "Google Business Profile (Personal)", "Marketing",
+                                              {"refresh_token": rt})
     except Exception:
         pass
     audit.record(db, action="oauth.connected", actor_user_id=uid, actor_email=email,
@@ -542,7 +555,8 @@ def _store_token(db: Session, provider: str, tok: dict, *, user_id: int | None,
     try:
         from ...services import autopost
         autopost.clear_reauth(db, {"linkedin": "pub_linkedin",
-                                   "google_gbp": "gbp"}.get(provider, ""))
+                                   "google_gbp": "gbp",
+                                   "google_gbp_personal": "gbp_personal"}.get(provider, ""))
     except Exception:  # noqa: BLE001
         pass
     return row
