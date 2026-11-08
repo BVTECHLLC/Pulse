@@ -735,11 +735,11 @@ def _faq_block(faqs):
 
 
 def all_tools():
-    from . import pages_convert
+    from . import pages_convert, pages_pdf
     tools = [speed_test(), whats_my_ip(), is_it_down(), ev_savings(),
              password_strength(), password_generator(), subnet_calculator(),
              hash_generator(), base64_tool(), json_formatter(), uuid_generator(),
-             *pages_convert.all_converters()]
+             *pages_pdf.all_pdf_tools(), *pages_convert.all_converters()]
     # Append a VISIBLE FAQ to any tool that declares faqs, so the page text
     # matches its FAQPage schema (schema must reflect visible content).
     for t in tools:

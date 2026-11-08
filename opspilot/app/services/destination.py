@@ -359,6 +359,28 @@ def apply_mode_bar(h: str) -> tuple[str, bool]:
     return h, False
 
 
+# Self-hosted browser libraries for the PDF tools. The site CSP is default-src
+# 'self', so these can't load from a CDN — they ship as same-origin files under
+# /tools/lib/ and are published ONCE (skipped on later publishes if already there).
+_TOOL_LIBS_DIR = Path(__file__).with_name("tool_libs")
+_TOOL_LIB_FILES = {
+    "tools/lib/pdf-lib.min.js": "pdf-lib.min.js",
+    "tools/lib/pdf.min.js": "pdf.min.js",
+    "tools/lib/pdf.worker.min.js": "pdf.worker.min.js",
+}
+
+
+def _add_tool_libs(files: dict, existing: set | None) -> None:
+    for pub, local in _TOOL_LIB_FILES.items():
+        if existing is not None and pub in existing:
+            continue                       # already published — don't re-commit ~2MB
+        p = _TOOL_LIBS_DIR / local
+        try:
+            files[pub] = p.read_text(encoding="utf-8")
+        except Exception:  # noqa: BLE001
+            pass
+
+
 _TOOLS_GRID_MARKER = 'id="bv-instant-tools"'
 
 
@@ -596,6 +618,7 @@ def publish(db: Session) -> dict:
             _existing = set(jp_site._list_all_paths(cfg))
         except Exception:  # noqa: BLE001
             _existing = None
+        _add_tool_libs(files, _existing)   # self-hosted pdf-lib / pdf.js (published once)
         _commit(cfg, files, f"destination: Explore hub, Lightning Labs, {len(pages_tools.all_tools())} "
                 f"new tools, Business/Academy mode bar, edge API + nav/sitemap "
                 f"(via Pulse) [{nav_hits} nav pages]", existing=_existing)
