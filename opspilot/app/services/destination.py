@@ -230,6 +230,134 @@ def apply_top_nav(h: str) -> tuple[str, bool]:
     return h[:m.end()] + "\n" + _TOP_EXPLORE + h[m.end():], True
 
 
+# --------------------------------------------------------------------------- #
+# Business ⇄ Academy mode bar (v1.133). A self-contained, fully-scoped band that
+# reframes the whole site as two clear audiences: the MSP/IT BUSINESS side
+# (services, tools, blog, book a review) and the free ACADEMY side (labs,
+# answers, explore, arcade). It never touches or removes the page's own nav —
+# it is added under the header as an additive layer, so it is safe on a live
+# site whose exact nav markup we don't control. Everything is scoped under
+# #bvModeBar, the visible mode is chosen from the URL (with a remembered manual
+# override for neutral pages), and the toggle switches link sets client-side.
+# Idempotent: a page that already has id="bvModeBar" is skipped.
+# --------------------------------------------------------------------------- #
+_MODEBAR_MARKER = 'id="bvModeBar"'
+
+# Links are grouped by audience. Each: (href, label). The first business entry
+# and first academy entry double as that mode's "home" for the heading link.
+_MODEBAR_BIZ = [
+    ("/", "🏠 Home"),
+    ("/tools/", "🧰 Free Tools"),
+    ("/blog/", "📰 Blog"),
+    ("/academy/", "🎓 Academy ›"),          # cross-link so each side reaches the other
+]
+_MODEBAR_BIZ_CTA = ("/book/", "🛡️ Book a Security Review")
+_MODEBAR_ACA = [
+    ("/academy/", "🎓 Academy Home"),
+    ("/academy/labs/", "🧪 Hands-On Labs"),
+    ("/academy/lightning-labs/", "⚡ Lightning Labs"),
+    ("https://portal.bvtech.org/answers", "💬 Answers"),
+    ("/explore/", "🧭 Explore"),
+    ("/kart/", "🏎️ Arcade"),
+    ("/", "💼 Business ›"),                   # cross-link back to the business side
+]
+
+
+def _modebar_links(group: list) -> str:
+    return "".join(f'<a href="{href}">{label}</a>' for href, label in group)
+
+
+def _mode_bar_html() -> str:
+    biz = _modebar_links(_MODEBAR_BIZ)
+    biz += (f'<a class="bv-cta" href="{_MODEBAR_BIZ_CTA[0]}">{_MODEBAR_BIZ_CTA[1]}</a>')
+    aca = _modebar_links(_MODEBAR_ACA)
+    css = (
+        '#bvModeBar{--bvNavy:#0E0D2C;--bvBlue:#4440DB;--bvOrange:#EB6F24;--bvGold:#F5BE58;'
+        'font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
+        'background:linear-gradient(90deg,#0E0D2C 0%,#201b4d 60%,#2a1f54 100%);'
+        'border-top:1px solid rgba(255,255,255,.06);border-bottom:2px solid var(--bvGold);'
+        'box-shadow:0 6px 18px -10px rgba(0,0,0,.6);position:relative;z-index:50}'
+        '#bvModeBar *{box-sizing:border-box}'
+        '#bvModeBar .bv-in{max-width:1200px;margin:0 auto;display:flex;align-items:center;'
+        'gap:14px;padding:9px 16px;flex-wrap:wrap}'
+        '#bvModeBar .bv-seg{display:inline-flex;background:rgba(255,255,255,.07);'
+        'border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:3px;flex:0 0 auto}'
+        '#bvModeBar .bv-seg button{appearance:none;border:0;cursor:pointer;font:inherit;'
+        'font-weight:800;letter-spacing:.02em;color:#cdd0ea;background:transparent;'
+        'padding:6px 15px;border-radius:999px;display:flex;align-items:center;gap:6px;'
+        'font-size:.86rem;transition:.18s}'
+        '#bvModeBar .bv-seg button:hover{color:#fff}'
+        '#bvModeBar[data-mode="business"] .bv-b,#bvModeBar[data-mode="academy"] .bv-a{'
+        'background:linear-gradient(135deg,var(--bvOrange),var(--bvGold));color:var(--bvNavy);'
+        'box-shadow:0 2px 10px -2px rgba(245,190,88,.5)}'
+        '#bvModeBar .bv-links{display:flex;align-items:center;gap:4px;flex:1 1 auto;'
+        'overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}'
+        '#bvModeBar .bv-links::-webkit-scrollbar{display:none}'
+        '#bvModeBar .bv-links a{white-space:nowrap;color:#e7e9f7;text-decoration:none;'
+        'font-weight:600;font-size:.86rem;padding:6px 11px;border-radius:9px;transition:.15s}'
+        '#bvModeBar .bv-links a:hover{background:rgba(255,255,255,.1);color:#fff}'
+        '#bvModeBar .bv-links a.bv-cta{background:linear-gradient(135deg,var(--bvOrange),'
+        'var(--bvGold));color:var(--bvNavy);font-weight:800;margin-left:4px}'
+        '#bvModeBar .bv-links a.bv-cta:hover{filter:brightness(1.07)}'
+        '#bvModeBar .bv-grp{display:none;align-items:center;gap:4px}'
+        '#bvModeBar[data-mode="business"] .bv-grp-b{display:flex}'
+        '#bvModeBar[data-mode="academy"] .bv-grp-a{display:flex}'
+        '#bvModeBar .bv-tag{flex:0 0 auto;font-size:.66rem;font-weight:800;letter-spacing:.08em;'
+        'text-transform:uppercase;color:var(--bvGold);opacity:.8;padding-right:2px}'
+        '@media(max-width:640px){#bvModeBar .bv-in{gap:8px;padding:8px 12px}'
+        '#bvModeBar .bv-tag{display:none}#bvModeBar .bv-seg button{padding:6px 12px;font-size:.8rem}}'
+    )
+    # noscript-safe: links render for crawlers; JS only toggles visibility.
+    js = (
+        "(function(){var b=document.getElementById('bvModeBar');if(!b)return;"
+        "function infer(){var p=(location.pathname||'/').toLowerCase();"
+        "if(p.indexOf('/academy')===0||p.indexOf('/explore')===0||p.indexOf('graveyard-shift')>-1"
+        "||p.indexOf('lightning-labs')>-1||p.indexOf('/kart')===0||p.indexOf('/arena')===0)return'academy';"
+        "if(p==='/'||p===''||p.indexOf('/404')>-1){try{return localStorage.getItem('bvMode')||'business';}"
+        "catch(e){return'business';}}return'business';}"
+        "function set(m,save){b.setAttribute('data-mode',m);"
+        "if(save){try{localStorage.setItem('bvMode',m);}catch(e){}}}"
+        "b.querySelector('.bv-b').addEventListener('click',function(){set('business',1);});"
+        "b.querySelector('.bv-a').addEventListener('click',function(){set('academy',1);});"
+        "set(infer(),0);})();"
+    )
+    return (
+        f'<style>{css}</style>'
+        f'<nav id="bvModeBar" data-mode="business" aria-label="Business and Academy modes">'
+        '<div class="bv-in">'
+        '<span class="bv-tag">Choose&nbsp;your&nbsp;path</span>'
+        '<div class="bv-seg" role="tablist">'
+        '<button type="button" class="bv-b" role="tab" aria-label="Business mode">💼 Business</button>'
+        '<button type="button" class="bv-a" role="tab" aria-label="Academy mode">🎓 Academy</button>'
+        '</div>'
+        f'<div class="bv-links bv-grp bv-grp-b">{biz}</div>'
+        f'<div class="bv-links bv-grp bv-grp-a">{aca}</div>'
+        '</div></nav>'
+        f'<script>{js}</script>'
+    )
+
+
+def apply_mode_bar(h: str) -> tuple[str, bool]:
+    """Insert the Business/Academy mode bar under the page header (or at the top
+    of <body>) if it isn't already there. Idempotent and tolerant: a page with
+    no <body>, or one we can't place it in, is left untouched. Full-screen game
+    shells are skipped so the bar never overlaps a canvas."""
+    if _MODEBAR_MARKER in h:
+        return h, False
+    low = h.lower()
+    # Never cover a full-screen game/app shell.
+    if "/graveyard-shift/" in h and "<canvas" in low:
+        return h, False
+    bar = _mode_bar_html()
+    m = re.search(r"</header>", h, flags=re.I)        # preferred: right under the header
+    if m:
+        return h[:m.end()] + "\n" + bar + h[m.end():], True
+    m = re.search(r"<body\b[^>]*>", h, flags=re.I)    # fallback: top of body
+    if m:
+        return h[:m.end()] + "\n" + bar + h[m.end():], True
+    return h, False
+
+
 def _tools_index_cards(index_html: str) -> tuple[str, bool]:
     """Add the four new tool cards + an Explore banner to the tools index,
     cloning its own card markup. Idempotent."""
@@ -397,7 +525,8 @@ def publish(db: Session) -> dict:
         # commit everything at once
         jp_site._commit_all = getattr(jp_site, "_commit_all", None)
         _commit(cfg, files, f"destination: Explore hub, Lightning Labs, {len(pages_tools.all_tools())} "
-                f"new tools, edge API + nav/sitemap (via Pulse) [{nav_hits} nav pages]")
+                f"new tools, Business/Academy mode bar, edge API + nav/sitemap "
+                f"(via Pulse) [{nav_hits} nav pages]")
         # 7) sitemap
         extra = {p["url"]: None for p in pages}
         sm = jp_site.sitemap_sync(db, "bvtech", extra=extra)
@@ -418,9 +547,14 @@ def _apply_nav_everywhere(cfg: dict, files: dict) -> int:
     fetched. Bounded and best-effort; a page we can't parse is left untouched."""
     from . import jp_site
     hits = 0
-    # 1) harden the pages we just built (city pages, tools, explore, …) in memory
+    # 1) harden the pages we just built (city pages, tools, explore, …) in memory:
+    #    add the Business/Academy mode bar + anti-spam widget before they ship, so
+    #    even first-publish pages (not yet in the repo sweep below) carry the bar.
     for path in list(files.keys()):
         if path.endswith(".html"):
+            h, cm = apply_mode_bar(files[path])
+            if cm:
+                files[path] = h
             h, ch = captcha.inject(files[path])
             if ch:
                 files[path] = h
@@ -438,6 +572,9 @@ def _apply_nav_everywhere(cfg: dict, files: dict) -> int:
             h, c2 = apply_top_nav(h)
             if c1 or c2:
                 base, changed = h, True
+        h, cm = apply_mode_bar(base)        # idempotent Business/Academy mode bar
+        if cm:
+            base, changed = h, True
         h, c3 = captcha.inject(base)        # idempotent; only touches lead-form pages
         if c3:
             base, changed = h, True
