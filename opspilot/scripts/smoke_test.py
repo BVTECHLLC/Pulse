@@ -4763,6 +4763,45 @@ def main():
         assert c.patch("/api/library/BVT-LGL-015/visibility", json={"visibility": "bogus"}).status_code == 400
         print("Document Library: seeded + staff-all + client-only-scope + download gating (no leak) + owner reclassify + RBAC OK")
 
+        # ============ v1.131: Inbox Guardian classification (keep lawyers/clients,
+        # junk county/government + cold solicitations; never junk legal/transactional) =========
+        from app.services import email_filter as _ef131
+        from app.services import ai as _ai131
+        _oc131 = _ai131.complete
+        def _fake_ai131(system, user, **kw):
+            u = user.lower()
+            if any(k in u for k in ("law", "attorney", "legal", "firewall", "support", "quote for managed", "network help")):
+                return '{"verdict":"keep","category":"client","reason":"real","confidence":80}'
+            return '{"verdict":"review","category":"prospect","reason":"unsure","confidence":40}'
+        _ai131.complete = _fake_ai131
+        try:
+            _cfg131 = {"allow": ["smithlaw.com"], "block": ["spammer.biz"], "aggressiveness": "balanced"}
+            _known131 = {"att.com"}
+            def _m131(frm, name, subj, prev=""):
+                return {"from": {"address": frm, "name": name}, "subject": subj, "preview": prev}
+            def _verdict(frm, name, subj, prev=""):
+                return _ef131.classify(_m131(frm, name, subj, prev), _cfg131, _known131)["verdict"]
+            # KEEP: allow-listed lawyer, known client domain, unknown law firm, DocuSign legal doc, real inquiry
+            assert _verdict("jane@smithlaw.com", "Jane", "Re: contract") == "keep"
+            assert _verdict("bob@att.com", "Bob", "Account") == "keep"
+            assert _verdict("atty@joneslegal.com", "Jones Law", "Representation re: lawsuit", "our attorney") == "keep"
+            assert _verdict("dse@docusign.net", "DocuSign", "Please sign: Engagement Letter from Smith Law", "legal") == "keep", "must not junk legal e-sign"
+            assert _verdict("ops@acmemfg.com", "Acme", "Need help with our firewall and network help") == "keep"
+            assert _verdict("info@localshop.com", "Shop", "Can you quote for managed IT") == "keep", "small-biz info@ kept"
+            # JUNK: blocklisted, county/government (domain + by name), cold SEO pitch, marketing newsletter
+            assert _verdict("x@spammer.biz", "X", "hi") == "junk"
+            assert _verdict("noreply@co.comal.tx.us", "Comal County Tax Office", "Property Tax Statement") == "junk", "county mail must be filtered"
+            assert _verdict("mailer@notify.example.com", "Comal County Appraisal District", "Notice of Appraised Value") == "junk"
+            assert _verdict("growth@seoboost.io", "SEO", "We can rank your website #1 on Google", "increase your website traffic") == "junk"
+            assert _verdict("newsletter@acmetools.com", "Acme", "November deals inside") == "junk"
+            # AI-down backstop: obvious spam still filtered; unknown normal -> review (never auto-junk)
+            _ai131.complete = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("AI down"))
+            assert _ef131.classify(_m131("x@seoboost.io", "SEO", "rank your website now"), _cfg131, set())["verdict"] == "junk"
+            assert _ef131.classify(_m131("stranger@randomco.com", "Stranger", "Hello"), _cfg131, set())["verdict"] == "review"
+        finally:
+            _ai131.complete = _oc131
+        print("Inbox Guardian: keeps lawyers/clients/legal e-sign, junks county/gov + cold solicitations, AI-down backstop OK")
+
         # ===================== v0.24: PSA projects + Kanban =====================
         pj=c.post("/api/projects", json={"client_id":cid,"name":"M365 Migration","budget_hours":40})
         assert pj.status_code==201, pj.text
@@ -8158,7 +8197,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.130.0"
+    assert _gs101().APP_VERSION == "1.131.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8543,7 +8582,7 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.130.0"
+    assert _gs101().APP_VERSION == "1.131.0"
     assert _sr100.REPAIR_EPOCH == "1.112.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
@@ -8579,7 +8618,7 @@ def main():
     assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
     # site nav points to the game home
     assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
-    assert _gs101().APP_VERSION == "1.130.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.131.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
           "Explore features it with a Halloween hero, republish forced OK")
 
@@ -8599,11 +8638,11 @@ def main():
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
     assert "xp-papel" in _xp3 and "Happy Thanksgiving" in _xp3, "seasonal Explore theme missing"
-    assert _gs101().APP_VERSION == "1.130.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.131.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
 
-    print("\n=== OpsPilot v1.130.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.131.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

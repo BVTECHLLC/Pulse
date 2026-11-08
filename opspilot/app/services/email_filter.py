@@ -97,23 +97,74 @@ def add_sender(db: Session, email: str, where: str) -> dict:
 _SYSTEM = (
     "You are the inbox triage assistant for BVTech LLC, a Texas managed-IT and "
     "cybersecurity company. Decide whether an incoming email should reach the "
-    "owner's Outlook inbox (KEEP) or be set aside as an unwanted solicitation or "
-    "spam (JUNK), or REVIEW when unsure.\n"
-    "ERR STRONGLY TOWARD KEEP for anything that could be a real person: existing "
-    "or prospective clients, a business asking for IT/cybersecurity help, law "
-    "firms, telecom/AT&T, firearms/2A businesses, partners, vendors we use, "
+    "owner's Outlook inbox (KEEP) or be set aside (JUNK), or REVIEW when unsure.\n"
+    "ERR STRONGLY TOWARD KEEP for anything that could be a real person writing "
+    "directly to the owner: existing or prospective clients, a business asking "
+    "for IT/cybersecurity help, LAW FIRMS / ATTORNEYS / legal matters, "
+    "telecom/AT&T, firearms/2A businesses, partners, vendors we actually use, "
     "recruiters for a real role, and personal mail. A human who wants to BUY our "
-    "services or get support is KEEP — that is not soliciting.\n"
-    "JUNK is for clear cold SOLICITATIONS and spam only: agencies pitching SEO, "
+    "services or get support is KEEP — that is not soliciting. A real person at a "
+    "government office writing personally about the owner's own case/account is KEEP.\n"
+    "JUNK is for cold SOLICITATIONS, bulk blasts and spam: agencies pitching SEO, "
     "marketing, web design, app/software dev, 'rank your website', 'we found "
-    "issues with your site', lead-generation or bought lead lists, SMM/backlinks, "
-    "crypto/forex/investment, loans/debt, fake invoices or gift cards, and "
-    "obvious automated bulk outreach. When genuinely unsure, choose REVIEW, "
-    "never JUNK.\n"
+    "issues with your site', lead-gen or bought lists, SMM/backlinks, "
+    "crypto/forex/investment, loans/debt, fake invoices or gift cards; AND "
+    "impersonal MASS mail the owner never asked for: government / county / city / "
+    "municipal / tax-office notices and solicitations (e.g. a County), "
+    "chamber-of-commerce blasts, political or campaign or donation mail, surveys, "
+    "press releases, conference/webinar/event invites, and newsletters/'updates' "
+    "the owner did not sign up for. When a real human wrote it personally and it "
+    "is not a pitch, KEEP. When genuinely unsure, choose REVIEW, never JUNK.\n"
     'Reply with ONE line of JSON only: {"verdict":"keep|review|junk",'
-    '"category":"client|prospect|partner|vendor|personal|recruiter|newsletter|solicitor|spam",'
+    '"category":"client|prospect|partner|vendor|personal|recruiter|legal|government|newsletter|solicitor|spam",'
     '"reason":"<=8 words","confidence":0-100}'
 )
+
+# Deterministic signals (run before the model — reliable + token-free). Tuned to
+# catch the owner's explicit gripes (county/government bulk mail, cold pitches,
+# marketing blasts) WITHOUT ever catching transactional/legal mail (e.g. a
+# DocuSign engagement letter) or a small business's info@/hello@ address.
+# Government / county / municipal mail: *.gov, state *.XX.us (e.g. co.comal.tx.us),
+# or a sender name/domain that is clearly a county/municipality/chamber.
+_GOV_RE = re.compile(r"(\.gov$|\.gov\.|\.[a-z]{2}\.us$|(^|[.\-])(county|municipal|cityof)([.\-]|$)|"
+                     r"chamberofcommerce)", re.I)
+_GOV_NAME_RE = re.compile(r"\b(county|municipal|city of|chamber of commerce|tax (office|assessor)|"
+                          r"appraisal district)\b", re.I)
+# ONLY unambiguous marketing/bulk mailbox names (never transactional ones like
+# noreply/notifications/billing, which legit legal/client systems use).
+_BULK_LOCAL = {"newsletter", "newsletters", "marketing", "updates", "campaign", "campaigns",
+               "mailings", "mailing", "broadcast", "promotions", "promo", "promos", "deals",
+               "offers", "survey", "surveys", "news", "digest", "e-news", "enews"}
+_SPAM_SUBJECT_RE = re.compile(
+    r"(rank(ing)? your (web)?site|first page of google|we (found|noticed) (issues|errors) "
+    r"(with|on) your (web)?site|increase your (traffic|sales|leads)|guest post|back ?link|"
+    r"link building|web ?design (proposal|quote|services)|seo (audit|services|proposal|expert)|"
+    r"grow your business online|(bought|verified|qualified) .*leads|crypto|forex|bitcoin|"
+    r"loan approv|debt relief|gift card|unclaimed (funds|money)|lottery|"
+    r"you('| ha)?ve won|increase your website traffic)", re.I)
+
+
+def _deterministic(frm: str, name: str, subject: str, preview: str, aggr: str) -> dict | None:
+    """A reliable verdict for the owner's explicit gripes (government/county mail,
+    obvious cold solicitations, marketing blasts) without spending a token — and a
+    backstop so obvious spam is still caught when the model is unavailable.
+    Returns None to defer to the model. Nothing is ever deleted (junk = a folder),
+    and a specific sender can always be rescued by allow-listing it."""
+    local = (frm.split("@")[0] or "").lower().split("+")[0]
+    dom = _domain(frm)
+    gov = bool(_GOV_RE.search(dom) or _GOV_NAME_RE.search(name or ""))
+    spammy = bool(_SPAM_SUBJECT_RE.search(subject or "") or _SPAM_SUBJECT_RE.search(preview or ""))
+    bulky = local in _BULK_LOCAL
+    if not (gov or spammy or bulky):
+        return None
+    cat = "government" if gov else "solicitor"
+    # Lenient mode only auto-files the most obvious cold pitches; else just REVIEW.
+    if aggr == "lenient" and not spammy:
+        return {"verdict": "review", "category": cat, "reason": "bulk/gov (lenient)",
+                "confidence": 55, "by": "rule"}
+    reason = ("government/county mail" if gov else
+              "cold solicitation" if spammy else "marketing/bulk blast")
+    return {"verdict": "junk", "category": cat, "reason": reason, "confidence": 90, "by": "rule"}
 
 
 def _domain(addr: str) -> str:
@@ -137,6 +188,14 @@ def classify(msg: dict, cfg: dict, known_senders: set[str]) -> dict:
     if _listed(frm, cfg["allow"]) or frm in known_senders or dom in known_senders:
         return {"verdict": "keep", "category": "client", "reason": "known / allowlisted",
                 "confidence": 100, "by": "rule"}
+    # Deterministic catch for the owner's explicit gripes (county/government mail,
+    # cold solicitations, bulk no-reply blasts) — reliable and token-free. Runs
+    # AFTER allow/known, so a whitelisted lawyer or client is never caught here.
+    name = (msg.get("from") or {}).get("name", "") or ""
+    det = _deterministic(frm, name, msg.get("subject", "") or "",
+                         (msg.get("preview") or "")[:600], cfg.get("aggressiveness"))
+    if det is not None:
+        return det
     # AI triage
     from . import ai
     user = (f"From: {(msg.get('from') or {}).get('name','')} <{frm}>\n"
