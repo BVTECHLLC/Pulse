@@ -8197,7 +8197,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.138.0"
+    assert _gs101().APP_VERSION == "1.139.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8207,7 +8207,7 @@ def main():
     from app.services import pages_explore as _PE, pages_labs as _PL, pages_tools as _PT
     # (1) pages build standalone (titles/desc/bodies present, Jordan Polasek authored)
     assert "Explore" in _PE.TITLE and "Jordan Polasek" in _PE.body()
-    assert "Lightning Labs" in _PL.TITLE and len(_PT.all_tools()) == 11
+    assert "Lightning Labs" in _PL.TITLE and len(_PT.all_tools()) == 16
     for _t in _PT.all_tools():
         assert _t["slug"] and _t["title"] and _t["body"] and _t["card_excerpt"]
     assert "/tools-api/net/whoami" in _PT.whats_my_ip()["body"]
@@ -8300,7 +8300,7 @@ def main():
         _J102._HTTP = _http102
         _CF102.purge_urls = lambda *a, **k: {"ok": True}
         _rp = _D102.publish(None)
-        assert _rp["ok"] and len(_rp["pages"]) == 18, _rp   # +1: /free-review/ offer page (v1.137)
+        assert _rp["ok"] and len(_rp["pages"]) == 23, _rp   # +5 converter tools (v1.139)
         assert "explore/index.html" in _sent102 and "academy/lightning-labs/index.html" in _sent102
         assert "graveyard-shift/index.html" in _sent102
         # v1.118: local service-area pages (Houston/Austin/San Antonio) +
@@ -8367,7 +8367,16 @@ def main():
         assert '/free-review/' in _sent102["blog/index.html"], "mode-bar CTA should link /free-review/"
         assert '"main"' in _sent102.get("wrangler.jsonc", "")
         assert "worker-tools/" in _sent102.get(".assetsignore", "")
-        assert "/tools/whats-my-ip/" in _sent102["tools/index.html"] and "🧭 New" in _sent102["tools/index.html"]
+        # v1.139: tools index now carries ONE clean, searchable instant-tools grid
+        # (not the old stacked per-tool injection), + the 5 new converter tool pages ship.
+        _ti139 = _sent102["tools/index.html"]
+        assert 'id="bv-instant-tools"' in _ti139 and 'bvt-search' in _ti139, "clean tools grid missing"
+        assert "/tools/speed-test/" in _ti139 and "/tools/image-converter/" in _ti139, "tool links missing"
+        assert "/free-review/" in _ti139, "offer CTA missing from tools grid"
+        assert "tools/image-converter/index.html" in _sent102 and "tools/csv-json/index.html" in _sent102 \
+            and "tools/markdown-html/index.html" in _sent102 and "tools/color-converter/index.html" in _sent102 \
+            and "tools/unit-converter/index.html" in _sent102, "converter tool pages not published"
+        assert "/tools/whats-my-ip/" in _ti139
         # scan the just-published repo: no broken internal links in the NEW pages
         for _p, _c in _sent102.items():
             _repo102[_p] = _c
@@ -8387,7 +8396,7 @@ def main():
     assert _sr100.REPAIR_EPOCH == "1.112.0"
     import inspect as _insp102
     assert "destination" in _insp102.getsource(_sr100.run_full_repair)
-    print("v1.102: Explore hub, Lightning Labs (edge-graded), 11 tools, edge API, "
+    print("v1.102: Explore hub, Lightning Labs (edge-graded), 16 tools, edge API, "
           "additive idempotent nav, 404 telemetry + broken-link scan, one-commit publish OK")
     print("v1.133: Business/Academy mode bar — scoped, additive under header, URL-aware "
           "default + remembered choice, idempotent, game-shell + fragment safe OK")
@@ -8629,7 +8638,7 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.138.0"
+    assert _gs101().APP_VERSION == "1.139.0"
     assert _sr100.REPAIR_EPOCH == "1.112.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
@@ -8665,7 +8674,7 @@ def main():
     assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
     # site nav points to the game home
     assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
-    assert _gs101().APP_VERSION == "1.138.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.139.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
           "Explore features it with a Halloween hero, republish forced OK")
 
@@ -8685,11 +8694,11 @@ def main():
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
     assert "xp-papel" in _xp3 and "Happy Thanksgiving" in _xp3, "seasonal Explore theme missing"
-    assert _gs101().APP_VERSION == "1.138.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.139.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
 
-    print("\n=== OpsPilot v1.138.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.139.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

@@ -359,37 +359,104 @@ def apply_mode_bar(h: str) -> tuple[str, bool]:
     return h, False
 
 
-def _tools_index_cards(index_html: str) -> tuple[str, bool]:
-    """Add the four new tool cards + an Explore banner to the tools index,
-    cloning its own card markup. Idempotent."""
-    from . import jp_site
-    h = index_html
-    changed = False
+_TOOLS_GRID_MARKER = 'id="bv-instant-tools"'
+
+
+def _instant_tools_section() -> str:
+    """One clean, searchable, self-contained grid of every in-house browser tool
+    (v1.139) — replaces the old per-tool blog-card injection that stacked a 'wall
+    of text' with a repeated promo box under each tool. Scoped under
+    #bv-instant-tools so it can't collide with the site's CSS."""
+    cards = []
     for t in pages_tools.all_tools():
-        url = f"/tools/{t['slug']}/"
-        if url in h:
-            continue
-        new, ok = jp_site.inject_post_into_listing(
-            h, title=f"{t['icon']} {t['card_title']}", url=url, excerpt=t["card_excerpt"],
-            date_str="", style="blog-file", file_dir="tools")
-        if ok:
-            h = new
-            changed = True
-    if "/explore/" not in h:
-        banner = ('<div style="margin:22px auto;max-width:960px;padding:18px 22px;border-radius:14px;'
-                  'border:1px solid rgba(245,190,88,.35);background:linear-gradient(135deg,'
-                  'rgba(68,64,219,.16),rgba(235,111,36,.12))"><strong style="color:#fff">🧭 New: '
-                  'Explore</strong> — the fun side of tech, curated daily by Jordan Polasek. '
-                  'Tech, Tesla, space, AI &amp; good news, a NASA photo, rocket launches and a '
-                  'daily game. <a href="/explore/" style="font-weight:800;color:#F5BE58">'
-                  'Visit Explore →</a></div>')
-        for rx in (r"</h1>", r"<main\b[^>]*>", r"</header>"):
-            m = re.search(rx, h, re.I)
-            if m:
-                h = h[:m.end()] + banner + h[m.end():]
-                changed = True
-                break
-    return h, changed
+        slug, icon = t["slug"], t.get("icon", "🔧")
+        title = _html.escape(t["card_title"])
+        exc = re.sub(r"&amp;", "&", t.get("card_excerpt", ""))
+        exc = _html.escape(re.sub(r"<[^>]+>", "", exc))
+        dn = _html.escape((t["card_title"] + " " + t.get("card_excerpt", "")).lower(), quote=True)
+        cards.append(
+            f'<a class="bvt-card" href="/tools/{slug}/" data-n="{dn}">'
+            f'<span class="bvt-ic">{icon}</span><b>{title}</b><span class="bvt-x">{exc}</span></a>')
+    # Two highlighted destinations at the end of the grid.
+    cards.append('<a class="bvt-card bvt-cta" href="/free-review/" data-n="free security review it audit book">'
+                 '<span class="bvt-ic">🛡️</span><b>Free Security Review</b>'
+                 '<span class="bvt-x">A free 20-min IT &amp; security review for your business.</span></a>')
+    cards.append('<a class="bvt-card" href="/explore/" data-n="explore tech news tesla space ai games">'
+                 '<span class="bvt-ic">🧭</span><b>Explore</b>'
+                 '<span class="bvt-x">The fun side of tech — news, space, AI &amp; a daily game.</span></a>')
+    grid = "".join(cards)
+    css = (
+        '#bv-instant-tools{--o:#EB6F24;--o2:#F5BE58;max-width:1080px;margin:0 auto;padding:30px 18px 8px;'
+        'font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}'
+        '#bv-instant-tools .bvt-head{text-align:center;margin:0 0 20px}'
+        '#bv-instant-tools h2{font-size:clamp(1.5rem,3.6vw,2.1rem);color:#fff;margin:0 0 8px;font-weight:800}'
+        '#bv-instant-tools .bvt-sub{color:#aab;max-width:620px;margin:0 auto 16px;font-size:.98rem;line-height:1.5}'
+        '#bv-instant-tools .bvt-search{width:100%;max-width:440px;padding:12px 16px;border-radius:999px;'
+        'border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.05);color:#fff;font-size:1rem}'
+        '#bv-instant-tools .bvt-search::placeholder{color:#889}'
+        '#bv-instant-tools .bvt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(225px,1fr));gap:14px}'
+        '#bv-instant-tools .bvt-card{display:flex;flex-direction:column;gap:5px;padding:18px 18px 16px;border-radius:14px;'
+        'text-decoration:none;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.035);transition:.16s}'
+        '#bv-instant-tools .bvt-card:hover{transform:translateY(-3px);border-color:rgba(245,190,88,.5);'
+        'background:rgba(245,190,88,.07)}'
+        '#bv-instant-tools .bvt-ic{font-size:1.7rem;line-height:1}'
+        '#bv-instant-tools .bvt-card b{color:#fff;font-size:1.02rem;font-weight:700}'
+        '#bv-instant-tools .bvt-x{color:#9aa0b5;font-size:.84rem;line-height:1.45}'
+        '#bv-instant-tools .bvt-cta{border-color:rgba(245,190,88,.55);'
+        'background:linear-gradient(135deg,rgba(235,111,36,.18),rgba(245,190,88,.1))}'
+        '#bv-instant-tools .bvt-cta b{color:var(--o2)}'
+        '#bv-instant-tools .bvt-empty{text-align:center;color:#9aa0b5;padding:18px;display:none}'
+    )
+    js = ("(function(){var r=document.getElementById('bv-instant-tools');if(!r)return;"
+          "var s=r.querySelector('.bvt-search'),cards=[].slice.call(r.querySelectorAll('.bvt-card')),"
+          "empty=r.querySelector('.bvt-empty');"
+          "s.addEventListener('input',function(){var q=s.value.trim().toLowerCase(),n=0;"
+          "cards.forEach(function(c){var m=!q||c.getAttribute('data-n').indexOf(q)>-1;"
+          "c.style.display=m?'':'none';if(m)n++;});empty.style.display=n?'none':'block';});})();")
+    return (
+        f'<section {_TOOLS_GRID_MARKER}><style>{css}</style>'
+        '<div class="bvt-head"><h2>🧰 Free Browser Tools</h2>'
+        '<p class="bvt-sub">Fast, private, in-house tools — nothing to install, no signup, nothing '
+        'leaves your device. Start typing to find one.</p>'
+        '<input class="bvt-search" type="search" placeholder="Search tools… (speed, image, json, color)" aria-label="Search tools">'
+        '</div>'
+        f'<div class="bvt-grid">{grid}</div>'
+        '<p class="bvt-empty">No tools match that search.</p>'
+        f'<script>{js}</script></section>')
+
+
+def _tools_index_cards(index_html: str) -> tuple[str, bool]:
+    """Replace the old messy per-tool injection at the top of /tools/ with ONE
+    clean, searchable grid (v1.139). On re-publish the grid is updated in place.
+    The hand-written category grid below ('Check Your Security', …) is preserved;
+    only the auto-generated mess above it is removed. Safe-fail: if the page's
+    shape isn't recognized, the grid is simply inserted at the top of <main>."""
+    h = index_html
+    section = _instant_tools_section()
+    # (a) already present -> update our block in place (idempotent re-publish)
+    if _TOOLS_GRID_MARKER in h:
+        new = re.sub(r'<section id="bv-instant-tools".*?</section>', section, h,
+                     count=1, flags=re.S)
+        return new, (new != index_html)
+    mm = re.search(r"<main\b[^>]*>", h, re.I)
+    if not mm:
+        return h, False
+    cstart = mm.end()
+    # (b) remove the legacy mess: cut from <main> to just before the hand-written
+    #     grid (its first category heading), keeping that grid intact.
+    anchor = h.find("Check Your Security")
+    if anchor > cstart:
+        head_i = h.rfind("<h", cstart, anchor)
+        boundary = head_i if head_i != -1 else anchor
+        for tag in ("<section", "<div"):
+            wi = h.rfind(tag, max(cstart, boundary - 700), boundary)
+            if wi != -1:
+                boundary = min(boundary, wi) if boundary != anchor else wi
+        removed = h[cstart:boundary]
+        if boundary > cstart and "Check Your Security" not in removed:
+            return h[:cstart] + "\n" + section + "\n" + h[boundary:], True
+    # (c) fallback: no recognizable hand-written grid — just put the clean grid first
+    return h[:cstart] + "\n" + section + "\n" + h[cstart:], True
 
 
 _404_PING = ('<script>/*pulse-404-ping*/(function(){try{fetch("/tools-api/notfound",{method:"POST",'
