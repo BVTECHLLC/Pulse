@@ -8197,7 +8197,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.134.0"
+    assert _gs101().APP_VERSION == "1.135.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8273,14 +8273,22 @@ def main():
                 ".assetsignore": "node_modules/\n",
                 "about/index.html": _chrome.replace("Blog | BVTech", "About")}
     _sent102 = {}
-    def _http102(method, url, token, payload=None):
+    _acts102 = {}
+    _commits102 = {"n": 0, "timeouts": []}
+    def _http102(method, url, token, payload=None, timeout=None):
         if method == "GET" and "/repository/tree" in url and "recursive=true" in url:
             return ([{"type": "blob", "path": p} for p in _repo102]
                     + [{"type": "tree", "path": d} for d in ("tools", "about", "explore")]
                     ) if "page=1" in url else []
         if method == "POST" and "/repository/commits" in url:
+            # v1.135: the destination rollout is chunked (<=60 files/commit) with a
+            # longer timeout; record each commit's size + timeout to prove it.
+            assert len(payload["actions"]) <= 60, ("commit chunk too large", len(payload["actions"]))
+            _commits102["n"] += 1
+            _commits102["timeouts"].append(timeout)
             for _a in payload["actions"]:
                 _sent102[_a["file_path"]] = _a["content"]
+                _acts102[_a["file_path"]] = _a["action"]
             return {"id": "sha"}
         return {}
     _o102b = (_J102.get_config, _J102._fetch_file, _J102._HTTP, _CF102.purge_urls)
@@ -8337,6 +8345,18 @@ def main():
         assert _ldcount >= 10, ("too few JSON-LD blocks parsed", _ldcount)
         assert '/explore/' in _sent102["blog/index.html"] and '/explore/' in _sent102["about/index.html"]
         assert 'pulse-404-ping' in _sent102["404.html"]
+        # v1.135: publish is chunked + decides create/update from ONE repo listing
+        # (not a GET per file), so a big mode-bar rollout can't time out or 429.
+        assert _commits102["n"] >= 1                                    # committed via chunk loop
+        assert any((_t or 0) >= 60 for _t in _commits102["timeouts"]), \
+            ("destination commit must use the longer timeout", _commits102["timeouts"])
+        assert _acts102.get("blog/index.html") == "update"             # pre-existing -> update
+        assert _acts102.get("about/index.html") == "update"
+        assert _acts102.get("explore/index.html") == "create"          # brand new -> create
+        assert _acts102.get("graveyard-shift/index.html") == "create"
+        # v1.135: the Business/Academy mode bar rode the publish onto existing pages
+        assert 'id="bvModeBar"' in _sent102["blog/index.html"], "mode bar not published to live page"
+        assert 'id="bvModeBar"' in _sent102["about/index.html"]
         assert '"main"' in _sent102.get("wrangler.jsonc", "")
         assert "worker-tools/" in _sent102.get(".assetsignore", "")
         assert "/tools/whats-my-ip/" in _sent102["tools/index.html"] and "🧭 New" in _sent102["tools/index.html"]
@@ -8601,7 +8621,7 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.134.0"
+    assert _gs101().APP_VERSION == "1.135.0"
     assert _sr100.REPAIR_EPOCH == "1.112.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
@@ -8637,7 +8657,7 @@ def main():
     assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
     # site nav points to the game home
     assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
-    assert _gs101().APP_VERSION == "1.134.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.135.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
           "Explore features it with a Halloween hero, republish forced OK")
 
@@ -8657,11 +8677,11 @@ def main():
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
     assert "xp-papel" in _xp3 and "Happy Thanksgiving" in _xp3, "seasonal Explore theme missing"
-    assert _gs101().APP_VERSION == "1.134.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.135.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
 
-    print("\n=== OpsPilot v1.134.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.135.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

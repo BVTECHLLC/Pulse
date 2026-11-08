@@ -120,21 +120,26 @@ _BOX_FILES = ("/etc/bvtech/publisher.env", "/etc/bvtech/agent.env")
 _RETRY_STATUS = (429, 502, 503, 504)
 
 
-def _http(method: str, url: str, token: str, payload: dict | None = None) -> dict:
+def _http(method: str, url: str, token: str, payload: dict | None = None,
+          timeout: int = 30) -> dict:
     """GitLab API call. v1.98: rate limits (429) and transient 5xx are RETRIED
     with Retry-After / backoff instead of failing the whole job — Pulse's own
-    hourly sweeps were tripping GitLab's limits and silently skipping listings."""
-    import time as _time
+    hourly sweeps were tripping GitLab's limits and silently skipping listings.
+    v1.135: `timeout` is tunable (big commits need longer than 30s) and a socket
+    timeout / connection error on an idempotent GET is retried too, not just HTTP
+    status codes."""
+    import time as _time, socket as _socket
     data = json.dumps(payload).encode() if payload is not None else None
     # v1.133: 6 attempts (was 4) with a higher 429 backoff ceiling, so a sustained
     # rate limit during a big publish sweep rides out instead of aborting the job.
     _ATTEMPTS = 6
+    body = ""
     for attempt in range(_ATTEMPTS):
         req = urllib.request.Request(url, method=method,
                                      headers={"PRIVATE-TOKEN": token,
                                               "Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(req, data=data, timeout=30) as r:
+            with urllib.request.urlopen(req, data=data, timeout=timeout) as r:
                 body = r.read().decode()
             break
         except urllib.error.HTTPError as e:
@@ -146,7 +151,29 @@ def _http(method: str, url: str, token: str, payload: dict | None = None) -> dic
                 _time.sleep(min(max(wait, 2 ** attempt * 2), 30))
                 continue
             _raise_gitlab(e)
+        except (urllib.error.URLError, TimeoutError, _socket.timeout) as e:
+            # Transient network / read timeout. Retry idempotent GETs with
+            # backoff; never auto-retry a write (POST/PUT) — it may already have
+            # landed server-side, and a retry would duplicate it.
+            if method.upper() == "GET" and attempt < _ATTEMPTS - 1:
+                _time.sleep(min(2 ** attempt * 2, 30))
+                continue
+            raise RuntimeError(f"GitLab request failed: {getattr(e, 'reason', e)}") from e
     return json.loads(body) if body else {}
+
+
+def _list_all_paths(cfg: dict) -> list[str]:
+    """Every blob path in the repo (recursive, any file type) — the authoritative
+    existence set, so a bulk commit can decide create-vs-update from ONE listing
+    instead of a GET per file. Paginated; bounded to 30 pages (3000 files)."""
+    out: list = []
+    for page in range(1, 31):
+        batch = _HTTP("GET", f"{_proj_url(cfg)}/repository/tree?recursive=true&per_page=100"
+                      f"&page={page}&ref={cfg['branch']}", cfg["token"])
+        out += batch or []
+        if not batch or len(batch) < 100:
+            break
+    return [t["path"] for t in out if t.get("type") == "blob"]
 
 
 def _raise_gitlab(e: "urllib.error.HTTPError") -> None:

@@ -522,11 +522,15 @@ def publish(db: Session) -> dict:
                 break
         # 6) site-wide nav links (additive, idempotent) across every repo HTML
         nav_hits = _apply_nav_everywhere(cfg, files)
-        # commit everything at once
-        jp_site._commit_all = getattr(jp_site, "_commit_all", None)
+        # commit — chunked, with create/update decided from one repo listing so a
+        # big mode-bar rollout neither doubles GitLab load nor times out (v1.135).
+        try:
+            _existing = set(jp_site._list_all_paths(cfg))
+        except Exception:  # noqa: BLE001
+            _existing = None
         _commit(cfg, files, f"destination: Explore hub, Lightning Labs, {len(pages_tools.all_tools())} "
                 f"new tools, Business/Academy mode bar, edge API + nav/sitemap "
-                f"(via Pulse) [{nav_hits} nav pages]")
+                f"(via Pulse) [{nav_hits} nav pages]", existing=_existing)
         # 7) sitemap
         extra = {p["url"]: None for p in pages}
         sm = jp_site.sitemap_sync(db, "bvtech", extra=extra)
@@ -594,14 +598,39 @@ def _apply_nav_everywhere(cfg: dict, files: dict) -> int:
     return hits
 
 
-def _commit(cfg: dict, files: dict, message: str) -> None:
+def _commit(cfg: dict, files: dict, message: str, existing: set | None = None) -> None:
+    """Commit every file in `files`. v1.135: a big mode-bar rollout changes
+    hundreds of pages, so (a) create-vs-update is decided from one repo listing
+    (`existing`) instead of a GET per file, and (b) the commit is CHUNKED with a
+    longer timeout so GitLab never times out on one giant request. This change is
+    additive + idempotent, so partial progress across chunks is safe and the next
+    publish self-heals anything left behind."""
     from . import jp_site
     if cfg.get("forge") == "github":
         for path, content in files.items():
             jp_site._repo_ops(cfg)["commit"](path, content, message,
                                              jp_site._fetch_file(cfg, path) is not None)
         return
-    actions = [{"action": "update" if jp_site._fetch_file(cfg, p) is not None else "create",
-                "file_path": p, "content": c} for p, c in files.items()]
-    jp_site._HTTP("POST", f"{jp_site._proj_url(cfg)}/repository/commits", cfg["token"],
-                  {"branch": cfg["branch"], "commit_message": message, "actions": actions})
+    if existing is None:
+        try:
+            existing = set(jp_site._list_all_paths(cfg))
+        except Exception:  # noqa: BLE001
+            existing = None
+
+    def _action(p: str) -> str:
+        if existing is not None:
+            return "update" if p in existing else "create"
+        return "update" if jp_site._fetch_file(cfg, p) is not None else "create"
+
+    # Infra/config + the interdependent release files first, bulk HTML last, so a
+    # Workers build triggered mid-rollout sees supporting files before the pages.
+    items = sorted(files.items(), key=lambda kv: (kv[0].endswith(".html"), kv[0]))
+    chunk = 60
+    total = (len(items) + chunk - 1) // chunk
+    for i in range(0, len(items), chunk):
+        part = items[i:i + chunk]
+        actions = [{"action": _action(p), "file_path": p, "content": c} for p, c in part]
+        msg = message if total == 1 else f"{message} [{i // chunk + 1}/{total}]"
+        jp_site._HTTP("POST", f"{jp_site._proj_url(cfg)}/repository/commits", cfg["token"],
+                      {"branch": cfg["branch"], "commit_message": msg, "actions": actions},
+                      timeout=120)
