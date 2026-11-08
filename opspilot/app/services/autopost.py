@@ -18,7 +18,9 @@ from ..models import SocialPost
 from . import secure_config
 
 PROVIDER = "autopost"
-_DEFAULT_GAP_HOURS = 20
+# Default cadence is WEEKLY (168h). BVTech runs a once-a-week marketing drip to
+# LinkedIn + Google Business; an explicit gap_hours in Settings overrides this.
+_DEFAULT_GAP_HOURS = 168
 
 
 def _aware(dt):
@@ -35,7 +37,9 @@ def get_config(db: Session) -> dict:
     conn = secure_config.get_platform(db, PROVIDER)
     cfg = (conn.config if conn else None) or {}
     kws = [k.strip() for k in (cfg.get("keywords") or "").split(",") if k.strip()]
-    chans = [c.strip() for c in (cfg.get("gen_channels") or "linkedin").split(",") if c.strip()]
+    # Default to BOTH channels so a weekly post hits LinkedIn and Google Business;
+    # an unconnected channel is skipped gracefully at publish time.
+    chans = [c.strip() for c in (cfg.get("gen_channels") or "linkedin,google_business").split(",") if c.strip()]
     return {"enabled": _truthy(cfg.get("enabled")),
             "gap_hours": int(cfg.get("gap_hours") or _DEFAULT_GAP_HOURS),
             # Auto-generate ("runs itself"): brand profile used to top up the queue.
@@ -47,8 +51,8 @@ def get_config(db: Session) -> dict:
             "keywords": kws,
             "cta_url": cfg.get("cta_url") or "",
             "image_url": cfg.get("image_url") or "",
-            "gen_channels": [c for c in chans if c in CHANNELS] or ["linkedin"],
-            "default_channels": ["linkedin"]}
+            "gen_channels": [c for c in chans if c in CHANNELS] or ["linkedin", "google_business"],
+            "default_channels": ["linkedin", "google_business"]}
 
 
 def save_config(db: Session, **fields) -> dict:
