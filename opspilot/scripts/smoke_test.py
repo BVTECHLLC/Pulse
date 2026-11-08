@@ -8197,7 +8197,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.136.0"
+    assert _gs101().APP_VERSION == "1.137.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8238,7 +8238,7 @@ def main():
     assert _mb.index('id="bvModeBar"') > _mb.index('</header>')             # under the header
     assert '💼 Business' in _mb and '🎓 Academy' in _mb                     # both modes
     assert 'bv-grp-b' in _mb and 'bv-grp-a' in _mb                          # both link groups
-    assert '/book/' in _mb and '/academy/lightning-labs/' in _mb and '/kart/' in _mb
+    assert '/free-review/' in _mb and '/academy/lightning-labs/' in _mb and '/kart/' in _mb
     assert '#bvModeBar' in _mb and 'data-mode' in _mb and 'localStorage' in _mb  # scoped + smart
     _mb2, _cmb2 = _D102.apply_mode_bar(_mb)
     assert not _cmb2 and _mb2 == _mb and _mb.count('id="bvModeBar"') == 1   # idempotent, no dup
@@ -8300,7 +8300,7 @@ def main():
         _J102._HTTP = _http102
         _CF102.purge_urls = lambda *a, **k: {"ok": True}
         _rp = _D102.publish(None)
-        assert _rp["ok"] and len(_rp["pages"]) == 17, _rp
+        assert _rp["ok"] and len(_rp["pages"]) == 18, _rp   # +1: /free-review/ offer page (v1.137)
         assert "explore/index.html" in _sent102 and "academy/lightning-labs/index.html" in _sent102
         assert "graveyard-shift/index.html" in _sent102
         # v1.118: local service-area pages (Houston/Austin/San Antonio) +
@@ -8357,6 +8357,14 @@ def main():
         # v1.135: the Business/Academy mode bar rode the publish onto existing pages
         assert 'id="bvModeBar"' in _sent102["blog/index.html"], "mode bar not published to live page"
         assert 'id="bvModeBar"' in _sent102["about/index.html"]
+        # v1.137: the /free-review/ lead-capture offer page ships, captures leads,
+        # carries FAQ schema, and is the Business mode-bar CTA target.
+        _fr = _sent102.get("free-review/index.html")
+        assert _fr, "free-review offer page not published"
+        assert "/tools-api/lead" in _fr and 'id="bv-lead"' in _fr, "offer page lead form missing"
+        assert "Free Security Review" in _fr and "FAQPage" in _fr, "offer page copy/schema missing"
+        assert _acts102.get("free-review/index.html") == "create"
+        assert '/free-review/' in _sent102["blog/index.html"], "mode-bar CTA should link /free-review/"
         assert '"main"' in _sent102.get("wrangler.jsonc", "")
         assert "worker-tools/" in _sent102.get(".assetsignore", "")
         assert "/tools/whats-my-ip/" in _sent102["tools/index.html"] and "🧭 New" in _sent102["tools/index.html"]
@@ -8621,7 +8629,7 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.136.0"
+    assert _gs101().APP_VERSION == "1.137.0"
     assert _sr100.REPAIR_EPOCH == "1.112.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
@@ -8657,7 +8665,7 @@ def main():
     assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
     # site nav points to the game home
     assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
-    assert _gs101().APP_VERSION == "1.136.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.137.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
           "Explore features it with a Halloween hero, republish forced OK")
 
@@ -8677,11 +8685,11 @@ def main():
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
     assert "xp-papel" in _xp3 and "Happy Thanksgiving" in _xp3, "seasonal Explore theme missing"
-    assert _gs101().APP_VERSION == "1.136.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.137.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
 
-    print("\n=== OpsPilot v1.136.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.137.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

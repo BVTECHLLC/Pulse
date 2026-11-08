@@ -23,7 +23,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from . import pages_explore, pages_labs, pages_tools, pages_game, pages_local, captcha
+from . import pages_explore, pages_labs, pages_tools, pages_game, pages_local, pages_offer, captcha
 
 AUTHOR = "Jordan Polasek"
 ORG = "BVTech LLC"
@@ -55,6 +55,7 @@ def _pages() -> list[dict]:
          "title": pages_labs.TITLE, "desc": pages_labs.DESC, "body": pages_labs.body()},
         {"path": GAME_PATH, "url": SITE + "/graveyard-shift/",
          "title": pages_game.TITLE, "desc": pages_game.DESC, "body": pages_game.body()},
+        pages_offer.review_offer(),   # /free-review/ — the lead-capture offer page
     ]
     for t in pages_tools.all_tools():
         page = {"path": f"tools/{t['slug']}/index.html",
@@ -251,7 +252,7 @@ _MODEBAR_BIZ = [
     ("/blog/", "📰 Blog"),
     ("/academy/", "🎓 Academy ›"),          # cross-link so each side reaches the other
 ]
-_MODEBAR_BIZ_CTA = ("/book/", "🛡️ Book a Security Review")
+_MODEBAR_BIZ_CTA = ("/free-review/", "🛡️ Free Security Review")
 _MODEBAR_ACA = [
     ("/academy/", "🎓 Academy Home"),
     ("/academy/labs/", "🧪 Hands-On Labs"),
