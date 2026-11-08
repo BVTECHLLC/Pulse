@@ -5,8 +5,11 @@
 #  small HEALTH snapshot (CPU/RAM/disk, logged-in user, antivirus,
 #  Windows Update status) on a schedule.
 #
-#  WHAT IT DOES NOT DO (by design): no remote command execution, no
-#  screen/keystroke/file capture, no remote control. Telemetry only.
+#  REMOTE ACTIONS (v2.2): runs ONLY jobs an OpsPilot OWNER explicitly approved
+#  for THIS device (patch installs + PowerShell/CMD commands from the console).
+#  There is no ad-hoc channel; every job went through request->approve and is
+#  pinned server-side. No screen/keystroke/file capture. Self-updates from the
+#  portal it enrolled with.
 #
 #  Actions:
 #    enroll <TOKEN> -Url <https://portal>   register this device
@@ -24,7 +27,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$AgentVersion = "2.1.0-ps"
+$AgentVersion = "2.2.0-ps"
 $DataDir = Join-Path $env:ProgramData "BVTechOpsPilot"
 $ConfigPath = Join-Path $DataDir "agent.json"
 $AgentPath = Join-Path $DataDir "agent.ps1"
@@ -236,6 +239,29 @@ function Do-Checkin {
   $headers = @{ "X-Enroll-Id" = $cfg.enroll_id; "X-Agent-Key" = $cfg.agent_key }
   $r = Invoke-Api "POST" "$($cfg.url)/api/agent/checkin" $headers $body
   Write-Log "Check-in ok (cpu=$($body.cpu_pct) ram=$($body.ram_pct) disk=$($body.disk_pct))"
+
+  # ---- Self-update: the server advertises the latest agent build + URL. If we
+  # are behind, download it, verify it declares that exact version, and swap this
+  # file atomically. The scheduled task runs the new agent on its next tick, so
+  # "push an update to every client" = bump the version on the portal + deploy.
+  try {
+    $latest = "$($r.latest_version)"
+    $aurl = "$($r.agent_url)"
+    if ($latest -and $aurl -and ($latest -ne $AgentVersion) -and (Test-Path $AgentPath)) {
+      $full = if ($aurl -match "://") { $aurl } else { "$($cfg.url.TrimEnd('/'))$aurl" }
+      $new = Invoke-RestMethod -Method GET -Uri $full -UserAgent "BVTechOpsPilotAgent/$AgentVersion" -TimeoutSec 60
+      $newText = [string]$new
+      $needle = '$AgentVersion = "' + $latest + '"'
+      if ($newText -and $newText.Contains($needle)) {
+        $tmp = "$AgentPath.new"
+        [System.IO.File]::WriteAllText($tmp, $newText)
+        Move-Item -Path $tmp -Destination $AgentPath -Force
+        Write-Log "Self-updated $AgentVersion -> $latest (runs next tick)."
+      } else {
+        Write-Log "Self-update skipped: downloaded agent did not declare version $latest."
+      }
+    }
+  } catch { Write-Log "Self-update check skipped: $_" }
 
   # Full inventory (installed software + pending patch list) is heavier, so send
   # it at most hourly instead of every 5-minute tick.
@@ -503,6 +529,20 @@ function Install-ApprovedPatches($kbsSpec) {
   }
 }
 
+function Run-ScriptJob($content, $ext, $invoker) {
+  # Run an approved PowerShell/CMD command for THIS device and capture output.
+  try {
+    $tmp = Join-Path $env:TEMP ("pulse_job_" + [System.IO.Path]::GetRandomFileName() + $ext)
+    [System.IO.File]::WriteAllText($tmp, "$content")
+    try {
+      $out = (& $invoker $tmp 2>&1 | Out-String)
+      $code = $LASTEXITCODE; if ($null -eq $code) { $code = 0 }
+      if ($out.Length -gt 20000) { $out = $out.Substring(0, 20000) + "`n...[truncated]" }
+      return @{ exit_code = [int]$code; output = "$out" }
+    } finally { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
+  } catch { return @{ exit_code = 1; output = "runner error: $_" } }
+}
+
 function Poll-Jobs($cfg, $headers) {
   # Pull approved jobs for this device and run the ones we understand. Today we
   # only handle winupdate jobs (governed patch installs) - other job languages
@@ -519,6 +559,12 @@ function Poll-Jobs($cfg, $headers) {
       $res = Install-ApprovedPatches $kbs
       # Refresh the reported pending set after installing.
       try { Report-Patches $cfg $headers } catch {}
+    } elseif ($j.language -eq "powershell") {
+      Write-Log "Running approved PowerShell job $($j.id)"
+      $res = Run-ScriptJob $j.content ".ps1" { param($f) powershell.exe -NoProfile -ExecutionPolicy Bypass -File $f }
+    } elseif ($j.language -eq "cmd" -or $j.language -eq "bat") {
+      Write-Log "Running approved CMD job $($j.id)"
+      $res = Run-ScriptJob $j.content ".bat" { param($f) cmd.exe /c $f }
     } else {
       $res = @{ exit_code = 1; output = "Unsupported job language '$($j.language)' for this agent." }
     }

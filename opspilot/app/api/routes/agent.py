@@ -131,6 +131,26 @@ class CheckinIn(BaseModel):
 # Live-feel default check-in cadence (seconds). The agent honors interval_sec.
 CHECKIN_INTERVAL_SEC = 60
 
+# Latest agent build per platform. The check-in response advertises this so an
+# out-of-date agent SELF-UPDATES (downloads agent_url, verifies the version, and
+# swaps itself). "Pushing an update to every client" = bump the version here AND
+# the matching agent file, then deploy — all agents update on their next tick.
+# Keep these in lock-step with agent/opspilot_agent.ps1 ($AgentVersion) and
+# agent/opspilot_agent.py (AGENT_VERSION).
+LATEST_AGENT = {
+    "windows": {"version": "2.2.0-ps", "url": "/download/agent.ps1"},
+    "darwin": {"version": "1.6.0", "url": "/download/agent"},
+    "linux": {"version": "1.6.0", "url": "/download/agent"},
+}
+
+
+def _agent_update_info(platform_str: str | None) -> dict:
+    p = (platform_str or "").lower()
+    # Check darwin/mac BEFORE windows — "darwin" contains the substring "win".
+    key = ("darwin" if ("dar" in p or "mac" in p or "osx" in p)
+           else "windows" if "win" in p else "linux")
+    return LATEST_AGENT.get(key, LATEST_AGENT["linux"])
+
 
 def _health_score(c: CheckinIn) -> int:
     score = 100
@@ -197,7 +217,9 @@ def checkin(body: CheckinIn, request: Request,
             auto_remediation.on_new_alerts(db, new_alerts, dev)
         except Exception:  # never let remediation break a check-in
             pass
-    return {"ok": True, "interval_sec": CHECKIN_INTERVAL_SEC}
+    info = _agent_update_info(body.platform)
+    return {"ok": True, "interval_sec": CHECKIN_INTERVAL_SEC,
+            "latest_version": info["version"], "agent_url": info["url"]}
 
 
 # --- Agent: end-user submits a support ticket from this device --------------

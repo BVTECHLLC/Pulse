@@ -32,7 +32,7 @@ import time
 from pathlib import Path
 from urllib import request as urlreq
 
-AGENT_VERSION = "1.5.2"
+AGENT_VERSION = "1.6.0"
 
 
 def _normalize_url(u: str) -> str:
@@ -519,6 +519,7 @@ def _process_remote(conf: dict, headers: dict) -> None:
         if not _REMOTE_WARNED:
             _log(f"remote desktop requested but {why}")
             _REMOTE_WARNED = True
+            _try_install_remote_extras()   # best-effort: make the next session work
         return
     import threading
     for s in sessions:
@@ -591,6 +592,61 @@ def _process_diagnostics(headers: dict) -> None:
             print(f"  failed to report diagnostic #{d['id']}: {e}")
 
 
+def _self_update(latest: str, aurl: str) -> None:
+    """Download the newer agent, verify it declares `latest`, replace this file
+    and re-exec. Only called when the server advertises a different version, so
+    pushing an update fleet-wide = bump the version on the portal + deploy."""
+    try:
+        target = Path(__file__).resolve()
+    except Exception:
+        return
+    url = aurl if "://" in aurl else PULSE_URL.rstrip("/") + aurl
+    try:
+        req = urlreq.Request(url, headers={"User-Agent": _UA})
+        with urlreq.urlopen(req, timeout=60) as r:
+            new_src = r.read().decode("utf-8", "replace")
+    except Exception as e:  # noqa: BLE001
+        _log(f"self-update download failed: {e}")
+        return
+    if f'AGENT_VERSION = "{latest}"' not in new_src:
+        _log(f"self-update skipped: downloaded agent did not declare {latest}")
+        return
+    try:
+        tmp = target.with_name(target.name + ".new")
+        tmp.write_text(new_src, encoding="utf-8")
+        os.replace(str(tmp), str(target))
+        _log(f"Self-updated {AGENT_VERSION} -> {latest}; restarting.")
+    except Exception as e:  # noqa: BLE001
+        _log(f"self-update write failed: {e}")
+        return
+    try:
+        os.execv(sys.executable, [sys.executable, str(target)] + sys.argv[1:])
+    except Exception as e:  # noqa: BLE001
+        _log(f"self-update restart failed (applies on next launch): {e}")
+
+
+_REMOTE_INSTALL_TRIED = False
+
+
+def _try_install_remote_extras() -> None:
+    """Best-effort, once per run: install the WebRTC remote-desktop extras so a
+    pending remote session can be served. Non-fatal if it fails (telemetry and
+    approved jobs keep working regardless)."""
+    global _REMOTE_INSTALL_TRIED
+    if _REMOTE_INSTALL_TRIED:
+        return
+    _REMOTE_INSTALL_TRIED = True
+    try:
+        import subprocess
+        _log("remote: installing extras (aiortc websockets mss pyautogui av)…")
+        subprocess.run([sys.executable, "-m", "pip", "install", "--user",
+                        "aiortc", "websockets", "mss", "pyautogui", "av"],
+                       capture_output=True, text=True, timeout=900)
+        _log("remote: extras install attempt finished; next session will use them.")
+    except Exception as e:  # noqa: BLE001
+        _log(f"remote: extras install failed: {e}")
+
+
 def run_loop(enable_scripts: bool = False) -> None:
     conf = _load_conf()
     if not conf:
@@ -612,6 +668,9 @@ def run_loop(enable_scripts: bool = False) -> None:
         try:
             res = _post("/api/agent/checkin", collect(), headers)
             interval = int(res.get("interval_sec", interval))
+            _lv, _au = res.get("latest_version"), res.get("agent_url")
+            if _lv and _au and _lv != AGENT_VERSION:
+                _self_update(_lv, _au)      # downloads, verifies, swaps + re-execs
             _process_diagnostics(headers)  # read-only; always processed
             _process_remote(conf, headers)  # serve any pending remote-desktop sessions
             if enable_scripts:

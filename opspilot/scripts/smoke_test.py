@@ -50,7 +50,15 @@ def main():
         a = TestClient(app); a.cookies.clear()
         ent = a.post("/api/agent/enroll", json={"enroll_token":tok,"hostname":"SMOKE-PC","os":"Windows 11"}).json()
         hdr = {"X-Enroll-Id":ent["enroll_id"],"X-Agent-Key":ent["agent_key"]}
-        a.post("/api/agent/checkin", headers=hdr, json={"cpu_pct":10,"disk_pct":50,"av_status":"on"})
+        _ci = a.post("/api/agent/checkin", headers=hdr, json={"cpu_pct":10,"disk_pct":50,"av_status":"on","platform":"windows"}).json()
+        # v1.143: check-in advertises the latest agent build so agents self-update.
+        assert _ci["latest_version"] == "2.2.0-ps" and _ci["agent_url"] == "/download/agent.ps1", _ci
+        from app.api.routes.agent import _agent_update_info as _aui143, LATEST_AGENT as _la143
+        assert _aui143("linux")["url"] == "/download/agent" and _aui143("linux")["version"] == "1.6.0"
+        assert _aui143("darwin")["url"] == "/download/agent"   # 'darwin' contains 'win' — must NOT be windows
+        # the advertised versions MUST match the real agent files (else update loop)
+        assert '$AgentVersion = "' + _la143["windows"]["version"] + '"' in open("agent/opspilot_agent.ps1").read()
+        assert 'AGENT_VERSION = "' + _la143["linux"]["version"] + '"' in open("agent/opspilot_agent.py").read()
         a.post("/api/agent/checkin", headers=hdr, json={"cpu_pct":80,"disk_pct":95,"av_status":"off","patch_status":"behind"})
         hist = c.get(f"/api/devices/{ent['device_id']}/history").json()
         assert len(hist)==2, f"expected 2 history rows, got {len(hist)}"
@@ -8229,7 +8237,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.142.0"
+    assert _gs101().APP_VERSION == "1.143.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8678,7 +8686,7 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.142.0"
+    assert _gs101().APP_VERSION == "1.143.0"
     assert _sr100.REPAIR_EPOCH == "1.112.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
@@ -8714,7 +8722,7 @@ def main():
     assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
     # site nav points to the game home
     assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
-    assert _gs101().APP_VERSION == "1.142.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.143.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
           "Explore features it with a Halloween hero, republish forced OK")
 
@@ -8734,11 +8742,11 @@ def main():
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
     assert "xp-papel" in _xp3 and "Happy Thanksgiving" in _xp3, "seasonal Explore theme missing"
-    assert _gs101().APP_VERSION == "1.142.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.143.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
 
-    print("\n=== OpsPilot v1.142.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.143.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
