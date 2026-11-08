@@ -76,3 +76,44 @@ canvas{touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;use
   .touch.goTouch{font-size:26px!important}.touch.itemTouch{font-size:33px!important}
   .steering{gap:13px!important}
 }
+
+/* ===== V5: analog steering stick, uncrowded touch controls, Options panel ===== */
+.touch-controls{align-items:flex-end;justify-content:space-between;gap:14px;padding:0 max(18px,env(safe-area-inset-right)) max(22px,env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left))}
+.steer-zone{display:flex;align-items:flex-end;gap:12px;pointer-events:none}
+.stick-base{position:relative;width:132px;height:132px;border-radius:50%;background:radial-gradient(circle at 50% 42%,#0e2c47d0,#071a30d8);border:2px solid #7fd6ec66;box-shadow:0 10px 30px #0008,0 0 0 1px #ffffff14 inset;pointer-events:auto;touch-action:none;display:grid;place-items:center}
+.stick-base.active{border-color:#54eff2;box-shadow:0 10px 34px #0009,0 0 26px #41e6f055}
+.stick-knob{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:66px;height:66px;border-radius:50%;background:radial-gradient(circle at 42% 38%,#eafdff,#45c7e4);box-shadow:0 6px 16px #0007,0 0 0 2px #ffffff55 inset;transition:transform .05s linear}
+.stick-base.active .stick-knob{background:radial-gradient(circle at 42% 38%,#ffffff,#2fe0ec)}
+.stick-hint{position:absolute;bottom:11px;left:0;right:0;text-align:center;font:800 9px 'DM Sans';letter-spacing:2px;color:#9fdfe8;pointer-events:none}
+.steer-buttons{display:none;gap:12px}
+.steer-buttons .touch{width:78px;height:78px}
+.touch-controls[data-scheme="buttons"] .stick-base{display:none}
+.touch-controls[data-scheme="buttons"] .steer-buttons{display:flex}
+.touch-controls[data-scheme="stick"] .steer-buttons{display:none}
+.actions{display:grid;grid-template-columns:76px 100px;grid-template-rows:68px 68px;gap:14px;align-items:end;pointer-events:none}
+.actions .touch{pointer-events:auto}
+.touch.itemTouch{grid-column:1;grid-row:1}
+.touch.smallTouch[data-control="drift"]{grid-column:1;grid-row:2}
+.touch.smallTouch[data-control="brake"]{grid-column:2;grid-row:1}
+.touch.goTouch{grid-column:2;grid-row:2}
+/* Options panel */
+.opt-dialog{width:min(100%,460px)}
+.opt-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;border-top:1px solid #ffffff14}
+.opt-row:first-of-type{border-top:0}
+.opt-row label{font:800 12px 'DM Sans';letter-spacing:.6px;color:#cfe4f2}
+.opt-row label b{color:#6cebee;margin-left:6px}
+.opt-row input[type=range]{flex:1;max-width:190px;accent-color:#54e7ea}
+.seg{display:flex;gap:6px;background:#0a1d33;border:1px solid #39597a;border-radius:10px;padding:4px}
+.seg button{border:0;background:transparent;color:#bcd6e6;font:800 12px 'DM Sans';padding:8px 12px;border-radius:7px;min-height:40px}
+.seg button.on{background:linear-gradient(120deg,#61eef4,#42a9e5);color:#06243b}
+.seg-toggle{min-width:74px;min-height:42px;border:1px solid #4d6c88;background:#132a45;color:#d7ecf7;border-radius:9px;font:900 12px 'DM Sans';letter-spacing:1px}
+.seg-toggle.on{border-color:#54eff2;color:#6cebee;background:#123c4d}
+.track-art.art-fallback{display:block}
+@media(pointer:coarse) and (min-height:520px){
+  .stick-base{width:150px;height:150px}.stick-knob{width:74px;height:74px}
+  .actions{grid-template-columns:84px 112px!important;grid-template-rows:76px 76px!important;gap:15px!important}
+}
+@media(any-pointer:coarse) and (orientation:landscape) and (max-height:500px){
+  .stick-base{width:110px;height:110px}.stick-knob{width:56px;height:56px}
+  .actions{grid-template-columns:64px 84px;grid-template-rows:54px 54px;gap:10px}
+}

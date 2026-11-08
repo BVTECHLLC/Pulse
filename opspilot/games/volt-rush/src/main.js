@@ -16,10 +16,11 @@ import './style.css';
 const $=s=>document.querySelector(s);
 const state={name:'Racer',avatar:0,color:0,trackId:'coast',mode:'menu',phase:'menu',room:null,id:null,host:null,ws:null,players:[],targets:new Map(),visuals:new Map(),obstacles:[],
   track:createTrack('coast'),world:null,seconds:0,phaseStart:0,countdown:0,finishSeconds:0,lastCount:4,lastItem:null,aiOnly:false,quality:'high',cameraMode:0,
-  keys:new Set(),mobile:{left:false,right:false,gas:false,brake:false,drift:false},itemQueued:false,localUser:null,soloClock:0,soloCountdown:0,
+  keys:new Set(),mobile:{left:false,right:false,gas:false,brake:false,drift:false,steerAxis:0},itemQueued:false,localUser:null,soloClock:0,soloCountdown:0,
+  controlScheme:'stick',steerSensitivity:1,
   onlineClock:0,lastSend:0,lastPacketAt:0,lastHud:0,lastMini:0,notice:'',effects:new Map(),fps:60,showBloom:false,graphicsSetting:'auto',resolutionCap:1.25};
-try{const s=JSON.parse(localStorage.getItem('volt-rush-settings')||'{}');state.name=s.name||'Racer';state.avatar=s.avatar||0;state.color=s.color||0;state.trackId=TRACKS[s.trackId]?s.trackId:'coast';state.graphicsSetting=['auto','eco','ultra'].includes(s.graphics)?s.graphics:'auto';}catch{}
-const persist=()=>{try{localStorage.setItem('volt-rush-settings',JSON.stringify({name:state.name,avatar:state.avatar,color:state.color,trackId:state.trackId,graphics:state.graphicsSetting}));}catch{}};
+try{const s=JSON.parse(localStorage.getItem('volt-rush-settings')||'{}');state.name=s.name||'Racer';state.avatar=s.avatar||0;state.color=s.color||0;state.trackId=TRACKS[s.trackId]?s.trackId:'coast';state.graphicsSetting=['auto','eco','ultra'].includes(s.graphics)?s.graphics:'auto';state.controlScheme=['stick','buttons'].includes(s.controlScheme)?s.controlScheme:'stick';state.steerSensitivity=Number.isFinite(s.sens)?Math.min(1.6,Math.max(.5,s.sens)):1;}catch{}
+const persist=()=>{try{localStorage.setItem('volt-rush-settings',JSON.stringify({name:state.name,avatar:state.avatar,color:state.color,trackId:state.trackId,graphics:state.graphicsSetting,controlScheme:state.controlScheme,sens:state.steerSensitivity}));}catch{}};
 let bestTimes={};try{bestTimes=JSON.parse(localStorage.getItem('volt-rush-v3-records')||'{}')||{};}catch{}
 const sound=new Sound();
 const obstacleMeshes=new Map();
@@ -29,11 +30,11 @@ const driftPool=Array.from({length:90},()=>({x:0,y:-100,z:0,vx:0,vy:0,vz:0,life:
 const root=$('#app');root.innerHTML=`
 <canvas id="viewport" aria-label="VOLT RUSH 3D racing track"></canvas>
 <div id="vignette"></div>
-<header id="brand"><div class="logo-mark">V<span>↗</span></div><div><strong>VOLT<span>RUSH</span></strong><small>BY BVTECH ARCADE · <b class="verstamp">V4</b></small></div></header>
-<div id="topActions"><button class="graphics-btn" id="graphics" aria-label="Cycle graphics quality" title="Graphics quality: Auto / Eco / Ultra">AUTO</button><button class="circle-btn" id="audio" aria-label="Toggle sound">♫</button><button class="circle-btn" id="camera" title="Change camera" aria-label="Change camera">◉</button></div>
+<header id="brand"><div class="logo-mark">V<span>↗</span></div><div><strong>VOLT<span>RUSH</span></strong><small>BY BVTECH ARCADE · <b class="verstamp">V5</b></small></div></header>
+<div id="topActions"><button class="graphics-btn" id="graphics" aria-label="Cycle graphics quality" title="Graphics quality: Auto / Eco / Ultra">AUTO</button><button class="circle-btn" id="options" aria-label="Options" title="Options">⚙</button><button class="circle-btn" id="audio" aria-label="Toggle sound">♫</button><button class="circle-btn" id="camera" title="Change camera" aria-label="Change camera">◉</button></div>
 <section id="menu" class="panel-layout">
  <div class="intro"><div class="eyebrow"><i></i> THE NEXT LAP STARTS HERE</div><h1>OWN THE<br/><em>RACE.</em></h1><p>Precision drifting. Wild power-ups. Full-throttle racing with friends — anywhere, on any screen.</p>
- <div class="feature-pills"><span>◈ 6 WORLDS</span><span>⟁ LIVE ROOMS</span><span>⚡ TOUCH READY</span></div></div>
+ <div class="feature-pills"><span>◈ 9 WORLDS</span><span>⟁ LIVE ROOMS</span><span>⚡ TOUCH READY</span></div></div>
  <div class="menu-card glass"><div class="card-head"><span>01 / YOUR DRIVER</span><small>BUILD YOUR LEGEND</small></div>
   <input id="playerName" maxlength="16" placeholder="Your racer name" aria-label="Racer name" autocomplete="off"/>
   <div class="labelrow">PICK YOUR PILOT <span>6 ORIGINAL RACERS</span></div><div id="avatars" class="avatar-grid"></div>
@@ -54,15 +55,29 @@ const root=$('#app');root.innerHTML=`
  <div id="status" class="race-status"></div><canvas id="minimap" width="230" height="190"></canvas>
  <div id="itemSlot" class="item-slot"><small>POWER-UP</small><strong id="itemText">—</strong><span>SHIFT / TAP</span></div>
  <div id="countdown" class="countdown hidden">3</div>
- <div class="touch-controls" id="touchControls"><div class="steering"><button class="touch" data-control="left" aria-label="Steer left">◀</button><button class="touch" data-control="right" aria-label="Steer right">▶</button></div><div class="actions"><button class="touch smallTouch" data-control="drift" aria-label="Drift">DRIFT</button><button class="touch itemTouch" data-control="item" aria-label="Use item">⚡</button><button class="touch smallTouch" data-control="brake" aria-label="Brake">BRAKE</button><button class="touch goTouch" data-control="gas" aria-label="Accelerate">GO</button></div></div>
+ <div class="touch-controls" id="touchControls" data-scheme="stick">
+   <div class="steer-zone" id="steerZone">
+     <div class="stick-base" id="stickBase"><div class="stick-knob" id="stickKnob"></div><span class="stick-hint">STEER</span></div>
+     <div class="steer-buttons"><button class="touch" data-control="left" aria-label="Steer left">◀</button><button class="touch" data-control="right" aria-label="Steer right">▶</button></div>
+   </div>
+   <div class="actions"><button class="touch itemTouch" data-control="item" aria-label="Use item">⚡</button><button class="touch smallTouch" data-control="drift" aria-label="Drift">DRIFT</button><button class="touch smallTouch" data-control="brake" aria-label="Brake">BRAKE</button><button class="touch goTouch" data-control="gas" aria-label="Accelerate">GO</button></div>
+ </div>
  <div class="key-hint">↑ W ACCELERATE · ← → STEER · SPACE DRIFT · SHIFT ITEM · E CAMERA</div>
  <button class="hud-exit" id="leaveGame">EXIT RACE</button>
 </section>
 <section id="results" class="modal-page hidden"><div class="glass dialog"><div class="eyebrow">CHECKERED FLAG</div><h2 id="finishTitle">RACE <em>COMPLETE.</em></h2><p id="finishText">The finish line is yours.</p><div id="resultsBoard" class="results-board"></div>
  <button id="again" class="btn primary">RACE AGAIN</button><button id="returnMenu" class="text-button">← BACK TO MAIN MENU</button></div></section>
+<section id="optionsPanel" class="modal-page hidden"><div class="glass dialog opt-dialog"><div class="eyebrow">SETTINGS</div><h2>OPTIONS</h2>
+  <div class="opt-row"><label>Steering control</label><div class="seg" id="optScheme"><button data-scheme="stick">🕹 Joystick</button><button data-scheme="buttons">◀▶ Buttons</button></div></div>
+  <div class="opt-row"><label>Steering sensitivity <b id="optSensVal">1.0×</b></label><input id="optSens" type="range" min="50" max="160" value="100" aria-label="Steering sensitivity"></div>
+  <div class="opt-row"><label>Music</label><button class="seg-toggle on" id="optMusic">ON</button></div>
+  <div class="opt-row"><label>Sound effects</label><button class="seg-toggle on" id="optSfx">ON</button></div>
+  <div class="opt-row"><label>Graphics</label><button class="seg-toggle" id="optGfx">AUTO</button></div>
+  <div class="opt-row"><label>Camera</label><button class="seg-toggle" id="optCam">CHASE</button></div>
+  <button class="btn primary" id="optClose">DONE</button></div></section>
 <div id="toast" class="toast hidden" role="status"></div>
 <div id="rotateHint" aria-hidden="true">↻ Rotate your phone for the best racing view</div>
-<footer id="footer">© BVTECH ARCADE · 3D ORIGINAL ART EDITION · V3 DELUXE</footer>`;
+<footer id="footer">© BVTECH ARCADE · 3D ORIGINAL ART EDITION · V5</footer>`;
 
 const touchDevice=matchMedia('(pointer:coarse)').matches;
 const lowMemory=Number(navigator.deviceMemory||8)<=4;
@@ -97,7 +112,8 @@ function selectTrack(trackId){if(!TRACKS[trackId])return;state.trackId=trackId;p
 function renderSelections(){
   $('#avatars').innerHTML=RACERS.map((a,i)=>`<button class="avatar ${i===state.avatar?'selected':''}" data-avatar="${i}" aria-label="Choose ${a.name}" aria-pressed="${i===state.avatar}"><img class="avatar-portrait" src="${import.meta.env.BASE_URL}art/portraits/${a.id}.webp" alt="" loading="lazy" width="80" height="80"/><strong>${a.name}</strong><small>${a.tag}</small></button>`).join('');
   $('#colors').innerHTML=KART_COLORS.map((c,i)=>`<button class="swatch ${i===state.color?'selected':''}" data-color="${i}" style="--swatch:${c}" aria-label="Kart color ${i+1}" aria-pressed="${i===state.color}"></button>`).join('');
-  $('#tracks').innerHTML=Object.entries(TRACKS).map(([id,t])=>`<button class="track-card ${id===state.trackId?'selected':''}" data-track="${id}"><img class="track-art" src="${import.meta.env.BASE_URL}art/tracks/${id}.webp" alt="" loading="lazy"/><strong>${t.name}</strong><span>${t.subtitle}</span><small>${Number.isFinite(bestTimes[id])?'🏆 PB '+formatTime(bestTimes[id]):'NEW CHALLENGE'}</small></button>`).join('');
+  const hx=(n)=>'#'+(n>>>0).toString(16).padStart(6,'0').slice(-6);
+  $('#tracks').innerHTML=Object.entries(TRACKS).map(([id,t])=>`<button class="track-card ${id===state.trackId?'selected':''}" data-track="${id}"><img class="track-art" src="${import.meta.env.BASE_URL}art/tracks/${id}.webp" alt="" loading="lazy" onerror="this.onerror=null;this.classList.add('art-fallback');this.removeAttribute('src');this.style.background='linear-gradient(135deg,${hx(t.sky)},${hx(t.surface)})'"/><strong>${t.name}</strong><span>${t.subtitle}</span><small>${Number.isFinite(bestTimes[id])?'🏆 PB '+formatTime(bestTimes[id]):'NEW CHALLENGE'}</small></button>`).join('');
   $('#lobbyTracks').innerHTML=Object.entries(TRACKS).map(([id,t])=>`<button class="lobby-track ${id===state.trackId?'selected':''}" data-lobbytrack="${id}">${t.name}</button>`).join('');
 }
 $('#playerName').value=state.name;
@@ -227,7 +243,7 @@ function receiveState(data){
     [...$('#lobbyTracks').children].forEach(b=>{b.disabled=state.host!==state.id;});
   }else if(data.phase==='countdown'||data.phase==='racing'){
     if(oldPhase==='lobby'||oldPhase==='menu'||oldPhase==='finished'){
-      state.targets.clear();state.lastCount=4;show('hud');toast(TRACKS[data.track].name+' · 3 LAPS');
+      state.targets.clear();state.lastCount=4;show('hud');sound.startMusic();toast(TRACKS[data.track].name+' · 3 LAPS');
     }
     // Race snapshots contain only PUBLIC state, not internal physics accumulators.
     // A previous version stepped that partial object, producing NaN and freezing the camera.
@@ -253,9 +269,10 @@ function startSolo(){
     const ai=createKart('cpu'+i,RACERS[avatar].name+' AI',avatar,(i+1)%6,i+1,state.track);ai.ai=true;state.players.push(ai);
   }
   state.targets.clear();state.effects.clear();for(const k of state.players)state.targets.set(k.id,{current:k,target:k});
-  spawnVisuals();show('hud');toast('3 LAPS · '+TRACKS[state.track.id].name);
+  spawnVisuals();show('hud');sound.startMusic();toast('3 LAPS · '+TRACKS[state.track.id].name);
 }
 function exitToMenu(close=true){
+  sound.stopMusic();
   if(close&&state.ws){state.ws.close();state.ws=null;}
   state.mode='menu';state.phase='menu';state.room=null;state.id=null;state.obstacles=[];state.players=[];state.effects.clear();
   state.keys.clear();Object.keys(state.mobile).forEach(k=>state.mobile[k]=false);state.itemQueued=false;
@@ -277,18 +294,23 @@ function showResults(players){
   }
   const medal=['🥇','🥈','🥉'];
   $('#resultsBoard').innerHTML=standings.map((k,i)=>`<div class="result-person ${k.id===state.id?'me':''} ${i===0?'win':''}"><b>${i<3?medal[i]:String(i+1).padStart(2,'0')}</b><span class="roster-dot" style="background:${KART_COLORS[k.color]}"></span><strong>${escapeText(k.name)}${k.ai?' <small class="ai-tag">AI</small>':''}</strong><small>${k.completed?formatTime(k.finishTime):'DNF'}</small></div>`).join('');
-  $('#again').textContent=state.mode==='solo'?'RESTART QUICK RACE':state.host===state.id?'SET UP REMATCH':'WAIT FOR HOST';
-  $('#again').disabled=state.mode==='online'&&state.host!==state.id;
-  sound.play('finish');for(const racer of players.slice(0,8))fx?.burst('finish',racer.x,racer.z,3.2,54,1.65);show('results');
+  $('#again').textContent=state.mode==='solo'?'RESTART QUICK RACE':state.host===state.id?'🔁 REMATCH — BACK TO LOBBY':'← BACK TO LOBBY';
+  $('#again').disabled=false;   // everyone can return to the lobby; host also triggers the rematch
+  sound.stopMusic();sound.play('finish');for(const racer of players.slice(0,8))fx?.burst('finish',racer.x,racer.z,3.2,54,1.65);show('results');
 }
 function formatTime(t){const m=Math.floor(t/60),s=Math.floor(t%60),ds=Math.floor((t%1)*10);return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+'.'+ds;}
 function ordinal(n){const s=['th','st','nd','rd'],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0]);}
-function getInput(){return {
-  gas:state.mobile.gas||state.keys.has('ArrowUp')||state.keys.has('KeyW'),
-  brake:state.mobile.brake||state.keys.has('ArrowDown')||state.keys.has('KeyS'),
-  steer:steeringFromControls(state.keys,state.mobile),
-  drift:state.mobile.drift||state.keys.has('Space'),item:state.itemQueued
-};}
+function getInput(){
+  const base=steeringFromControls(state.keys,state.mobile);
+  const axis=state.mobile.steerAxis||0;
+  const steer=Math.max(-1,Math.min(1,(Math.abs(axis)>.03?axis:base)*state.steerSensitivity));
+  return {
+    gas:state.mobile.gas||state.keys.has('ArrowUp')||state.keys.has('KeyW'),
+    brake:state.mobile.brake||state.keys.has('ArrowDown')||state.keys.has('KeyS'),
+    steer,
+    drift:state.mobile.drift||state.keys.has('Space'),item:state.itemQueued
+  };
+}
 const controlCodes=new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD','Space','ShiftLeft','ShiftRight']);
 window.addEventListener('keydown',e=>{
   if(document.activeElement?.tagName==='INPUT')return;
@@ -308,6 +330,33 @@ for(const b of document.querySelectorAll('.touch')){
   b.addEventListener('pointerdown',press);b.addEventListener('pointerup',release);b.addEventListener('pointercancel',release);b.addEventListener('lostpointercapture',release);
   b.addEventListener('contextmenu',e=>e.preventDefault());
 }
+// V5 analog steering thumbstick — drag sets state.mobile.steerAxis in [-1,1].
+(function(){
+  const base=$('#stickBase'),knob=$('#stickKnob');if(!base||!knob)return;
+  let active=false,cx=0,radius=46;
+  const setAxis=(dx)=>{const a=Math.max(-1,Math.min(1,dx/radius));state.mobile.steerAxis=a;knob.style.transform='translate(-50%,-50%) translateX('+(a*radius*.72)+'px)';base.classList.toggle('active',Math.abs(a)>.05);};
+  const start=(e)=>{active=true;const r=base.getBoundingClientRect();cx=r.left+r.width/2;radius=r.width*.4;try{base.setPointerCapture(e.pointerId);}catch{}move(e);e.preventDefault();};
+  const move=(e)=>{if(!active)return;const x=(e.touches?e.touches[0].clientX:e.clientX);setAxis(x-cx);if(e.cancelable)e.preventDefault();};
+  const end=()=>{active=false;setAxis(0);};
+  base.addEventListener('pointerdown',start);base.addEventListener('pointermove',move);base.addEventListener('pointerup',end);base.addEventListener('pointercancel',end);base.addEventListener('lostpointercapture',end);
+})();
+// V5 Options panel
+function applyScheme(){$('#touchControls')?.setAttribute('data-scheme',state.controlScheme);const seg=$('#optScheme');if(seg)[...seg.children].forEach(b=>b.classList.toggle('on',b.dataset.scheme===state.controlScheme));}
+$('#options').onclick=()=>{
+  $('#optSens').value=Math.round(state.steerSensitivity*100);$('#optSensVal').textContent=state.steerSensitivity.toFixed(1)+'×';
+  $('#optMusic').textContent=sound.musicOn?'ON':'OFF';$('#optMusic').classList.toggle('on',sound.musicOn);
+  $('#optSfx').textContent=sound.enabled?'ON':'OFF';$('#optSfx').classList.toggle('on',sound.enabled);
+  $('#optGfx').textContent=state.graphicsSetting.toUpperCase();$('#optCam').textContent=['CHASE','WIDE','BUMPER'][state.cameraMode];
+  applyScheme();$('#optionsPanel').classList.remove('hidden');
+};
+$('#optClose').onclick=()=>$('#optionsPanel').classList.add('hidden');
+$('#optScheme').onclick=e=>{const b=e.target.closest('[data-scheme]');if(!b)return;state.controlScheme=b.dataset.scheme;persist();applyScheme();};
+$('#optSens').oninput=e=>{state.steerSensitivity=Math.min(1.6,Math.max(.5,(+e.target.value||100)/100));$('#optSensVal').textContent=state.steerSensitivity.toFixed(1)+'×';persist();};
+$('#optMusic').onclick=()=>{if(sound.enabled)sound.initialize();const on=sound.toggleMusic();$('#optMusic').textContent=on?'ON':'OFF';$('#optMusic').classList.toggle('on',on);};
+$('#optSfx').onclick=()=>{const on=sound.mute();if(on)sound.initialize();$('#optSfx').textContent=on?'ON':'OFF';$('#optSfx').classList.toggle('on',on);$('#audio').textContent=on?'♫':'♪̸';};
+$('#optGfx').onclick=()=>{$('#graphics').click();$('#optGfx').textContent=state.graphicsSetting.toUpperCase();};
+$('#optCam').onclick=()=>{$('#camera').click();$('#optCam').textContent=['CHASE','WIDE','BUMPER'][state.cameraMode];};
+applyScheme();
 // Mobile hardening: stop the iOS/Android long-press "save image / copy / open" callout
 // and block page scroll/pinch-zoom while touching the track or the controls.
 document.addEventListener('contextmenu',e=>{if(e.target.closest('canvas,.touch,.touch-controls,.hud'))e.preventDefault();},{passive:false});
@@ -378,7 +427,7 @@ function hud(time){
   $('#place').innerHTML=place+`<span>${place===1?'ST':place===2?'ND':place===3?'RD':'TH'}</span>`;
   $('#lap').innerHTML=Math.min(LAPS,me.laps+1)+`<span>/${LAPS}</span>`;
   $('#timer').textContent=formatTime(state.seconds);$('#speed').innerHTML=Math.round(Math.abs(me.speed)*7)+` <span>KM/H</span>`;
-  const item=me.item;$('#itemText').textContent= item?({boost:'⚡ TURBO',pulse:'✦ PULSE',shield:'⬡ SHIELD',oil:'◈ OIL',rocket:'🚀 ROCKET',shockwave:'✳ SHOCK',repair:'♥ REPAIR',overdrive:'★ OVERDRIVE'}[item]):'EMPTY';
+  const item=me.item;$('#itemText').textContent= item?({boost:'⚡ TURBO',pulse:'✦ PULSE',shield:'⬡ SHIELD',oil:'◈ OIL',rocket:'🚀 ROCKET',shockwave:'✳ SHOCK',repair:'♥ REPAIR',overdrive:'★ OVERDRIVE',lightning:'🗲 LIGHTNING',warp:'🌀 WARP'}[item]):'EMPTY';
   $('#itemSlot').classList.toggle('charged',!!item);
   const stale=state.mode==='online'&&performance.now()-state.lastPacketAt>2600;
   $('#status').textContent=stale?'⚠ CONNECTION STALLED — CHECKING SERVER':me.drifting?'DRIFT CHARGING · '+Math.round(me.driftCharge*100)+'%':me.boostTimer>0?'⚡ TURBO BOOST':me.spinTimer>0?'HIT! RECOVERING':'';

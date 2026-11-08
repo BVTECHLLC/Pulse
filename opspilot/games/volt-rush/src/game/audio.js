@@ -1,6 +1,7 @@
 // 100% original Web Audio synthesis. No sampled audio, music loops or third-party licenses.
 export class Sound {
-  constructor(){this.context=null;this.engine=null;this.gain=null;this.enabled=true;this.master=null;this.lastEvent=0;}
+  constructor(){this.context=null;this.engine=null;this.gain=null;this.enabled=true;this.master=null;this.lastEvent=0;
+    this.musicOn=true;this.musicTimer=null;this.musicGain=null;this.beat=0;}
   initialize(){
     if(!this.enabled)return;
     try{
@@ -46,14 +47,45 @@ export class Sound {
       case 'repair':this.tone(440,.20,'triangle',.15,880);this.tone(660,.3,'sine',.14,1320,.11);break;
       case 'overdrive':this.noise(.45,.085,5000);this.tone(260,.38,'sawtooth',.16,1100);this.tone(700,.42,'triangle',.13,1500,.12);break;
       case 'oil':this.tone(380,.12,'square',.13,160);this.tone(200,.16,'triangle',.09,100,.11);break;
+      case 'lightning':this.noise(.14,.12,6500);this.tone(1800,.1,'sawtooth',.14,320);this.tone(640,.26,'square',.12,90,.05);break;
+      case 'warp':this.tone(220,.34,'sine',.15,1700);this.tone(440,.3,'triangle',.12,2200,.05);this.noise(.3,.05,5200);break;
+      case 'lap':this.tone(680,.12,'triangle',.16,1020);this.tone(1020,.16,'sine',.14,1360,.08);break;
       case 'drift':this.tone(980,.10,'triangle',.09,1250);break;
       case 'hit':this.noise(.33,.13,900);this.tone(240,.32,'sawtooth',.18,60);break;
       case 'finish':for(let i=0;i<4;i++)this.tone([660,880,1100,1440][i],.32,'triangle',.17,[880,1120,1400,1880][i],i*.13);break;
     }
   }
+  // Original synthesized race music: a rolling bassline + an arpeggio over a short
+  // minor-key chord loop. No samples, no loops, no licenses — scheduled note-by-note.
+  startMusic(){
+    if(!this.enabled||!this.musicOn||!this.context||this.musicTimer)return;
+    if(!this.musicGain){this.musicGain=this.context.createGain();this.musicGain.gain.value=.5;this.musicGain.connect(this.master);}
+    const bass=[55,55,73.4,65.4];           // A1 A1 D2 C2 — a driving i–iv–VII feel
+    const arp=[[220,261.6,329.6,392],[220,261.6,329.6,440],[293.6,349.2,440,523.2],[261.6,329.6,392,523.2]];
+    const step=()=>{
+      if(!this.enabled||!this.musicOn||!this.context){this.stopMusic();return;}
+      const ctx=this.context,t=ctx.currentTime,bar=this.beat%4;
+      // bass pulse on each beat
+      this._mnote(bass[bar],.46,'triangle',.13,bass[bar]*.98,0);
+      this._mnote(bass[bar]*2,.2,'sawtooth',.05,bass[bar]*2,0);
+      // arpeggio — four sixteenths across the beat
+      for(let i=0;i<4;i++)this._mnote(arp[bar][i],.14,'square',.035,arp[bar][i],i*.12);
+      this.beat++;
+    };
+    step();this.musicTimer=setInterval(step,480);   // ~125 BPM
+  }
+  _mnote(hz,dur,kind,vol,end,delay){
+    if(!this.context||!this.musicGain)return;
+    const ctx=this.context,t=ctx.currentTime+delay,o=ctx.createOscillator(),g=ctx.createGain();
+    o.type=kind;o.frequency.setValueAtTime(hz,t);if(end&&end!==hz)o.frequency.exponentialRampToValueAtTime(Math.max(1,end),t+dur);
+    g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(vol,t+.015);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+    o.connect(g);g.connect(this.musicGain);o.start(t);o.stop(t+dur+.03);
+  }
+  stopMusic(){if(this.musicTimer){clearInterval(this.musicTimer);this.musicTimer=null;}}
+  toggleMusic(){this.musicOn=!this.musicOn;if(!this.musicOn)this.stopMusic();else if(this.context)this.startMusic();return this.musicOn;}
   update(speed){if(!this.context||!this.gain)return;const now=this.context.currentTime;
     this.engine.frequency.setTargetAtTime(58+speed*4.1,now,.07);
     this.gain.gain.setTargetAtTime(this.enabled?.035+Math.min(30,Math.abs(speed))*.0027:.0001,now,.1);
   }
-  mute(){this.enabled=!this.enabled;if(this.context)this.master.gain.setTargetAtTime(this.enabled?.24:0,this.context.currentTime,.03);return this.enabled;}
+  mute(){this.enabled=!this.enabled;if(!this.enabled)this.stopMusic();if(this.context)this.master.gain.setTargetAtTime(this.enabled?.24:0,this.context.currentTime,.03);return this.enabled;}
 }

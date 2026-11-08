@@ -7,7 +7,7 @@ function starTexture(){
   grad.addColorStop(0,'rgba(255,255,255,1)');grad.addColorStop(.2,'rgba(255,255,255,.95)');grad.addColorStop(.45,'rgba(255,255,255,.40)');grad.addColorStop(1,'rgba(255,255,255,0)');
   ctx.fillStyle=grad;ctx.fillRect(0,0,64,64);return new THREE.CanvasTexture(c);
 }
-const palette={boost:0x5bf6ff,shield:0x9cffe2,pulse:0xe48aff,oil:0xffce48,hit:0xff647e,finish:0xffe783,drift:0xffd868,rocket:0xffa856,shockwave:0xff62fd,repair:0x88ffa3,overdrive:0xffea66};
+const palette={boost:0x5bf6ff,shield:0x9cffe2,pulse:0xe48aff,oil:0xffce48,hit:0xff647e,finish:0xffe783,drift:0xffd868,rocket:0xffa856,shockwave:0xff62fd,repair:0x88ffa3,overdrive:0xffea66,lightning:0xfff26a,warp:0x7c6bff};
 export class RaceFX {
   constructor(scene,quality='high'){
     this.scene=scene;this.max=quality==='high'?MAX:170;this.clock=0;this.cursor=0;
@@ -27,7 +27,7 @@ export class RaceFX {
       const c=color.clone().lerp(new THREE.Color(type==='finish'?0xff74da:0xffffff),Math.random()*.65);
       p.r=c.r;p.g=c.g;p.b=c.b;
     }
-    if(['pulse','shield','hit','boost','rocket','shockwave','overdrive','repair'].includes(type))this.ring(type,x,z,y);
+    if(['pulse','shield','hit','boost','rocket','shockwave','overdrive','repair','lightning','warp'].includes(type))this.ring(type,x,z,y);
   }
   ring(type,x,z,y=1.1){
     if(this.rings.length>12)return;

@@ -1,6 +1,24 @@
-# VOLT RUSH V3 DELUXE — original-art browser kart racer
+# VOLT RUSH V5 — original-art browser kart racer
 
-A visually richer continuation of the previous V3 authoritative multiplayer racing game, intended to be merged into `opspilot/games/volt-rush/` in the `bvtechllc/pulse` repository and served from `https://portal.bvtech.org/kart/`.
+A visually richer continuation of the previous authoritative multiplayer racing game, intended to be merged into `opspilot/games/volt-rush/` in the `bvtechllc/pulse` repository and served from `https://portal.bvtech.org/kart/`.
+
+## What's new in V5
+
+V5 is the biggest content-and-feel update since launch. Everything the game already did now looks and plays better, and there is a lot more of it.
+
+**Three brand-new tracks (6 → 9 worlds).** *Sunset Dunes* is a wide coastal sprint under a burnt-orange sky, *Glacier Rift* is a tight icy technical circuit, and *Pulse Speedway* is a fast neon oval built for overtakes. New circuits with no illustration yet render a clean gradient card generated from each track's own sky and surface colors, so the menu never shows a broken thumbnail.
+
+**Two new power-ups (8 → 10).** *Lightning* (🗲) zaps every rival ahead of you for a jolt of chaos plus a small personal boost, and *Warp* (🌀) grants a short burst of speed, brief invulnerability and a forward blink through the pack. Both are weighted to show up more often when you're behind, so a bad lap has a real comeback button. New synthesized sound effects and particle colors were authored for each.
+
+**Original race music.** A rolling synthesized bassline and arpeggio over a short minor-key loop — written note-by-note in the Web Audio API, no samples or licenses — plays through races and can be toggled independently of sound effects.
+
+**Rebuilt mobile controls.** The old touch pad is replaced with an analog steering joystick (drag-to-steer with adjustable sensitivity) *or* classic left/right buttons — the player's choice. The action buttons (item, drift, brake, GO) were regrouped so nothing is crowded on phones or in landscape, and a new **Options** panel exposes steering scheme, sensitivity, music, sound, graphics and camera in one place.
+
+**Multiplayer lobby & smooth rematch.** After a race, everyone can return to a shared lobby; the host can start a rematch and non-hosts are taken back cleanly, with the network protocol bumped so stale clients are refreshed automatically.
+
+**Better graphics on everything that was already there.** Richer power-up particle effects and new FX palettes across the board, plus the V5 stamp throughout the UI.
+
+See `games/volt-rush/LICENSES.md` — all new sound, music and effects are original and license-free.
 
 ### Original art shipped
 

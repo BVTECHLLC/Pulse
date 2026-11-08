@@ -29,6 +29,21 @@ export const TRACKS = {
     name:'Ember Ridge',subtitle:'Glowing lava • smooth mountain sweeps',sky:0xfe9878,ground:0x533747,fog:0xec8c6e,
     surface:0x433d4f,accent:0xffb450,environment:'volcano',width:23,
     points:[[0,0],[53,-16],[115,-6],[166,31],[177,88],[132,132],[68,140],[-9,122],[-64,78],[-69,22],[-35,-19]]
+  },
+  dunes: {
+    name:'Sunset Dunes',subtitle:'Desert highway • long flowing sweepers',sky:0xffc07a,ground:0xe8b878,fog:0xffcf96,
+    surface:0x6b4a3a,accent:0xff8a3c,environment:'coast',width:25,
+    points:[[0,0],[66,-6],[132,4],[196,30],[214,82],[176,120],[118,126],[84,150],[26,158],[-44,132],[-86,80],[-74,24],[-34,-14]]
+  },
+  glacier: {
+    name:'Glacier Rift',subtitle:'Frozen canyon • icy technical esses',sky:0xbfe9ff,ground:0xa9d6ef,fog:0xd4f1ff,
+    surface:0x2e4a63,accent:0x66e0ff,environment:'moon',width:21,
+    points:[[0,0],[44,-18],[92,-8],[108,34],[150,52],[160,104],[112,126],[66,104],[24,120],[-28,128],[-66,92],[-78,40],[-58,-2],[-28,-20]]
+  },
+  speedway: {
+    name:'Pulse Speedway',subtitle:'Pro circuit • flat-out banked straights',sky:0x1a1740,ground:0x1f2b55,fog:0x2a2150,
+    surface:0x242f4c,accent:0x5bd6ff,environment:'neon',width:26,
+    points:[[0,0],[72,-4],[148,2],[208,24],[224,70],[198,110],[140,120],[70,116],[2,120],[-58,104],[-84,58],[-70,12],[-30,-12]]
   }
 };
 const smooth = (a,b,c,d,t) => 0.5*((2*b)+(-a+c)*t+(2*a-5*b+4*c-d)*t*t+(-a+3*b-3*c+d)*t*t*t);

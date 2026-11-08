@@ -346,10 +346,10 @@ def body() -> str:
     <span class="kart">🏎️</span>
   </div>
   <div class="txt">
-    <span class="season">🆕 Now V4 · smoother online &amp; mobile</span>
+    <span class="season">🆕 Now V5 · 9 tracks · joystick · music</span>
     <span class="kick">🏁 Featured Game</span>
     <h2>VOLT RUSH</h2>
-    <p>Our 3D multiplayer kart racer — six neon circuits, eight wild power-ups and hand-made racers. <b>V4</b> brings buttery-smooth online play, mobile-friendly touch controls, smarter rivals and auto-reconnect. Free in your browser, cross-play on phone or desktop.</p>
+    <p>Our 3D multiplayer kart racer — now <b>nine</b> circuits, <b>ten</b> wild power-ups (new Lightning &amp; Warp) and hand-made racers. <b>V5</b> adds an analog steering joystick, an Options panel, original race music &amp; sound, a multiplayer lobby with smooth rematch, and three brand-new tracks. Free in your browser, cross-play on phone, desktop or your Tesla.</p>
     <span class="play">▶ Race now →</span>
   </div>
 </a>

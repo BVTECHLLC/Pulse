@@ -1,6 +1,6 @@
 import {createTrack} from './tracks.js';
 export const LAPS=3;
-export const NET_PROTOCOL=4;
+export const NET_PROTOCOL=5;
 export const RACERS = [
   {id:'nova',name:'Nova',tag:'The comet',suit:0x39d8fa,helmet:0xe6faff,skin:0xdfad8b,style:'visor'},
   {id:'jax',name:'Jax',tag:'Street legend',suit:0xfd9d3c,helmet:0x222d43,skin:0x8e593e,style:'mohawk'},
@@ -10,13 +10,13 @@ export const RACERS = [
   {id:'rook',name:'Rook',tag:'The challenger',suit:0xeb7271,helmet:0xe8e8e9,skin:0x946d55,style:'cap'}
 ];
 export const KART_COLORS=['#19d8fb','#fe9653','#85db9a','#f3cb5f','#ba90fc','#fb6e95'];
-export const ITEMS = ['boost','pulse','shield','oil','rocket','shockwave','repair','overdrive'];
+export const ITEMS = ['boost','pulse','shield','oil','rocket','shockwave','repair','overdrive','lightning','warp'];
 export const ITEM_GATES = [.13,.31,.49,.67,.86];
 // Catch-up balance without hiding races behind powerful guaranteed hits.
-const ITEM_WEIGHTS = {boost:16,pulse:12,shield:15,oil:12,rocket:11,shockwave:8,repair:13,overdrive:6};
+const ITEM_WEIGHTS = {boost:16,pulse:12,shield:15,oil:12,rocket:11,shockwave:8,repair:13,overdrive:6,lightning:5,warp:9};
 export function rollItem(placing=1,total=8,rng=Math.random){
   const behind=total>1?clamp((placing-1)/(total-1),0,1):0;
-  const weights=ITEMS.map(id=>{let w=ITEM_WEIGHTS[id];if(['boost','overdrive','rocket'].includes(id))w*=.8+behind*1.7;if(id==='oil')w*=1.5-behind*.9;if(id==='repair'||id==='shield')w*=.85+behind*.5;return w;});
+  const weights=ITEMS.map(id=>{let w=ITEM_WEIGHTS[id];if(['boost','overdrive','rocket'].includes(id))w*=.8+behind*1.7;if(id==='oil')w*=1.5-behind*.9;if(id==='repair'||id==='shield')w*=.85+behind*.5;if(id==='lightning')w*=.25+behind*2.6;if(id==='warp')w*=.7+behind*.9;return w;});
   let t=clamp(Number(rng())||0,0,.999999)*weights.reduce((a,b)=>a+b,0);
   for(let i=0;i<weights.length;i++){t-=weights[i];if(t<0)return ITEMS[i];}
   return ITEMS[0];
@@ -183,6 +183,16 @@ export function activateItem(k,all,seconds,obstacles){
   }else if(used==='oil'){
     obstacles.push({id:`oil-${k.id}-${k.useSerial}`,type:'oil',x:k.x-Math.sin(k.heading)*4,
       z:k.z-Math.cos(k.heading)*4,owner:k.id,ttl:16});
+  }else if(used==='lightning'){
+    // Catch-up strike: zap every rival that is AHEAD of you on the circuit, and
+    // give yourself a short jolt forward. Nobody behind you is touched.
+    for(const target of all)if(target.id!==k.id&&!target.completed&&target.progress>k.progress)hitKart(target);
+    k.boostTimer=Math.max(k.boostTimer,1.1);
+  }else if(used==='warp'){
+    // Phase-warp: a sharp forward blink with brief invulnerability — slip through
+    // traffic and the next corner. Great for escaping a pile-up.
+    k.boostTimer=Math.max(k.boostTimer,2.4);k.invulnTimer=Math.max(k.invulnTimer,1.6);k.spinTimer=0;
+    k.x+=Math.sin(k.heading)*7;k.z+=Math.cos(k.heading)*7;
   }
   return used;
 }
