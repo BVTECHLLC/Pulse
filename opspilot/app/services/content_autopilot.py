@@ -1100,6 +1100,18 @@ def run_daily(db: Session, now: datetime | None = None, *, force: bool = False) 
         if not ok:
             _notify_fail(db, ch, detail)
         results[ch] = {"ok": ok, "detail": detail}
+    # v1.146: DELIVER the LinkedIn/Google posts we just queued. Delivery used to
+    # depend on the SEPARATE auto-poster toggle (off by default), so a connected
+    # LinkedIn generated + queued a post every day that never actually went out.
+    # Now the always-on daily drip flushes its own queue on the per-channel
+    # cadence (LinkedIn daily, Google weekly) — connecting a channel is enough.
+    # Best-effort; the per-channel cadence stops any double-post.
+    delivered_n = 0
+    try:
+        from . import autopost as _ap
+        delivered_n = len(_ap.deliver_all_due(db, now))
+    except Exception:  # noqa: BLE001
+        db.rollback()
     # v1.44: refresh bvtech.org's LIVE CISA-KEV homepage ticker with today's
     # real exploited-vulnerability entries — once per day (stamped inside).
     # Kept OUT of `results` (its own key) so channel semantics stay untouched.
@@ -1135,7 +1147,7 @@ def run_daily(db: Session, now: datetime | None = None, *, force: bool = False) 
         except Exception:  # noqa: BLE001
             db.rollback()
 
-    return {"ran": True, "results": results, "kev_ticker": kev}
+    return {"ran": True, "results": results, "kev_ticker": kev, "delivered": delivered_n}
 
 
 def email_daily_digest(db: Session, now: datetime) -> dict:

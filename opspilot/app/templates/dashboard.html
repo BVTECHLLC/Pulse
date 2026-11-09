@@ -4761,6 +4761,20 @@ async function loadConnCenter(){
     } else if(it.console_hint&&!it.console_url){
       enter=`<div class="muted" style="font-size:10px;margin-top:8px">🔧 ${esc(it.console_hint)}</div>`;
     }
+    // v1.146: Google Business location PICKER — after Connect, load the account's
+    // real listings into a dropdown so you never hand-type accounts/123/locations/456.
+    let picker='';
+    if(it.key==='gbp'||it.key==='gbp_personal'){
+      const listing=it.key==='gbp_personal'?'personal':'business';
+      picker=`<div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px">
+        <div class="muted" style="font-size:10px;margin-bottom:4px">📍 After you Connect, pick your listing (no ID typing):</div>
+        <div class="flex" style="gap:6px;flex-wrap:wrap">
+          <button class="btn sm ghost" onclick="gbpPick('${listing}',this)">Load my locations</button>
+          <select data-gbploc="${listing}" style="display:none;font-size:11px;padding:5px;max-width:100%;flex:1 1 180px"></select>
+          <button class="btn sm" data-gbpsave="${listing}" style="display:none" onclick="gbpApply('${listing}',this)">Use this location</button>
+        </div>
+        <span class="gbp-msg muted" style="font-size:11px;display:block;margin-top:4px"></span></div>`;
+    }
     return `<div class="card" style="background:#0c1430${it.priority===1?';border:1px solid var(--brand,#6c5ce7)':''}">
       <div class="flex" style="justify-content:space-between;gap:6px">
         <b style="font-size:13px">${dot} ${esc(it.name)}</b>
@@ -4768,8 +4782,32 @@ async function loadConnCenter(){
       ${statusLine}
       <div class="muted" style="font-size:11px;margin:6px 0">${esc(it.unlocks)}</div>
       ${it.console_hint&&it.console_url?`<div class="muted" style="font-size:10px">🧭 ${esc(it.console_hint)}</div>`:''}
-      <div style="margin-top:8px">${link}</div>${warn}${enter}
+      <div style="margin-top:8px">${link}</div>${warn}${enter}${picker}
     </div>`;}).join('');
+}
+// v1.146 Google Business location picker — fetch the connected account's real
+// listings and let the user pick one (auto-fills account_name + location_name).
+async function gbpPick(listing,btn){
+  const card=btn.closest('.card'); const sel=card.querySelector('[data-gbploc]');
+  const saveBtn=card.querySelector('[data-gbpsave]'); const msg=card.querySelector('.gbp-msg');
+  btn.disabled=true; const old=btn.textContent; btn.textContent='Loading…'; msg.textContent='';
+  const r=await api('/api/gbp/locations?listing='+encodeURIComponent(listing));
+  btn.disabled=false; btn.textContent=old;
+  if(!r){ msg.textContent='Connect this Google listing first (paste creds → Connect), then load.'; msg.style.color='var(--warn)'; return; }
+  const locs=r.locations||[];
+  if(!locs.length){ msg.textContent='No locations on this Google account. Make sure you Connected the account that manages the listing.'; msg.style.color='var(--warn)'; return; }
+  sel.innerHTML=locs.map(l=>`<option value="${esc(l.account)}|${esc(l.location)}">${esc(l.title)}${l.address?' — '+esc(l.address):''}</option>`).join('');
+  sel.style.display=''; saveBtn.style.display=''; msg.textContent=`Found ${locs.length} — pick one, then "Use this location".`; msg.style.color='';
+}
+async function gbpApply(listing,btn){
+  const card=btn.closest('.card'); const sel=card.querySelector('[data-gbploc]'); const msg=card.querySelector('.gbp-msg');
+  const v=(sel.value||'').split('|'); if(v.length!==2||!v[0]||!v[1]){return;}
+  btn.disabled=true;
+  const r=await fetch('/api/gbp/settings?listing='+encodeURIComponent(listing),
+    {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({account_name:v[0],location_name:v[1]})});
+  btn.disabled=false; const j=await r.json().catch(()=>({}));
+  if(r.ok){ msg.textContent='✓ Location saved — this listing will post on its weekly schedule.'; msg.style.color='var(--good,#2ecc71)'; setTimeout(loadConnCenter,1200); }
+  else { msg.textContent=j.detail||'Save failed (Owner only).'; msg.style.color='var(--warn)'; }
 }
 async function ccTest(key,btn){
   const box=btn.closest('[data-cc]'); const msg=box.querySelector('.cc-msg');

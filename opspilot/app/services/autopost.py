@@ -510,24 +510,18 @@ def maybe_refill(db: Session, now: datetime | None = None) -> list[dict]:
                               channels=cfg["gen_channels"], voice=cfg["voice"], use_ai=True)
 
 
-def publish_due(db: Session, now: datetime | None = None, *, posters: dict | None = None) -> list[dict]:
-    """Scheduler entrypoint: if enabled and the gap has elapsed, publish the next
-    due post (at most one). Skips entirely if no channel for that post is ready,
-    so the cadence gap is only consumed by a real publish."""
+def deliver_due(db: Session, now: datetime | None = None, *, posters: dict | None = None) -> list[dict]:
+    """Deliver AT MOST ONE queued post, on the per-channel cadence (LinkedIn
+    daily, Google weekly), with NO campaign-enabled gate and NO auto-generate.
+
+    v1.146: this is the delivery half, split out from publish_due so the daily
+    content drip (content_autopilot) can push its own queued LinkedIn/Google
+    posts out WITHOUT the operator first flipping the separate 'auto-poster'
+    campaign switch. That hidden second switch is why connected LinkedIn never
+    actually posted — posts were generated + queued daily but delivery sat behind
+    an OFF-by-default toggle. Per-channel cadence still prevents any double-post."""
     now = now or datetime.now(timezone.utc)
     cfg = get_config(db)
-    if not cfg["enabled"]:
-        return []
-    # Keep the queue stocked (auto-generate) so it never runs dry.
-    try:
-        maybe_refill(db, now)
-    except Exception:
-        pass
-    # v1.144 PER-CHANNEL cadence: find which channels are due (LinkedIn daily,
-    # Google Business weekly), pick the oldest queued post that targets one of
-    # them, and publish ONLY to the due channels. On an ordinary day only
-    # LinkedIn is due, so even a both-channels post goes to LinkedIn alone —
-    # Google stays at one post per week, exactly as required.
     due = _due_channels(db, cfg, now)
     if not due:
         return []
@@ -541,3 +535,34 @@ def publish_due(db: Session, now: datetime | None = None, *, posters: dict | Non
     if not any(v is not None for v in built.values()):
         return []   # nothing ready for this post — wait, don't consume the gap
     return [publish_one(db, post, now, posters=built)]
+
+
+def deliver_all_due(db: Session, now: datetime | None = None, *, posters: dict | None = None) -> list[dict]:
+    """Flush EVERY channel that's due right now (one post each), not just one.
+    Used by the daily drip so LinkedIn and (on its weekly day) Google both go out
+    in the same tick. Cadence timestamps make repeat calls safe."""
+    now = now or datetime.now(timezone.utc)
+    out: list[dict] = []
+    for _ in range(len(CHANNELS)):
+        res = deliver_due(db, now, posters=posters)
+        if not res:
+            break
+        out.extend(res)
+    return out
+
+
+def publish_due(db: Session, now: datetime | None = None, *, posters: dict | None = None) -> list[dict]:
+    """Scheduler entrypoint for the OPT-IN auto-poster campaign: when enabled,
+    keep the queue stocked (auto-generate) and deliver the next due post. Delivery
+    itself (deliver_due) also runs from the always-on daily drip, so connecting a
+    channel is enough to start posting even if this campaign toggle is off."""
+    now = now or datetime.now(timezone.utc)
+    cfg = get_config(db)
+    if not cfg["enabled"]:
+        return []
+    # Keep the queue stocked (auto-generate) so it never runs dry.
+    try:
+        maybe_refill(db, now)
+    except Exception:
+        pass
+    return deliver_due(db, now, posters=posters)
