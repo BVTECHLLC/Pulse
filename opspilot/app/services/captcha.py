@@ -38,6 +38,8 @@ MARKER = "bvHuman-v1"         # idempotency marker (kept stable across widget ve
 # Covers the static site's lead form AND the portal's public account forms.
 PROTECTED_POST_PATHS = [
     "/tools-api/lead", "/api/public-tools/lead",   # contact / lead capture
+    "/api/chat/lead",                               # site AI-chat lead submission (worker)
+    "formspree.io",                                 # the contact form's email backend
     "/api/signup",                                  # portal access request
     "/api/academy/register",                        # academy open self-registration
 ]
@@ -205,7 +207,7 @@ _WIDGET_TEMPLATE = r"""<script data-bvhuman="__MARKER__">
     if(f.getAttribute&&f.getAttribute('data-bv-protect')!==null)return true;
     var h=(f.innerHTML||'');var cls=(f.className||'');
     if(f.querySelector('input[type=password]'))return false;   // plain login form — left puzzle-free
-    return !!(f.querySelector('input[type=email]') || /tools-api\/lead/.test(h) || /bv-lead|p2s-row|contact/i.test(cls));
+    return !!(f.querySelector('input[type=email]') || f.querySelector('input[name=email]') || /tools-api\/lead|formspree|getform|\/api\/chat\/lead/i.test(h) || /bv-lead|p2s-row|contact/i.test(cls));
   }
   function gate(f,w){
     function blocked(e){if(!verified){e.preventDefault();if(e.stopImmediatePropagation)e.stopImmediatePropagation();w.classList.remove('err');void w.offsetWidth;w.classList.add('err');try{w.scrollIntoView({block:'center',behavior:'smooth'});}catch(_){}return true;}return false;}
@@ -277,8 +279,20 @@ def inject(html: str) -> tuple[str, bool]:
     orig = html
     work = _SCRIPT_RE.sub("", html) if "data-bvhuman" in html else html
     low = work.lower()
-    needs = (("/tools-api/lead" in low or "public-tools/lead" in low)
-             or ("<form" in low and 'type="email"' in low))
+    # v1.147: catch EVERY data-collecting form, not just ones with type="email".
+    # Covers Formspree-backed forms, name="email"/_replyto fields, and contact
+    # textareas — so no email-sending button on the site slips through unguarded.
+    needs = (
+        "/tools-api/lead" in low or "public-tools/lead" in low or "/api/chat/lead" in low
+        or ("<form" in low and (
+            'type="email"' in low
+            or 'name="email"' in low
+            or 'name="_replyto"' in low         # Formspree's email field
+            or "formspree.io" in low or "getform.io" in low
+            or "basin" in low or "web3forms" in low
+            or ("<textarea" in low and ("contact" in low or 'name="message"' in low))
+        ))
+    )
     if needs:
         placed = False
         for tag in ("</body>", "</html>"):

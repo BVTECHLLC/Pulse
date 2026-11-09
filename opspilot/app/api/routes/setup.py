@@ -202,6 +202,7 @@ def connection_center(db: Session = Depends(get_db),
         "tacticalrmm": vault_has("tacticalrmm", "api_key"),
         "groq": vault_has("groq", "api_key"),
         "custom_api": vault_has("custom_api", "api_key"),
+        "cloudflare_analytics": vault_has("cloudflare_analytics", "api_token"),
     }
     items = []
     for spec in CONNECTORS:
@@ -329,6 +330,17 @@ CONNECTORS = [
                 {"key": "client_secret", "label": "OAuth Client Secret", "secret": True},
                 {"key": "account_name", "label": "Account name (accounts/123…)", "secret": False},
                 {"key": "location_name", "label": "Location name (locations/456…)", "secret": False}]},
+    {"key": "cloudflare_analytics", "name": "Cloudflare Threat Analytics (live Threat Map)",
+     "priority": 3,
+     "unlocks": "Feeds the live bvtech.org Threat Map with REAL Cloudflare edge numbers "
+                "(blocked attacks, bot traffic) — so it's driven by Pulse, never a stray "
+                "Worker token that silently dies.",
+     "console_url": "https://dash.cloudflare.com/profile/api-tokens",
+     "console_hint": "Create Token → permission Account Analytics:Read (or Zone Analytics:Read) "
+                     "on bvtech.org → copy. Then paste your bvtech.org Zone ID (zone Overview page).",
+     "save": "cloudflare_analytics", "secret_provider": "cloudflare_analytics", "secret_field": "api_token",
+     "fields": [{"key": "api_token", "label": "Cloudflare Analytics token", "secret": True},
+                {"key": "zone_id", "label": "bvtech.org Zone ID", "secret": False}]},
     {"key": "stripe", "name": "Stripe payments", "priority": 2,
      "unlocks": "Clients pay invoices online; payments auto-reconcile.",
      "console_url": "https://dashboard.stripe.com/apikeys",
@@ -494,7 +506,8 @@ def save_connection(key: str, body: SaveCredIn, db: Session = Depends(get_db),
               "google_places": ("Google Places", "Prospecting"),
               "tacticalrmm": ("TacticalRMM", "RMM"),
               "groq": ("Groq (free AI)", "AI"),
-              "custom_api": ("Custom API key", "Integration")}
+              "custom_api": ("Custom API key", "Integration"),
+              "cloudflare_analytics": ("Cloudflare Threat Analytics", "Telemetry")}
     nm, cat = _names.get(prov, (spec["name"], "Integration"))
     secure_config.upsert_platform(db, prov, nm, cat, payload)
     if prov in ("gbp", "gbp_personal", "pub_linkedin"):

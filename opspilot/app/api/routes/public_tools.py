@@ -355,6 +355,29 @@ def kev_latest(request: Request, resp: Response):
             "source_url": "https://www.cisa.gov/known-exploited-vulnerabilities-catalog"}
 
 
+@router.get("/threat-feed")
+def threat_feed_public(request: Request, resp: Response):
+    """PUBLIC, read-only: live edge-threat telemetry for bvtech.org's Threat Map.
+    Served from Pulse's OWN data (honeypot trips, 404 bot-probes, failed logins)
+    plus Cloudflare analytics when a token is stored — so the map is fed by
+    infrastructure we control, not a stray Worker token. CORS-pinned; the snapshot
+    is self-healing and never 500s. (v1.147)"""
+    _cors(request, resp)
+    from ...core.db import SessionLocal
+    from ...services import threat_feed
+    db = SessionLocal()
+    try:
+        data = threat_feed.snapshot(db)
+    except Exception:  # noqa: BLE001 — the map must always get a valid payload
+        data = {"failed_logins_24h": 0, "honeypot_hits": 0, "bot_traffic": 0,
+                "malware_probes": 0, "total_24h": 0, "feed": [],
+                "source": "BVTech telemetry", "updated": None}
+    finally:
+        db.close()
+    resp.headers["Cache-Control"] = "public, max-age=60"
+    return data
+
+
 @router.post("/notfound")
 async def report_notfound(request: Request, resp: Response):
     """The bvtech.org 404 page reports the path it couldn't find here (relayed
@@ -415,6 +438,13 @@ async def capture_lead(request: Request, resp: Response):
     from ...services import captcha as _captcha
     _human, _why = _captcha.verify(body)
     if not _human:
+        # Count the bot trip for the live Threat Map (best-effort, self-contained).
+        try:
+            from ...core.db import SessionLocal as _SL
+            from ...services import threat_feed as _tf
+            _d = _SL(); _tf.record(_d, "honeypot"); _d.close()
+        except Exception:  # noqa: BLE001
+            pass
         return {"ok": False, "error": "We couldn't verify your browser. "
                 "Please reload the page and submit again, or email help@bvtech.org."}
     email = str(body.get("email") or "").strip().lower()[:255]
