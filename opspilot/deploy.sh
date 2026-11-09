@@ -45,6 +45,13 @@ if [ "$LOCAL" = "$REMOTE" ] && [ -n "$RUN_VER" ] && [ "$RUN_VER" = "$REPO_VER" ]
   exit 0   # already current — nothing to do
 fi
 
+# v1.150: don't re-smoke a commit we already rejected — a failing push would
+# otherwise rebuild + re-test every 2 minutes forever. Wait for a NEW push.
+FAILED_SHA_FILE="/var/tmp/opspilot-smoke-failed-sha"
+if [ "${OPSPILOT_SKIP_SMOKE:-0}" != "1" ] && [ "$(cat "$FAILED_SHA_FILE" 2>/dev/null)" = "$REMOTE" ]; then
+  exit 0   # this exact commit already failed the smoke gate; nothing to do
+fi
+
 log "DEPLOY: git ${LOCAL:0:8}->${REMOTE:0:8} | running=${RUN_VER:-none} repo=${REPO_VER:-?}"
 cd "$REPO_DIR"
 # v1.41.2: self-heal ANY git wedge — wrong branch, local commits, dirty tree.
@@ -56,7 +63,32 @@ git reset --hard origin/main 2>&1 | sed 's/^/  /' || log "WARN: git reset failed
 REPO_VER=$(grep -oP 'APP_VERSION: str = "\K[^"]+' "$COMPOSE_DIR/app/core/config.py" 2>/dev/null)  # re-read AFTER reset
 cd "$COMPOSE_DIR"
 log "building api image..."
-docker compose up -d --build api 2>&1 | tail -3 | sed 's/^/  /' || log "WARN: build/up failed"
+docker compose build api 2>&1 | tail -3 | sed 's/^/  /' || log "WARN: build failed"
+# v1.150 SMOKE GATE: run the FULL suite against the freshly-built image in a
+# throwaway sqlite container BEFORE swapping the live one. A failing push never
+# reaches production — the running container keeps serving (latency, not
+# downtime), the bad commit is remembered so it is not re-tested every 2 min, and
+# the failure is logged loudly. Bypass in an emergency with OPSPILOT_SKIP_SMOKE=1.
+if [ "${OPSPILOT_SKIP_SMOKE:-0}" != "1" ]; then
+  log "smoke-gating ${REMOTE:0:8} (full suite ~3-4 min; live stays up the whole time)..."
+  if docker compose run --rm -T \
+       -e DATABASE_URL="sqlite:////tmp/deploy-smoke.db" \
+       -e SECRET_KEY="deploy-smoke-secret-key-aaaaaaaaaaaaaaaaaaaaaa" \
+       -e AGENT_ENROLL_SECRET="deploy-smoke-enroll-key-bbbbbbbbbbbbbbbb" \
+       -e COOKIE_SECURE=false \
+       -e BOOTSTRAP_ADMIN_EMAIL=admin@bvtech.org \
+       -e BOOTSTRAP_ADMIN_PASSWORD='DeploySmoke!2026xyzABC' \
+       -e PULSE_DISABLE_KEV_TICKER=1 -e PULSE_DISABLE_SITE_REPAIR=1 \
+       api python scripts/smoke_test.py > /var/tmp/opspilot-deploy-smoke.log 2>&1; then
+    log "  smoke PASSED — promoting the new version."
+    rm -f "$FAILED_SHA_FILE"
+  else
+    echo "$REMOTE" > "$FAILED_SHA_FILE"
+    log "ERROR: SMOKE FAILED on ${REMOTE:0:8} — NOT deploying; live version kept. Last lines: $(tail -3 /var/tmp/opspilot-deploy-smoke.log 2>/dev/null | tr '\n' ' ')"
+    exit 1
+  fi
+fi
+docker compose up -d api 2>&1 | tail -3 | sed 's/^/  /' || log "WARN: up failed"
 # v1.108: the games (/arena, /signal) are static WASM bundles bind-mounted into
 # the api container, so rebuilding api above already picks up new game builds.
 # Stop the retired Signal 199X node service if it is still running (idempotent).
