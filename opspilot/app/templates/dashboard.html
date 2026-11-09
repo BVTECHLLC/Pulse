@@ -1990,9 +1990,11 @@ async function loadTickets(){
   // Overview counters reflect the full (unfiltered) book, fetched separately.
 }
 async function openTicket(id){
-  const [t,comments,time]=await Promise.all([
-    api(`/api/tickets/${id}`),api(`/api/tickets/${id}/comments`),api(`/api/tickets/${id}/time`).catch(()=>[])]);
+  const [t,comments,time,canned]=await Promise.all([
+    api(`/api/tickets/${id}`),api(`/api/tickets/${id}/comments`),api(`/api/tickets/${id}/time`).catch(()=>[]),
+    api('/api/tickets/canned-responses').catch(()=>({templates:[]}))]);
   if(!t)return;
+  CUR_TICKET=t; CANNED=(canned&&canned.templates)||[];
   const d=document.getElementById('ticket-detail');d.classList.remove('hidden');
   const sopts=['open','in_progress','resolved','closed'].map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${s}</option>`).join('');
   const popts=['low','normal','high','urgent'].map(p=>`<option value="${p}" ${t.priority===p?'selected':''}>${p}</option>`).join('');
@@ -2024,7 +2026,11 @@ async function openTicket(id){
       <button class="btn sm ghost" onclick="logTime(${t.id})">Log time</button></div>
     <h3 style="margin-top:14px">Conversation</h3>
     <div id="td-comments">${comments.map(renderComment).join('')||'<p class="muted">No replies yet.</p>'}</div>
-    <label>Add reply</label><input id="td-reply" placeholder="Write a reply…">
+    <label>Add reply</label>
+    <select id="td-canned" onchange="insertCanned()" style="width:100%;padding:8px;margin-bottom:6px">
+      <option value="">↳ Insert a saved reply…</option>
+      ${CANNED.map((c,i)=>`<option value="${i}">${esc(c.title)}</option>`).join('')}</select>
+    <textarea id="td-reply" placeholder="Write a reply…" rows="4" style="width:100%"></textarea>
     <label class="flex" style="margin:8px 0"><input type="checkbox" id="td-internal" style="width:auto"> internal note (staff only)</label>
     <button class="btn sm" onclick="sendReply(${t.id})">Send</button>`;
 }
@@ -2045,6 +2051,19 @@ async function logTime(id){
   await post(`/api/tickets/${id}/time`,{minutes:mins,note:document.getElementById('td-tnote').value,
     billable:document.getElementById('td-bill').checked});
   openTicket(id);
+}
+let CUR_TICKET=null, CANNED=[];
+function insertCanned(){
+  const sel=document.getElementById('td-canned'); if(!sel||sel.value==='')return;
+  const c=CANNED[parseInt(sel.value)]; if(!c)return;
+  const t=CUR_TICKET||{};
+  const ctx={client_name:(CLIENTS[t.client_id]||'there'),ticket_id:t.id,ticket_subject:t.subject||'',
+    tech_name:((window.ME&&(ME.full_name||ME.email))||'the BVTech team'),company:'BVTech'};
+  const body=(c.body||'').replace(/\{(client_name|ticket_id|ticket_subject|tech_name|company)\}/g,
+    (m,k)=>(ctx[k]!=null&&ctx[k]!=='')?ctx[k]:m);
+  const ta=document.getElementById('td-reply');
+  ta.value = ta.value ? (ta.value.replace(/\s*$/,'')+"\n\n"+body) : body;
+  sel.value=''; ta.focus();
 }
 async function sendReply(id){
   const body=document.getElementById('td-reply').value.trim();if(!body)return;
@@ -2493,7 +2512,9 @@ async function postureDetail(cid){
   const recs=(s.recommendations||[]).map(r=>`<li>${esc(r)}</li>`).join('')||'<li class="muted">No action items — looking good.</li>';
   box.innerHTML=`<div class="flex" style="justify-content:space-between;align-items:center">
       <h4 style="margin:0">${esc(s.client_name)} — overall ${gradePill(s.grade)} <span style="color:${s.score!=null?scoreColor(s.score):'#64748b'}">${s.score!=null?s.score:'N/A'}</span></h4>
-      <button class="btn sm ghost" onclick="document.getElementById('posture-detail').classList.add('hidden')">close</button></div>
+      <div class="flex" style="gap:6px">
+        <a class="btn sm" style="text-decoration:none" href="/api/posture/${cid}/report" target="_blank" rel="noopener">📄 Client Report ↗</a>
+        <button class="btn sm ghost" onclick="document.getElementById('posture-detail').classList.add('hidden')">close</button></div></div>
     <div class="grid cols-4" style="gap:10px;margin:10px 0">${doms}</div>
     <b style="font-size:13px">Recommendations</b><ul style="margin:6px 0 0;padding-left:18px">${recs}</ul>`;
 }

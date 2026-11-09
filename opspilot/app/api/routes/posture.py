@@ -7,12 +7,13 @@ their own scorecard; only staff see the portfolio.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from ...core.db import get_db
 from ...core.deps import assert_client_access, current_user, require_roles
 from ...models import Client, Role, User
-from ...services import posture, posture_history
+from ...services import posture, posture_history, posture_report
 
 router = APIRouter(prefix="/api/posture", tags=["posture"])
 
@@ -46,6 +47,19 @@ def client_scorecard(client_id: int, db: Session = Depends(get_db),
     sc = posture.scorecard(db, client_id)
     sc["trend"] = posture_history.trend(db, client_id)
     return sc
+
+
+@router.get("/{client_id}/report", response_class=HTMLResponse)
+def client_report(client_id: int, db: Session = Depends(get_db),
+                  user: User = Depends(current_user)):
+    """v1.153: the client-ready, branded Security Scorecard — a printable HTML
+    report (grade, per-domain breakdown, priority fixes, CTA) the MSP hands the
+    client. Staff or that client's own users; print-to-PDF friendly."""
+    if not db.get(Client, client_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Client not found")
+    assert_client_access(user, client_id)
+    sc = posture.scorecard(db, client_id)
+    return HTMLResponse(posture_report.render(sc))
 
 
 @router.get("/{client_id}/history")

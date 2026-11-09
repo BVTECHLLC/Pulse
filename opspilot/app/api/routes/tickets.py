@@ -122,6 +122,46 @@ def sla_summary(db: Session = Depends(get_db),
     return out
 
 
+# --- v1.154 Canned responses (reply templates) — staff-only -----------------
+# Registered BEFORE /tickets/{ticket_id} so "canned-responses" is not parsed as
+# a ticket id.
+class CannedIn(BaseModel):
+    title: str
+    body: str
+
+
+@router.get("/tickets/canned-responses")
+def canned_list(db: Session = Depends(get_db),
+                user: User = Depends(require_roles(*STAFF_ROLES))):
+    from ...services import canned_responses
+    return {"templates": canned_responses.list_templates(db)}
+
+
+@router.post("/tickets/canned-responses", status_code=201)
+def canned_add(body: CannedIn, request: Request, db: Session = Depends(get_db),
+               user: User = Depends(require_roles(*STAFF_ROLES))):
+    from ...services import canned_responses
+    try:
+        tpl = canned_responses.add(db, body.title, body.body)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    audit.record(db, action="canned.add", actor_user_id=user.id, actor_email=user.email,
+                 target_type="canned_response", target_id=tpl["id"], ip=_ip(request),
+                 detail=tpl["title"][:120])
+    return tpl
+
+
+@router.delete("/tickets/canned-responses/{tid}")
+def canned_delete(tid: str, request: Request, db: Session = Depends(get_db),
+                  user: User = Depends(require_roles(*STAFF_ROLES))):
+    from ...services import canned_responses
+    if not canned_responses.delete(db, tid):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Template not found")
+    audit.record(db, action="canned.delete", actor_user_id=user.id, actor_email=user.email,
+                 target_type="canned_response", target_id=tid, ip=_ip(request))
+    return {"ok": True}
+
+
 @router.get("/tickets/{ticket_id}")
 def get_ticket(ticket_id: int, db: Session = Depends(get_db),
                user: User = Depends(current_user)):
