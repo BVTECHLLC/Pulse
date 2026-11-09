@@ -82,6 +82,88 @@ def setup_status(db: Session = Depends(get_db),
 # the exact provider console page to get the credential, and where in Pulse to
 # paste it. One page to go live.
 # --------------------------------------------------------------------------- #
+def _ready(state: str, label: str, action: str) -> dict:
+    return {"state": state, "status_label": label, "next_action": action}
+
+
+def _connector_readiness(db, spec: dict, connected: bool) -> dict:
+    """Plain-English 'what's left to do' for one connector tile, so the Settings
+    page SHOWS the exact next step instead of a bare red/green dot. (v1.145)
+    state: 'ready' (fully working) | 'action' (saved but one step remains) |
+    'missing' (nothing saved yet)."""
+    from ...models import OAuthToken
+    key = spec["key"]
+
+    def vcfg(provider):
+        c = secure_config.get_platform(db, provider)
+        return (c.config if c else None) or {}
+
+    def has_tok(provider):
+        return db.query(OAuthToken).filter(OAuthToken.provider == provider).count() > 0
+
+    def secret(cfg, k):
+        return secure_config.get_secret(cfg, k) or cfg.get(k)
+
+    # --- Google Business listings: creds -> Connect -> Account/Location -> ready
+    gbp_map = {"gbp": ("google_gbp", "gbp", "google_business"),
+               "gbp_personal": ("google_gbp_personal", "gbp_personal", "google_business_personal")}
+    if key in gbp_map:
+        provider, vkey, channel = gbp_map[key]
+        cfg = vcfg(vkey)
+        app = bool(secret(cfg, "client_id")) and bool(secure_config.get_secret(cfg, "client_secret"))
+        tok = has_tok(provider) or bool(secure_config.get_secret(cfg, "refresh_token"))
+        loc = bool(cfg.get("account_name") and cfg.get("location_name"))
+        if autopost.get_reauth(db, channel):
+            return _ready("action", "Reconnect needed",
+                          "Google token expired — click Connect to re-authorize.")
+        if not app:
+            return _ready("missing", "Not set up",
+                          "Paste your Google OAuth Client ID + Secret below, then click Connect.")
+        if not tok:
+            return _ready("action", "Click Connect",
+                          "Credentials saved ✓ — now click Connect and approve with your Google account.")
+        if not loc:
+            return _ready("action", "Set Account + Location",
+                          "Connected ✓ — now fill Account name + Location name (from business.google.com) so it can post.")
+        return _ready("ready", "Ready", "Posting one update per week. Nothing more to do.")
+
+    # --- LinkedIn publisher: app creds and/or a pasted token -> daily posting
+    if key == "pub_linkedin":
+        cfg = vcfg("pub_linkedin")
+        app = bool(secret(cfg, "li_client_id")) and bool(secure_config.get_secret(cfg, "li_client_secret"))
+        manual = bool(secure_config.get_secret(cfg, "access_token")) and bool(secret(cfg, "person_urn"))
+        tok_oauth = has_tok("linkedin")
+        if autopost.get_reauth(db, "linkedin"):
+            return _ready("action", "Reconnect needed",
+                          "LinkedIn token expired — click Connect (or paste a fresh token) to resume daily posting.")
+        if tok_oauth or manual:
+            if not app:
+                return _ready("ready", "Connected",
+                              "Posting daily via your saved token. Tip: also paste the app Client ID + Secret "
+                              "and click Connect so the token self-refreshes and never expires.")
+            return _ready("ready", "Ready", "Posting daily with self-refreshing OAuth. Nothing more to do.")
+        if app:
+            return _ready("action", "Click Connect",
+                          "App credentials saved ✓ — click Connect and approve to start daily posting.")
+        return _ready("missing", "Not set up",
+                      "Paste the LinkedIn app Client ID + Secret below, then click Connect.")
+
+    # --- QuickBooks / other one-click connectors
+    if spec.get("needs_connect"):
+        prov = {"quickbooks": "quickbooks"}.get(key, key)
+        if connected and has_tok(prov):
+            return _ready("ready", "Connected", "Authorized and ready.")
+        if connected:
+            return _ready("action", "Click Connect",
+                          "Credentials saved ✓ — click Connect to authorize.")
+        return _ready("missing", "Not set up", spec.get("console_hint") or "Add credentials, then Connect.")
+
+    # --- Everything else (API-key style)
+    if connected:
+        return _ready("ready", "Connected", "")
+    return _ready("missing", "Not set up", spec.get("console_hint") or "Add credentials to enable.")
+
+
 @router.get("/connections")
 def connection_center(db: Session = Depends(get_db),
                       user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
@@ -138,11 +220,24 @@ def connection_center(db: Session = Depends(get_db),
             it["credential_state"] = secure_config.secret_state(cfg, spec["secret_field"])
         it["testable"] = spec["key"] in ("gitlab_sites", "anthropic", "stripe", "hubspot",
                                          "cloudflare", "bvtech_github", "groq")
+        # v1.145: plain-English "what's left to do" so each tile is self-explaining.
+        rd = _connector_readiness(db, spec, it["connected"])
+        it["state"] = rd["state"]                 # ready | action | missing
+        it["status_label"] = rd["status_label"]   # short pill text
+        it["next_action"] = rd["next_action"]     # exact next step
+        # A tile is "ready" only when fully functional (not just creds saved).
+        it["ready"] = rd["state"] == "ready"
         items.append(it)
     p1 = [i for i in items if i["priority"] == 1]
     done = sum(1 for i in items if i["connected"])
-    return {"items": items, "total": len(items), "connected": done,
+    ready_n = sum(1 for i in items if i.get("ready"))
+    # A compact "what still needs a step" list the UI can show at the top.
+    needs = [{"key": i["key"], "name": i["name"], "status_label": i["status_label"],
+              "next_action": i["next_action"]}
+             for i in items if i["state"] == "action"]
+    return {"items": items, "total": len(items), "connected": done, "ready": ready_n,
             "go_live_ready": all(i["connected"] for i in p1),
+            "needs_action": needs,
             "score_pct": round(100 * done / len(items))}
 
 

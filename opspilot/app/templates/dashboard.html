@@ -1276,6 +1276,7 @@
       <p class="muted" style="margin:4px 0 10px">Everything Pulse can connect to, in priority order. Each tile shows what it unlocks, a direct link to the provider page where the credential lives, and exactly where to paste it. Knock out Priority 1 and you're live.</p>
       <div style="background:#0c1430;border-radius:8px;height:10px;overflow:hidden;margin-bottom:12px">
         <div id="cc-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#6c5ce7,#2ecc71);transition:width .4s"></div></div>
+      <div id="cc-needs"></div>
       <div id="cc-grid" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px"><div class="muted">Loading…</div></div>
     </div>
 
@@ -4720,9 +4721,26 @@ async function loadConnCenter(){
   gl.textContent=d.go_live_ready?'✅ Go-live ready — Priority 1 complete':'🎯 Finish Priority 1 to go live';
   gl.style.color=d.go_live_ready?'var(--good,#2ecc71)':'var(--warn)';
   const pr={1:'P1 · go-live',2:'P2 · growth & billing',3:'P3 · optional'};
+  // v1.145: a compact "needs a step" banner at the top so you see at a glance
+  // exactly which tiles aren't finished and what to do next.
+  const na=d.needs_action||[];
+  const naBox=document.getElementById('cc-needs');
+  if(naBox){
+    naBox.innerHTML = na.length
+      ? `<div style="border:1px solid var(--warn);border-radius:8px;padding:8px 10px;margin-bottom:10px;background:#1a1405">
+           <b style="font-size:12px">⚡ ${na.length} connector${na.length>1?'s':''} almost done — one step each:</b>
+           <ul style="margin:6px 0 0;padding-left:18px;font-size:11px">`
+        + na.map(n=>`<li><b>${esc(n.name)}</b> — ${esc(n.next_action)}</li>`).join('')
+        + `</ul></div>`
+      : (d.ready>=d.total?`<div style="color:var(--good,#2ecc71);font-size:12px;margin-bottom:10px">✅ Every connector is fully set up.</div>`:'');
+  }
   document.getElementById('cc-grid').innerHTML=(d.items||[]).map(it=>{
     const unreadable=it.credential_state==='unreadable';
-    const dot=unreadable?'🟠':(it.connected?'🟢':'🔴');
+    // 🟢 fully ready · 🟡 one step left · 🔴 nothing saved · 🟠 unreadable credential
+    const dot=unreadable?'🟠':(it.state==='ready'?'🟢':(it.state==='action'?'🟡':'🔴'));
+    const stColor=it.state==='ready'?'var(--good,#2ecc71)':(it.state==='action'?'var(--warn)':'var(--muted,#8893a7)');
+    const statusLine=`<div style="font-size:11px;margin:4px 0 2px;color:${stColor};font-weight:600">${esc(it.status_label||'')}</div>`
+      + (it.next_action&&it.state!=='ready'?`<div class="muted" style="font-size:11px;margin-bottom:4px">👉 ${esc(it.next_action)}</div>`:'');
     const link=it.console_url?`<a class="btn sm ghost" style="text-decoration:none" target="_blank" rel="noopener" href="${esc(it.console_url)}">Get credential ↗</a>`:'';
     // The silent failure that looked like "saved but red": a stored secret that
     // won't decrypt (server SECRET_KEY changed). Now it says exactly what to do.
@@ -4747,6 +4765,7 @@ async function loadConnCenter(){
       <div class="flex" style="justify-content:space-between;gap:6px">
         <b style="font-size:13px">${dot} ${esc(it.name)}</b>
         <span class="muted" style="font-size:10px;white-space:nowrap">${pr[it.priority]||''}</span></div>
+      ${statusLine}
       <div class="muted" style="font-size:11px;margin:6px 0">${esc(it.unlocks)}</div>
       ${it.console_hint&&it.console_url?`<div class="muted" style="font-size:10px">🧭 ${esc(it.console_hint)}</div>`:''}
       <div style="margin-top:8px">${link}</div>${warn}${enter}
