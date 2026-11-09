@@ -612,6 +612,13 @@ def publish(db: Session) -> dict:
                 break
         # 6) site-wide nav links (additive, idempotent) across every repo HTML
         nav_hits = _apply_nav_everywhere(cfg, files)
+        # 6b) v1.152 — the live Threat Map page, written AFTER the sweep so it
+        #     always ships pristine (self-contained chrome + Pulse-fed telemetry).
+        try:
+            from . import pages_threatmap as _tm
+            files[_tm.PATH] = _tm.html()
+        except Exception:  # noqa: BLE001 — never let one page break the release
+            pass
         # commit — chunked, with create/update decided from one repo listing so a
         # big mode-bar rollout neither doubles GitLab load nor times out (v1.135).
         try:
@@ -627,6 +634,11 @@ def publish(db: Session) -> dict:
         sm = jp_site.sitemap_sync(db, "bvtech", extra=extra)
         # 8) purge
         purge = [p["url"] for p in pages] + [SITE + "/", SITE + "/tools/", SITE + "/academy/"]
+        try:
+            from . import pages_threatmap as _tm
+            purge.append(_tm.URL)
+        except Exception:  # noqa: BLE001
+            pass
         cloudflare.purge_urls(db, "bvtech", purge)
         return {"ok": True, "pages": [p["url"] for p in pages], "nav_pages": nav_hits,
                 "worker": worker, "sitemap": sm, "files": len(files)}
