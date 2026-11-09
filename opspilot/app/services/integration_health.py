@@ -82,12 +82,38 @@ def _check_rmm(cfg) -> tuple[str, str]:
     return "ok", "dashboard OK"
 
 
+def _check_linkedin(cfg) -> tuple[str, str]:
+    """v1.151: verify the LinkedIn publisher's pasted access token is still live.
+    This is the silent failure that stopped the daily posts: a manual LinkedIn
+    token expires (~60 days) and posting just quietly stopped. Now the watchdog
+    catches it and alerts BEFORE the next post fails. Tokens connected via
+    one-click OAuth self-refresh on use, so there's nothing to pre-check there."""
+    import urllib.request
+    import urllib.error
+    token = secure_config.get_secret(cfg, "access_token")
+    if not token:
+        return "skip", "self-refreshing OAuth, or token not configured"
+    req = urllib.request.Request("https://api.linkedin.com/v2/userinfo",
+                                 headers={"Authorization": f"Bearer {token}"})
+    try:
+        urllib.request.urlopen(req, timeout=8).read()
+        return "ok", "token OK"
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            raise   # expired / revoked -> a real failure the operator must fix
+        # 403 = the token works for posting but the app lacks the userinfo scope;
+        # that's not a posting failure, so don't cry wolf.
+        return "ok", f"token present (userinfo {e.code})"
+
+
 # Providers with a cheap, side-effect-free liveness check.
 CHECKERS = {
     "m365_mailbox": _check_m365,
     "hubspot": _check_hubspot,
     "quickbooks": _check_quickbooks,
     "gbp": _check_gbp,
+    "gbp_personal": _check_gbp,          # personal Google listing — same liveness check
+    "pub_linkedin": _check_linkedin,
     "tacticalrmm": _check_rmm,
 }
 
