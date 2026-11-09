@@ -17,6 +17,21 @@ COMPOSE_DIR="$REPO_DIR/opspilot"
 log(){ echo "[$(date -u +%FT%TZ)] $*"; }
 
 cd "$REPO_DIR" || { log "ERROR: repo dir $REPO_DIR not found"; exit 1; }
+
+# v1.149: SELF-INSTALL the 2-minute poller so auto-deploy becomes PERMANENT after
+# a single manual run — after this, every push to main goes live on its own with
+# no further server access. Idempotent: only adds the cron line if it's missing.
+# Disable with OPSPILOT_NO_CRON=1 (e.g. if you manage the schedule elsewhere).
+SELF="$COMPOSE_DIR/deploy.sh"
+if [ "${OPSPILOT_NO_CRON:-0}" != "1" ] && command -v crontab >/dev/null 2>&1; then
+  if ! crontab -l 2>/dev/null | grep -qF "$SELF"; then
+    ( crontab -l 2>/dev/null; \
+      echo "*/2 * * * * $SELF >> /var/log/opspilot-deploy.log 2>&1" ) | crontab - \
+      && log "INSTALLED 2-minute auto-deploy cron — push-to-live is now automatic." \
+      || log "WARN: could not install cron (need a user crontab); add it by hand once."
+  fi
+fi
+
 git fetch origin main --quiet || log "WARN: git fetch failed"
 LOCAL=$(git rev-parse HEAD 2>/dev/null)
 REMOTE=$(git rev-parse origin/main 2>/dev/null)
@@ -77,3 +92,29 @@ try:
 finally:
     db.close()
 PYPURGE
+
+# v1.149: AUTO-PUBLISH the static site so SITE changes (nav, tools, the captcha
+# sweep across every form, new pages) go live automatically too — not just the
+# API container. destination.publish is idempotent (commits only changed files)
+# and resilient (chunked GitLab commits), but it is heavier than a redeploy, so
+# we throttle it to at most once per 30 min and run it best-effort AFTER the api
+# is already up (it can never break the deploy). Opt out with OPSPILOT_AUTO_PUBLISH=0.
+STAMP="/var/tmp/opspilot-last-publish"
+PUB_AGE=$(( $(date +%s) - $(stat -c %Y "$STAMP" 2>/dev/null || echo 0) ))
+if [ "${OPSPILOT_AUTO_PUBLISH:-1}" = "1" ] && [ "$PUB_AGE" -gt 1800 ]; then
+  log "publishing static site (destination.publish) so site changes go live..."
+  docker compose exec -T api python - <<'PYPUB' 2>&1 | sed 's/^/  /' || log "WARN: site publish step failed"
+from app.core.db import SessionLocal
+from app.services import destination
+db = SessionLocal()
+try:
+    r = destination.publish(db)
+    print(f"publish ok={r.get('ok')} pages={len(r.get('pages', []))}")
+except Exception as e:
+    print(f"publish error: {e}")
+finally:
+    db.close()
+PYPUB
+  touch "$STAMP"
+fi
+log "DONE."
