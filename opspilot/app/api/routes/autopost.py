@@ -44,6 +44,52 @@ def get_settings(db: Session = Depends(get_db),
             "google_business_personal_ready": ready.get("google_business_personal", False)}
 
 
+@router.get("/doctor")
+def doctor(db: Session = Depends(get_db),
+           user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """v1.157: 'why aren't LinkedIn/Google posting?' — every link in the chain +
+    a plain-English verdict, viewable in the browser (no shell)."""
+    from ...services import content_autopilot as ca, secure_config as sc
+    from ...models import SocialPost, OAuthToken
+    from collections import Counter
+    cc = ca.get_config(db)
+    ready = autopost.channel_readiness(db)
+    li = sc.get_platform(db, "pub_linkedin"); licfg = (li.config if li else {}) or {}
+    li_tok = bool(sc.get_secret(licfg, "access_token")) or \
+        db.query(OAuthToken).filter(OAuthToken.provider == "linkedin").count() > 0
+    li_urn = bool(sc.get_secret(licfg, "person_urn") or licfg.get("person_urn"))
+    gb = sc.get_platform(db, "gbp"); gbcfg = (gb.config if gb else {}) or {}
+    gb_fields = {k: bool(sc.get_secret(gbcfg, k) or gbcfg.get(k)) for k in
+                 ("client_id", "client_secret", "refresh_token", "account_name", "location_name")}
+    q = db.query(SocialPost).all()
+    paused = {ch: bool(autopost.get_reauth(db, ch)) for ch in autopost.CHANNELS}
+    if not (li_tok and li_urn):
+        verdict = "LinkedIn isn't fully connected (needs token + Person URN). Connect it in Settings → LinkedIn."
+    elif not ready.get("linkedin"):
+        verdict = "LinkedIn token looks expired — click Connect on the LinkedIn tile to refresh."
+    elif all(gb_fields.values()) and ready.get("linkedin"):
+        verdict = "All connected — LinkedIn + Google should post on the next daily tick."
+    else:
+        miss = [k for k, v in gb_fields.items() if not v]
+        verdict = f"LinkedIn is ready (posts daily). Google Business still needs: {', '.join(miss) or 'connect + pick location'}."
+    from ...core.config import get_settings as _gs
+    return {
+        "version": _gs().APP_VERSION,
+        "delivery_fix_deployed": hasattr(autopost, "deliver_all_due"),
+        "drip": {"enabled": cc["enabled"], "linkedin_channel": cc["channels"].get("linkedin"),
+                 "gbp_channel": cc["channels"].get("gbp"),
+                 "last_linkedin_run": cc["last"].get("linkedin"), "last_gbp_run": cc["last"].get("gbp")},
+        "ready": ready, "paused": paused,
+        "linkedin": {"token": li_tok, "person_urn": li_urn},
+        "google_business": gb_fields,
+        "queue": dict(Counter(p.status for p in q)),
+        "last_delivered": {
+            "linkedin": str(autopost._last_posted_channel(db, "linkedin")),
+            "google_business": str(autopost._last_posted_channel(db, "google_business"))},
+        "verdict": verdict,
+    }
+
+
 class SettingsIn(BaseModel):
     enabled: bool | None = None
     gap_hours: int | None = None          # LinkedIn / default cadence (hours); 24 = daily
