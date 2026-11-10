@@ -12,6 +12,15 @@ import sys, os
 sys.path.insert(0, os.getcwd())
 os.environ["PULSE_DISABLE_KEV_TICKER"] = "1"
 os.environ["PULSE_DISABLE_SITE_REPAIR"] = "1"   # v1.99: no background repair in tests
+# v1.158: the autopilot scheduler waits FIRST_DELAY_SEC(=90) before its first
+# tick so FAST test runs finish undisturbed. On a slow/constrained box (e.g. the
+# python3.12 deploy container) this full suite can exceed 90s, at which point the
+# tick fires mid-run and one of the system posters (proactive/ai_triage/
+# automation/sla_escalation) drops an INTERNAL note on the open smoke ticket ->
+# staff sees 3 comments instead of 2 -> AssertionError: (3, 1). The scheduler's
+# own docstring says to disable it for tests; do exactly that so the suite is
+# deterministic regardless of how slow the host is.
+os.environ["SCHEDULER_ENABLED"] = "0"
 from fastapi.testclient import TestClient
 from app.main import app
 
@@ -8241,7 +8250,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.157.0"
+    assert _gs101().APP_VERSION == "1.158.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8690,7 +8699,7 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.157.0"
+    assert _gs101().APP_VERSION == "1.158.0"
     assert _sr100.REPAIR_EPOCH == "1.112.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
@@ -8726,7 +8735,7 @@ def main():
     assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
     # site nav points to the game home
     assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
-    assert _gs101().APP_VERSION == "1.157.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.158.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
           "Explore features it with a Halloween hero, republish forced OK")
 
@@ -8746,11 +8755,11 @@ def main():
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
     assert "xp-papel" in _xp3 and "Happy Thanksgiving" in _xp3, "seasonal Explore theme missing"
-    assert _gs101().APP_VERSION == "1.157.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.158.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
 
-    print("\n=== OpsPilot v1.157.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.158.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
