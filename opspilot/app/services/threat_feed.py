@@ -98,38 +98,64 @@ def _probe_counts(db: Session) -> tuple[int, int, list[dict]]:
 
 
 def _cloudflare(db: Session) -> dict | None:
-    """Real edge numbers from Cloudflare's GraphQL analytics, when a
-    ``cloudflare_analytics`` token (Account/Zone Analytics:Read) is stored.
-    Returns {failed_logins, bot, malware} or None. Fully self-healing."""
+    """Real edge numbers from Cloudflare's GraphQL analytics. Uses the GLOBAL
+    Cloudflare credential (the ``cloudflare`` slot — a Global API Key or a scoped
+    token), falling back to the dedicated ``cloudflare_analytics`` slot. Maps 24h
+    firewall events to {failed_logins, bot, malware, blocked}. Self-healing: a
+    dead token, a schema change, or no zone just returns None and the map falls
+    back to Pulse's own telemetry."""
     import json
     import urllib.request
-    conn = secure_config.get_platform(db, "cloudflare_analytics")
-    cfg = (conn.config if conn else None) or {}
-    token = secure_config.get_secret(cfg, "api_token") or cfg.get("api_token")
-    zone = cfg.get("zone_id")
-    if not (token and zone):
+
+    def _src(provider):
+        conn = secure_config.get_platform(db, provider)
+        c = (conn.config if conn else None) or {}
+        return (secure_config.get_secret(c, "api_token") or c.get("api_token"),
+                (c.get("auth_email") or "").strip() or None, c.get("zone_id"))
+
+    token, email, zone = _src("cloudflare")                  # the global slot first
+    if not token:
+        token, email, zone2 = _src("cloudflare_analytics")
+        zone = zone or zone2
+    if not token:
         return None
+    if not zone:                                             # discover bvtech.org's zone id
+        try:
+            from . import cloudflare as _cf
+            zone = _cf._zone_id(db, "bvtech")
+        except Exception:  # noqa: BLE001
+            zone = None
+    if not zone:
+        return None
+
     since = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
     query = {
-        "query": """query($zone:String!,$since:Time!){viewer{zones(filter:{zoneTag:$zone}){
-          firewallEventsAdaptiveGroups(limit:1,filter:{datetime_geq:$since}){count}
-        }}}""",
+        "query": ("query($zone:String!,$since:Time!){viewer{zones(filter:{zoneTag:$zone}){"
+                  "firewallEventsAdaptiveGroups(limit:200,filter:{datetime_geq:$since}){"
+                  "count dimensions{action source}}}}}"),
         "variables": {"zone": zone, "since": since},
     }
+    headers = ({"X-Auth-Key": token, "X-Auth-Email": email, "Content-Type": "application/json"}
+               if email else {"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
     try:
-        req = urllib.request.Request(
-            "https://api.cloudflare.com/client/v4/graphql",
-            data=json.dumps(query).encode(),
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-            method="POST")
+        req = urllib.request.Request("https://api.cloudflare.com/client/v4/graphql",
+                                     data=json.dumps(query).encode(), headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=8) as r:
             body = json.loads(r.read().decode())
-        groups = (body.get("data", {}).get("viewer", {}).get("zones", [{}]) or [{}])[0]
-        events = sum(int(g.get("count", 0))
-                     for g in (groups.get("firewallEventsAdaptiveGroups") or []))
-        # All blocked edge events are hostile traffic; we surface the total and let
-        # the per-category breakdown come from Pulse's own classification above.
-        return {"blocked_edge_24h": events}
+        zones = body.get("data", {}).get("viewer", {}).get("zones") or []
+        groups = ((zones[0].get("firewallEventsAdaptiveGroups") if zones else []) or [])
+        failed = bot = mal = blocked = 0
+        for g in groups:
+            n = int(g.get("count", 0))
+            blocked += n
+            src = str((g.get("dimensions", {}) or {}).get("source", "")).lower()
+            if "ratelimit" in src:
+                failed += n
+            elif "bot" in src:
+                bot += n
+            else:                        # WAF / managed rules / firewall / other = probes
+                mal += n
+        return {"failed_logins": failed, "bot": bot, "malware": mal, "blocked": blocked}
     except Exception:  # noqa: BLE001 — token dead / schema change / offline: skip
         return None
 
@@ -153,14 +179,20 @@ def snapshot(db: Session, *, force: bool = False) -> dict:
         cf = _cloudflare(db)
     except Exception:  # noqa: BLE001
         cf = None
-    edge_total = (cf or {}).get("blocked_edge_24h")
+    # Fold real Cloudflare edge numbers INTO the counters (not a separate box) so
+    # the map shows live blocked-attack volume the moment a CF token is connected.
+    cfd = cf or {}
+    failed += int(cfd.get("failed_logins", 0) or 0)
+    bot += int(cfd.get("bot", 0) or 0)
+    mal += int(cfd.get("malware", 0) or 0)
+    edge_total = cfd.get("blocked")
     data = {
         "failed_logins_24h": failed,
         "honeypot_hits": honeypot,
         "bot_traffic": bot,
         "malware_probes": mal,
-        "edge_blocked_24h": edge_total,               # None unless CF token set
-        "total_24h": (failed + honeypot + bot + mal) + (edge_total or 0),
+        "edge_blocked_24h": edge_total,               # None unless a CF token is set
+        "total_24h": failed + honeypot + bot + mal,   # already includes CF contributions
         "feed": feed,
         "cloudflare_connected": cf is not None,
         "source": "BVTech honeypots + edge defenses (Pulse telemetry"

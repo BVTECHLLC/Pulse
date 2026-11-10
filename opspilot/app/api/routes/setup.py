@@ -274,18 +274,25 @@ CONNECTORS = [
                 {"key": "github_active",
                  "label": "Use GitHub instead of GitLab? (yes/no - default yes once a "
                           "token is saved; set no to switch back to GitLab)", "secret": False}]},
-    {"key": "cloudflare", "name": "Cloudflare (instant cache purge)", "priority": 1,
-     "unlocks": "Published posts show on the sites IMMEDIATELY - without this, "
-                "Cloudflare's edge cache can serve the old page for hours.",
+    {"key": "cloudflare", "name": "Cloudflare (global — purge · analytics · threat map)",
+     "priority": 1,
+     "unlocks": "ONE Cloudflare credential powers everything: instant cache purge on every "
+                "publish, edge analytics, AND the live Threat Map's real blocked-attack "
+                "numbers. Paste your Global API Key + account email for full access across "
+                "every zone, or a scoped API Token if you prefer least-privilege.",
      "console_url": "https://dash.cloudflare.com/profile/api-tokens",
-     "console_hint": "Create Token -> Custom -> permissions Zone:Read + Cache Purge:Purge "
-                     "-> include zones bvtech.org AND jordanpolasek.com -> copy",
+     "console_hint": "FULL ACCESS (easiest): dash → My Profile → API Tokens → 'Global API Key' "
+                     "→ View → paste it + your Cloudflare account email below. "
+                     "LEAST-PRIVILEGE instead: Create Token → permissions Zone:Read + Cache "
+                     "Purge:Purge + Analytics:Read on all zones. Then add your bvtech.org Zone ID "
+                     "(zone Overview page) so the Threat Map can read edge analytics.",
      "save": "cloudflare", "secret_provider": "cloudflare", "secret_field": "api_token",
      "fields": [{"key": "api_token",
-                 "label": "Cloudflare API Token - or your Global API Key", "secret": True},
+                 "label": "Cloudflare Global API Key (full access) — or a scoped API Token", "secret": True},
                 {"key": "auth_email",
-                 "label": "Cloudflare account email (ONLY needed with the Global API Key)",
-                 "secret": False}]},
+                 "label": "Cloudflare account email (REQUIRED with the Global API Key)", "secret": False},
+                {"key": "zone_id", "label": "bvtech.org Zone ID (for the Threat Map's edge numbers)", "secret": False},
+                {"key": "account_id", "label": "Cloudflare Account ID (optional)", "secret": False}]},
     {"key": "m365_mailbox", "name": "Microsoft 365 (mail + SSO)", "priority": 1,
      "unlocks": "Secure mailbox (read/send as help@bvtech.org) + Microsoft sign-in for you + clients.",
      "console_url": "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade",
@@ -482,7 +489,8 @@ def save_connection(key: str, body: SaveCredIn, db: Session = Depends(get_db),
                 "verified": v.get("ok"), "detail": v.get("detail")}
     if prov == "cloudflare":
         from ...services import cloudflare
-        cf_payload = {k: v for k, v in payload.items() if k in ("api_token", "auth_email")}
+        cf_payload = {k: v for k, v in payload.items()
+                      if k in ("api_token", "auth_email", "zone_id", "account_id")}
         secure_config.upsert_platform(db, "cloudflare", "Cloudflare", "Publishing", cf_payload)
         # New credential -> stale zone cache could point at zones the old
         # credential saw; clear it so discovery re-runs with the new auth.
