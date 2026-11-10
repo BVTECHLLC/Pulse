@@ -45,13 +45,46 @@ def get_settings(db: Session = Depends(get_db),
 
 
 @router.get("/doctor")
-def doctor(db: Session = Depends(get_db),
+def doctor(post: int = 0, db: Session = Depends(get_db),
            user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
     """v1.157: 'why aren't LinkedIn/Google posting?' — every link in the chain +
-    a plain-English verdict, viewable in the browser (no shell)."""
+    a plain-English verdict, viewable in the browser (no shell).
+
+    v1.159: opening this page already SELF-HEALS LinkedIn — channel_readiness ->
+    _linkedin_poster derives + stores the author URN from your token when it was
+    missing (the #1 silent blocker). Add ?post=1 to FORCE a real LinkedIn +
+    Google attempt right now and see the exact per-channel result (or the exact
+    API error) inline — the one-click "make it post now and tell me what
+    happened" you can run from the browser, no shell needed. Cadence still
+    guards against double-posting."""
     from ...services import content_autopilot as ca, secure_config as sc
     from ...models import SocialPost, OAuthToken
     from collections import Counter
+    from datetime import datetime as _dt, timezone as _tz
+    forced = None
+    if post:
+        # Generate a fresh draft for each channel (free Groq writer / zero-token
+        # floor), then deliver everything that's due and report the raw result.
+        now = _dt.now(_tz.utc)
+        steps = {}
+        try:
+            steps["linkedin_generate"] = list(ca._run_linkedin(db, now))
+        except Exception as e:  # noqa: BLE001
+            steps["linkedin_generate"] = [False, f"error: {e}"]
+        # Google self-config: fill account/location from the API if still blank.
+        try:
+            steps["gbp_autoconfig"] = autopost.gbp_autoconfig(db)
+        except Exception as e:  # noqa: BLE001
+            steps["gbp_autoconfig"] = f"error: {e}"
+        try:
+            steps["gbp_generate"] = list(ca._run_gbp(db, now))
+        except Exception as e:  # noqa: BLE001
+            steps["gbp_generate"] = [False, f"error: {e}"]
+        try:
+            steps["delivered"] = autopost.deliver_all_due(db, now)
+        except Exception as e:  # noqa: BLE001
+            steps["delivered"] = [{"error": str(e)}]
+        forced = steps
     cc = ca.get_config(db)
     ready = autopost.channel_readiness(db)
     li = sc.get_platform(db, "pub_linkedin"); licfg = (li.config if li else {}) or {}
@@ -63,19 +96,33 @@ def doctor(db: Session = Depends(get_db),
                  ("client_id", "client_secret", "refresh_token", "account_name", "location_name")}
     q = db.query(SocialPost).all()
     paused = {ch: bool(autopost.get_reauth(db, ch)) for ch in autopost.CHANNELS}
-    if not (li_tok and li_urn):
-        verdict = "LinkedIn isn't fully connected (needs token + Person URN). Connect it in Settings → LinkedIn."
-    elif not ready.get("linkedin"):
-        verdict = "LinkedIn token looks expired — click Connect on the LinkedIn tile to refresh."
-    elif all(gb_fields.values()) and ready.get("linkedin"):
-        verdict = "All connected — LinkedIn + Google should post on the next daily tick."
-    else:
+    li_ready = ready.get("linkedin")
+    gb_ready = ready.get("google_business")
+    if li_ready and gb_ready:
+        verdict = "All connected — LinkedIn + Google are ready. Add ?post=1 to this URL to fire one now."
+    elif li_ready and not gb_ready:
         miss = [k for k, v in gb_fields.items() if not v]
-        verdict = f"LinkedIn is ready (posts daily). Google Business still needs: {', '.join(miss) or 'connect + pick location'}."
+        verdict = (f"LinkedIn is READY and posts daily. Google Business still needs: "
+                   f"{', '.join(miss) or 'connect + pick location'}. "
+                   f"Add ?post=1 to post to LinkedIn right now.")
+    elif not li_tok:
+        verdict = ("LinkedIn has no token yet — open Settings → LinkedIn tile → click Connect "
+                   "(one-click OAuth). Pasting only the Client ID/Secret is not enough; the "
+                   "Connect step is what grants the posting token.")
+    elif li_tok and not li_urn:
+        verdict = ("LinkedIn has a token but we couldn't read your author URN from it — your "
+                   "LinkedIn app is missing the 'Sign In with LinkedIn using OpenID Connect' "
+                   "product (scopes openid+profile). Add that product in the LinkedIn developer "
+                   "app, then click Connect again. (We auto-derive the URN the moment the token "
+                   "can read it.)")
+    else:
+        verdict = "LinkedIn token looks expired/limited — click Connect on the LinkedIn tile to refresh."
     from ...core.config import get_settings as _gs
     return {
         "version": _gs().APP_VERSION,
+        "forced": forced,
         "delivery_fix_deployed": hasattr(autopost, "deliver_all_due"),
+        "self_heal_urn": True,
         "drip": {"enabled": cc["enabled"], "linkedin_channel": cc["channels"].get("linkedin"),
                  "gbp_channel": cc["channels"].get("gbp"),
                  "last_linkedin_run": cc["last"].get("linkedin"), "last_gbp_run": cc["last"].get("gbp")},

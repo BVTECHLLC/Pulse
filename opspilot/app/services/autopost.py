@@ -97,6 +97,40 @@ def save_config(db: Session, **fields) -> dict:
 CHANNELS = ("linkedin", "google_business", "google_business_personal")
 
 
+def _derive_linkedin_urn(db: Session, access_token: str) -> str | None:
+    """Fetch the author's Person URN from LinkedIn's OpenID userinfo using a live
+    token, and persist it to the pub_linkedin vault. Returns the urn or None.
+    Tries the registered provider first, then LinkedIn's stable userinfo URL so it
+    works even before the provider registry is synced in this process."""
+    from . import oauth as _oauth
+    info: dict = {}
+    try:
+        info = _oauth.fetch_userinfo("linkedin", access_token) or {}
+    except Exception:  # noqa: BLE001
+        info = {}
+    if not info.get("sub"):
+        try:
+            import json as _json
+            from urllib import request as _rq
+            _r = _rq.Request("https://api.linkedin.com/v2/userinfo",
+                             headers={"Authorization": f"Bearer {access_token}",
+                                      "Accept": "application/json"})
+            with _rq.urlopen(_r, timeout=15) as _resp:
+                info = _json.loads(_resp.read().decode() or "{}")
+        except Exception:  # noqa: BLE001 — app may lack the openid/profile product
+            return None
+    sub = info.get("sub") or info.get("id")
+    if not sub:
+        return None
+    urn = f"urn:li:person:{sub}"
+    try:
+        secure_config.upsert_platform(db, "pub_linkedin", "LinkedIn Publisher",
+                                      "Marketing", {"person_urn": urn})
+    except Exception:  # noqa: BLE001 — derivation still usable this call
+        pass
+    return urn
+
+
 def _linkedin_poster(db: Session):
     """LinkedIn poster: callable(text, url, image) -> ref, or None if unconfigured.
     Prefers the one-click OAuth token (self-refreshing) and only falls back to a
@@ -106,13 +140,23 @@ def _linkedin_poster(db: Session):
     from . import oauth as _oauth, publishers
     conn = secure_config.get_platform(db, "pub_linkedin")
     cfg = (conn.config if conn else None) or {}
-    token = None
+    oauth_token = None
     try:
-        token = _oauth.get_valid_token(db, "linkedin")
+        oauth_token = _oauth.get_valid_token(db, "linkedin")
     except Exception:  # noqa: BLE001 — refresh hiccup: fall back to manual token
-        token = None
-    token = token or secure_config.get_secret(cfg, "access_token")
+        oauth_token = None
+    token = oauth_token or secure_config.get_secret(cfg, "access_token")
     urn = secure_config.get_secret(cfg, "person_urn") or cfg.get("person_urn")
+    # v1.159 SELF-HEAL: a working OAuth token but NO author URN is the #1 reason a
+    # "connected" LinkedIn never actually posts — delivery needs the author URN,
+    # but it only gets stored if the OAuth callback's userinfo returned `sub`
+    # (needs the openid/profile scope). When it's missing, posts pile up 'queued'
+    # forever with no error. So derive it on demand from LinkedIn's userinfo
+    # endpoint and persist it, so the very next tick delivers and the backlog
+    # drains. Gated on a REAL oauth token (an OAuthToken row) so this never fires
+    # an outbound call for a hand-pasted/placeholder token in tests.
+    if oauth_token and not urn:
+        urn = _derive_linkedin_urn(db, str(oauth_token))
     if not (token and urn):
         return None
     return lambda text, url, image=None: publishers.post_linkedin(str(token), str(urn), text, url or "")
@@ -146,6 +190,42 @@ def _gbp_poster(db: Session):
 
 def _gbp_personal_poster(db: Session):
     return _gbp_poster_from(db, "gbp_personal")
+
+
+def gbp_autoconfig(db: Session, vault_key: str = "gbp") -> tuple[str, str] | None:
+    """v1.159 Google self-config: when GBP has OAuth creds (client_id/secret/
+    refresh_token) but the painful account_name/location_name strings are still
+    blank, fetch them from the Business Profile API and store them — so the
+    operator never has to hunt for 'accounts/123 / locations/456'. Returns the
+    (account_name, location_name) in use, or None. USER-INITIATED ONLY (the
+    doctor's ?post=1): it makes an outbound Google call, so it must never run on
+    the hot per-tick readiness path. Safe to call repeatedly."""
+    from . import gbp as _gbp
+    conn = secure_config.get_platform(db, vault_key)
+    cfg = (conn.config if conn else None) or {}
+    if cfg.get("account_name") and cfg.get("location_name"):
+        return (str(cfg["account_name"]), str(cfg["location_name"]))
+    cid = secure_config.get_secret(cfg, "client_id") or cfg.get("client_id")
+    csec = secure_config.get_secret(cfg, "client_secret")
+    rt = secure_config.get_secret(cfg, "refresh_token")
+    if not (cid and csec and rt):
+        return None
+    try:
+        locs = _gbp.GBPClient(str(cid), str(csec), str(rt), "", "").list_locations()
+    except Exception:  # noqa: BLE001 — API not enabled/approved, or token dead
+        return None
+    if not locs:
+        return None
+    first = locs[0]
+    acct, locn = first.get("account"), first.get("location")
+    if not (acct and locn):
+        return None
+    try:
+        secure_config.upsert_platform(db, vault_key, "Google Business Profile", "Marketing",
+                                      {"account_name": acct, "location_name": locn})
+    except Exception:  # noqa: BLE001
+        pass
+    return (str(acct), str(locn))
 
 
 def _poster_for(db: Session, channel: str):
