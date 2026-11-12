@@ -89,6 +89,22 @@ about monitoring and continuity planning.</em></p>
 def main() -> int:
     db = SessionLocal()
     try:
+        # --- loud diagnostics so one run tells us exactly what's going on ---
+        from app.core.config import get_settings
+        from app.services import jp_site
+        print("=" * 60)
+        print("  BVTech advisory publisher")
+        print("=" * 60)
+        print("running APP_VERSION :", get_settings().APP_VERSION)
+        connected = False
+        try:
+            connected = jp_site.configured(db, "bvtech")
+        except Exception as e:  # noqa: BLE001
+            print("  (configured() check error:", e, ")")
+        print("bvtech.org connected:", connected,
+              "" if connected else "  <-- NO GitLab token in Settings; publish will be refused")
+        print("-" * 60)
+
         res = ca.publish_custom(
             db, "bvtech",
             title=TITLE, html=HTML, excerpt=EXCERPT,
