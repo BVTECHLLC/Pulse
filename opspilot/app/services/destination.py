@@ -619,6 +619,13 @@ def publish(db: Session) -> dict:
             files[_tm.PATH] = _tm.html()
         except Exception:  # noqa: BLE001 — never let one page break the release
             pass
+        # 6c) hidden easter-egg: "Surviving the AI Apocalypse" (self-contained,
+        #     noindex, not in nav/sitemap — reachable only by direct link).
+        try:
+            from . import pages_survive_ai as _sa
+            files[_sa.PATH] = _sa.html()
+        except Exception:  # noqa: BLE001
+            pass
         # commit — chunked, with create/update decided from one repo listing so a
         # big mode-bar rollout neither doubles GitLab load nor times out (v1.135).
         try:
@@ -637,6 +644,11 @@ def publish(db: Session) -> dict:
         try:
             from . import pages_threatmap as _tm
             purge.append(_tm.URL)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from . import pages_survive_ai as _sa
+            purge.append(_sa.URL)
         except Exception:  # noqa: BLE001
             pass
         cloudflare.purge_urls(db, "bvtech", purge)
