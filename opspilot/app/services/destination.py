@@ -190,6 +190,8 @@ NAV_EDITS = [
      '\n<li><a href="/graveyard-shift/">🧛 Graveyard Shift</a></li>'),
     ('portal.bvtech.org/arena', '<li><a href="/academy/">🎓 Academy Home</a></li>',
      '\n<li><a href="https://portal.bvtech.org/arena/">⚔️ Play Breach Protocol</a></li>'),
+    ('/cyber-range/threat-map/', '<li><a href="/cyber-range/">🛡️ The Cyber Range</a></li>',
+     '\n<li><a href="/cyber-range/threat-map/">🌐 Live Threat Map</a></li>'),
 ]
 
 
