@@ -98,12 +98,12 @@ footer{border-top:1px solid var(--border);padding:30px 0;text-align:center;color
 <div class="wrap"><div class="crumb"><a href="/cyber-range/">BVTech Cyber Range</a> › Live Threat Map</div></div>
 
 <section class="hero"><div class="wrap">
-  <span class="badge"><span class="dot"></span>Live · Real Edge Telemetry</span>
+  <span class="badge"><span class="dot"></span>Live · Edge Threat Telemetry</span>
   <h1>BVTech <span class="g">Threat Map</span></h1>
-  <p>This is live telemetry from BVTech's own honeypots and edge defenses — not a stock animation.
-     Every strike you see is a real attempt to breach our infrastructure: failed logins, automated
-     scanners, and malware probes from around the world, refreshed continuously. It's a window into
-     what every San Antonio, Houston, and Austin business faces every single day.</p>
+  <p>A live view of the automated attacks every business's edge absorbs around the clock — failed
+     logins, credential-stealing scanners, and malware probes from around the world. It blends global
+     threat patterns with telemetry from BVTech's own honeypots and edge defenses: a window into what
+     every San Antonio, Houston, and Austin business quietly faces every single day.</p>
 </div></section>
 
 <div class="wrap">
@@ -201,34 +201,41 @@ document.getElementById('yr').textContent = new Date().getFullYear();
   setInterval(function(){for(var k=0;k<intensity;k++)addArc();},900);addArc();draw();
 })();
 
-/* ---- live data from the Pulse feed (self-healing) ---- */
+/* ---- live data (self-healing) ----
+   Primary source is a SAME-ORIGIN snapshot (/cyber-range/threat-feed.json) so it
+   always loads — no cross-origin Cloudflare challenge. The Pulse portal refreshes
+   that file with real edge telemetry on its publish cycle. We ALSO try the portal
+   feed directly; if that origin is reachable, its real-time numbers overlay the
+   snapshot. Either way the map is never dead. */
 (function(){
+  var LOCAL="/cyber-range/threat-feed.json";
   var FEED="https://portal.bvtech.org/api/public-tools/threat-feed";
   function nf(n){return (n||0).toLocaleString();}
-  function set(id,v){var el=document.getElementById(id);if(el)el.textContent=nf(v);}
+  function set(id,v){if(v==null)return;var el=document.getElementById(id);if(el)el.textContent=nf(v);}
   function hot(id,v){var el=document.getElementById(id);if(el)el.classList.toggle('hot',(v||0)>0);}
-  function tick(){
-    fetch(FEED,{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
-      set("tm-failed",d.failed_logins_24h);set("tm-honeypot",d.honeypot_hits);
-      set("tm-bots",d.bot_traffic);set("tm-malware",d.malware_probes);
-      hot("tm-malware",d.malware_probes);hot("tm-failed",d.failed_logins_24h);
-      var tot=document.getElementById("tm-total");if(tot)tot.textContent=nf(d.total_24h)+" / 24H";
-      if(window.__tmIntensity)window.__tmIntensity(d.total_24h);
-      var up=document.getElementById("tm-updated");
-      if(up)up.textContent="updated "+new Date().toLocaleTimeString();
+  function apply(d){
+    if(!d)return;
+    set("tm-failed",d.failed_logins_24h);set("tm-honeypot",d.honeypot_hits);
+    set("tm-bots",d.bot_traffic);set("tm-malware",d.malware_probes);
+    hot("tm-malware",d.malware_probes);hot("tm-failed",d.failed_logins_24h);
+    var tot=document.getElementById("tm-total");
+    if(tot&&d.total_24h!=null)tot.textContent=nf(d.total_24h)+" / 24H";
+    if(window.__tmIntensity&&d.total_24h!=null)window.__tmIntensity(d.total_24h);
+    var up=document.getElementById("tm-updated");
+    if(up)up.textContent="updated "+new Date().toLocaleTimeString();
+    if(d.feed&&d.feed.length){
       var box=document.getElementById("tm-feed"),probes=document.getElementById("tm-probes");
-      if(!d.feed||!d.feed.length){
-        if(box)box.innerHTML='<div class="quiet">All quiet — nothing getting through right now. &#10003;</div>';
-        if(probes)probes.innerHTML='<div class="quiet">No probes recorded in the last 24 hours — the edge is quiet. &#10003;</div>';
-      }else{
-        if(box)box.innerHTML=d.feed.map(function(f){var mal=f.type==="malware probe";
-          return '<div class="row"><span class="t '+(mal?'mal':'bot')+'">'+(mal?'&#9888; MALWARE':'&#129302; BOT')
-            +'</span><span class="p">'+(f.count||1)+'&times; '+String(f.path||"").replace(/[<>&"]/g,"")+'</span></div>';}).join("");
-        if(probes)probes.innerHTML=d.feed.map(function(f){var mal=f.type==="malware probe";
-          return '<div class="pc"><span>'+(mal?'&#9888;':'&#129302;')+' '+String(f.path||"").replace(/[<>&"]/g,"")
-            +'</span><b style="color:'+(mal?'#ff5c6c':'#F5BE58')+'">'+(f.count||1)+'&times;</b></div>';}).join("");
-      }
-    }).catch(function(){ /* keep last values on a blip — self-healing */ });
+      if(box)box.innerHTML=d.feed.map(function(f){var mal=f.type==="malware probe";
+        return '<div class="row"><span class="t '+(mal?'mal':'bot')+'">'+(mal?'&#9888; MALWARE':'&#129302; BOT')
+          +'</span><span class="p">'+(f.count||1)+'&times; '+String(f.path||"").replace(/[<>&"]/g,"")+'</span></div>';}).join("");
+      if(probes)probes.innerHTML=d.feed.map(function(f){var mal=f.type==="malware probe";
+        return '<div class="pc"><span>'+(mal?'&#9888;':'&#129302;')+' '+String(f.path||"").replace(/[<>&"]/g,"")
+          +'</span><b style="color:'+(mal?'#ff5c6c':'#F5BE58')+'">'+(f.count||1)+'&times;</b></div>';}).join("");
+    }
+  }
+  function tick(){
+    fetch(LOCAL,{cache:"no-store"}).then(function(r){return r.json();}).then(apply).catch(function(){});
+    fetch(FEED,{cache:"no-store"}).then(function(r){return r.json();}).then(apply).catch(function(){});
   }
   tick();setInterval(tick,30000);
 })();

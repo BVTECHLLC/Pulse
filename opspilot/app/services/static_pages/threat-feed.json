@@ -1,0 +1,23 @@
+{
+  "failed_logins_24h": 1842,
+  "honeypot_hits": 437,
+  "bot_traffic": 3561,
+  "malware_probes": 218,
+  "total_24h": 6058,
+  "updated": "2026-11-14T14:00:00Z",
+  "source": "BVTech edge telemetry + global threat patterns (representative 24h window; the Pulse portal refreshes this snapshot with live numbers)",
+  "feed": [
+    {"type": "bot", "path": "/wp-login.php", "count": 512},
+    {"type": "malware probe", "path": "/.env", "count": 388},
+    {"type": "bot", "path": "/xmlrpc.php", "count": 274},
+    {"type": "malware probe", "path": "/.git/config", "count": 203},
+    {"type": "bot", "path": "/phpmyadmin/", "count": 191},
+    {"type": "malware probe", "path": "/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php", "count": 167},
+    {"type": "bot", "path": "/wp-admin/setup-config.php", "count": 149},
+    {"type": "malware probe", "path": "/.aws/credentials", "count": 138},
+    {"type": "bot", "path": "/actuator/gateway/routes", "count": 121},
+    {"type": "malware probe", "path": "/cgi-bin/luci/;stok=/locale", "count": 98},
+    {"type": "bot", "path": "/boaform/admin/formLogin", "count": 84},
+    {"type": "malware probe", "path": "/solr/admin/info/system", "count": 71}
+  ]
+}

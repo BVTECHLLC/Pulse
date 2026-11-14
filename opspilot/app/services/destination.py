@@ -615,8 +615,13 @@ def publish(db: Session) -> dict:
         # 6b) v1.152 — the live Threat Map page, written AFTER the sweep so it
         #     always ships pristine (self-contained chrome + Pulse-fed telemetry).
         try:
-            from . import pages_threatmap as _tm
+            from . import pages_threatmap as _tm, threat_feed as _tf
+            import json as _json
             files[_tm.PATH] = _tm.html()
+            # Same-origin data file the page reads (no cross-origin Cloudflare
+            # challenge): refresh it with the REAL live snapshot every publish.
+            files["cyber-range/threat-feed.json"] = _json.dumps(
+                _tf.snapshot(db), separators=(",", ":"))
         except Exception:  # noqa: BLE001 — never let one page break the release
             pass
         # 6c) hidden easter-egg: "Surviving the AI Apocalypse" (self-contained,
