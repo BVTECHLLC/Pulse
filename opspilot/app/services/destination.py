@@ -618,6 +618,7 @@ def publish(db: Session) -> dict:
             from . import pages_threatmap as _tm, threat_feed as _tf
             import json as _json
             files[_tm.PATH] = _tm.html()
+            files[_tm.WORLD_PATH] = _tm.world_js()   # D3 world geometry (same-origin)
             # Same-origin data file the page reads (no cross-origin Cloudflare
             # challenge): refresh it with the REAL live snapshot every publish.
             files["cyber-range/threat-feed.json"] = _json.dumps(

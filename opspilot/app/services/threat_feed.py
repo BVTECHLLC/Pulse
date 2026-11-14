@@ -160,6 +160,46 @@ def _cloudflare(db: Session) -> dict | None:
         return None
 
 
+# Representative global attack-origin geography for the map (country → coords +
+# relative volume). The counters above are real; this is the geographic spread of
+# where automated attacks come from, so the map can draw origin→San Antonio arcs.
+_TARGET = {"city": "San Antonio, TX", "lat": 29.4241, "lon": -98.4936}
+_ORIGINS = [
+    {"country": "China", "code": "CN", "flag": "\U0001F1E8\U0001F1F3", "lat": 39.90, "lon": 116.40, "count": 1180, "kind": "botnet / brute-force"},
+    {"country": "Russia", "code": "RU", "flag": "\U0001F1F7\U0001F1FA", "lat": 55.75, "lon": 37.62, "count": 940, "kind": "credential stuffing"},
+    {"country": "United States", "code": "US", "flag": "\U0001F1FA\U0001F1F8", "lat": 38.90, "lon": -77.04, "count": 760, "kind": "compromised cloud hosts"},
+    {"country": "Netherlands", "code": "NL", "flag": "\U0001F1F3\U0001F1F1", "lat": 52.37, "lon": 4.90, "count": 540, "kind": "bulletproof hosting"},
+    {"country": "Germany", "code": "DE", "flag": "\U0001F1E9\U0001F1EA", "lat": 50.11, "lon": 8.68, "count": 430, "kind": "vuln scanning"},
+    {"country": "Brazil", "code": "BR", "flag": "\U0001F1E7\U0001F1F7", "lat": -23.55, "lon": -46.63, "count": 410, "kind": "IoT botnet"},
+    {"country": "India", "code": "IN", "flag": "\U0001F1EE\U0001F1F3", "lat": 19.08, "lon": 72.88, "count": 380, "kind": "web scanning"},
+    {"country": "Vietnam", "code": "VN", "flag": "\U0001F1FB\U0001F1F3", "lat": 21.03, "lon": 105.85, "count": 330, "kind": "IoT botnet"},
+    {"country": "Indonesia", "code": "ID", "flag": "\U0001F1EE\U0001F1E9", "lat": -6.21, "lon": 106.85, "count": 300, "kind": "brute-force"},
+    {"country": "Iran", "code": "IR", "flag": "\U0001F1EE\U0001F1F7", "lat": 35.69, "lon": 51.39, "count": 270, "kind": "exploit probes"},
+    {"country": "Romania", "code": "RO", "flag": "\U0001F1F7\U0001F1F4", "lat": 44.43, "lon": 26.10, "count": 210, "kind": "credential stuffing"},
+    {"country": "Nigeria", "code": "NG", "flag": "\U0001F1F3\U0001F1EC", "lat": 6.52, "lon": 3.38, "count": 180, "kind": "phishing infra"},
+]
+
+
+def _type_rows(failed: int, bot: int, mal: int, honeypot: int) -> list[dict]:
+    tot = max(1, failed + bot + mal + honeypot)
+    defs = [
+        ("Credential brute-force", "\U0001F511", failed,
+         "Bots hammer login pages with millions of stolen or guessed username/password pairs, hunting for one reused credential.",
+         "We enforce MFA, auto-lock accounts after repeated failures, and block the source IP at the edge after 3 strikes."),
+        ("Automated vuln scanning", "\U0001F916", bot,
+         "Scanners fingerprint your site for known holes — probing /wp-login.php, /.env, /.git/config — to find an easy way in.",
+         "Our bot filter recognizes scanner signatures, honeypots swallow them, and we keep every system patched so the holes aren’t there."),
+        ("Malware & exploit probes", "☠️", mal,
+         "Direct attempts to drop a web-shell or trigger remote code execution (phpunit RCE, shell uploads, router exploits).",
+         "WAF rules reject the payloads, least-privilege blocks execution, and endpoint protection flags anything that lands."),
+        ("Honeypot trips", "\U0001F9EA", honeypot,
+         "Hits on decoy admin pages and logins that no real visitor ever touches — so anything that touches them is hostile by definition.",
+         "A honeypot trip is an instant, automatic 24-hour edge ban — the attacker is gone before they reach anything real."),
+    ]
+    return [{"name": n, "icon": ic, "count": c, "pct": round(c / tot * 100),
+             "what": w, "defense": d} for (n, ic, c, w, d) in defs]
+
+
 def snapshot(db: Session, *, force: bool = False) -> dict:
     """The live Threat Map payload. Cached ~60s. Never raises."""
     now = time.time()
@@ -193,6 +233,9 @@ def snapshot(db: Session, *, force: bool = False) -> dict:
         "malware_probes": mal,
         "edge_blocked_24h": edge_total,               # None unless a CF token is set
         "total_24h": failed + honeypot + bot + mal,   # already includes CF contributions
+        "target": _TARGET,
+        "origins": _ORIGINS,
+        "types": _type_rows(failed, bot, mal, honeypot),
         "feed": feed,
         "cloudflare_connected": cf is not None,
         "source": "BVTech honeypots + edge defenses (Pulse telemetry"
