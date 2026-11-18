@@ -98,6 +98,13 @@ async def security_headers(request: Request, call_next):
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["X-Frame-Options"] = "DENY"
     resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # Browsing-context isolation (XS-leak / cross-window defense). "allow-popups"
+    # keeps OAuth/popup sign-in flows working while still severing opener access
+    # from cross-origin windows. Plus two legacy hardening headers (Adobe cross-
+    # domain policy lockdown, and IE's "don't auto-open downloads").
+    resp.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+    resp.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+    resp.headers["X-Download-Options"] = "noopen"
     # Deny the powerful features the portal never uses (clickjacking / permission
     # abuse defense). Motion sensors are left at the default so game device-motion
     # controls keep working; camera/mic/geo/payment/usb are hard-denied.

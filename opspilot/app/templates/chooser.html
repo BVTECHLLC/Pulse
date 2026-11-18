@@ -7,70 +7,164 @@
 <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/css/pulse.css?v={{ version }}">
 <style>
-  .choose-shell{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 18px;gap:26px}
-  .choose-head{text-align:center;max-width:560px}
-  .choose-head .lockup{display:inline-flex;align-items:center;gap:12px;text-decoration:none;margin-bottom:14px}
-  .choose-head .lockup img{height:40px}
-  .choose-head .wm{font-size:20px;line-height:1.1;color:var(--ink,#e8eef7);text-align:left}
-  .choose-head .wm span{display:block;font-size:11px;color:var(--muted);letter-spacing:.04em}
-  .choose-head h1{font-size:26px;margin:8px 0 6px}
-  .choose-head p{color:var(--muted);font-size:15px;line-height:1.5;margin:0}
-  .doors{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;width:100%;max-width:880px}
-  .door{display:flex;flex-direction:column;text-decoration:none;background:var(--card,#111a2b);border:1px solid var(--line,#22314b);border-radius:16px;padding:26px 22px;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
-  .door:hover{transform:translateY(-4px);border-color:var(--accent,#3aa0ff);box-shadow:0 16px 40px rgba(0,0,0,.35)}
-  .door .ic{font-size:34px;margin-bottom:12px}
-  .door h2{font-size:18px;margin:0 0 6px;color:var(--ink,#e8eef7)}
-  .door p{font-size:13.5px;color:var(--muted);line-height:1.55;margin:0 0 16px;flex:1}
-  .door .go{font-size:13px;font-weight:700;color:var(--accent,#3aa0ff)}
-  .door .tag{align-self:flex-start;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line,#22314b);border-radius:999px;padding:3px 9px;margin-bottom:14px}
-  .door.academy{border-color:rgba(38,196,133,.4)}
-  .door.academy:hover{border-color:#26C485;box-shadow:0 16px 40px rgba(38,196,133,.18)}
-  .door.academy .go{color:#26C485}
-  .choose-foot{color:var(--muted);font-size:12px;text-align:center}
-  .choose-foot a{color:inherit}
-  @media(max-width:720px){.doors{grid-template-columns:1fr}}
+  :root{ --a: var(--peri,#4440DB); }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--navy,#0E0D2C);color:var(--ink,#EEF0FF);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;overflow-x:hidden}
+  /* --- animated aurora backdrop --- */
+  .bg{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+  .bg::before,.bg::after{content:"";position:absolute;border-radius:50%;filter:blur(90px);opacity:.55;
+    will-change:transform}
+  .bg::before{width:52vw;height:52vw;left:-12vw;top:-16vh;
+    background:radial-gradient(circle at 30% 30%,#5B57E8,transparent 62%);
+    animation:drift1 22s ease-in-out infinite alternate}
+  .bg::after{width:46vw;height:46vw;right:-10vw;bottom:-14vh;
+    background:radial-gradient(circle at 60% 60%,#26C485,transparent 60%);opacity:.38;
+    animation:drift2 26s ease-in-out infinite alternate}
+  .grid-ov{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.35;
+    background-image:linear-gradient(rgba(91,87,232,.06) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(91,87,232,.06) 1px,transparent 1px);
+    background-size:44px 44px;mask-image:radial-gradient(ellipse at 50% 40%,#000 30%,transparent 78%)}
+  @keyframes drift1{from{transform:translate(0,0) scale(1)}to{transform:translate(8vw,6vh) scale(1.12)}}
+  @keyframes drift2{from{transform:translate(0,0) scale(1)}to{transform:translate(-6vw,-5vh) scale(1.15)}}
+  @media(prefers-reduced-motion:reduce){.bg::before,.bg::after{animation:none}}
+
+  .choose-shell{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;padding:48px 18px;gap:30px}
+  .choose-head{text-align:center;max-width:620px}
+  .lockup{display:inline-flex;align-items:center;gap:12px;text-decoration:none;margin-bottom:18px}
+  .lockup img{height:42px;filter:drop-shadow(0 4px 14px rgba(68,64,219,.5))}
+  .lockup .wm{font-size:20px;line-height:1.1;color:var(--ink);text-align:left}
+  .lockup .wm b{font-weight:800}
+  .lockup .wm span{display:block;font-size:11px;color:var(--muted);letter-spacing:.06em;margin-top:2px}
+  .choose-head h1{font-size:30px;line-height:1.18;margin:10px 0 8px;font-weight:800;letter-spacing:-.01em;
+    background:linear-gradient(92deg,#EEF0FF 20%,#B9B6FF 60%,#8ef0c6);-webkit-background-clip:text;
+    background-clip:text;color:transparent}
+  .choose-head p{color:var(--muted);font-size:15.5px;line-height:1.55;margin:0 auto;max-width:480px}
+  .pillrow{display:inline-flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:16px}
+  .pillrow span{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:999px;
+    padding:5px 12px;background:rgba(255,255,255,.02)}
+  .pillrow b{color:var(--ink);font-weight:700}
+
+  .doors{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;width:100%;max-width:960px}
+  .door{position:relative;display:flex;flex-direction:column;text-decoration:none;overflow:hidden;
+    background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015));
+    border:1px solid var(--line);border-radius:18px;padding:0;
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    transition:transform .18s cubic-bezier(.2,.7,.2,1),border-color .18s,box-shadow .18s}
+  .door .accentbar{height:4px;background:linear-gradient(90deg,var(--a),transparent)}
+  .door .inner{padding:24px 22px 22px;display:flex;flex-direction:column;flex:1}
+  .door:hover{transform:translateY(-6px);border-color:var(--a);
+    box-shadow:0 20px 50px -12px color-mix(in srgb,var(--a) 45%,transparent)}
+  .door .tag{align-self:flex-start;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--a);border:1px solid color-mix(in srgb,var(--a) 45%,var(--line));border-radius:999px;
+    padding:4px 10px;margin-bottom:16px;font-weight:700;background:color-mix(in srgb,var(--a) 10%,transparent)}
+  .door .ic{width:54px;height:54px;border-radius:14px;display:grid;place-items:center;font-size:28px;
+    margin-bottom:14px;background:color-mix(in srgb,var(--a) 16%,transparent);
+    border:1px solid color-mix(in srgb,var(--a) 30%,var(--line))}
+  .door h2{font-size:19px;margin:0 0 7px;color:var(--ink);font-weight:800}
+  .door>.inner>p{font-size:13.5px;color:var(--muted);line-height:1.55;margin:0 0 14px}
+  .feats{list-style:none;padding:0;margin:0 0 18px;display:flex;flex-direction:column;gap:7px;flex:1}
+  .feats li{font-size:12.5px;color:var(--ink);opacity:.9;display:flex;align-items:center;gap:8px}
+  .feats li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--a);flex:none;
+    box-shadow:0 0 8px var(--a)}
+  .door .go{font-size:13.5px;font-weight:800;color:var(--a);display:inline-flex;align-items:center;gap:6px;
+    transition:gap .16s}
+  .door:hover .go{gap:11px}
+
+  .door.team{--a:#5B57E8}
+  .door.client{--a:#34C3E0}
+  .door.academy{--a:#26C485}
+
+  .choose-foot{position:relative;z-index:1;color:var(--muted);font-size:12.5px;text-align:center;line-height:1.7}
+  .choose-foot a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--line)}
+  .choose-foot a:hover{border-color:var(--peri,#4440DB)}
+  .trust{display:inline-flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-bottom:8px;color:var(--muted);font-size:11.5px}
+  .trust span{display:inline-flex;align-items:center;gap:5px}
+  @media(max-width:760px){.doors{grid-template-columns:1fr;max-width:420px}.choose-head h1{font-size:25px}}
 </style>
 </head>
 <body>
+<div class="bg"></div><div class="grid-ov"></div>
+
 <div class="choose-shell">
   <div class="choose-head">
     <a class="lockup" href="/">
       <img src="/static/img/mark.svg" alt="BVTech OpsPilot">
-      <span class="wm"><b>BVTech</b> OpsPilot<span>MSP Command Center · Academy</span></span>
+      <span class="wm"><b>BVTech</b> OpsPilot<span>MSP COMMAND CENTER · CYBER ACADEMY</span></span>
     </a>
-    <h1>Welcome — how are you signing in?</h1>
-    <p>Three doors, one platform. Pick the one that's you.</p>
+    <h1>One platform. Three doors.<br>Pick the one that's you.</h1>
+    <p>Secure managed IT, a live client portal, and a free hands-on Cyber Academy — all under one roof.</p>
+    <div class="pillrow">
+      <span>🔒 <b>MFA</b> &amp; encrypted</span>
+      <span>⚡ Real-time</span>
+      <span>🛡️ Built in <b>Texas</b></span>
+    </div>
   </div>
 
   <div class="doors">
-    <a class="door" href="/login?as=staff">
-      <span class="tag">Internal</span>
-      <div class="ic">🏢</div>
-      <h2>BVTech Team</h2>
-      <p>Staff command center — clients, devices, tickets, security, billing, and automation.</p>
-      <span class="go">Sign in →</span>
+    <a class="door team" href="/login?as=staff">
+      <div class="accentbar"></div>
+      <div class="inner">
+        <span class="tag">Internal</span>
+        <div class="ic">🏢</div>
+        <h2>BVTech Team</h2>
+        <p>The staff command center that runs the whole MSP.</p>
+        <ul class="feats">
+          <li>Clients, devices &amp; assets</li>
+          <li>Tickets, SLAs &amp; automation</li>
+          <li>Security posture &amp; RMM</li>
+          <li>Billing, PSA &amp; reports</li>
+        </ul>
+        <span class="go">Sign in →</span>
+      </div>
     </a>
-    <a class="door" href="/login?as=client">
-      <span class="tag">For our clients</span>
-      <div class="ic">🛡️</div>
-      <h2>Client Portal</h2>
-      <p>Your organization's security grade, devices, invoices, support requests, and training.</p>
-      <span class="go">Sign in →</span>
+
+    <a class="door client" href="/login?as=client">
+      <div class="accentbar"></div>
+      <div class="inner">
+        <span class="tag">For our clients</span>
+        <div class="ic">🛡️</div>
+        <h2>Client Portal</h2>
+        <p>Everything about your service, in one clear place.</p>
+        <ul class="feats">
+          <li>Your live security grade</li>
+          <li>Devices &amp; health</li>
+          <li>Invoices &amp; payments</li>
+          <li>Support requests &amp; training</li>
+        </ul>
+        <span class="go">Sign in →</span>
+      </div>
     </a>
+
     <a class="door academy" href="/login?as=academy">
-      <span class="tag">Open to everyone</span>
-      <div class="ic">🎓</div>
-      <h2>Cyber Academy</h2>
-      <p>Learn to hack &amp; defend — 50+ hands-on labs, lessons, and a live leaderboard. Free to join.</p>
-      <span class="go">Sign in or join free →</span>
+      <div class="accentbar"></div>
+      <div class="inner">
+        <span class="tag">Open to everyone · Free</span>
+        <div class="ic">🎓</div>
+        <h2>Cyber Academy</h2>
+        <p>Learn to hack &amp; defend — real skills, zero cost.</p>
+        <ul class="feats">
+          <li>50+ hands-on labs &amp; a live range</li>
+          <li>Lessons, quizzes &amp; a Code Dojo</li>
+          <li>Live leaderboard &amp; real certificates</li>
+          <li>Free forever — join in seconds</li>
+        </ul>
+        <span class="go">Sign in or join free →</span>
+      </div>
     </a>
   </div>
 
   <div class="choose-foot">
-    New to the Academy? <a href="/join">Create a free account →</a><br>
-    BVTech LLC · Managed IT &amp; Cybersecurity · <a href="mailto:help@bvtech.org">help@bvtech.org</a> · v{{ version }}
+    <div class="trust">
+      <span>🔐 Encrypted at rest</span><span>✅ MFA-protected</span><span>📋 Audited access</span>
+    </div>
+    <div style="margin-bottom:6px">New to the Academy? <a href="/join">Create a free account →</a></div>
+    <div>BVTech LLC · Managed IT &amp; Cybersecurity · <a href="mailto:help@bvtech.org">help@bvtech.org</a> · v{{ version }}</div>
   </div>
 </div>
+
 <script>
 // If an OAuth error ever lands on the chooser, forward it to the login page,
 // which knows how to display it (belt-and-suspenders after the callback fix).

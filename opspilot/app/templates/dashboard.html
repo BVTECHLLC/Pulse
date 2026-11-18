@@ -1309,7 +1309,7 @@
       <div style="background:#0c1430;border-radius:8px;height:10px;overflow:hidden;margin-bottom:12px">
         <div id="cc-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#6c5ce7,#2ecc71);transition:width .4s"></div></div>
       <div id="cc-needs"></div>
-      <div id="cc-grid" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px"><div class="muted">Loading…</div></div>
+      <div id="cc-grid" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;align-items:start"><div class="muted">Loading…</div></div>
     </div>
 
     <div class="card" style="margin-bottom:16px">
@@ -4920,7 +4920,7 @@ async function loadConnCenter(){
         + `</ul></div>`
       : (d.ready>=d.total?`<div style="color:var(--good,#2ecc71);font-size:12px;margin-bottom:10px">✅ Every connector is fully set up.</div>`:'');
   }
-  document.getElementById('cc-grid').innerHTML=(d.items||[]).map(it=>{
+  function _ccCard(it){
     const unreadable=it.credential_state==='unreadable';
     // 🟢 fully ready · 🟡 one step left · 🔴 nothing saved · 🟠 unreadable credential
     const dot=unreadable?'🟠':(it.state==='ready'?'🟢':(it.state==='action'?'🟡':'🔴'));
@@ -4969,7 +4969,20 @@ async function loadConnCenter(){
       <div class="muted" style="font-size:11px;margin:6px 0">${esc(it.unlocks)}</div>
       ${it.console_hint&&it.console_url?`<div class="muted" style="font-size:10px">🧭 ${esc(it.console_hint)}</div>`:''}
       <div style="margin-top:8px">${link}</div>${warn}${enter}${picker}
-    </div>`;}).join('');
+    </div>`;}
+  // v1.160: group the tiles into the three priority tiers with a header + a
+  // "x/y ready" badge per tier, so the go-live path reads top-to-bottom.
+  const items=d.items||[];
+  const tiers=[[1,'🚀 Priority 1 · Go-Live Essentials'],[2,'📈 Priority 2 · Growth &amp; Billing'],[3,'🧩 Priority 3 · Optional &amp; Niche']];
+  document.getElementById('cc-grid').innerHTML=tiers.map(([pr,label])=>{
+    const g=items.filter(it=>(it.priority||3)===pr); if(!g.length)return '';
+    const ready=g.filter(it=>it.state==='ready').length;
+    const col=ready===g.length?'var(--good,#2ecc71)':(ready?'var(--warn)':'var(--muted,#8893a7)');
+    return `<div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;margin:10px 0 0">
+        <b style="font-size:13px">${label}</b>
+        <span class="pill" style="font-size:10px;color:${col}">${ready}/${g.length} ready</span></div>`
+      + g.map(_ccCard).join('');
+  }).join('')||'<div class="muted">No connectors.</div>';
 }
 // v1.146 Google Business location picker — fetch the connected account's real
 // listings and let the user pick one (auto-fills account_name + location_name).
