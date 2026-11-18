@@ -775,6 +775,18 @@
     <div class="card" style="margin-bottom:16px"><h3>Security Posture by Client</h3><table>
       <thead><tr><th>Client</th><th>Score</th><th>Open</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th></tr></thead>
       <tbody id="t-scorecard"></tbody></table></div>
+    <div class="card" style="margin-bottom:16px;border:1px solid rgba(104,225,253,.25)">
+      <h3 style="margin-top:0">🔍 External Posture Scan <span class="muted" style="font-size:12px">— live, read-only check of a public domain</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Point it at a client's domain and it actively checks <b>TLS/HTTPS</b>, <b>security headers</b>, <b>HTTP→HTTPS redirect</b>, and <b>SPF/DMARC</b> email authentication — then files any gaps as findings under a fresh assessment and recomputes the posture score. Read-only recon, no exploitation.</p>
+      <div class="flex" style="gap:10px;align-items:flex-end;flex-wrap:wrap">
+        <div style="flex:1;min-width:150px"><label>Client</label>
+          <select id="scan-client" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select></div>
+        <div style="flex:1;min-width:150px"><label>Domain</label>
+          <input id="scan-domain" placeholder="example.com" style="width:100%"></div>
+        <button class="btn" id="scan-btn" onclick="runExternalScan()">🔍 Run scan</button>
+      </div>
+      <div id="scan-result" class="muted" style="margin-top:10px;font-size:13px"></div>
+    </div>
     <div class="grid cols-2" style="align-items:start">
       <div class="card">
         <h3>New Finding</h3>
@@ -2520,6 +2532,7 @@ async function postureDetail(cid){
 }
 async function loadSecurity(){
   loadPosture();
+  {const ss=document.getElementById('scan-client');if(ss&&!ss.options.length)ss.innerHTML=Object.entries(CLIENTS||{}).map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('');}
   const cards=await api('/api/security/scorecard');if(!cards)return;
   const list=Array.isArray(cards)?cards:[cards];
   document.getElementById('t-scorecard').innerHTML=list.map(s=>{
@@ -2549,6 +2562,24 @@ async function createFinding(){
   else{const d=await r.json().catch(()=>({detail:'Error'}));msg.textContent=d.detail||'Failed';}
 }
 async function setFinding(id,st){await patch(`/api/security/findings/${id}`,{status:st});loadSecurity();refreshBadges();loadAlerts();}
+async function runExternalScan(){
+  const client_id=parseInt((document.getElementById('scan-client').value)||'0');
+  const domain=(document.getElementById('scan-domain').value||'').trim();
+  const out=document.getElementById('scan-result'),btn=document.getElementById('scan-btn');
+  if(!client_id){out.textContent='Pick a client first.';return;}
+  if(!domain){out.textContent='Enter a domain, e.g. example.com';document.getElementById('scan-domain').focus();return;}
+  btn.disabled=true;const t=btn.textContent;btn.textContent='Scanning…';
+  out.textContent='Running a live external scan of '+domain+' — a few seconds…';
+  try{
+    const r=await post('/api/security/scan',{client_id,domain});
+    if(r.ok){const d=await r.json();const sc=d.scorecard||{};
+      out.innerHTML='✓ Scan complete for <b>'+esc(d.domain||domain)+'</b> — <b>'+d.findings_created+'</b> finding(s) filed'
+        +(sc.score!=null?('. Posture score: <b style="color:'+scoreColor(sc.score)+'">'+sc.score+'</b>/100'):'')+'.';
+      loadSecurity();refreshBadges();loadAlerts();
+    }else{const e=await r.json().catch(()=>({detail:'Scan failed'}));out.textContent=e.detail||'Scan failed.';}
+  }catch(e){out.textContent='Scan failed: '+((e&&e.message)||e);}
+  btn.disabled=false;btn.textContent=t;
+}
 
 // ---- Clients ----
 async function onboardClient(){

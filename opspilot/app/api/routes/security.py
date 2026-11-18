@@ -22,7 +22,7 @@ from ...models import (
     AssessmentStatus, Client, Device, FindingSeverity, FindingStatus, Role,
     SecurityAssessment, SecurityFinding, User,
 )
-from ...services import audit, automation, security
+from ...services import audit, automation, scanner, security
 
 router = APIRouter(prefix="/api/security", tags=["security"])
 
@@ -167,6 +167,54 @@ def create_finding(body: FindingIn, request: Request, db: Session = Depends(get_
         automation.dispatch(db, "alert.opened",
                             automation.build_alert_context(alert, db.get(Device, f.device_id) if f.device_id else None))
     return {"id": f.id, "alert_raised": alert is not None}
+
+
+class ScanIn(BaseModel):
+    client_id: int
+    domain: str
+    authorized_by: str | None = None
+    client_visible: bool = False
+
+
+@router.post("/scan", status_code=201)
+def run_external_scan(body: ScanIn, request: Request, db: Session = Depends(get_db),
+                      user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    """Run a passive, READ-ONLY external posture scan (TLS/HTTPS, security
+    headers, HTTP→HTTPS redirect, SPF/DMARC email auth, CAA) against a domain and
+    record the results as a completed assessment with findings. It observes only
+    what the domain already exposes publicly — no exploitation, no payloads."""
+    if not db.get(Client, body.client_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Client not found")
+    result = scanner.scan_domain(body.domain)
+    domain = result["domain"]
+    now = datetime.now(timezone.utc)
+    assessment = SecurityAssessment(
+        client_id=body.client_id, title=f"External posture scan: {domain}",
+        scope=domain, authorized_by=body.authorized_by or f"Automated external scan ({user.email})",
+        status=AssessmentStatus.COMPLETED,
+        summary=f"{len(result['findings'])} finding(s) from a passive external scan of {domain}.",
+        created_by_user_id=user.id, author_email=user.email, started_at=now, completed_at=now,
+    )
+    db.add(assessment)
+    db.flush()
+    created = 0
+    for fd in result["findings"]:
+        finding = SecurityFinding(
+            client_id=body.client_id, assessment_id=assessment.id, title=fd["title"][:200],
+            category=fd["category"], severity=fd["severity"], description=fd["description"],
+            recommendation=fd["recommendation"], source="scan", client_visible=body.client_visible,
+            created_by_user_id=user.id, author_email=user.email,
+        )
+        db.add(finding)
+        db.flush()
+        security.raise_finding_alert(db, finding)
+        created += 1
+    db.commit()
+    audit.record(db, action="security.scan", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="security_assessment", target_id=str(assessment.id),
+                 client_id=body.client_id, ip=_ip(request), detail=f"domain={domain} findings={created}")
+    return {"assessment_id": assessment.id, "domain": domain, "https_ok": result["https_ok"],
+            "findings_created": created, "scorecard": security.scorecard(db, body.client_id)}
 
 
 @router.get("/findings")
