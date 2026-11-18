@@ -52,6 +52,13 @@ def me(db: Session = Depends(get_db), user: User = Depends(current_user)):
     return academy.profile_view(db, user)
 
 
+@router.get("/onboarding")
+def onboarding(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """A new learner's guided, self-verifying 'get started' checklist — computed
+    from real activity. Drives the welcome/onboarding card in the Academy."""
+    return academy.student_wizard(db, user)
+
+
 @router.get("/certificates")
 def certificates(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """The learner's earned, shareable completion certificates."""

@@ -2595,6 +2595,102 @@ border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#e
 </body></html>"""
 
 
+def _first_incomplete_lesson(done_lessons: set) -> dict | None:
+    """The first lesson (in curriculum order) the learner hasn't finished — the
+    natural 'start here' / 'continue' target."""
+    for m in MODULES:
+        for l in m["lessons"]:
+            if l["id"] not in done_lessons:
+                return {"module": m["id"], "lesson": l["id"], "title": l["title"]}
+    return None
+
+
+def student_wizard(db: Session, user: User) -> dict:
+    """A guided first-run checklist for a new learner — computed from real
+    activity (never stored, never fakeable), mirroring the client onboarding
+    wizard. Answers 'what do I do next?' and doubles as a progress ring. Every
+    step's `done` is derived from actual completions / profile state.
+
+    The deep-links use the Academy's in-page hash router (#catalog, #range,
+    #dojo, #profile, #certs) so a CTA drops the learner on the right screen.
+    """
+    prof = get_profile(db, user)
+    comps = db.query(AcademyCompletion).filter(AcademyCompletion.user_id == user.id).all()
+    done_lessons = {c.item_id for c in comps if c.kind == "lesson"} & set(_LESSONS)
+    n_labs = len({c.item_id for c in comps if c.kind == "lab"} & set(_LABS))
+    n_dojo = len({c.item_id for c in comps if c.kind == "dojo"})
+    certs = certificates_for(db, user)
+    today = _utcnow().date()
+    streak = prof.streak_days or 0
+    if prof.last_active_on and prof.last_active_on < today - timedelta(days=1):
+        streak = 0
+    nxt_lesson = _first_incomplete_lesson(done_lessons)
+    lesson_cta = f"#lesson/{nxt_lesson['lesson']}" if nxt_lesson else "#catalog"
+    name_set = bool((user.full_name or "").strip())
+
+    steps = [
+        {"key": "name", "title": "Add your display name",
+         "desc": "Put a name on your profile so it shows on certificates, the "
+                 "leaderboard, and your badges.",
+         "done": name_set, "optional": True,
+         "cta_label": "Edit profile", "cta_href": "#profile"},
+        {"key": "first_lesson", "title": "Finish your first lesson",
+         "desc": "Short, hands-on lessons — most take 5–7 minutes. Pass the quiz "
+                 "and you earn XP instantly.",
+         "done": len(done_lessons) > 0, "optional": False,
+         "detail": f"{len(done_lessons)}/{TOTAL_LESSONS} lessons complete",
+         "cta_label": "Start learning" if not done_lessons else "Continue",
+         "cta_href": lesson_cta},
+        {"key": "first_lab", "title": "Capture your first flag (Cyber Range)",
+         "desc": "Break into a real, safe target in the browser-based range — the "
+                 "same style of hands-on lab paid sites charge for. Find the flag, "
+                 "earn the badge.",
+         "done": n_labs > 0, "optional": False,
+         "detail": f"{n_labs}/{TOTAL_LABS} labs solved",
+         "cta_label": "Open the range", "cta_href": "#range"},
+        {"key": "first_dojo", "title": "Write code in the Dojo",
+         "desc": "Solve a bite-size coding challenge — graded automatically. Great "
+                 "for building the muscle memory security work needs.",
+         "done": n_dojo > 0, "optional": True,
+         "detail": f"{n_dojo} challenge(s) solved",
+         "cta_label": "Open the Dojo", "cta_href": "#dojo"},
+        {"key": "streak", "title": "Build a 3-day streak",
+         "desc": "Come back and train three days in a row. A little every day beats "
+                 "cramming — and it unlocks the streak badges.",
+         "done": streak >= 3, "optional": True,
+         "detail": f"{streak}-day streak",
+         "cta_label": "Keep going", "cta_href": "#catalog"},
+        {"key": "certificate", "title": "Earn your first certificate",
+         "desc": "Complete every lesson in a module to earn a real, verifiable "
+                 "certificate you can share on LinkedIn.",
+         "done": len(certs) > 0, "optional": False,
+         "detail": f"{len(certs)} certificate(s) earned",
+         "cta_label": "View certificates" if certs else "See what's next",
+         "cta_href": "#certs" if certs else "#catalog"},
+    ]
+
+    required = [s for s in steps if not s["optional"]]
+    req_done = [s for s in required if s["done"]]
+    all_done = [s for s in steps if s["done"]]
+    total_req = len(required) or 1
+    pct = round(100 * len(req_done) / total_req)
+    nxt = next((s for s in steps if not s["done"]), None)
+    return {
+        "generated_at": _utcnow().isoformat(),
+        "learner": _recipient_name(user),
+        "xp": prof.xp or 0, "level": _level(prof.xp or 0),
+        "steps": steps,
+        "required_total": len(required), "required_done": len(req_done),
+        "steps_done": len(all_done), "steps_total": len(steps),
+        "percent": pct,
+        "complete": len(req_done) == len(required),
+        "next_step": {"key": nxt["key"], "title": nxt["title"],
+                      "desc": nxt.get("desc"),
+                      "cta_label": nxt["cta_label"], "cta_href": nxt["cta_href"]}
+        if nxt else None,
+    }
+
+
 def catalog_view(db: Session, user: User) -> dict:
     done = {c.item_id: c for c in db.query(AcademyCompletion)
             .filter(AcademyCompletion.user_id == user.id)}

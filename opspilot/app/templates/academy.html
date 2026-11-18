@@ -39,6 +39,16 @@ border-radius:20px;padding:18px;margin-bottom:14px;position:relative;overflow:hi
 .lesson{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--line);border-radius:14px;
 background:var(--card2);margin-bottom:8px;cursor:pointer}
 .lesson:active{background:#101a3e}
+.btn.sm{padding:7px 12px;font-size:13px;flex:none}
+.ob-card{position:relative;border-color:var(--brand);background:linear-gradient(180deg,rgba(124,92,255,.10),var(--card))}
+.ob-head{display:flex;justify-content:space-between;align-items:center}
+.ob-next{background:#0f1738;border:1px solid var(--line);border-radius:14px;padding:12px;margin:10px 0}
+.ob-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.ob-step{display:flex;align-items:center;gap:10px}
+.ob-step .ob-ck{font-size:18px;flex:none;width:24px;text-align:center}
+.ob-step .ob-t{flex:1;min-width:0}.ob-step .ob-t b{display:block;font-size:14px}
+.ob-step.ob-on .ob-t b{color:var(--mut);text-decoration:line-through}
+.ob-x{position:absolute;top:10px;right:12px;background:none;border:0;color:var(--mut);font-size:22px;cursor:pointer;line-height:1}
 .lesson .ico{font-size:26px;width:40px;text-align:center;flex:none}
 .lesson .t{flex:1;min-width:0}
 .lesson .t b{display:block;font-size:15px}
@@ -113,6 +123,7 @@ font-size:14px;cursor:pointer;flex:none}
         <div class="mut" id="h-xptext"></div>
       </div>
     </div>
+    <div id="onboarding"></div>
     <div id="modules"></div>
   </div>
 
@@ -310,7 +321,50 @@ function renderCatalog(){
     </div>`).join('');
 }
 
-async function load(){const c=await getJ('/api/academy/catalog');CAT=c;applyProfile(c.profile);renderCatalog();route()}
+async function load(){const c=await getJ('/api/academy/catalog');CAT=c;applyProfile(c.profile);renderCatalog();loadOnboarding();route()}
+
+/* ---------- getting-started wizard (new learners) ---------- */
+let WIZ=null;
+async function loadOnboarding(){try{WIZ=await getJ('/api/academy/onboarding');}catch(e){WIZ=null;}renderOnboarding();}
+function wizCta(href){if(!href)return;
+  if(href.indexOf('#lesson/')===0){openLesson(href.slice(8));return;}
+  const v=href.replace('#','');
+  if(v==='range'){go('range');return;}
+  if(v==='dojo'){go('dojo');return;}
+  if(v==='profile'||v==='certs'||v==='me'){go('me');return;}
+  go('learn');}
+function dismissOb(){try{localStorage.setItem('ob_done_dismissed','1');}catch(e){}renderOnboarding();}
+function renderOnboarding(){
+  const el=$('onboarding');if(!el)return;const w=WIZ;
+  if(!w){el.innerHTML='';return;}
+  let dismissed=false;try{dismissed=localStorage.getItem('ob_done_dismissed')==='1';}catch(e){}
+  if(w.complete&&dismissed){el.innerHTML='';return;}
+  if(w.complete){
+    el.innerHTML=`<div class="card ob-card"><button class="ob-x" title="dismiss" onclick="dismissOb()">×</button>
+      <div style="font-size:30px">🎉</div>
+      <h2 style="margin:4px 0">You're all set, ${esc(w.learner)}!</h2>
+      <p class="mut">You've unlocked the full Academy — ${w.xp} XP and counting. Keep the streak alive and chase the Graduate certificate.</p>
+      <div class="row"><button class="btn half" onclick="wizCta('#range')">🎯 Hit the Range</button>
+        <button class="btn ghost half" onclick="wizCta('#certs')">🏅 Certificates</button></div></div>`;
+    return;}
+  const pct=w.percent||0,ns=w.next_step||{};
+  const list=w.steps.map(s=>`<div class="ob-step ${s.done?'ob-on':''}">
+      <span class="ob-ck">${s.done?'✅':'⬜'}</span>
+      <span class="ob-t"><b>${esc(s.title)}${s.optional?' <span class="pill">optional</span>':''}</b>
+        <span class="mut">${esc(s.detail||s.desc||'')}</span></span>
+      ${s.done?'':`<button class="btn sm" onclick="wizCta('${s.cta_href}')">${esc(s.cta_label)}</button>`}
+    </div>`).join('');
+  el.innerHTML=`<div class="card ob-card">
+    <div class="ob-head"><div><b>🚀 Getting started</b><span class="mut"> · ${w.required_done}/${w.required_total} essentials done</span></div>
+      <span class="pill">${pct}%</span></div>
+    <div class="xpbar"><div style="width:${pct}%"></div></div>
+    ${ns.title?`<div class="ob-next">
+       <div class="mut" style="font-size:11px;text-transform:uppercase;letter-spacing:.6px">Your next step</div>
+       <b style="font-size:16px">${esc(ns.title)}</b>
+       <p class="mut" style="margin:4px 0 10px">${esc(ns.desc||'')}</p>
+       <button class="btn" onclick="wizCta('${ns.cta_href}')">${esc(ns.cta_label)} →</button></div>`:''}
+    <div class="ob-list">${list}</div></div>`;
+}
 
 /* ---------- lesson flow ---------- */
 async function openLesson(id){LESSON=await getJ('/api/academy/lessons/'+id);QI=0;ANS=[];
@@ -454,7 +508,7 @@ function probePlaceholder(id){return ({
   'robots-recon':'path=/robots.txt','idor-invoice':'id=4021',
   'sqli-login':"user=admin&pass=' OR '1'='1",'path-traversal':'file=welcome.txt',
   'git-exposed':'path=/.git/config','open-redirect':'next=https://evil.example',
-  'xss-reflected':'q=<script>alert(1)</script>','mass-assignment':'name=Jordan&role=admin',
+  'xss-reflected':'q=<script>alert(1)<\/script>','mass-assignment':'name=Jordan&role=admin',
   'ssrf-metadata':'url=http://169.254.169.254/latest/meta-data/','cmd-injection':'host=8.8.8.8; cat flag.txt',
   'exposed-env':'path=/.env','ssti':'name={{7*7}}','nosql-auth':'user=admin&pass[$ne]=x',
   'graphql-introspection':'query={__schema{queryType{fields{name}}}}','cors-misconfig':'origin=https://evil.attacker.com',
@@ -462,7 +516,7 @@ function probePlaceholder(id){return ({
   'xxe':'xml=<!DOCTYPE r [<!ENTITY x SYSTEM \"file:///etc/passwd\">]><r>&x;</r>','insecure-deser':'data=__reduce__:os.system',
   'bola-api':'id=1002','verb-tampering':'method=PUT','weak-otp':'otp=0000','prototype-pollution':'data=__proto__[isAdmin]=true',
   'jwt-alg-confusion':'alg=HS256&key=public','cache-poisoning':'xfh=evil.attacker.com','crlf-injection':'url=/home%0d%0aSet-Cookie:admin=1',
-  'graphql-batch':'ops=batch','xss-stored':'comment=<script>steal()</script>'
+  'graphql-batch':'ops=batch','xss-stored':'comment=<script>steal()<\/script>'
 }[id])||'param=value';}
 async function runProbe(id, override){
   const q=(override!=null?override:(($('probe-q')||{}).value||'')).trim().replace(/^\?/,'');
