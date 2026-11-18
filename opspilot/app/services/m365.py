@@ -33,6 +33,19 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _gen_password(length: int = 16) -> str:
+    """Generate a strong temporary password that satisfies Entra ID complexity."""
+    import secrets
+    import string
+    symbols = "!@#$%^&*-_"
+    alphabet = string.ascii_letters + string.digits + symbols
+    while True:
+        pw = "".join(secrets.choice(alphabet) for _ in range(length))
+        if (any(c.islower() for c in pw) and any(c.isupper() for c in pw)
+                and any(c.isdigit() for c in pw) and any(c in symbols for c in pw)):
+            return pw
+
+
 def _addr(recipient: dict) -> dict:
     ea = (recipient or {}).get("emailAddress") or {}
     return {"name": ea.get("name"), "address": ea.get("address")}
@@ -112,10 +125,73 @@ class GraphClient:
         except Exception as e:  # noqa: BLE001
             raise GraphError(f"graph POST {path} failed: {e}")
 
+    def _patch(self, path: str, payload: dict) -> None:
+        url = f"{self.s.M365_GRAPH_BASE}{path}"
+        data = json.dumps(payload).encode()
+        req = request.Request(url, data=data, method="PATCH", headers={
+            "Authorization": f"Bearer {self._token()}",
+            "Content-Type": "application/json",
+        })
+        try:
+            with request.urlopen(req, timeout=30) as r:
+                r.read()
+        except Exception as e:  # noqa: BLE001
+            raise GraphError(f"graph PATCH {path} failed: {e}")
+
     def ping(self) -> bool:
         """Cheap liveness check — proves the app credentials still mint a token."""
         self._token()
         return True
+
+    # --- Tenant WRITE actions (require admin-consented write scopes on the app:
+    #     User.ReadWrite.All, User.ManageIdentities.All, Directory.ReadWrite.All).
+    #     Every one is invoked only by staff through an audited route. ------------
+    def list_users(self, limit: int = 100, search: str | None = None) -> list[dict]:
+        sel = "id,displayName,userPrincipalName,accountEnabled,assignedLicenses"
+        path = f"/users?$select={sel}&$top={max(1, min(limit, 999))}"
+        if search:
+            # startswith filter on display name or UPN
+            q = search.replace("'", "")
+            path = (f"/users?$select={sel}&$top=50&$filter="
+                    f"startswith(displayName,'{q}') or startswith(userPrincipalName,'{q}')")
+        data = self._get(path)
+        out = []
+        for u in data.get("value", []):
+            out.append({
+                "id": u.get("id"), "name": u.get("displayName"),
+                "upn": u.get("userPrincipalName"), "enabled": u.get("accountEnabled"),
+                "license_count": len(u.get("assignedLicenses") or []),
+            })
+        return out
+
+    def set_account_enabled(self, user_id: str, enabled: bool) -> None:
+        """Block (enabled=False) or unblock (True) a user's sign-in."""
+        self._patch(f"/users/{user_id}", {"accountEnabled": bool(enabled)})
+
+    def reset_password(self, user_id: str, new_password: str | None = None,
+                       force_change: bool = True) -> str:
+        """Set a new password and return it (shown once). Caller must handle it
+        securely — it is never persisted."""
+        pw = new_password or _gen_password()
+        self._patch(f"/users/{user_id}", {
+            "passwordProfile": {
+                "password": pw,
+                "forceChangePasswordNextSignIn": bool(force_change),
+            }
+        })
+        return pw
+
+    def revoke_sessions(self, user_id: str) -> None:
+        """Invalidate all of a user's refresh tokens — forces re-sign-in
+        everywhere (use after a compromise or password reset)."""
+        self._post(f"/users/{user_id}/revokeSignInSessions", {})
+
+    def change_licenses(self, user_id: str, add_sku_ids: list[str] | None = None,
+                        remove_sku_ids: list[str] | None = None) -> None:
+        self._post(f"/users/{user_id}/assignLicense", {
+            "addLicenses": [{"skuId": s, "disabledPlans": []} for s in (add_sku_ids or [])],
+            "removeLicenses": list(remove_sku_ids or []),
+        })
 
     def get_subscribed_skus(self) -> list[dict]:
         data = self._get("/subscribedSkus")

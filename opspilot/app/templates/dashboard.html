@@ -607,6 +607,7 @@
       </div>
       <table><thead><tr><th>Client</th><th>Tenant</th><th>Status</th><th>Secure score</th><th>Licenses</th><th>Risky</th><th></th></tr></thead>
       <tbody id="t-m365"></tbody></table>
+      <div id="m365-users" style="margin-top:12px"></div>
     </div>
     <div class="card" style="margin-top:16px">
       <div class="flex" style="justify-content:space-between;flex-wrap:wrap">
@@ -2360,6 +2361,7 @@ async function loadM365(){
      <td><span class="badge ${c.status==='connected'?'ok':(c.status==='error'?'bad':'warn')}">${esc(c.status)}</span></td>
      <td>${score}</td><td>${c.license_count??'—'}</td><td>${c.risky_signin_count??'—'}</td>
      <td class="flex"><button class="btn sm" onclick="syncM365(${c.id})">sync</button>
+       <button class="btn sm ghost" onclick="openM365Users(${c.id})">👤 Users</button>
        <button class="btn sm ghost" onclick="removeM365(${c.id})">✕</button></td></tr>`;}).join('')
     ||'<tr><td colspan=7 class="muted">No tenants connected yet.</td></tr>';
 }
@@ -2378,6 +2380,49 @@ async function syncM365(id){
 }
 async function removeM365(id){if(!confirm('Remove this M365 connection?'))return;
   const r=await fetch(`/api/m365/connections/${id}`,{method:'DELETE'});if(r.ok)loadM365();else alert('Owner only.');}
+let M365_USERS_CONN=null;
+function openM365Users(id){
+  M365_USERS_CONN=id;
+  document.getElementById('m365-users').innerHTML=
+    '<div class="card" style="border:1px solid rgba(104,225,253,.25)"><div class="flex" style="justify-content:space-between;flex-wrap:wrap">'
+    +'<h3 style="margin:0">👤 Tenant Users <span class="muted" style="font-size:12px">— block · reset password · revoke sessions</span></h3>'
+    +'<button class="btn sm ghost" onclick="document.getElementById(\'m365-users\').innerHTML=\'\'">close ✕</button></div>'
+    +'<div class="flex" style="margin:8px 0"><input id="m365u-search" placeholder="search name or email, then Enter…" style="flex:1" onkeydown="if(event.key===\'Enter\')loadM365Users()">'
+    +'<button class="btn sm" onclick="loadM365Users()">Search</button></div>'
+    +'<div id="m365u-result" class="muted" style="font-size:13px">Loading…</div>'
+    +'<table><thead><tr><th>User</th><th>Status</th><th>Lic</th><th>Actions</th></tr></thead><tbody id="t-m365u"></tbody></table></div>';
+  loadM365Users();
+}
+async function loadM365Users(){
+  const id=M365_USERS_CONN; const s=(document.getElementById('m365u-search')||{}).value||'';
+  const res=document.getElementById('m365u-result'); if(res)res.textContent='Loading users…';
+  const r=await fetch(`/api/m365/connections/${id}/users`+(s?`?search=${encodeURIComponent(s)}`:''));
+  if(!r.ok){const j=await r.json().catch(()=>({}));
+    if(res)res.textContent=j.detail||(r.status===503?'M365 keys not set on the server yet.':'Could not load users — the tenant may still need to grant write-scope admin consent.');
+    document.getElementById('t-m365u').innerHTML='';return;}
+  const d=await r.json(); const users=d.users||[]; if(res)res.textContent=users.length+' user(s).';
+  document.getElementById('t-m365u').innerHTML=users.map(u=>{const nm=esc((u.name||'').replace(/'/g,'’'));return `<tr>
+    <td>${esc(u.name||'')}<div class="muted" style="font-size:11px">${esc(u.upn||'')}</div></td>
+    <td><span class="badge ${u.enabled?'ok':'bad'}">${u.enabled?'active':'blocked'}</span></td>
+    <td>${u.license_count}</td>
+    <td class="flex">${u.enabled
+      ?`<button class="btn sm ghost" onclick="m365UserAction('${u.id}','block','${nm}')">Block</button>`
+      :`<button class="btn sm" onclick="m365UserAction('${u.id}','unblock','${nm}')">Unblock</button>`}
+      <button class="btn sm ghost" onclick="m365UserAction('${u.id}','reset_password','${nm}')">Reset pw</button>
+      <button class="btn sm ghost" onclick="m365UserAction('${u.id}','revoke_sessions','${nm}')">Revoke sessions</button>
+    </td></tr>`;}).join('')||'<tr><td colspan=4 class="muted">No users found.</td></tr>';
+}
+async function m365UserAction(userId,action,name){
+  const labels={block:'block sign-in for',reset_password:'reset the password for',revoke_sessions:'revoke all active sessions for',unblock:'unblock sign-in for'};
+  if(!confirm(`Really ${labels[action]||action} ${name||'this user'}?\n\nThis changes their LIVE Microsoft 365 account.`))return;
+  const r=await post(`/api/m365/connections/${M365_USERS_CONN}/users/${userId}/action`,{action});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){
+    if(action==='reset_password'&&j.temp_password){window.prompt('✓ Password reset. Copy this temporary password now (shown once):',j.temp_password);}
+    else{alert('✓ Done: '+String(action).replace(/_/g,' '));}
+    loadM365Users();
+  }else{alert(j.detail||'Action failed — the tenant may need to grant write-scope admin consent (User.ReadWrite.All).');}
+}
 
 // ---- Access requests (signups) ----
 async function loadSignups(){

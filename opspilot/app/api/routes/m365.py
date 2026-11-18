@@ -113,3 +113,87 @@ def sync_connection(conn_id: int, request: Request, db: Session = Depends(get_db
                  client_id=c.client_id, ip=_ip(request), detail=c.last_sync_status)
     return {"ok": True, "skus": result["skus"], "secure_score": result["secure_score"],
             "risky_signins": result["risky_signins"]}
+
+
+# --------------------------------------------------------------------------- #
+# Tenant WRITE actions (staff only, fully audited). These make real changes in
+# the customer's Microsoft 365 tenant, so they require the Entra app to have
+# admin-consented write scopes (User.ReadWrite.All / User.ManageIdentities.All /
+# Directory.ReadWrite.All) in that tenant. Until consent is granted, Graph
+# returns 403 and the action surfaces that error — nothing is faked.
+# --------------------------------------------------------------------------- #
+def _graph_or_503(conn: M365Connection):
+    if not _s.m365_enabled:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
+                            "Microsoft 365 is not configured on this server (set M365_CLIENT_ID / M365_CLIENT_SECRET in Settings).")
+    return m365.GraphClient(conn.tenant_id)
+
+
+@router.get("/connections/{conn_id}/users")
+def list_tenant_users(conn_id: int, search: str | None = None, db: Session = Depends(get_db),
+                      user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    c = db.get(M365Connection, conn_id)
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Connection not found")
+    try:
+        return {"users": _graph_or_503(c).list_users(search=search)}
+    except m365.GraphError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Graph error: {e}")
+
+
+class UserActionIn(BaseModel):
+    action: str  # block | unblock | reset_password | revoke_sessions
+    force_change: bool = True
+
+
+@router.post("/connections/{conn_id}/users/{user_id}/action")
+def user_action(conn_id: int, user_id: str, body: UserActionIn, request: Request,
+                db: Session = Depends(get_db),
+                user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    c = db.get(M365Connection, conn_id)
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Connection not found")
+    action = (body.action or "").strip().lower()
+    result: dict = {"ok": True, "action": action}
+    try:
+        graph = _graph_or_503(c)
+        if action == "block":
+            graph.set_account_enabled(user_id, False)
+        elif action == "unblock":
+            graph.set_account_enabled(user_id, True)
+        elif action == "revoke_sessions":
+            graph.revoke_sessions(user_id)
+        elif action == "reset_password":
+            result["temp_password"] = graph.reset_password(user_id, force_change=body.force_change)
+        else:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown action '{action}'")
+    except m365.GraphError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Graph action failed: {e}")
+    audit.record(db, action=f"m365.user.{action}", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="m365_user", target_id=str(user_id)[:60],
+                 client_id=c.client_id, ip=_ip(request), detail=f"tenant={c.tenant_id}")
+    db.commit()
+    return result
+
+
+class LicenseChangeIn(BaseModel):
+    add: list[str] = []     # SKU ids to assign
+    remove: list[str] = []  # SKU ids to remove
+
+
+@router.post("/connections/{conn_id}/users/{user_id}/licenses")
+def change_user_licenses(conn_id: int, user_id: str, body: LicenseChangeIn, request: Request,
+                         db: Session = Depends(get_db),
+                         user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    c = db.get(M365Connection, conn_id)
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Connection not found")
+    try:
+        _graph_or_503(c).change_licenses(user_id, add_sku_ids=body.add, remove_sku_ids=body.remove)
+    except m365.GraphError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"License change failed: {e}")
+    audit.record(db, action="m365.user.licenses", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="m365_user", target_id=str(user_id)[:60],
+                 client_id=c.client_id, ip=_ip(request), detail=f"add={body.add} remove={body.remove}")
+    db.commit()
+    return {"ok": True, "added": len(body.add), "removed": len(body.remove)}
