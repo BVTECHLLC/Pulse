@@ -788,6 +788,18 @@
       </div>
       <div id="scan-result" class="muted" style="margin-top:10px;font-size:13px"></div>
     </div>
+    <div class="card" style="margin-bottom:16px;border:1px solid rgba(124,214,160,.28)">
+      <h3 style="margin-top:0">🛡️ Guardz MDR <span class="muted" style="font-size:12px">— managed detection &amp; response</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Pulls <b>open detections</b> from your Guardz account and files them as security findings under a client, so they flow through the same scorecard, alerts and remediation pipeline as everything else. Add the Guardz <b>API token</b> under <b>Settings → Integrations → Guardz</b> first.</p>
+      <div class="flex" style="gap:10px;align-items:flex-end;flex-wrap:wrap">
+        <div style="flex:1;min-width:150px"><label>Client</label>
+          <select id="guardz-client" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink)"></select></div>
+        <label class="flex" style="margin:0 6px 8px 0"><input type="checkbox" id="guardz-vis" style="width:auto"> visible to client</label>
+        <button class="btn ghost" id="guardz-test-btn" onclick="guardzTest()">Test connection</button>
+        <button class="btn" id="guardz-sync-btn" onclick="guardzSync()">🛡️ Pull detections</button>
+      </div>
+      <div id="guardz-result" class="muted" style="margin-top:10px;font-size:13px"></div>
+    </div>
     <div class="grid cols-2" style="align-items:start">
       <div class="card">
         <h3>New Finding</h3>
@@ -2577,7 +2589,8 @@ async function postureDetail(cid){
 }
 async function loadSecurity(){
   loadPosture();
-  {const ss=document.getElementById('scan-client');if(ss&&!ss.options.length)ss.innerHTML=Object.entries(CLIENTS||{}).map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('');}
+  {const opts=Object.entries(CLIENTS||{}).map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('');
+   ['scan-client','guardz-client'].forEach(id=>{const ss=document.getElementById(id);if(ss&&!ss.options.length)ss.innerHTML=opts;});}
   const cards=await api('/api/security/scorecard');if(!cards)return;
   const list=Array.isArray(cards)?cards:[cards];
   document.getElementById('t-scorecard').innerHTML=list.map(s=>{
@@ -2623,6 +2636,33 @@ async function runExternalScan(){
       loadSecurity();refreshBadges();loadAlerts();
     }else{const e=await r.json().catch(()=>({detail:'Scan failed'}));out.textContent=e.detail||'Scan failed.';}
   }catch(e){out.textContent='Scan failed: '+((e&&e.message)||e);}
+  btn.disabled=false;btn.textContent=t;
+}
+async function guardzTest(){
+  const out=document.getElementById('guardz-result'),btn=document.getElementById('guardz-test-btn');
+  btn.disabled=true;const t=btn.textContent;btn.textContent='Testing…';out.textContent='Checking the Guardz connection…';
+  try{
+    const r=await post('/api/guardz/test',{});
+    if(r.ok){const d=await r.json();out.innerHTML='✓ Guardz connected — endpoint <code>'+esc(d.endpoint||'')+'</code>, '+(d.sample_count||0)+' sample detection(s) reachable.';}
+    else{const e=await r.json().catch(()=>({detail:'Test failed'}));out.textContent='⚠️ '+(e.detail||'Test failed — add the API token under Settings → Integrations → Guardz.');}
+  }catch(e){out.textContent='Test failed: '+((e&&e.message)||e);}
+  btn.disabled=false;btn.textContent=t;
+}
+async function guardzSync(){
+  const client_id=parseInt((document.getElementById('guardz-client').value)||'0');
+  const client_visible=document.getElementById('guardz-vis').checked;
+  const out=document.getElementById('guardz-result'),btn=document.getElementById('guardz-sync-btn');
+  if(!client_id){out.textContent='Pick a client first.';return;}
+  btn.disabled=true;const t=btn.textContent;btn.textContent='Pulling…';
+  out.textContent='Pulling Guardz detections and filing them as findings…';
+  try{
+    const r=await post('/api/guardz/sync',{client_id,client_visible});
+    if(r.ok){const d=await r.json();const sc=d.scorecard||{};
+      out.innerHTML='✓ Guardz sync complete — <b>'+(d.detections||0)+'</b> detection(s) reviewed, <b>'+(d.findings_created||0)+'</b> new finding(s) filed'
+        +(sc.score!=null?('. Posture score: <b style="color:'+scoreColor(sc.score)+'">'+sc.score+'</b>/100'):'')+'.';
+      loadSecurity();refreshBadges();loadAlerts();
+    }else{const e=await r.json().catch(()=>({detail:'Sync failed'}));out.textContent='⚠️ '+(e.detail||'Sync failed — add the API token under Settings → Integrations → Guardz.');}
+  }catch(e){out.textContent='Sync failed: '+((e&&e.message)||e);}
   btn.disabled=false;btn.textContent=t;
 }
 

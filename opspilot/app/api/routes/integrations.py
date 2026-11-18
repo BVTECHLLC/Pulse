@@ -55,6 +55,7 @@ INTEGRATION_CATALOG = [
     {"key": "sentinelone", "name": "SentinelOne", "category": "Security/EDR"},
     {"key": "bitdefender", "name": "Bitdefender", "category": "Security/EDR"},
     {"key": "huntress", "name": "Huntress", "category": "Security/MDR"},
+    {"key": "guardz", "name": "Guardz", "category": "Security/MDR"},
     {"key": "zapier", "name": "Zapier", "category": "Automation"},
     {"key": "make", "name": "Make (Integromat)", "category": "Automation"},
     {"key": "webhook", "name": "Custom Webhook / REST API", "category": "Custom"},
