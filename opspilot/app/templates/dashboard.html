@@ -2682,7 +2682,8 @@ async function onboardClient(){
       <div style="font-size:13px;margin-top:6px">Portal login: <b>${esc(j.portal_user)}</b>${j.emailed?' (welcome email sent)':' — <span class="muted">set SMTP to auto-email; share these now:</span>'}</div>
       <div style="font-size:13px">Temp password: <code>${esc(j.temp_password)}</code></div>
       ${(j.sso_domains&&j.sso_domains.length)?`<div style="font-size:12px;margin-top:4px">🔑 Zero-touch SSO enabled for: <b>${esc(j.sso_domains.join(', '))}</b></div>`:''}
-      ${j.enroll_token?`<div style="font-size:12px;margin-top:6px"><a class="btn sm ghost" href="/download/deploy.cmd?token=${encodeURIComponent(j.enroll_token)}">⬇️ Download their agent installer</a></div>`:''}`;
+      ${j.enroll_token?`<div style="font-size:12px;margin-top:6px"><a class="btn sm ghost" href="/download/deploy.cmd?token=${encodeURIComponent(j.enroll_token)}">⬇️ Download their agent installer</a></div>`:''}
+      ${j.client_id?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)"><button class="btn sm" onclick="openOnboarding(${j.client_id},'${esc(name).replace(/'/g,'')}')">🚀 Finish setting them up →</button> <span class="muted" style="font-size:12px">— guided checklist: team, agent, posture, reporting</span></div>`:''}`;
     loadClients&&loadClients();
   } else msg.textContent=j.detail||'Onboarding failed';
 }
