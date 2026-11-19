@@ -26,6 +26,13 @@ PER_TICK = 6           # send at most this many per heartbeat — spreads a big
 #                        batch across ticks (~2 min apart) so a burst can't
 #                        hurt the mailbox's sender reputation.
 
+# v1.161 — HARD OFF. This channel is personal/legal (court-support) outreach,
+# NOT client prospecting. Per the owner, automated sending is for POTENTIAL
+# CLIENTS only (see prospecting/outbound); the court/legal one-shot campaign is
+# turned off and tick() is a no-op while this is False. Nothing in TASKS is ever
+# sent while disabled. Flip to True only to deliberately resume a personal send.
+ENABLED = False
+
 # Each task: {"id": unique-stable-string, "to": email, "subject": ..., "body": ...}
 # The id is the idempotency key — NEVER reuse an id for different content.
 
@@ -1115,6 +1122,10 @@ def tick(db: Session, now: datetime | None = None) -> dict:
     """Heartbeat entrypoint. Sends every not-yet-done task; harmless when
     TASKS is empty or everything is stamped done."""
     now = now or datetime.now(timezone.utc)
+    if not ENABLED:
+        # Court/legal one-shot outreach is turned off; automated sending is for
+        # potential clients only. No task is sent while disabled.
+        return {"ran": False, "reason": "disabled"}
     if not TASKS:
         return {"ran": False, "reason": "no_tasks"}
     conn = secure_config.get_platform(db, PROVIDER)
