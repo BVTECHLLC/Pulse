@@ -4992,10 +4992,13 @@ async function loadConnCenter(){
     let picker='';
     if(it.key==='gbp'||it.key==='gbp_personal'){
       const listing=it.key==='gbp_personal'?'personal':'business';
+      const oauthKey=it.key==='gbp_personal'?'google_gbp_personal':'google_gbp';
       picker=`<div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px">
-        <div class="muted" style="font-size:10px;margin-bottom:4px">📍 After you Connect, pick your listing (no ID typing):</div>
+        <div class="muted" style="font-size:10px;margin-bottom:4px"><b style="color:var(--ink)">Step 2</b> — sign in with Google (do this after you Save above):</div>
+        <a class="btn sm" href="/api/oauth/${oauthKey}/connect" style="text-decoration:none;display:inline-block;margin-bottom:10px">🔗 Connect with Google</a>
+        <div class="muted" style="font-size:10px;margin:2px 0 4px"><b style="color:var(--ink)">Step 3</b> — pick your listing (never type IDs):</div>
         <div class="flex" style="gap:6px;flex-wrap:wrap">
-          <button class="btn sm ghost" onclick="gbpPick('${listing}',this)">Load my locations</button>
+          <button class="btn sm ghost" onclick="gbpPick('${listing}',this)">📍 Load my locations</button>
           <select data-gbploc="${listing}" style="display:none;font-size:11px;padding:5px;max-width:100%;flex:1 1 180px"></select>
           <button class="btn sm" data-gbpsave="${listing}" style="display:none" onclick="gbpApply('${listing}',this)">Use this location</button>
         </div>

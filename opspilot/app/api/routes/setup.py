@@ -123,8 +123,8 @@ def _connector_readiness(db, spec: dict, connected: bool) -> dict:
             return _ready("action", "Click Connect",
                           "Credentials saved ✓ — now click Connect and approve with your Google account.")
         if not loc:
-            return _ready("action", "Set Account + Location",
-                          "Connected ✓ — now fill Account name + Location name (from business.google.com) so it can post.")
+            return _ready("action", "Pick your listing",
+                          "Connected ✓ — now click 'Load my locations' below and pick your listing. No IDs to type.")
         return _ready("ready", "Ready", "Posting one update per week. Nothing more to do.")
 
     # --- LinkedIn publisher: app creds and/or a pasted token -> daily posting
@@ -315,28 +315,23 @@ CONNECTORS = [
      "unlocks": "WEEKLY local update on your BVTech Google listing (big local-SEO lever). "
                 "Google is intentionally capped at one post per week so you never risk spam.",
      "console_url": "https://console.cloud.google.com/apis/credentials",
-     "console_hint": "OAuth client (Web) -> add the redirect URL from One-click Connect -> copy "
-                     "ID + secret. After saving, Connect on the GBP tile, then fill Account + "
-                     "Location name below (from Business Profile Manager).",
+     "console_hint": "3 easy steps: (1) paste your Google OAuth Client ID + Secret and click Save. "
+                     "(2) click Connect and sign in with the Google account that manages the listing. "
+                     "(3) click 'Load my locations' and pick it — you NEVER type account/location IDs.",
      "save": "gbp", "needs_connect": True,
-     "fields": [{"key": "client_id", "label": "OAuth Client ID", "secret": False},
-                {"key": "client_secret", "label": "OAuth Client Secret", "secret": True},
-                {"key": "account_name", "label": "Account name (accounts/123…)", "secret": False},
-                {"key": "location_name", "label": "Location name (locations/456…)", "secret": False}]},
+     "fields": [{"key": "client_id", "label": "OAuth Client ID (from console.cloud.google.com)", "secret": False},
+                {"key": "client_secret", "label": "OAuth Client Secret", "secret": True}]},
     {"key": "gbp_personal", "name": "Google Business Profile (Personal — jordanpolasek.com)",
      "priority": 2,
      "unlocks": "WEEKLY update on your PERSONAL Google listing (jordanpolasek.com), separate "
                 "from the BVTech business listing. Also one post per week max — never spammed.",
      "console_url": "https://console.cloud.google.com/apis/credentials",
-     "console_hint": "Use the SAME Google Cloud project as the business listing — just add this "
-                     "tile's redirect URL as a second Authorized redirect URI, then Connect here "
-                     "with your personal Google account (hydro77845@gmail.com) and fill Account + "
-                     "Location below.",
+     "console_hint": "Same 3 steps as the business listing — reuse the SAME Google Cloud project, "
+                     "just add this tile's redirect URL too. Paste Client ID + Secret + Save, "
+                     "Connect with your personal Google account, then 'Load my locations' and pick it.",
      "save": "gbp_personal", "needs_connect": True,
      "fields": [{"key": "client_id", "label": "OAuth Client ID", "secret": False},
-                {"key": "client_secret", "label": "OAuth Client Secret", "secret": True},
-                {"key": "account_name", "label": "Account name (accounts/123…)", "secret": False},
-                {"key": "location_name", "label": "Location name (locations/456…)", "secret": False}]},
+                {"key": "client_secret", "label": "OAuth Client Secret", "secret": True}]},
     {"key": "cloudflare_analytics", "name": "Cloudflare Threat Analytics (live Threat Map)",
      "priority": 3,
      "unlocks": "Feeds the live bvtech.org Threat Map with REAL Cloudflare edge numbers "
