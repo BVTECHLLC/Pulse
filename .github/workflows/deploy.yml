@@ -1,0 +1,70 @@
+name: Deploy to production
+
+# Failproof portal deploy. Instead of relying ONLY on the 2-minute cron on the
+# box (which silently wedges if the box can't git-fetch or the cron dies), this
+# fires after CI passes on main and pushes the deploy TO the box over SSH. It
+# re-authenticates git on the box with a fresh token first, so an expired stored
+# credential can never freeze deploys again.
+#
+# It is a NO-OP (stays green, does nothing) until these repo secrets are set, so
+# it never shows up as a failing job before it's configured:
+#   DEPLOY_HOST     - the box's hostname or IP
+#   DEPLOY_USER     - ssh user (e.g. root or deploy)
+#   DEPLOY_SSH_KEY  - a private SSH key whose public half is in the box's authorized_keys
+#   DEPLOY_PORT     - ssh port (optional, defaults to 22)
+#   DEPLOY_GIT_TOKEN- (optional) a GitHub PAT/-token with read access, so the box
+#                     can always pull even if its own stored credential expired
+#
+# Add them at: Settings -> Secrets and variables -> Actions -> New repository secret.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: SSH deploy to the box
+    runs-on: ubuntu-latest
+    # Only when CI SUCCEEDED on main.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    steps:
+      - name: Are deploy secrets configured?
+        id: cfg
+        run: |
+          if [ -n "${{ secrets.DEPLOY_HOST }}" ] && [ -n "${{ secrets.DEPLOY_SSH_KEY }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "Deploy secrets present — will deploy."
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::DEPLOY_HOST / DEPLOY_SSH_KEY not set — skipping remote deploy (the box cron still handles it). Add the secrets to enable failproof push-deploys."
+          fi
+
+      - name: Deploy over SSH
+        if: steps.cfg.outputs.ready == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          command_timeout: 20m
+          script: |
+            set -e
+            REPO=/opt/bvtech-portal
+            cd "$REPO"
+            # Re-auth git with a fresh token (if provided) so an expired stored
+            # credential can never freeze the pull again.
+            if [ -n "${{ secrets.DEPLOY_GIT_TOKEN }}" ]; then
+              git remote set-url origin "https://x-access-token:${{ secrets.DEPLOY_GIT_TOKEN }}@github.com/BVTECHLLC/Pulse.git"
+            fi
+            # Run the normal self-healing deploy (build + smoke-gate + promote +
+            # cache purge + site publish). OPSPILOT_FORCE makes it deploy even if
+            # the version number didn't change.
+            OPSPILOT_FORCE=1 bash opspilot/deploy.sh

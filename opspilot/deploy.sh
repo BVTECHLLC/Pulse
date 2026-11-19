@@ -32,7 +32,20 @@ if [ "${OPSPILOT_NO_CRON:-0}" != "1" ] && command -v crontab >/dev/null 2>&1; th
   fi
 fi
 
-git fetch origin main --quiet || log "WARN: git fetch failed"
+# Retry the fetch (transient network) and FAIL LOUDLY if it can't reach GitHub —
+# a silently-failing fetch is how the box wedged on stale code for hours. If the
+# box's stored GitHub credential expired, this is where it shows up.
+FETCH_OK=0
+for _try in 1 2 3; do
+  if git fetch origin main --quiet; then FETCH_OK=1; break; fi
+  log "WARN: git fetch attempt $_try failed — retrying in 5s"; sleep 5
+done
+if [ "$FETCH_OK" != "1" ]; then
+  log "ERROR: git fetch origin main FAILED 3x — the box cannot pull new code."
+  log "  -> Most likely the stored GitHub credential expired. Fix on the box:"
+  log "     git -C $REPO_DIR remote set-url origin https://<GITHUB_PAT>@github.com/BVTECHLLC/Pulse.git"
+  log "     then re-run this script. (Deploys are FROZEN until the fetch works.)"
+fi
 LOCAL=$(git rev-parse HEAD 2>/dev/null)
 REMOTE=$(git rev-parse origin/main 2>/dev/null)
 REPO_VER=$(grep -oP 'APP_VERSION: str = "\K[^"]+' "$COMPOSE_DIR/app/core/config.py" 2>/dev/null)
@@ -41,15 +54,15 @@ cd "$COMPOSE_DIR" || { log "ERROR: compose dir not found"; exit 1; }
 ver(){ docker compose exec -T api python -c "import app.core.config as c;print(c.get_settings().APP_VERSION)" 2>/dev/null | tr -d '\r\n '; }
 RUN_VER=$(ver)
 
-if [ "$LOCAL" = "$REMOTE" ] && [ -n "$RUN_VER" ] && [ "$RUN_VER" = "$REPO_VER" ]; then
-  exit 0   # already current — nothing to do
+if [ "${OPSPILOT_FORCE:-0}" != "1" ] && [ "$LOCAL" = "$REMOTE" ] && [ -n "$RUN_VER" ] && [ "$RUN_VER" = "$REPO_VER" ]; then
+  exit 0   # already current — nothing to do (OPSPILOT_FORCE=1 overrides)
 fi
 
 # v1.150: don't re-smoke a commit we already rejected — a failing push would
 # otherwise rebuild + re-test every 2 minutes forever. Wait for a NEW push.
 FAILED_SHA_FILE="/var/tmp/opspilot-smoke-failed-sha"
-if [ "${OPSPILOT_SKIP_SMOKE:-0}" != "1" ] && [ "$(cat "$FAILED_SHA_FILE" 2>/dev/null)" = "$REMOTE" ]; then
-  exit 0   # this exact commit already failed the smoke gate; nothing to do
+if [ "${OPSPILOT_FORCE:-0}" != "1" ] && [ "${OPSPILOT_SKIP_SMOKE:-0}" != "1" ] && [ "$(cat "$FAILED_SHA_FILE" 2>/dev/null)" = "$REMOTE" ]; then
+  exit 0   # this exact commit already failed the smoke gate; nothing to do (OPSPILOT_FORCE=1 overrides)
 fi
 
 log "DEPLOY: git ${LOCAL:0:8}->${REMOTE:0:8} | running=${RUN_VER:-none} repo=${REPO_VER:-?}"
