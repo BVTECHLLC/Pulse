@@ -1313,6 +1313,18 @@
     </div>
 
     <div class="card" style="margin-bottom:16px">
+      <h3 style="margin-top:0">📭 Email Suppression <span class="muted" style="font-size:12px">— do-not-contact list</span> <span class="pill" id="supp-count">0</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Anyone here is <b>never emailed again</b> by any outreach. People add themselves via the unsubscribe link on every email (or at <a href="https://bvtech.org/unsubscribe" target="_blank" rel="noopener">bvtech.org/unsubscribe</a>); you can also add someone who asked to stop, or remove one to re-opt-in.</p>
+      <div class="flex" style="gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div style="flex:1;min-width:180px"><label>Add an email to suppress</label>
+          <input id="supp-email" placeholder="person@example.com" onkeydown="if(event.key==='Enter')addSuppression()"></div>
+        <button class="btn sm" onclick="addSuppression()">🚫 Suppress</button>
+        <span class="muted" id="supp-msg" style="font-size:12px"></span>
+      </div>
+      <div id="supp-list" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
       <h3 style="margin-top:0">🎨 Branding / White-label</h3>
       <p class="muted" style="margin:4px 0 10px">Make the portal yours — this name, logo &amp; color apply everywhere (login, dashboard, client portal). Perfect for reselling under your own brand.</p>
       <div class="grid2">
@@ -1709,7 +1721,7 @@ function tab(name){
   if(name==='library'){loadLibrary();}
   if(name==='automation'){loadAutopilot();}
   if(name==='security'){loadTraining();initBrowserGuard();}
-  if(name==='settings'){ if(!_tabLoaded.settings){_tabLoaded.settings=true;loadSettings();} else {loadConnCenter();} }
+  if(name==='settings'){ if(!_tabLoaded.settings){_tabLoaded.settings=true;loadSettings();loadSuppression();} else {loadConnCenter();loadSuppression();} }
 }
 function badge(v,good,warn){if(v==null)return '<span class="badge">—</span>';
   const c=v>=good?'ok':(v>=warn?'warn':'bad');return `<span class="badge ${c}">${v}</span>`;}
@@ -4898,6 +4910,34 @@ async function bgProtect(){
   await put('/api/browser/protect',{client_id:parseInt(cid),protect:document.getElementById('bg-protect').checked});
   loadBrowserGuard();
 }
+// ---- 📭 Email Suppression (do-not-contact) ----
+async function loadSuppression(){
+  const d=await api('/api/integrations/suppression'); if(!d)return;
+  document.getElementById('supp-count').textContent=(d.count||0)+' suppressed';
+  const e=d.entries||[];
+  document.getElementById('supp-list').innerHTML = e.length
+    ? ('<table style="width:100%"><thead><tr><th>Email</th><th>Added</th><th>Via</th><th></th></tr></thead><tbody>'
+       + e.map(x=>`<tr><td>${esc(x.email)}</td>
+           <td class="muted" style="font-size:12px">${x.ts?new Date(x.ts).toLocaleDateString():''}</td>
+           <td class="muted" style="font-size:12px">${esc(x.src||'')}</td>
+           <td><button class="btn sm ghost" onclick="removeSuppression('${esc(x.email).replace(/'/g,'')}')">Remove</button></td></tr>`).join('')
+       + '</tbody></table>')
+    : '<div class="muted" style="font-size:13px">No suppressed addresses yet.</div>';
+}
+async function addSuppression(){
+  const inp=document.getElementById('supp-email'), msg=document.getElementById('supp-msg');
+  const email=(inp.value||'').trim(); msg.textContent='';
+  if(!email){msg.textContent='Enter an email.';return;}
+  const r=await post('/api/integrations/suppression',{email}); const j=await r.json().catch(()=>({}));
+  if(r.ok){inp.value='';msg.style.color='var(--good,#2ecc71)';msg.textContent='Suppressed ✓ — they won’t be emailed again.';loadSuppression();}
+  else{msg.style.color='var(--warn)';msg.textContent=j.detail||'Failed';}
+}
+async function removeSuppression(email){
+  if(!confirm('Remove '+email+' from the do-not-contact list? They could receive outreach again.'))return;
+  const r=await fetch('/api/integrations/suppression/'+encodeURIComponent(email),{method:'DELETE'});
+  if(r.ok||r.status===200)loadSuppression(); else alert('Remove failed (Owner only).');
+}
+
 // ---- 🔌 Connection Center (v1.22) ----
 async function loadConnCenter(){
   const d=await api('/api/setup/connections'); if(!d)return;

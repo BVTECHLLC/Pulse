@@ -63,6 +63,47 @@ INTEGRATION_CATALOG = [
 
 
 # --------------------------------------------------------------------------- #
+# Email suppression — the do-not-contact / unsubscribe list. Staff can see it,
+# add an address (e.g. someone who complained), or remove one (re-opt-in). The
+# public unsubscribe page writes here too; every outreach sender checks it.
+# --------------------------------------------------------------------------- #
+class SuppressIn(BaseModel):
+    email: str
+
+
+@router.get("/suppression")
+def list_suppression(db: Session = Depends(get_db),
+                     user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    from ...services import suppression
+    return {"count": suppression.count(db), "entries": suppression.all_entries(db)}
+
+
+@router.post("/suppression")
+def add_suppression(body: SuppressIn, request: Request, db: Session = Depends(get_db),
+                    user: User = Depends(require_roles(Role.OWNER, Role.TECH))):
+    from ...services import suppression
+    if not suppression.suppress(db, body.email, source="staff"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Enter a valid email address.")
+    email = suppression.normalize(body.email)
+    audit.record(db, action="suppression.add", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="email", target_id=email[:120],
+                 ip=_ip(request), detail="added to do-not-contact")
+    return {"ok": True, "email": email, "count": suppression.count(db)}
+
+
+@router.delete("/suppression/{email:path}")
+def remove_suppression(email: str, request: Request, db: Session = Depends(get_db),
+                       user: User = Depends(require_roles(Role.OWNER))):
+    from ...services import suppression
+    removed = suppression.unsuppress(db, email)
+    audit.record(db, action="suppression.remove", actor_user_id=user.id, actor_email=user.email,
+                 actor_role=user.role.value, target_type="email",
+                 target_id=suppression.normalize(email)[:120], ip=_ip(request),
+                 detail="removed from do-not-contact (re-opt-in)")
+    return {"ok": removed, "count": suppression.count(db)}
+
+
+# --------------------------------------------------------------------------- #
 # API keys (staff-managed). Authenticate external callers AS the owner.
 # --------------------------------------------------------------------------- #
 class APIKeyIn(BaseModel):
