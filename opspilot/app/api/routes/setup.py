@@ -515,8 +515,16 @@ def save_connection(key: str, body: SaveCredIn, db: Session = Depends(get_db),
     secure_config.upsert_platform(db, prov, nm, cat, payload)
     if prov in ("gbp", "gbp_personal", "pub_linkedin"):
         # New credentials lift the delivery pause; queued posts resume next tick.
-        autopost.clear_reauth(db, prov)
-    return {"key": key, "connected": True, "needs_connect": spec.get("needs_connect", False)}
+        # Never let this break the save itself (the creds are already stored).
+        try:
+            autopost.clear_reauth(db, prov)
+        except Exception:  # noqa: BLE001
+            pass
+    msg = "Saved."
+    if spec.get("needs_connect"):
+        msg = "Saved — now click “Connect with Google/LinkedIn” below to finish."
+    return {"key": key, "connected": True,
+            "needs_connect": spec.get("needs_connect", False), "detail": msg}
 
 
 # --------------------------------------------------------------------------- #

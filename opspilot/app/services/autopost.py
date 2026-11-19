@@ -298,14 +298,28 @@ def set_reauth(db: Session, channel: str, reason: str) -> None:
 def clear_reauth(db: Session, provider_key: str) -> bool:
     """Called when a fresh credential lands (one-click Connect callback, a
     connector save, or a successful delivery). Returns True if a pause was
-    lifted — the queued posts then send on the next tick."""
-    conn = secure_config.get_platform(db, provider_key)
-    cfg = dict((conn.config if conn else None) or {})
-    if conn and cfg.pop("needs_reauth", None) is not None:
-        conn.config = cfg
-        db.commit()
-        return True
-    return False
+    lifted — the queued posts then send on the next tick.
+
+    v1.165 FIX: the needs_reauth flag is stored under the CHANNEL name (e.g.
+    'linkedin') by set_reauth, but callers pass either the channel OR the
+    connector-save key (e.g. 'pub_linkedin'). They never matched, so the
+    'Reconnect needed' banner was permanent — a successful save/connect looked
+    broken. Clear the flag under every equivalent key so the pause always lifts."""
+    keys = {provider_key}
+    inv = {v: k for k, v in _REAUTH_PROVIDER.items()}   # save-key -> channel
+    if provider_key in inv:
+        keys.add(inv[provider_key])
+    if provider_key in _REAUTH_PROVIDER:                # channel -> save-key
+        keys.add(_REAUTH_PROVIDER[provider_key])
+    cleared = False
+    for k in keys:
+        conn = secure_config.get_platform(db, k)
+        cfg = dict((conn.config if conn else None) or {})
+        if conn and cfg.pop("needs_reauth", None) is not None:
+            conn.config = cfg
+            db.commit()
+            cleared = True
+    return cleared
 
 
 def channel_readiness(db: Session) -> dict:
