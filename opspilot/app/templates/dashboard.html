@@ -4993,7 +4993,24 @@ async function loadConnCenter(){
     if(it.key==='gbp'||it.key==='gbp_personal'){
       const listing=it.key==='gbp_personal'?'personal':'business';
       const oauthKey=it.key==='gbp_personal'?'google_gbp_personal':'google_gbp';
+      // v1.161: bake the EXACT redirect URI (with a copy button) + the one-time
+      // Google Cloud setup right into the tile, so redirect_uri_mismatch and the
+      // "access_denied / testers only" 403 can never block a connect again.
+      const redir=`${location.origin}/api/oauth/${oauthKey}/callback`;
       picker=`<div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px">
+        <details style="margin-bottom:8px">
+          <summary style="cursor:pointer;font-size:11px;color:var(--brand,#6c5ce7)">⚙️ First-time Google Cloud setup — open once</summary>
+          <div class="muted" style="font-size:10px;line-height:1.55;margin-top:6px">
+            <div style="margin-bottom:4px"><b style="color:var(--ink)">A.</b> Google Cloud Console → <b>APIs &amp; Services → Credentials</b> → your <b>Web application</b> OAuth client → <b>Authorized redirect URIs</b> → <b>+ Add URI</b> → paste this <u>exactly</u>:</div>
+            <div class="flex" style="gap:4px;margin:0 0 8px">
+              <input readonly value="${redir}" onclick="this.select()" style="flex:1;font-size:10px;padding:5px;background:#0c1430;border:1px solid var(--line);border-radius:8px;color:var(--ink)">
+              <button class="btn sm ghost" onclick="navigator.clipboard.writeText('${redir}').then(()=>{const t=this.textContent;this.textContent='✓ Copied';setTimeout(()=>this.textContent=t,1200)})">Copy</button>
+            </div>
+            <div style="margin-bottom:4px"><b style="color:var(--ink)">B.</b> → <b>OAuth consent screen → Test users → + Add users</b> → add the Google account you'll sign in with.</div>
+            <div style="margin-bottom:4px"><b style="color:var(--ink)">C.</b> → on that same page click <b>Publish app</b> (keeps the connection from expiring every 7 days). On connect you'll click <b>Advanced → Go to bvtech.org</b> once — normal for your own app.</div>
+            <div><b style="color:var(--ink)">D.</b> → <b>APIs &amp; Services → Library</b> → search <b>Business Profile API</b> → <b>Enable</b>.</div>
+          </div>
+        </details>
         <div class="muted" style="font-size:10px;margin-bottom:4px"><b style="color:var(--ink)">Step 2</b> — sign in with Google (do this after you Save above):</div>
         <a class="btn sm" href="/api/oauth/${oauthKey}/connect" style="text-decoration:none;display:inline-block;margin-bottom:10px">🔗 Connect with Google</a>
         <div class="muted" style="font-size:10px;margin:2px 0 4px"><b style="color:var(--ink)">Step 3</b> — pick your listing (never type IDs):</div>
