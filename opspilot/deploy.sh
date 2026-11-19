@@ -18,6 +18,19 @@ log(){ echo "[$(date -u +%FT%TZ)] $*"; }
 
 cd "$REPO_DIR" || { log "ERROR: repo dir $REPO_DIR not found"; exit 1; }
 
+# ── SINGLE-RUN LOCK (prevents the OOM death-spiral) ────────────────────────
+# The 2-minute cron must NEVER overlap itself. A build+smoke that outlasts the
+# 2-min interval used to let the next tick start a SECOND heavyweight run while
+# the first was still going — on a small box those stack until the kernel
+# OOM-kills python over and over, which freezes deploys AND starves the live
+# api. flock makes any concurrent run exit immediately. (Override with nothing —
+# this is non-negotiable safety.)
+exec 9>"/var/tmp/opspilot-deploy.lock"
+if ! flock -n 9; then
+  log "deploy already running (lock held) — skipping this tick to avoid a memory pileup."
+  exit 0
+fi
+
 # v1.149: SELF-INSTALL the 2-minute poller so auto-deploy becomes PERMANENT after
 # a single manual run — after this, every push to main goes live on its own with
 # no further server access. Idempotent: only adds the cron line if it's missing.
@@ -82,8 +95,8 @@ docker compose build api 2>&1 | tail -3 | sed 's/^/  /' || log "WARN: build fail
 # reaches production — the running container keeps serving (latency, not
 # downtime), the bad commit is remembered so it is not re-tested every 2 min, and
 # the failure is logged loudly. Bypass in an emergency with OPSPILOT_SKIP_SMOKE=1.
-if [ "${OPSPILOT_SKIP_SMOKE:-0}" != "1" ]; then
-  log "smoke-gating ${REMOTE:0:8} (full suite ~3-4 min; live stays up the whole time)..."
+if [ "${OPSPILOT_BOX_SMOKE:-0}" = "1" ]; then
+  log "smoke-gating ${REMOTE:0:8} on the box (OPSPILOT_BOX_SMOKE=1 — heavy; GitHub CI already runs the identical suite on every push before this deploys)..."
   if docker compose run --rm -T \
        -e DATABASE_URL="sqlite:////tmp/deploy-smoke.db" \
        -e SECRET_KEY="deploy-smoke-secret-key-aaaaaaaaaaaaaaaaaaaaaa" \
