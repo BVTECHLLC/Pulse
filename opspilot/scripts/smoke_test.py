@@ -4060,6 +4060,47 @@ def main():
         print("v1.48.0: public-tools API — whoami echo + CORS pinned to bvtech.org + "
               "SSRF guard (private/loopback/link-local/reserved refused) + 20/min rate limit OK")
 
+        # ==== v1.162: M365-level one-click unsubscribe (RFC 2369 + RFC 8058) ====
+        from app.services import suppression as _sup162
+        from app.core.db import SessionLocal as _USL162
+        _s162 = _USL162()
+        try:
+            _ue = "optout-test@example-lead.com"
+            # the header builder emits BOTH List-Unsubscribe and List-Unsubscribe-Post
+            _h162 = _sup162.list_unsubscribe_headers(_ue, "mailbox@bvtech.org")
+            assert _h162["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click", _h162
+            assert ("mailto:" in _h162["List-Unsubscribe"]
+                    and "/api/public-tools/unsubscribe/oneclick?token=" in _h162["List-Unsubscribe"]), _h162
+            # a forged token for another address must NOT validate (HMAC-signed)
+            assert _sup162.email_from_token("Zm9v.deadbeefdeadbeef0000") is None
+            _tok162 = _sup162.token_for(_ue)
+            assert _sup162.email_from_token(_tok162) == _ue
+            assert _sup162.is_suppressed(_s162, _ue) is False
+            # one-click POST with the signed token (as Gmail/Outlook send it) suppresses
+            _oc = c.post("/api/public-tools/unsubscribe/oneclick", params={"token": _tok162})
+            assert _oc.status_code == 200 and _oc.json()["ok"] is True, _oc.text
+            assert _sup162.is_suppressed(_s162, _ue) is True, "one-click must suppress the address"
+            # a bad/forged token is a 400 and changes nothing
+            _bad = c.post("/api/public-tools/unsubscribe/oneclick", params={"token": "garbage.badsig"})
+            assert _bad.status_code == 400 and _bad.json()["ok"] is False, _bad.text
+            # the page endpoint still works with a typed email (the human form path)
+            _pg = c.post("/api/public-tools/unsubscribe",
+                         json={"email": "typed-optout@example-lead.com"},
+                         headers={"origin": "https://bvtech.org", "cf-connecting-ip": "203.0.113.188"})
+            assert _pg.json()["ok"] is True, _pg.text
+            assert _sup162.is_suppressed(_s162, "typed-optout@example-lead.com") is True
+            # the Graph MIME builder carries the custom header through verbatim
+            from app.services.m365 import GraphClient as _GC162
+            _mime = _GC162._build_mime("mailbox@bvtech.org", [_ue], "Subj", "<p>hi</p>",
+                                       True, None, _h162)
+            import base64 as _b64162
+            _decoded = _b64162.b64decode(_mime).decode("utf-8", "replace")
+            assert "List-Unsubscribe:" in _decoded and "One-Click" in _decoded, _decoded[:400]
+        finally:
+            _s162.close()
+        print("v1.162: one-click unsubscribe — List-Unsubscribe + -Post headers, signed-token "
+              "POST suppresses, forged token refused, Graph MIME carries the header OK")
+
         # ==== v1.62.0: tool lead capture -> inbound CRM lead + auto-followup ====
         from app.core.db import SessionLocal as _ESL   # this block runs before the later _ESL import
         from app.models import CrmContact as _CC62, CrmActivity as _CA62, Notification as _N62
@@ -8257,7 +8298,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.161.0"
+    assert _gs101().APP_VERSION == "1.162.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8706,7 +8747,7 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.161.0"
+    assert _gs101().APP_VERSION == "1.162.0"
     assert _sr100.REPAIR_EPOCH == "1.112.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
@@ -8742,7 +8783,7 @@ def main():
     assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
     # site nav points to the game home
     assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
-    assert _gs101().APP_VERSION == "1.161.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.162.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
           "Explore features it with a Halloween hero, republish forced OK")
 
@@ -8762,11 +8803,11 @@ def main():
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
     assert "xp-papel" in _xp3 and "Happy Thanksgiving" in _xp3, "seasonal Explore theme missing"
-    assert _gs101().APP_VERSION == "1.161.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.162.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
 
-    print("\n=== OpsPilot v1.161.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.162.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()

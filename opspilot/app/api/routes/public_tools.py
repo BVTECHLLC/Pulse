@@ -162,6 +162,27 @@ def unsubscribe(body: _UnsubIn, request: Request, resp: Response,
                        "more outreach emails from BVTech."}
 
 
+@router.post("/unsubscribe/oneclick")
+def unsubscribe_oneclick(resp: Response, token: str = "",
+                         db: Session = Depends(get_db)):
+    """RFC 8058 one-click unsubscribe — the HTTPS target in the List-Unsubscribe
+    header. Gmail/Outlook POST here (body ``List-Unsubscribe=One-Click``) when a
+    recipient taps the mail client's native Unsubscribe button. Deliberately NOT
+    Origin/CORS-pinned and takes no JSON body: the request comes from the mail
+    provider's servers, not a browser, and the HMAC-signed ``token`` in the query
+    string is the sole authorization (it can't be forged for another address).
+    Only a POST changes state (a GET/link-prefetch must never opt someone out),
+    and it is idempotent, so a scanner re-POST is harmless."""
+    from ...services import suppression
+    email = suppression.email_from_token((token or "").strip())
+    if email and suppression.valid_email(email):
+        suppression.suppress(db, email, source="list_unsubscribe_oneclick")
+        resp.status_code = 200
+        return {"ok": True}
+    resp.status_code = 400
+    return {"ok": False}
+
+
 @router.get("/whoami")
 def whoami(request: Request, resp: Response):
     """What's-my-IP: echo the caller's public address and user agent."""

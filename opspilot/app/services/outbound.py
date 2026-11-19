@@ -542,26 +542,40 @@ def resolve_send_fn(db: Session):
         graph, mailbox = gm
         # v1.83: resolve the operator's real signature once per send-fn build.
         custom_sig = (get_config(db).get("signature_html") or "").strip()
+        from ..core.config import get_settings as _gs_graph
+        _internal = {mailbox.strip().lower(),
+                     (_gs_graph().SUPPORT_EMAIL or "").strip().lower()}
 
         def _send_graph(to: str, subject: str, body: str,
                         cc: list[str] | None = None) -> None:
             from . import suppression
             if suppression.is_suppressed(db, to):
                 return  # on the do-not-contact list — never transmit
+            # v1.162: M365-level one-click unsubscribe — attach the RFC 8058
+            # List-Unsubscribe headers so Gmail/Outlook show a native Unsubscribe
+            # button. Real outreach only; never our own status/test mail.
+            hdrs = (None if (to or "").strip().lower() in _internal
+                    else suppression.list_unsubscribe_headers(to, mailbox))
             graph.send_mail(mailbox, [to], subject,
-                            _text_to_html(body, custom_sig), html=True, cc=cc)
+                            _text_to_html(body, custom_sig), html=True, cc=cc,
+                            headers=hdrs)
 
         return _send_graph, f"M365 Graph as {mailbox}"
     from ..core.config import get_settings
     if get_settings().email_enabled:
         from . import email as email_svc
+        _smtp_mailto = (get_settings().SUPPORT_EMAIL or "unsubscribe@bvtech.org")
+        _internal_smtp = {_smtp_mailto.strip().lower()}
 
         def _send_smtp(to: str, subject: str, body: str,
                        cc: list[str] | None = None) -> None:
             from . import suppression
             if suppression.is_suppressed(db, to):
                 return  # on the do-not-contact list — never transmit
-            if not email_svc.send(to, subject, body):
+            # v1.162: one-click List-Unsubscribe headers for real outreach only.
+            hdrs = (None if (to or "").strip().lower() in _internal_smtp
+                    else suppression.list_unsubscribe_headers(to, _smtp_mailto))
+            if not email_svc.send(to, subject, body, headers=hdrs):
                 raise RuntimeError("SMTP send failed")
 
         return _send_smtp, "SMTP"

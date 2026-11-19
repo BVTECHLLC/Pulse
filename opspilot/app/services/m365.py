@@ -261,8 +261,18 @@ class GraphClient:
         return out
 
     def send_mail(self, mailbox: str, to: list[str], subject: str, body: str,
-                  html: bool = False, cc: list[str] | None = None) -> None:
+                  html: bool = False, cc: list[str] | None = None,
+                  headers: dict | None = None) -> None:
         mb = parse.quote(mailbox)
+        # When custom internet headers are required (e.g. List-Unsubscribe for
+        # one-click opt-out), the normal JSON sendMail can't carry them — Graph's
+        # internetMessageHeaders only accepts 'X-'-prefixed names. So we build a
+        # full RFC 5322 MIME message (which owns every header) and send THAT via
+        # Graph's MIME sendMail (base64 body, Content-Type: text/plain).
+        if headers:
+            raw_b64 = self._build_mime(mailbox, to, subject, body, html, cc, headers)
+            self._post_mime(f"/users/{mb}/sendMail", raw_b64)
+            return
         msg = {
             "message": {
                 "subject": subject,
@@ -273,6 +283,42 @@ class GraphClient:
             "saveToSentItems": True,
         }
         self._post(f"/users/{mb}/sendMail", msg)
+
+    @staticmethod
+    def _build_mime(mailbox: str, to: list[str], subject: str, body: str,
+                    html: bool, cc: list[str] | None, headers: dict) -> str:
+        """Compose an RFC 5322 message with arbitrary headers and return it as a
+        base64 string (the format Graph's MIME sendMail expects)."""
+        import base64
+        from email.message import EmailMessage
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = mailbox
+        msg["To"] = ", ".join([a for a in to if a])
+        if cc:
+            msg["Cc"] = ", ".join([a for a in cc if a])
+        for hk, hv in (headers or {}).items():
+            if hv is not None and hk.lower() not in ("from", "to", "cc", "subject"):
+                msg[hk] = str(hv)
+        if html:
+            msg.set_content("This message is best viewed in an HTML-capable email client.")
+            msg.add_alternative(body, subtype="html")
+        else:
+            msg.set_content(body)
+        return base64.b64encode(msg.as_bytes()).decode()
+
+    def _post_mime(self, path: str, raw_b64: str) -> None:
+        """POST a base64-encoded MIME message to Graph (Content-Type text/plain)."""
+        url = f"{self.s.M365_GRAPH_BASE}{path}"
+        req = request.Request(url, data=raw_b64.encode(), method="POST", headers={
+            "Authorization": f"Bearer {self._token()}",
+            "Content-Type": "text/plain",
+        })
+        try:
+            with request.urlopen(req, timeout=30) as r:
+                r.read()
+        except Exception as e:  # noqa: BLE001
+            raise GraphError(f"graph POST (mime) {path} failed: {e}")
 
     def ensure_folder(self, mailbox: str, name: str) -> str | None:
         """Return the id of the mailbox folder named `name`, creating it if absent."""

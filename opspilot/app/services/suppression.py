@@ -127,3 +127,31 @@ def unsubscribe_line(email: str, base: str | None = None) -> str:
     """The plain-text opt-out line appended to outreach emails."""
     return ("Don't want these emails? Unsubscribe instantly: "
             + unsubscribe_url(email, base))
+
+
+def oneclick_url(email: str, base: str | None = None) -> str:
+    """RFC 8058 one-click POST target referenced by the ``List-Unsubscribe``
+    header. Gmail/Outlook POST here (body ``List-Unsubscribe=One-Click``) when the
+    recipient taps the mail client's native Unsubscribe button — the signed token
+    in the query string is the authorization, so no session or page is needed."""
+    if base is None:
+        from ..core.config import get_settings
+        base = (get_settings().PUBLIC_BASE_URL or "https://portal.bvtech.org")
+    return (f"{base.rstrip('/')}/api/public-tools/unsubscribe/oneclick"
+            f"?token={token_for(email)}")
+
+
+def list_unsubscribe_headers(email: str, mailto: str,
+                             base: str | None = None) -> dict:
+    """RFC 2369 + RFC 8058 headers that make Gmail and Outlook render a native,
+    one-click **Unsubscribe** control at the top of the message — the "m365-level"
+    opt-out. Includes BOTH a mailto: (honored by the reply watcher, which treats an
+    'unsubscribe' reply as an opt-out) and the HTTPS one-click endpoint, plus the
+    ``List-Unsubscribe-Post`` signal that enables true one-click with no landing
+    page. ``mailto`` is the sending mailbox."""
+    one = oneclick_url(email, base)
+    mt = normalize(mailto) or "unsubscribe@bvtech.org"
+    return {
+        "List-Unsubscribe": f"<mailto:{mt}?subject=unsubscribe>, <{one}>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }

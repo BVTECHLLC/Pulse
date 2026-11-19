@@ -17,10 +17,12 @@ def _from_addr(s) -> str:
     return s.SMTP_FROM or s.SUPPORT_EMAIL
 
 
-def send(to: str, subject: str, body: str, attachments: list[tuple] | None = None) -> bool:
+def send(to: str, subject: str, body: str, attachments: list[tuple] | None = None,
+         headers: dict | None = None) -> bool:
     """Send a plain-text email, optionally with attachments. Each attachment is a
     (filename, content_str_or_bytes, mimetype) tuple, e.g.
-    ('report.csv', csv_text, 'text/csv'). Returns True if handed to SMTP."""
+    ('report.csv', csv_text, 'text/csv'). ``headers`` adds extra RFC 5322 headers
+    (e.g. List-Unsubscribe). Returns True if handed to SMTP."""
     s = get_settings()
     if not s.email_enabled:
         extra = f" attachments={[a[0] for a in attachments]}" if attachments else ""
@@ -33,6 +35,9 @@ def send(to: str, subject: str, body: str, attachments: list[tuple] | None = Non
         msg["To"] = to
         msg["Subject"] = subject
         msg.set_content(body)
+        for hk, hv in (headers or {}).items():
+            if hv is not None and hk.lower() not in ("from", "to", "subject"):
+                msg[hk] = str(hv)
         for fname, content, mimetype in (attachments or []):
             data = content.encode() if isinstance(content, str) else content
             maintype, _, subtype = (mimetype or "application/octet-stream").partition("/")
