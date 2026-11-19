@@ -455,6 +455,53 @@ def threat_stats_public(request: Request, resp: Response):
     return {"probes24h": probes, "countries": countries}
 
 
+# --------------------------------------------------------------------------- #
+# NEON BREACH — live daily arcade (server-authoritative leaderboard). (v1.166)
+# --------------------------------------------------------------------------- #
+class _ArenaScoreIn(BaseModel):
+    handle: str | None = None
+    score: int = 0
+    token: str = ""
+    seconds: float = 0
+
+
+@router.get("/arena/today")
+def arena_today(request: Request, resp: Response, beat: str = ""):
+    """Today's shared seed + the live global top-10 + how many are breaching now."""
+    _cors(request, resp)
+    from ...core.db import SessionLocal
+    from ...services import arena
+    db = SessionLocal()
+    try:
+        out = arena.today(db, beat=(beat or None))
+    except Exception:  # noqa: BLE001 — the game must always get a payload
+        out = {"day": "", "seed": 1, "token": "", "playing": 0, "top": [], "plays": 0}
+    finally:
+        db.close()
+    resp.headers["Cache-Control"] = "no-store"
+    return out
+
+
+@router.post("/arena/score")
+def arena_score(body: _ArenaScoreIn, request: Request, resp: Response):
+    """Submit a run. Server-validated (signed token + plausibility) — the client
+    is never trusted with the leaderboard."""
+    _cors(request, resp)
+    if _limited(request):
+        return {"ok": False, "reason": "slow down a second and try again"}
+    from ...core.db import SessionLocal
+    from ...services import arena
+    db = SessionLocal()
+    try:
+        out = arena.submit(db, body.handle or "anon", body.score, body.token,
+                           body.seconds)
+    except Exception as e:  # noqa: BLE001
+        out = {"ok": False, "reason": "server error: " + str(e)[:80]}
+    finally:
+        db.close()
+    return out
+
+
 @router.post("/notfound")
 async def report_notfound(request: Request, resp: Response):
     """The bvtech.org 404 page reports the path it couldn't find here (relayed

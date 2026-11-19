@@ -4130,6 +4130,29 @@ def main():
             _s165.close()
         print("v1.165: reauth banner clears across channel<->connector-key (LinkedIn save fix) OK")
 
+        # ==== v1.166: NEON BREACH live arcade — server-authoritative leaderboard ====
+        _at = c.get("/api/public-tools/arena/today",
+                    headers={"origin": "https://bvtech.org"}).json()
+        assert _at.get("token") and isinstance(_at.get("seed"), int) and "top" in _at, _at
+        _ahdr = {"origin": "https://bvtech.org", "cf-connecting-ip": "203.0.113.231"}
+        # forged/empty token rejected
+        _bad = c.post("/api/public-tools/arena/score",
+                      json={"handle": "cheater", "score": 999999, "token": "nope", "seconds": 60},
+                      headers=_ahdr).json()
+        assert _bad.get("ok") is False, _bad
+        # valid token but physically-impossible score for the time -> rejected
+        _imp = c.post("/api/public-tools/arena/score",
+                      json={"handle": "botty", "score": 1000000, "token": _at["token"], "seconds": 5},
+                      headers={"origin": "https://bvtech.org", "cf-connecting-ip": "203.0.113.232"}).json()
+        assert _imp.get("ok") is False, _imp
+        # a real, plausible run lands on the board
+        _good = c.post("/api/public-tools/arena/score",
+                       json={"handle": "Jordan", "score": 1200, "token": _at["token"], "seconds": 30},
+                       headers={"origin": "https://bvtech.org", "cf-connecting-ip": "203.0.113.233"}).json()
+        assert _good.get("ok") is True and _good.get("made_board"), _good
+        assert any(r["handle"] == "Jordan" for r in _good["top"]), _good
+        print("v1.166: NEON BREACH arena — seed/token, forged+implausible rejected, real run boards OK")
+
         # ==== v1.62.0: tool lead capture -> inbound CRM lead + auto-followup ====
         from app.core.db import SessionLocal as _ESL   # this block runs before the later _ESL import
         from app.models import CrmContact as _CC62, CrmActivity as _CA62, Notification as _N62
@@ -8339,7 +8362,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.165.0"
+    assert _gs101().APP_VERSION == "1.166.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8788,7 +8811,7 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.165.0"
+    assert _gs101().APP_VERSION == "1.166.0"
     assert _sr100.REPAIR_EPOCH == "1.112.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
@@ -8824,7 +8847,7 @@ def main():
     assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
     # site nav points to the game home
     assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
-    assert _gs101().APP_VERSION == "1.165.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.166.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
           "Explore features it with a Halloween hero, republish forced OK")
 
@@ -8844,11 +8867,11 @@ def main():
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
     assert "xp-papel" in _xp3 and "Happy Thanksgiving" in _xp3, "seasonal Explore theme missing"
-    assert _gs101().APP_VERSION == "1.165.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.166.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
 
-    print("\n=== OpsPilot v1.165.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.166.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
