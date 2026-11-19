@@ -15,7 +15,11 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from ...core.db import get_db
 
 router = APIRouter(prefix="/api/public-tools", tags=["public-tools"])
 
@@ -128,6 +132,34 @@ def _preflight(rest: str, request: Request, resp: Response):
     resp.headers["Access-Control-Allow-Headers"] = "content-type"
     resp.headers["Access-Control-Max-Age"] = "86400"
     return {}
+
+
+class _UnsubIn(BaseModel):
+    token: str | None = None
+    email: str | None = None
+
+
+@router.post("/unsubscribe")
+def unsubscribe(body: _UnsubIn, request: Request, resp: Response,
+                db: Session = Depends(get_db)):
+    """Public one-click unsubscribe. Accepts a signed token (from the email link)
+    or a plain email typed on the page; adds the address to the global do-not-
+    contact list so no outreach email ever goes to it again. CORS-pinned to
+    bvtech.org, rate-limited. Always safe to call repeatedly (idempotent)."""
+    err = _guard(request, resp)
+    if err:
+        return err
+    from ...services import suppression
+    email = suppression.email_from_token(body.token) if body.token else None
+    if not email and body.email:
+        email = suppression.normalize(body.email)
+    if not email or not suppression.valid_email(email):
+        return {"ok": False,
+                "error": "Enter the email address you'd like to unsubscribe."}
+    suppression.suppress(db, email, source="public_unsubscribe")
+    return {"ok": True, "email": email,
+            "message": "Done — you've been unsubscribed. You won't receive any "
+                       "more outreach emails from BVTech."}
 
 
 @router.get("/whoami")

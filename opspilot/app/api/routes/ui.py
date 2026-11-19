@@ -85,6 +85,18 @@ def signup_page(request: Request):
     return _page("signup.html", request)
 
 
+@router.get("/unsubscribe", response_class=HTMLResponse)
+def unsubscribe_page(request: Request, e: str = "", db: Session = Depends(get_db)):
+    """Public unsubscribe page. The email link carries a signed token (?e=...);
+    we resolve it server-side to show the address, but the actual opt-out only
+    happens when the visitor clicks the button (so link-scanners can't do it)."""
+    from ...services import suppression
+    email = suppression.email_from_token(e) if e else None
+    already = bool(email and suppression.is_suppressed(db, email))
+    return _page("unsubscribe.html", request, token=e or "",
+                 email=email or "", already=already)
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):
     return _page("dashboard.html", request)

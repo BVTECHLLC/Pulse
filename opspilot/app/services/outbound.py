@@ -219,14 +219,20 @@ def select_due(db: Session, now: datetime, *, gap_days: int = GAP_DAYS,
 # --------------------------------------------------------------------------- #
 # Rendering + compliance
 # --------------------------------------------------------------------------- #
-def compliant_footer(sender: str, physical_address: str) -> str:
+def compliant_footer(sender: str, physical_address: str,
+                     recipient_email: str | None = None) -> str:
     """CAN-SPAM: a valid physical postal address + a clear opt-out. Non-optional
-    — run_daily refuses to send if physical_address is blank."""
+    — run_daily refuses to send if physical_address is blank. When the recipient
+    is known we add a one-click unsubscribe link alongside the reply-STOP option,
+    so every outreach email carries a real, instant way out."""
+    opt = ("You received this because we believe managed IT may help your "
+           "business. Reply STOP or simply say the word and we'll never contact "
+           "you again.")
+    if recipient_email:
+        from . import suppression
+        opt += "\n" + suppression.unsubscribe_line(recipient_email)
     return ("\n\n—\n"
-            f"{sender}\n{physical_address}\n"
-            "You received this because we believe managed IT may help your "
-            "business. Reply STOP or simply say the word and we'll never contact "
-            "you again.")
+            f"{sender}\n{physical_address}\n" + opt)
 
 
 def render(step_index: int, contact: CrmContact, sender: str,
@@ -242,7 +248,7 @@ def render(step_index: int, contact: CrmContact, sender: str,
     body = body.replace("{opener}", op + "\n\n" if op else "")
     body = body.replace("{value_para}", (value_para or _VALUE_DEFAULT).strip())
     body = campaigns.personalize(body, contact) + \
-        compliant_footer(sender, physical_address)
+        compliant_footer(sender, physical_address, contact.email)
     return subject, body
 
 
@@ -301,6 +307,20 @@ def run_daily(db: Session, send_fn, now: datetime | None = None, *,
         plan.append({"contact_id": contact.id, "email": contact.email,
                      "step": step, "subject": subject})
         if dry_run:
+            continue
+        # ABSOLUTE OPT-OUT: anyone on the global suppression list (clicked the
+        # Unsubscribe link, or was added by staff) is never emailed again. This
+        # overrides everything and is not counted as a send or a failure.
+        from . import suppression
+        if suppression.is_suppressed(db, contact.email):
+            contact.do_not_contact = True
+            if (contact.status or "").lower() != "unsubscribed":
+                contact.status = "unsubscribed"
+            crm.log_activity(db, contact, "note", subject="(not sent — unsubscribed)",
+                             body="recipient is on the unsubscribe list",
+                             direction="outbound",
+                             meta={"campaign": CAMPAIGN, "kind": "suppressed",
+                                   "why": "unsubscribed"}, commit=False)
             continue
         # v1.87 DELIVERABILITY GUARD: never email a dead domain — it just bounces
         # and burns the mailbox's sender reputation. Verify MX right before the
@@ -525,6 +545,9 @@ def resolve_send_fn(db: Session):
 
         def _send_graph(to: str, subject: str, body: str,
                         cc: list[str] | None = None) -> None:
+            from . import suppression
+            if suppression.is_suppressed(db, to):
+                return  # on the do-not-contact list — never transmit
             graph.send_mail(mailbox, [to], subject,
                             _text_to_html(body, custom_sig), html=True, cc=cc)
 
@@ -535,6 +558,9 @@ def resolve_send_fn(db: Session):
 
         def _send_smtp(to: str, subject: str, body: str,
                        cc: list[str] | None = None) -> None:
+            from . import suppression
+            if suppression.is_suppressed(db, to):
+                return  # on the do-not-contact list — never transmit
             if not email_svc.send(to, subject, body):
                 raise RuntimeError("SMTP send failed")
 
