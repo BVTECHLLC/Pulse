@@ -431,6 +431,30 @@ def threat_feed_public(request: Request, resp: Response):
     return data
 
 
+@router.get("/threat-stats")
+def threat_stats_public(request: Request, resp: Response):
+    """PUBLIC live counters for bvtech.org/cyber-range — the 'attacks blocked /
+    countries probing' numbers. Fed by the SAME real Pulse telemetry as the Threat
+    Map (honeypot trips, bot 404-probes, failed logins, + Cloudflare edge when a
+    token is set), so they're live, not stock. Never 500s; rangers/challenges are
+    left to the page's own values when a live source isn't wired. (v1.164)"""
+    _cors(request, resp)
+    from ...core.db import SessionLocal
+    from ...services import threat_feed
+    probes = countries = 0
+    db = SessionLocal()
+    try:
+        snap = threat_feed.snapshot(db)
+        probes = int(snap.get("total_24h") or 0)
+        countries = len(snap.get("origins") or [])
+    except Exception:  # noqa: BLE001 — the counter must always get a number
+        probes, countries = 0, 0
+    finally:
+        db.close()
+    resp.headers["Cache-Control"] = "public, max-age=60"
+    return {"probes24h": probes, "countries": countries}
+
+
 @router.post("/notfound")
 async def report_notfound(request: Request, resp: Response):
     """The bvtech.org 404 page reports the path it couldn't find here (relayed
