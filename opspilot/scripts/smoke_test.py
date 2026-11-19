@@ -6128,7 +6128,9 @@ def main():
         # ==== v1.72.0: three-door login + open Academy signup, school≠clients ====
         from app.services import school as _school
         # the front door is the chooser; /login is the form; /join is open signup
-        assert "how are you signing in" in c.get("/").text.lower(), "chooser missing at /"
+        _front = c.get("/").text.lower()
+        assert ("as=staff" in _front and "as=client" in _front and "as=academy" in _front
+                and "cyber academy" in _front), "chooser missing at /"
         assert c.get("/login").status_code == 200 and c.get("/join").status_code == 200
         # staff home routing
         from app.core.db import SessionLocal as _SLsch
