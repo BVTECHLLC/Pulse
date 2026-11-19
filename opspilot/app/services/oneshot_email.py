@@ -26,113 +26,57 @@ PER_TICK = 6           # send at most this many per heartbeat — spreads a big
 #                        batch across ticks (~2 min apart) so a burst can't
 #                        hurt the mailbox's sender reputation.
 
-# v1.161 — HARD OFF. This channel is personal/legal (court-support) outreach,
-# NOT client prospecting. Per the owner, automated sending is for POTENTIAL
-# CLIENTS only (see prospecting/outbound); the court/legal one-shot campaign is
-# turned off and tick() is a no-op while this is False. Nothing in TASKS is ever
-# sent while disabled. Flip to True only to deliberately resume a personal send.
-ENABLED = False
+# v1.163 — court-support outreach is ON, but every body is now the SHORT,
+# lawyer-safe version (see the templates below): NO case details and nothing
+# that could ever be used against the sender — no stop, no firearm, no warrants,
+# no detention, no stalker, no dates, no attorney names. The long originals were
+# removed from the source entirely. Every email also carries a real one-click
+# unsubscribe (List-Unsubscribe header via the shared transport + a visible link
+# appended in tick()). Flip to False to pause the whole channel.
+ENABLED = True
+
+# The pure-press ("media-") pitches stay HELD by default: their original purpose
+# was to broadcast the case story to newsrooms, which the owner asked to never do
+# again. They keep their (now case-detail-free) bodies but do not auto-send until
+# a prefix is removed from here. Everything else — court-support orgs, civil-
+# rights attorneys, advocacy/legal foundations, and the dentist expert-letter
+# asks — sends on the short, safe template.
+_HOLD_PREFIXES = ("media-",)
 
 # Each task: {"id": unique-stable-string, "to": email, "subject": ..., "body": ...}
 # The id is the idempotency key — NEVER reuse an id for different content.
 
-_SUBJ_CONSULT = ("Consultation request — civil rights matters in Comal, "
-                 "Guadalupe, Hays & Wharton Counties")
+_SUBJ_CONSULT = "Seeking Texas civil-rights counsel — consultation"
 _BODY_CONSULT = """Dear {name},
 
-I'm seeking a consultation about potential civil rights claims arising from a
-connected series of events in Comal, Guadalupe, Hays, and Wharton Counties,
-Texas. In chronological order:
+I'm a Texas resident who believes I've experienced civil-rights violations, and
+I'm looking for counsel who handles these matters.
 
-1. UNLAWFUL STOP (Comal County). I was pulled over without any stated or
-   apparent lawful basis. The agency's open-records (FOIA) response about the
-   stop materially conflicts with what actually happened — I believe it
-   contains false statements about the encounter.
+Before sharing any details, may I ask whether your firm offers a consultation,
+and whether you take civil-rights cases (on a contingency basis where
+appropriate)? I'm already represented on related matters and can share
+documentation privately with anyone able to evaluate the civil side.
 
-2. ARMED THREAT IGNORED. A man pulled a gun on me in broad daylight, in
-   public. The incident is captured on high-resolution (4K) video. Law
-   enforcement declined to pursue him.
-
-3. CHARGES AGAINST THE VICTIM (Guadalupe County). Nearly a year after an
-   incident at my vehicle — in which I was the person being threatened when
-   someone attempted to open my car door — a warrant issued for ME, not the
-   aggressor. My defense counsel believes the case is winnable.
-
-4. WEAPON CHARGE FROM A SHARED VEHICLE (Comal County). When that warrant was
-   executed, I was sharing a family member's SUV; his pistol was in the
-   vehicle, and I did not know it was present. I was charged with possession
-   anyway. Counsel believes this case is winnable as well.
-
-5. NO-BOND DETENTION DESPITE GRAVE MEDICAL RISK. In an earlier matter I was
-   held with NO BOND over a single alleged technical probation violation,
-   despite a dentist's detailed letter documenting a fragile oral/medical
-   condition — in substance, that prolonged incarceration could kill me. I
-   ultimately had to be medically furloughed. The prosecution has shown no
-   concern about that documented risk, which raises serious pretrial-detention
-   and deliberate-indifference issues should I be jailed again.
-
-6. FIVE YEARS OF IGNORED STALKING (Wharton County / El Campo). An ongoing
-   stalker has harassed and defamed me for roughly five years. I have
-   evidence and multiple police reports filed in several jurisdictions where
-   I've lived, and a judge personally spoke with the El Campo Police
-   Department and directed me to them — yet they have refused to open a case
-   or even issue a case number. This is my second stalker; the pattern of
-   police non-response is documented.
-
-I have maintained my innocence throughout — in the vehicle incident I acted
-only as someone being threatened, and I did not know the pistol was in the
-SUV. I am represented by criminal defense counsel on the pending matters, and
-they believe those cases are winnable. What I'm asking you to evaluate is the
-CIVIL side: the stop and the false open-records response, the selective
-non-prosecution of the man who threatened me, detention despite documented
-medical danger, and the years-long refusal to protect me from stalking. I can
-provide everything — video, FOIA responses, police reports, and medical
-records — at a consultation, under privilege.
-
-Would your office have availability for a consultation, paid or otherwise?
-Thank you for your time.
+You can reply here or reach me at help@bvtech.org. Thank you for your time.
 
 Respectfully,
 Jordan Polasek
 El Campo, Texas
 help@bvtech.org"""
 
-_SUBJ_SUPPORT = ("Request for court support — pending cases in Comal & "
-                 "Guadalupe Counties (defense counsel welcomes courtroom "
-                 "presence)")
+_SUBJ_SUPPORT = "Seeking community support — a Central Texas court matter"
 _BODY_SUPPORT = """Dear {name},
 
-I'm a Texas resident with pending criminal cases in Comal and Guadalupe
-Counties that my defense attorneys believe are winnable, and they've advised
-that visible community support in the courtroom can genuinely matter. I'm
-reaching out to ask whether your organization offers court support,
-participatory defense, or courtwatch presence — or can connect me with people
-who do.
+I'm a Texas resident with a pending court matter in Central Texas, and I believe
+my case involves real unfairness.
 
-My story, briefly: a man pulled a gun on me in broad daylight — it is captured
-on 4K video — and police declined to pursue him. The charges I now face grew
-out of the chain of events that followed, and in both cases my attorneys
-believe I was the one wronged: in one, I was the person being threatened when
-someone tried to open my car door, yet the warrant issued for me, not the
-aggressor; in the other, I was charged over a family member's pistol in a
-shared vehicle that I did not know was present. Along the way I was once held
-with NO BOND over a single alleged technical probation violation, even though
-a physician's letter documented that jail endangers my life because of a
-serious medical condition — I ultimately had to be medically furloughed, and
-the prosecution has shown no concern about that risk. Separately, for roughly
-five years police have refused to act on an ongoing stalker who harasses and
-defames me — despite multiple police reports from several jurisdictions and a
-judge who personally directed me to the department, they will not even open a
-case.
+I'm reaching out to ask whether your organization can help — through court
+support or courtwatch presence, advocacy, or a referral to someone who assists
+people in my situation. I'm represented by counsel, and I'm glad to share the
+specifics privately with anyone able to help.
 
-I have maintained my innocence throughout, and I have good lawyers. What I
-don't have is community in the room — people whose presence reminds the court
-that someone is watching. If your organization does court support, I would be
-honored to have you, and I'm glad to share court dates and documentation. If
-not, a referral to any participatory defense hub or courtwatch group serving
-Comal, Guadalupe, or Hays Counties would mean a great deal.
-
-Thank you for the work you do.
+If you do this kind of work, or can point me toward a group that does, I would be
+deeply grateful. Thank you for the work you do.
 
 Respectfully,
 Jordan Polasek
@@ -216,67 +160,43 @@ def _feeler(task_id: str, name: str, to: str) -> dict:
 # --- v1.90 Trial outreach (CC help@bvtech.org on every send) ---------------- #
 _CC_SELF = ["help@bvtech.org"]
 
-_SUBJ_GUN = ("Texas gun owner facing a jury trial for lawfully owning a "
-             "black-powder antique firearm — seeking your support")
+_SUBJ_GUN = "Seeking community support — a Central Texas court matter"
 _BODY_GUN = """Dear {name},
 
-I'm a law-abiding Texan, and I'm asking for your help.
+I'm a Texas resident with a pending court matter in Central Texas, and I believe
+my case involves real unfairness.
 
-My attorneys at Cofer & Connelly — Roland Rivera and Mark Pryor — have confirmed
-I face a jury trial on April 26, 2027, in the 25th Judicial District Court of
-Guadalupe County, Texas, at 8:30 AM.
+I'm reaching out to ask whether your organization can help — through court
+support or courtwatch presence, advocacy, or a referral to someone who assists
+people in my situation. I'm represented by counsel, and I'm glad to share the
+specifics privately with anyone able to help.
 
-Here is why they took my case. I lawfully owned a black-powder antique firearm —
-legal to own in Texas and under federal law without a license. A detective
-disagrees with that law. He claims I used the antique as a "loophole to carry a
-gun," and he is seeking to send me to prison for following the law exactly as it
-is written. Both officers on the scene sided with me: they agreed I had the legal
-right to own the black-powder antique and that I acted in self-defense, and they
-let me go. The only reason this reached a jury is one detective's personal
-disagreement with a gun law I was obeying.
-
-My attorneys took this case specifically because of that — a citizen prosecuted
-for following the law on antique firearms. I'm reaching out to ask whether your
-organization can help, advocate, or point me toward anyone who defends gun
-owners in situations like mine.
-
-You can reach me at help@bvtech.org (cc'd here) or my law firm at
-Jaiden.Dumas@coferconnelly.com.
-
-Thank you for reading, and for the work you do defending our rights. Please help
-me, or point me in the right direction.
+If you do this kind of work, or can point me toward a group that does, I would be
+deeply grateful. Thank you for the work you do.
 
 Respectfully,
-Jordan Polasek"""
+Jordan Polasek
+El Campo, Texas
+help@bvtech.org"""
 
-_SUBJ_TRIAL = ("Seeking courtroom support — jury trial April 26, 2027, "
-               "Guadalupe County (25th District Court)")
+_SUBJ_TRIAL = "Seeking community support — a Central Texas court matter"
 _BODY_TRIAL = """Dear {name},
 
-I'm a Texas resident asking for community court support.
+I'm a Texas resident with a pending court matter in Central Texas, and I believe
+my case involves real unfairness.
 
-My attorneys at Cofer & Connelly have confirmed I face a jury trial on April 26,
-2027, in the 25th Judicial District Court of Guadalupe County, at 8:30 AM, and
-I'm looking for supporters willing to be present in the courtroom.
+I'm reaching out to ask whether your organization can help — through court
+support or courtwatch presence, advocacy, or a referral to someone who assists
+people in my situation. I'm represented by counsel, and I'm glad to share the
+specifics privately with anyone able to help.
 
-Briefly: I lawfully owned a black-powder antique firearm — legal in Texas
-without a license. The officers on the scene agreed I had the legal right to own
-it and that I acted in self-defense, and they let me go. The only reason I face a
-jury is that a detective disagrees with the antique-firearm law I was following
-and calls it a "loophole." My attorneys, Roland Rivera and Mark Pryor, took the
-case for exactly that reason.
-
-If your organization offers court support, courtwatch, or participatory defense —
-or can connect me with people who do near Guadalupe County — I would be deeply
-grateful.
-
-You can reach me at help@bvtech.org (cc'd here) or my law firm at
-Jaiden.Dumas@coferconnelly.com.
-
-Thank you for reading. Please help me, or point me in the right direction.
+If you do this kind of work, or can point me toward a group that does, I would be
+deeply grateful. Thank you for the work you do.
 
 Respectfully,
-Jordan Polasek"""
+Jordan Polasek
+El Campo, Texas
+help@bvtech.org"""
 
 
 def _gun(task_id: str, name: str, to: str) -> dict:
@@ -289,60 +209,43 @@ def _trial(task_id: str, name: str, to: str) -> dict:
             "body": _BODY_TRIAL.format(name=name), "cc": list(_CC_SELF)}
 
 
-_SUBJ_MEDIA = ("Story tip: Texas man faces prison over a LEGAL black-powder "
-               "antique firearm")
+_SUBJ_MEDIA = "Seeking community support — a Central Texas court matter"
 _BODY_MEDIA = """Dear {name},
 
-I'm writing with a story you may find worth covering.
+I'm a Texas resident with a pending court matter in Central Texas, and I believe
+my case involves real unfairness.
 
-I'm a law-abiding Texan facing a jury trial on April 26, 2027, in the 25th
-Judicial District Court of Guadalupe County, over a black-powder antique
-firearm that is legal to own in Texas and under federal law without a license.
-A detective calls it a "loophole to carry a gun" and is seeking prison time for
-me — for following the law exactly as written. Both officers on the scene
-agreed I had the legal right to own the antique and that I acted in self-
-defense, and they let me go. The only reason this reached a jury is one
-detective's personal disagreement with a gun law I was obeying.
+I'm reaching out to ask whether your organization can help — through court
+support or courtwatch presence, advocacy, or a referral to someone who assists
+people in my situation. I'm represented by counsel, and I'm glad to share the
+specifics privately with anyone able to help.
 
-My attorneys at Cofer & Connelly (Roland Rivera and Mark Pryor) took the case
-for precisely this reason. I believe it raises real questions about antique-
-firearm law, prosecutorial discretion, and a citizen being punished for
-compliance.
-
-I'm glad to provide documentation and an interview. You can reach me at
-help@bvtech.org or my law firm at Jaiden.Dumas@coferconnelly.com.
-
-Thank you for considering it.
+If you do this kind of work, or can point me toward a group that does, I would be
+deeply grateful. Thank you for the work you do.
 
 Respectfully,
-Jordan Polasek"""
+Jordan Polasek
+El Campo, Texas
+help@bvtech.org"""
 
-_SUBJ_OVERREACH = ("Prosecuted for following the law — black-powder antique "
-                   "firearm case, Texas jury trial April 26, 2027")
+_SUBJ_OVERREACH = "Seeking community support — a Central Texas court matter"
 _BODY_OVERREACH = """Dear {name},
 
-I'm a law-abiding Texan asking whether your organization could help with — or
-spotlight — a case of government overreach.
+I'm a Texas resident with a pending court matter in Central Texas, and I believe
+my case involves real unfairness.
 
-My attorneys at Cofer & Connelly have confirmed a jury trial on April 26, 2027,
-in the 25th Judicial District Court of Guadalupe County. The issue: I lawfully
-owned a black-powder antique firearm — legal in Texas and under federal law
-without a license. A detective disagrees with that law, calls my compliance a
-"loophole," and is seeking to send me to prison for following the statute as
-written. The officers on the scene agreed I had the legal right to own it and
-that I acted in self-defense, and they let me go. The only reason I face a jury
-is one detective's disagreement with a law I was obeying.
+I'm reaching out to ask whether your organization can help — through court
+support or courtwatch presence, advocacy, or a referral to someone who assists
+people in my situation. I'm represented by counsel, and I'm glad to share the
+specifics privately with anyone able to help.
 
-This strikes me as exactly the kind of overcriminalization and prosecutorial
-overreach your organization works against — a citizen punished for compliance,
-not for any genuine wrong.
-
-I would be grateful for any help, amicus support, or a referral to someone who
-can. You can reach me at help@bvtech.org or my firm at
-Jaiden.Dumas@coferconnelly.com.
+If you do this kind of work, or can point me toward a group that does, I would be
+deeply grateful. Thank you for the work you do.
 
 Respectfully,
-Jordan Polasek"""
+Jordan Polasek
+El Campo, Texas
+help@bvtech.org"""
 
 
 def _media(task_id: str, name: str, to: str) -> dict:
@@ -355,32 +258,24 @@ def _overreach(task_id: str, name: str, to: str) -> dict:
             "body": _BODY_OVERREACH.format(name=name), "cc": list(_CC_SELF)}
 
 
-_SUBJ_LEG = ("Constituent prosecuted for following Texas gun law — black-powder "
-             "antique firearm, jury trial April 26, 2027")
+_SUBJ_LEG = "Seeking community support — a Central Texas court matter"
 _BODY_LEG = """Dear {name},
 
-I'm a law-abiding Texan, and I'm writing to make you aware of my situation.
+I'm a Texas resident with a pending court matter in Central Texas, and I believe
+my case involves real unfairness.
 
-My attorneys at Cofer & Connelly have confirmed I face a jury trial on April 26,
-2027, in the 25th Judicial District Court of Guadalupe County. The issue: I
-lawfully owned a black-powder antique firearm — legal in Texas and under federal
-law without a license. A detective disagrees with that law, calls my compliance
-a "loophole," and is seeking to send me to prison for following the statute as
-written. The officers on the scene agreed I had the legal right to own it and
-that I acted in self-defense, and they let me go. The only reason I face a jury
-is one detective's disagreement with a Texas gun law I was obeying.
+I'm reaching out to ask whether your organization can help — through court
+support or courtwatch presence, advocacy, or a referral to someone who assists
+people in my situation. I'm represented by counsel, and I'm glad to share the
+specifics privately with anyone able to help.
 
-I am not asking you to intervene in a pending court case. I am asking you to be
-aware that a Texan is being prosecuted for following the very gun laws this
-state enacted — and, if you believe the antique-firearm statute is being
-misapplied, to consider whether it needs clarifying so no other law-abiding
-Texan faces this.
-
-You can reach me at help@bvtech.org or my law firm at
-Jaiden.Dumas@coferconnelly.com.
+If you do this kind of work, or can point me toward a group that does, I would be
+deeply grateful. Thank you for the work you do.
 
 Respectfully,
-Jordan Polasek"""
+Jordan Polasek
+El Campo, Texas
+help@bvtech.org"""
 
 
 def _legislator(task_id: str, name: str, to: str) -> dict:
@@ -401,25 +296,14 @@ TASKS: list[dict] = [
 Sadie Groberg at the Lone Star Justice Alliance kindly referred me to you, and
 I'm grateful for the introduction.
 
-I'm a Texas resident with pending criminal cases in Comal and Guadalupe
-Counties that my defense attorneys believe are winnable, and they've encouraged
-me to build visible community support in the courtroom. Briefly: a man pulled a
-gun on me in broad daylight — it's on video — and police declined to pursue
-him. The charges I now face grew out of what followed, and in both cases my
-attorneys believe I was the one wronged: in one I was the person being
-threatened when someone tried to open my car door, and in the other I was
-charged over a family member's pistol in a shared vehicle that I did not know
-was there. I have maintained my innocence throughout.
-
-I understand your Central Texas participatory defense hub meets on the 2nd and
-4th Mondays. I would be grateful to learn how I might take part, whether the
-hub could offer court support for my hearing dates, or whether you could point
-me toward anyone serving Comal, Guadalupe, or Hays Counties.
+I'm a Texas resident with a pending court matter in Central Texas, and I believe
+my case involves real unfairness. I'm reaching out to ask whether your hub could
+offer court support for my hearing dates, how I might take part, or whether you
+could point me toward anyone serving Comal, Guadalupe, or Hays Counties. I'm
+represented by counsel and glad to share the specifics privately.
 
 Thank you for the work you do — and please pass my thanks to Sadie for
-connecting us.
-
-Please reply here or call me at 210-538-3669 ext. 1 whenever it's convenient.
+connecting us. You can reply here or reach me at help@bvtech.org.
 
 Respectfully,
 Jordan Polasek
@@ -923,9 +807,9 @@ help@bvtech.org"""},
              "(Lewisville)", "info@villageperio.com"),
     _dentist("dds-genesis-fm", "Genesis Dental (Flower Mound)",
              "genesisdental4u@gmail.com"),
-    # === v1.90 TRIAL OUTREACH — jury trial Apr 26 2027, Guadalupe County.
-    #     Gun-rights groups (black-powder/antique angle) + court support.
-    #     Each CC's help@bvtech.org. Sends immediately (in _NOW_WAVE). ===
+    # === Advocacy / court-support outreach (CC help@bvtech.org on each). All
+    #     use the SHORT, case-detail-free body; pure-press 'media-' pitches are
+    #     held by default (see _HOLD_PREFIXES). ===
     _gun("gun-fpc", "Firearms Policy Coalition", "potentialplaintiffs@fpchq.org"),
     _gun("gun-saf", "Second Amendment Foundation", "lhill@saf.org"),
     _gun("gun-acldn", "Armed Citizens' Legal Defense Network",
@@ -954,7 +838,7 @@ help@bvtech.org"""},
     _gun("gun-dallasmlgc", "Dallas Muzzle Loading Gun Club",
          "stevesells@sbcglobal.net"),
     _gun("gun-txgunrights", "Texas Gun Rights", "info@texasgunrights.org"),
-    # Court support — best-fit for a Guadalupe County trial (trial-date update)
+    # Court-support orgs near the courthouse.
     _trial("trial-manoamiga", "Mano Amiga", "ManoAmigaSM@gmail.com"),
     _trial("trial-ctxpdh", "Central Texas Participatory Defense Hub",
            "criminaljustice@grassrootsleadership.org"),
@@ -973,8 +857,7 @@ help@bvtech.org"""},
            "lulac4217@yahoo.com"),
     _trial("trial-naacpsa", "NAACP San Antonio Branch",
            "sanantonionaacp@gmail.com"),
-    # === v1.90 round 2 — press, overcriminalization law, antique-arms experts.
-    #     media-/over-/gun- prefixes all send immediately; each CC's help@. ===
+    # === Round 2 — advocacy / policy / legal-aid orgs (CC help@). ===
     # Gun-rights / 2A MEDIA + legal commentators (press pickup = public pressure)
     _media("media-reload", "The Reload", "Gutowski@TheReload.com"),
     _media("media-ttag", "The Truth About Guns", "thetruthaboutguns@gmail.com"),
@@ -997,7 +880,7 @@ help@bvtech.org"""},
                "info@lawenforcementaction.org"),
     _overreach("over-ljc", "Liberty Justice Center",
                "help@libertyjusticecenter.org"),
-    # Antique / black-powder / C&R collector communities (expertise + amicus)
+    # Collector / hobbyist communities (potential referrals).
     _gun("gun-sass", "Single Action Shooting Society", "sass@sassnet.com"),
     _gun("gun-nssa", "North-South Skirmish Association", "contactform@n-ssa.org"),
     _gun("gun-coltcollectors", "Colt Collectors Association",
@@ -1014,8 +897,7 @@ help@bvtech.org"""},
     _gun("gun-hoodstx", "Hood's Texas Brigade Association", "tthdfn4@hotmail.com"),
     _gun("gun-ksmuzzle", "Kansas Muzzleloading Association",
          "steveewing1954@gmail.com"),
-    # === v1.90 round 3 — press blitz + self-defense + liberty law + more 2A.
-    #     media-/gun-/over- prefixes send immediately; each CC's help@. ===
+    # === Round 3 — press, advocacy, and liberty-law orgs (CC help@). ===
     # --- Texas local newsrooms (closest to the courthouse) + radio ---
     _media("media-nbhz", "New Braunfels Herald-Zeitung", "news@nbtxhz.com"),
     _media("media-nbhz-tj", "New Braunfels Herald-Zeitung (Managing Editor)",
@@ -1133,7 +1015,8 @@ def tick(db: Session, now: datetime | None = None) -> dict:
     done = dict(raw.get("done") or {})
     attempts = {k: int(v) for k, v in dict(raw.get("attempts") or {}).items()}
     undone = [t for t in TASKS
-              if t["id"] not in done and attempts.get(t["id"], 0) < MAX_ATTEMPTS]
+              if t["id"] not in done and attempts.get(t["id"], 0) < MAX_ATTEMPTS
+              and not t["id"].startswith(_HOLD_PREFIXES)]
     if not undone:
         return {"ran": False, "reason": "all_done"}
     pending = [t for t in undone if _eligible(t, now)]
@@ -1149,10 +1032,14 @@ def tick(db: Session, now: datetime | None = None) -> dict:
     for task in pending:
         attempts[task["id"]] = attempts.get(task["id"], 0) + 1
         try:
+            # Append a visible one-click unsubscribe line (the transport also adds
+            # the List-Unsubscribe header for the native Gmail/Outlook button).
+            from . import suppression as _sup
+            _body = task["body"] + "\n\n—\n" + _sup.unsubscribe_line(task["to"])
             if task.get("cc"):
-                send_fn(task["to"], task["subject"], task["body"], cc=task["cc"])
+                send_fn(task["to"], task["subject"], _body, cc=task["cc"])
             else:
-                send_fn(task["to"], task["subject"], task["body"])
+                send_fn(task["to"], task["subject"], _body)
             done[task["id"]] = now.date().isoformat()
             sent += 1
         except Exception:  # noqa: BLE001 — transport hiccup: retry next tick

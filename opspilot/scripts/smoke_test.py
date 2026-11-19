@@ -7107,9 +7107,21 @@ def main():
                 # the _gun/_trial builders stamp the cc + fill {name}
                 _gt = _os881._gun("g1", "Gun Owners of America", "x@goa.org")
                 assert _gt["cc"] == ["help@bvtech.org"] and "Gun Owners of America" in _gt["body"]
-                assert "April 26, 2027" in _gt["body"] and "Cofer & Connelly" in _gt["body"]
+                # v1.163: every court/legal body is now the SHORT, case-detail-free
+                # version — NO incriminating specifics may ever appear again.
+                for _banned in ("April 26, 2027", "Cofer & Connelly", "black-powder",
+                                "self-defense", "pistol", "25th Judicial", "stalker"):
+                    assert _banned not in _gt["body"], (_banned, _gt["body"])
+                assert "unfairness" in _gt["body"] or "court support" in _gt["body"]
                 _tt = _os881._trial("t1", "Mano Amiga", "x@m.org")
-                assert _tt["cc"] == ["help@bvtech.org"] and "Guadalupe County" in _tt["body"]
+                assert _tt["cc"] == ["help@bvtech.org"] and "Mano Amiga" in _tt["body"]
+                assert "Guadalupe County" not in _tt["body"] and "April 26, 2027" not in _tt["body"]
+                # the media- publicity pitches are HELD (never auto-sent) by default;
+                # check against the REAL task list saved before the test swap.
+                _held = [t for t in _orig_tasks881
+                         if t["id"].startswith(_os881._HOLD_PREFIXES)]
+                assert _held, "expected some media- tasks held"
+                assert all(t["id"].startswith("media-") for t in _held), "only media- is held"
             finally:
                 _os881.TASKS = _orig_tasks881
                 _os881._SEND_RESOLVER = _orig_res881
@@ -8298,7 +8310,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.162.0"
+    assert _gs101().APP_VERSION == "1.163.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8747,7 +8759,7 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.162.0"
+    assert _gs101().APP_VERSION == "1.163.0"
     assert _sr100.REPAIR_EPOCH == "1.112.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
@@ -8783,7 +8795,7 @@ def main():
     assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
     # site nav points to the game home
     assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
-    assert _gs101().APP_VERSION == "1.162.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.163.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
           "Explore features it with a Halloween hero, republish forced OK")
 
@@ -8803,11 +8815,11 @@ def main():
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
     assert "xp-papel" in _xp3 and "Happy Thanksgiving" in _xp3, "seasonal Explore theme missing"
-    assert _gs101().APP_VERSION == "1.162.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.163.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
 
-    print("\n=== OpsPilot v1.162.0 SMOKE TEST PASSED ===")
+    print("\n=== OpsPilot v1.163.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
