@@ -248,7 +248,7 @@ def render(step_index: int, contact: CrmContact, sender: str,
     body = body.replace("{opener}", op + "\n\n" if op else "")
     body = body.replace("{value_para}", (value_para or _VALUE_DEFAULT).strip())
     body = campaigns.personalize(body, contact) + \
-        compliant_footer(sender, physical_address, contact.email)
+        compliant_footer(sender, physical_address, getattr(contact, "email", None))
     return subject, body
 
 

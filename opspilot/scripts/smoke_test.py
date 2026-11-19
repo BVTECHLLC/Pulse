@@ -6987,6 +6987,10 @@ def main():
             _cc_seen881: list = []
             _orig_tasks881 = _os881.TASKS
             _orig_res881 = _os881._SEND_RESOLVER
+            # The channel ships DISABLED (personal/legal court outreach is off in
+            # prod). Enable it here only to exercise the send machinery.
+            _orig_enabled881 = _os881.ENABLED
+            _os881.ENABLED = True
             _os881.TASKS = [
                 {"id": "t-ok", "to": "ok@example.com", "subject": "hello",
                  "body": "one-shot body"},
@@ -7068,6 +7072,7 @@ def main():
             finally:
                 _os881.TASKS = _orig_tasks881
                 _os881._SEND_RESOLVER = _orig_res881
+                _os881.ENABLED = _orig_enabled881
                 (_edb6.query(_IC56).filter(_IC56.provider == "oneshot_email")
                  .delete(synchronize_session=False)); _edb6.commit()
             print("one-shot emails: exactly-once per task id + retry-on-failure "
