@@ -28,9 +28,15 @@ class BrandingIn(BaseModel):
     product: str | None = None
     logo_url: str | None = None
     accent: str | None = None
+    accent2: str | None = None
     support_email: str | None = None
+    support_phone: str | None = None
+    website_url: str | None = None
+    company_address: str | None = None
+    email_from_name: str | None = None
     tagline: str | None = None
     footer_note: str | None = None
+    powered_by: str | None = None       # "on" / "off"
 
 
 @router.put("")

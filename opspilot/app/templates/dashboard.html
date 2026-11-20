@@ -1366,16 +1366,31 @@
 
     <div class="card" style="margin-bottom:16px">
       <h3 style="margin-top:0">🎨 Branding / White-label</h3>
-      <p class="muted" style="margin:4px 0 10px">Make the portal yours — this name, logo &amp; color apply everywhere (login, dashboard, client portal). Perfect for reselling under your own brand.</p>
-      <div class="grid2">
-        <label>Company name<input id="br-company" placeholder="BVTech"></label>
-        <label>Product name<input id="br-product" placeholder="OpsPilot"></label>
-        <label>Logo URL (public https)<input id="br-logo" placeholder="https://.../logo.svg"></label>
-        <label>Accent color<input id="br-accent" type="color" value="#6c5ce7" style="height:42px;padding:4px"></label>
-        <label>Support email<input id="br-support" placeholder="help@bvtech.org"></label>
-        <label>Tagline<input id="br-tagline" placeholder="Managed IT &amp; Security"></label>
+      <p class="muted" style="margin:4px 0 10px">Make the portal yours — name, logo, colors, contact &amp; the “Powered by” line apply everywhere: login, dashboard, client portal, and quote-signing pages. Turn off “Powered by” to resell it fully as your own.</p>
+      <div id="br-preview" style="display:flex;align-items:center;gap:11px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;margin-bottom:12px;background:#0c1430">
+        <div id="brp-logo" style="width:38px;height:38px;border-radius:9px;display:grid;place-items:center;color:#fff;font-weight:800;overflow:hidden">B</div>
+        <div><div style="font-weight:700" id="brp-name">BVTech OpsPilot</div>
+          <div class="muted" style="font-size:12px" id="brp-tag">Managed IT &amp; Security</div></div>
+        <div style="margin-left:auto;font-size:11px;color:#8ea0c9" id="brp-powered">Powered by BVTech</div>
       </div>
-      <div class="flex" style="margin-top:8px"><button class="btn sm" onclick="saveBranding()">Save branding</button>
+      <div class="grid2">
+        <label>Company name<input id="br-company" placeholder="BVTech" oninput="brPreview()"></label>
+        <label>Product name<input id="br-product" placeholder="OpsPilot" oninput="brPreview()"></label>
+        <label>Logo URL (public https)<input id="br-logo" placeholder="https://.../logo.svg" oninput="brPreview()"></label>
+        <label>Tagline<input id="br-tagline" placeholder="Managed IT &amp; Security" oninput="brPreview()"></label>
+        <label>Primary color<input id="br-accent" type="color" value="#6c5ce7" style="height:42px;padding:4px" oninput="brPreview()"></label>
+        <label>Secondary color<input id="br-accent2" type="color" value="#4834d4" style="height:42px;padding:4px" oninput="brPreview()"></label>
+        <label>Support email<input id="br-support" placeholder="help@bvtech.org"></label>
+        <label>Support phone<input id="br-phone" placeholder="(555) 555-0199"></label>
+        <label>Website<input id="br-website" placeholder="https://bvtech.org"></label>
+        <label>Email “from” name<input id="br-fromname" placeholder="BVTech Billing"></label>
+      </div>
+      <label style="margin-top:8px;display:block">Company address <span class="muted">(shown in email footers for CAN-SPAM compliance)</span>
+        <input id="br-address" placeholder="123 Main St, Sugar Land, TX 77478" style="width:100%"></label>
+      <label class="flex" style="align-items:center;gap:8px;margin-top:11px;cursor:pointer">
+        <input type="checkbox" id="br-powered" checked onchange="brPreview()" style="width:auto">
+        <span>Show “Powered by <span id="br-poweredco">BVTech</span>” on client pages <span class="muted">(turn off to resell fully white-label)</span></span></label>
+      <div class="flex" style="margin-top:12px"><button class="btn sm" onclick="saveBranding()">Save branding</button>
         <span class="muted" id="br-msg" style="font-size:12px"></span></div>
     </div>
 
@@ -4221,16 +4236,37 @@ async function testHubspot(){
   const r=await post('/api/hubspot/test'); const j=await r.json().catch(()=>({}));
   msg.textContent=r.ok?'Connected ✓':(j.detail||'Test failed');
 }
+function brPreview(){
+  const co=val('br-company')||'BVTech', pr=val('br-product')||'OpsPilot';
+  const a=val('br-accent')||'#6c5ce7', a2=val('br-accent2')||a;
+  const logo=document.getElementById('brp-logo'); if(!logo)return;
+  logo.style.background=`linear-gradient(135deg,${a},${a2})`;
+  const lu=val('br-logo');
+  logo.innerHTML = lu?`<img src="${esc(lu)}" style="width:100%;height:100%;object-fit:contain" onerror="this.replaceWith(document.createTextNode('${esc((co[0]||'B').toUpperCase())}'))">`:esc((co[0]||'B').toUpperCase());
+  document.getElementById('brp-name').textContent=(co+' '+pr).trim();
+  document.getElementById('brp-tag').textContent=val('br-tagline')||'Managed IT & Security';
+  const on=document.getElementById('br-powered').checked;
+  const pw=document.getElementById('brp-powered'); pw.style.display=on?'block':'none'; pw.textContent='Powered by '+co;
+  document.getElementById('br-poweredco').textContent=co;
+}
 async function loadBranding(){
   const b=await api('/api/branding'); if(!b)return;
-  const set=(id,v)=>{const e=document.getElementById(id); if(e&&v!=null)e.value=v;};
+  const set=(id,v)=>{const e=document.getElementById(id); if(e&&v!=null&&v!=='')e.value=v;};
   set('br-company',b.company); set('br-product',b.product); set('br-logo',b.logo_url);
-  set('br-accent',b.accent); set('br-support',b.support_email); set('br-tagline',b.tagline);
+  set('br-accent',b.accent); set('br-accent2',b.accent2); set('br-support',b.support_email);
+  set('br-tagline',b.tagline); set('br-phone',b.support_phone); set('br-website',b.website_url);
+  set('br-address',b.company_address);
+  if(b.email_from_name && b.email_from_name!==b.app_name) set('br-fromname',b.email_from_name);
+  const pc=document.getElementById('br-powered'); if(pc)pc.checked=(b.powered_by!==false);
+  brPreview();
 }
 async function saveBranding(){
   const msg=document.getElementById('br-msg'); msg.textContent='saving…';
   const r=await put('/api/branding',{company:val('br-company'),product:val('br-product'),
-    logo_url:val('br-logo'),accent:val('br-accent'),support_email:val('br-support'),tagline:val('br-tagline')});
+    logo_url:val('br-logo'),accent:val('br-accent'),accent2:val('br-accent2'),
+    support_email:val('br-support'),support_phone:val('br-phone'),website_url:val('br-website'),
+    company_address:val('br-address'),email_from_name:val('br-fromname'),tagline:val('br-tagline'),
+    powered_by:document.getElementById('br-powered').checked?'on':'off'});
   if(r.ok){msg.textContent='Saved ✓ — refreshing…';setTimeout(()=>location.reload(),700);}
   else{const j=await r.json().catch(()=>({}));msg.textContent=j.detail||'Only an owner can change branding.';}
 }

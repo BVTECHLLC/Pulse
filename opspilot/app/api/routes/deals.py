@@ -7,6 +7,7 @@ accept page itself is served at /q/{token}.
 """
 from __future__ import annotations
 
+import html as _htmllib
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -26,6 +27,10 @@ _STAFF = require_roles(Role.OWNER, Role.TECH)
 
 def _ip(req: Request) -> str:
     return req.headers.get("cf-connecting-ip") or (req.client.host if req.client else "?")
+
+
+def _esc(s) -> str:
+    return _htmllib.escape(str(s or ""), quote=True)
 
 
 def _parse_date(s: str | None):
@@ -319,7 +324,17 @@ def public_accept_page(token: str, db: Session = Depends(get_db)):
     # Validate the token server-side so a bad link 404s instead of rendering an
     # empty shell; the page then fetches the JSON itself.
     _public_quote(db, token)
-    return HTMLResponse(_ACCEPT_PAGE.replace("__TOKEN__", token))
+    from ...services import branding as _branding
+    b = _branding.public_branding(db)
+    company = (b.get("company") or "BVTech").strip() or "BVTech"
+    html = (_ACCEPT_PAGE
+            .replace("__TOKEN__", token)
+            .replace("__ACCENT__", b.get("accent") or "#4440DB")
+            .replace("__ACCENT2__", b.get("accent2") or b.get("accent") or "#7c3aed")
+            .replace("__COMPANY__", _esc(company))
+            .replace("__TAGLINE__", _esc(b.get("tagline") or "Managed IT & Security"))
+            .replace("__LOGOCHAR__", _esc((company[:1] or "B").upper())))
+    return HTMLResponse(html)
 
 
 # Self-contained, branded accept page. Fetches /api/public/quote/{token}, renders
@@ -329,15 +344,15 @@ _ACCEPT_PAGE = r"""<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>Review & Accept — BVTech</title>
+<title>Review &amp; Accept — __COMPANY__</title>
 <style>
- :root{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--bg:#f1f5f9;--brand:#4440DB;--ok:#059669;--card:#fff}
+ :root{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--bg:#f1f5f9;--brand:__ACCENT__;--brand2:__ACCENT2__;--ok:#059669;--card:#fff}
  *{box-sizing:border-box}
  body{margin:0;font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
       color:var(--ink);background:var(--bg);-webkit-text-size-adjust:100%}
  .wrap{max-width:760px;margin:0 auto;padding:24px 16px 72px}
  .brand{display:flex;align-items:center;gap:10px;margin:8px 0 18px}
- .brand .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#4440DB,#7c3aed);
+ .brand .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--brand),var(--brand2));
       color:#fff;display:grid;place-items:center;font-weight:800}
  .brand b{font-size:17px}
  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;
@@ -381,9 +396,9 @@ _ACCEPT_PAGE = r"""<!doctype html>
  @media(max-width:560px){.stamp{width:100%}}
 </style></head>
 <body><div class="wrap">
- <div class="brand"><div class="logo">B</div><b>BVTech</b><span style="color:var(--mut)">Managed IT &amp; Security</span></div>
+ <div class="brand"><div class="logo">__LOGOCHAR__</div><b>__COMPANY__</b><span style="color:var(--mut)">__TAGLINE__</span></div>
  <div id="app"><div class="card">Loading your proposal…</div></div>
- <p class="fine">Secured by BVTech • This proposal and your electronic signature are
+ <p class="fine">Secured by __COMPANY__ • This proposal and your electronic signature are
    recorded with a timestamp and IP address for both parties' records. By signing you
    agree this constitutes a legally binding electronic signature.</p>
 </div>
