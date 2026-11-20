@@ -1582,6 +1582,25 @@
         <span class="muted" id="set-gp-msg" style="font-size:12px"></span></div>
     </div>
 
+    <div class="card" style="margin-bottom:16px">
+      <h3>🚀 Client Outreach Engine <span class="pill" id="ob-pill">loading…</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Autonomous cold-email to the local businesses Prospecting finds — Groq-written openers, a 3-touch sequence, one-click unsubscribe, and a <b>warm-up ramp</b> (~20/day to start) that protects your domain. Set it up, send yourself a test, then flip it live.</p>
+      <div id="ob-status" class="muted" style="font-size:12px;margin-bottom:10px">—</div>
+      <div class="grid2">
+        <label>From address<input id="ob-sender" placeholder="help@bvtech.org"></label>
+        <label>Daily target (ramp ceiling)<input id="ob-target" type="number" placeholder="50"></label>
+      </div>
+      <label style="display:block;margin-top:8px">Physical mailing address <span class="muted" style="font-weight:normal">(required — CAN-SPAM)</span><input id="ob-addr" placeholder="BVTech LLC, 1902 Kirby Rd, El Campo, TX 77437"></label>
+      <label style="display:block;margin-top:8px">Email signature (HTML) <span class="muted" style="font-weight:normal">— your GIF footer</span><textarea id="ob-sig" rows="4" placeholder="Paste signature HTML…" style="width:100%;font-family:ui-monospace,monospace;font-size:11px"></textarea></label>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:600"><input type="checkbox" id="ob-enabled" style="width:auto"> Enable &amp; go live</label>
+      <div class="flex" style="margin-top:10px;flex-wrap:wrap">
+        <button class="btn sm" onclick="saveOutbound()">Save</button>
+        <button class="btn sm ghost" onclick="testOutbound()">Send me a test</button>
+        <button class="btn sm ghost" onclick="previewOutbound()">Preview today</button>
+        <span class="muted" id="ob-msg" style="font-size:12px"></span>
+      </div>
+    </div>
+
     </div>
   </section>
 
@@ -1721,7 +1740,7 @@ function tab(name){
   if(name==='library'){loadLibrary();}
   if(name==='automation'){loadAutopilot();}
   if(name==='security'){loadTraining();initBrowserGuard();}
-  if(name==='settings'){ if(!_tabLoaded.settings){_tabLoaded.settings=true;loadSettings();loadSuppression();} else {loadConnCenter();loadSuppression();} }
+  if(name==='settings'){ if(!_tabLoaded.settings){_tabLoaded.settings=true;loadSettings();loadSuppression();} else {loadConnCenter();loadSuppression();} loadOutbound(); }
 }
 function badge(v,good,warn){if(v==null)return '<span class="badge">—</span>';
   const c=v>=good?'ok':(v>=warn?'warn':'bad');return `<span class="badge ${c}">${v}</span>`;}
@@ -4320,6 +4339,36 @@ async function saveProspecting(){
   const r=await put('/api/prospecting/settings',{api_key:val('set-gp-key')}); const j=await r.json().catch(()=>({}));
   if(r.ok){msg.textContent='Saved ✓';setPill('set-gp-pill',j.configured);document.getElementById('set-gp-key').value='';}
   else msg.textContent=j.detail||'Save failed';
+}
+async function loadOutbound(){
+  if(!document.getElementById('ob-pill'))return;
+  const s=await api('/api/campaigns/outbound/status'); if(!s)return;
+  const c=s.config||{}, t=s.today||{};
+  document.getElementById('ob-sender').value=c.sender||'';
+  document.getElementById('ob-target').value=c.target||50;
+  document.getElementById('ob-addr').value=c.physical_address||'BVTech LLC, 1902 Kirby Rd, El Campo, TX 77437';
+  document.getElementById('ob-enabled').checked=!!c.enabled;
+  const pill=document.getElementById('ob-pill'); pill.textContent=c.enabled?'LIVE':'off'; pill.style.background=c.enabled?'#1c7a4a':'';
+  document.getElementById('ob-status').innerHTML='Transport: <b>'+(s.transport_ready?s.transport:'⚠ connect M365 mailbox')+'</b> · Leads w/ email: <b>'+(s.leads_with_email||0)+'</b> · Today: <b>'+(t.already_sent||0)+'</b>/<b>'+(t.cap||0)+'</b> sent · <b>'+(t.eligible||0)+'</b> eligible · ramp day '+(t.day_index||0);
+}
+async function saveOutbound(){
+  const m=document.getElementById('ob-msg'); m.textContent='Saving…';
+  const sig=document.getElementById('ob-sig').value.trim();
+  const body={enabled:document.getElementById('ob-enabled').checked,sender:document.getElementById('ob-sender').value.trim(),physical_address:document.getElementById('ob-addr').value.trim(),target:parseInt(document.getElementById('ob-target').value)||50};
+  if(sig)body.signature_html=sig;
+  const r=await put('/api/campaigns/outbound/config',body);
+  if(r&&r.ok){const j=await r.json().catch(()=>({}));m.textContent='Saved — '+(j.enabled?'LIVE ✅':'off');loadOutbound();}
+  else m.textContent='Save failed';
+}
+async function testOutbound(){
+  const m=document.getElementById('ob-msg'); m.textContent='Sending test…';
+  const r=await post('/api/campaigns/outbound/test-send',{}); const j=await r.json().catch(()=>({}));
+  m.textContent=(r&&r.ok&&j.ok)?('Test sent to '+j.to+' ✅ — check your inbox'):(j.detail||'Test failed — Save sender + address first');
+}
+async function previewOutbound(){
+  const m=document.getElementById('ob-msg'); m.textContent='Loading…';
+  const r=await post('/api/campaigns/outbound/run',{dry_run:true}); const j=await r.json().catch(()=>({}));
+  m.textContent=(r&&r.ok)?('Eligible today: '+(j.eligible||0)+' · cap '+(j.cap||0)):'Preview failed';
 }
 
 // ===================== Campaigns (email / SMS to CRM) =====================
