@@ -44,6 +44,7 @@
     <a data-tab="clients" onclick="tab('clients')">Clients</a>
     <a data-tab="crm" onclick="tab('crm')">🤝 CRM</a>
     <a data-tab="pipeline" onclick="tab('pipeline')">💼 Pipeline</a>
+    <a data-tab="autopilot" onclick="tab('autopilot')">🚀 Autopilot</a>
     <a data-tab="outreach" onclick="tab('outreach')">📣 Outreach</a>
     <a data-tab="dialer" onclick="tab('dialer')">📞 Power Dialer</a>
     <a data-tab="devices" onclick="tab('devices')">Devices</a>
@@ -1633,6 +1634,45 @@
     </div>
   </section>
 
+  <section id="autopilot" class="hidden">
+    <style>
+      .ac-ck{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border:1px solid var(--line);border-radius:11px;margin-bottom:8px}
+      .ac-ck .ic{font-size:18px;flex:none;line-height:1.2}
+      .ac-ck.done{opacity:.55}
+      .ac-ck .how{color:#8ea0c9;font-size:12px;margin-top:3px}
+      .ac-meter{height:10px;background:#0c1430;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+      .ac-meter>div{height:100%;background:linear-gradient(90deg,#22c55e,#4440DB);transition:width .4s}
+      .ac-chip{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px}
+      .ac-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+      .ac-ch{border:1px solid var(--line);border-radius:11px;padding:10px 12px;background:#0c1430}
+      .ac-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+      @media(max-width:820px){.ac-cols{grid-template-columns:1fr}}
+    </style>
+    <div class="flex" style="justify-content:space-between;flex-wrap:wrap;margin-bottom:12px">
+      <div><h2 style="margin:0">🚀 Growth Autopilot</h2>
+        <p class="muted" style="margin:3px 0 0;font-size:13px">Your 24/7 marketing + outreach machine — runs on your Linode with Groq, $0 in Claude tokens.</p></div>
+      <div class="flex"><button class="btn sm" onclick="acPostNow()">📣 Post all now</button>
+        <button class="btn sm ghost" onclick="loadAutopilotCenter()">↻ Refresh</button></div>
+    </div>
+    <div class="card" style="margin-bottom:14px">
+      <div class="flex" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0">Go-live progress <span id="ac-ready" class="ac-chip"></span></h3>
+        <span id="ac-live" class="ac-chip"></span>
+      </div>
+      <div class="ac-meter" style="margin:10px 0 4px"><div id="ac-bar" style="width:0"></div></div>
+      <p class="muted" style="font-size:12px;margin:4px 0 0">Flip the items below to turn the machine fully on. Everything else already runs itself on your box every day.</p>
+    </div>
+    <div class="card" style="margin-bottom:14px">
+      <h3 style="margin-top:0">✅ Go-live checklist</h3>
+      <div id="ac-checklist"><p class="muted">Loading…</p></div>
+    </div>
+    <div class="ac-cols">
+      <div class="card"><h3 style="margin-top:0">📣 Daily content channels</h3><div id="ac-content" class="ac-grid"></div></div>
+      <div class="card"><h3 style="margin-top:0">📧 Outreach engine</h3><div id="ac-outbound"></div>
+        <h3 style="margin:16px 0 6px">🛡️ Compliance &amp; safety</h3><div id="ac-compliance"></div></div>
+    </div>
+  </section>
+
   <section id="outreach" class="hidden">
     <div class="card" style="margin-bottom:14px;border-left:3px solid #6c63ff">
       <h2 style="margin:0 0 4px">📣 Client Outreach Engine</h2>
@@ -1794,6 +1834,7 @@ function tab(name){
   if(name==='docs'){loadDocs();}
   if(name==='crm'){loadCrm();}
   if(name==='pipeline'){loadPipeline();}
+  if(name==='autopilot'){loadAutopilotCenter();}
   if(name==='dialer'){loadDialer();}
   if(name==='inventory'){loadInventory();}
   if(name==='content'){loadAutopost();loadCap();}
@@ -4516,6 +4557,54 @@ async function crmCreate(){
   if(r.ok){msg.textContent='Added ✓';['crm-name','crm-company','crm-email','crm-phone','crm-title','crm-market'].forEach(i=>document.getElementById(i).value='');loadCrm();}
   else msg.textContent=j.detail||'Save failed';
 }
+// ==================== 🚀 Growth Autopilot (cockpit) ====================
+async function loadAutopilotCenter(){
+  const j=await api('/api/automation/center'); if(!j)return;
+  const full=j.ready===j.total;
+  const rd=document.getElementById('ac-ready');
+  rd.textContent=j.ready+' / '+j.total+' live';
+  rd.style.background=full?'#064e3b':'#1e293b'; rd.style.color=full?'#34d399':'#8ea0c9';
+  document.getElementById('ac-bar').style.width=Math.round(j.ready/Math.max(1,j.total)*100)+'%';
+  const le=document.getElementById('ac-live');
+  le.textContent=j.live?'OUTREACH LIVE':'OUTREACH OFF';
+  le.style.background=j.live?'#064e3b':'#3b1e24'; le.style.color=j.live?'#34d399':'#f87171';
+  document.getElementById('ac-checklist').innerHTML=(j.checklist||[]).map(c=>
+    `<div class="ac-ck ${c.done?'done':''}"><span class="ic">${c.done?'✅':'⬜'}</span>
+      <div><b>${esc(c.label)}</b>${c.done?'':`<div class="how">→ ${esc(c.how)}</div>`}</div></div>`).join('');
+  document.getElementById('ac-content').innerHTML=((j.content||{}).channels||[]).map(ch=>{
+    const ok=ch.connected&&ch.enabled;
+    const label=ok?'live':(ch.connected?'off':'connect');
+    const col=ok?['#064e3b','#34d399']:(ch.connected?['#3b2e14','#f0b429']:['#1e293b','#8ea0c9']);
+    return `<div class="ac-ch"><div class="flex" style="justify-content:space-between;align-items:center;gap:6px">
+      <b style="font-size:13px">${esc(ch.name)}</b>
+      <span class="ac-chip" style="background:${col[0]};color:${col[1]}">${label}</span></div>
+      <div class="muted" style="font-size:11px;margin-top:4px">${ch.last_success?('last post: '+ago(ch.last_success)):(ch.connected?'ready — posts on schedule':esc(ch.setup_hint||''))}</div></div>`;}).join('');
+  const o=j.outbound||{};
+  document.getElementById('ac-outbound').innerHTML=
+    `<div class="flex" style="gap:18px;flex-wrap:wrap">
+      <div><div class="muted" style="font-size:11px">MODE</div><b style="text-transform:uppercase;color:${o.mode==='live'?'#34d399':(o.mode==='test'?'#f0b429':'#f87171')}">${esc(o.mode||'off')}</b></div>
+      <div><div class="muted" style="font-size:11px">LEADS W/ EMAIL</div><b>${o.leads_with_email||0}</b></div>
+      <div><div class="muted" style="font-size:11px">DO-NOT-CONTACT</div><b>${o.do_not_contact||0}</b></div>
+      <div><div class="muted" style="font-size:11px">RAMP TARGET</div><b>${o.ramp_target||'—'}/day</b></div></div>
+     <p class="muted" style="font-size:12px;margin:9px 0 0">${esc((j.prospecting||{}).note||'')}</p>`;
+  const cm=j.compliance||{};
+  document.getElementById('ac-compliance').innerHTML=
+    `<div class="flex" style="gap:8px;flex-wrap:wrap;align-items:center">
+      <span class="ac-chip" style="background:#064e3b;color:#34d399">Unsub page ✓</span>
+      <a class="ac-chip" href="${esc(cm.unsubscribe_page||'/unsubscribe')}" target="_blank" style="background:#1e293b;color:#7dd3fc;text-decoration:none">open ↗</a>
+      <span class="ac-chip" style="background:#064e3b;color:#34d399">1-click unsub ✓</span>
+      <span class="ac-chip" style="background:${cm.reply_stop?'#064e3b':'#3b1e24'};color:${cm.reply_stop?'#34d399':'#f87171'}">reply-stop ${cm.reply_stop?'armed':'off'}</span>
+      <span class="ac-chip" style="background:#1e293b;color:#8ea0c9">${cm.suppressed||0} suppressed</span></div>
+     <p class="muted" style="font-size:12px;margin:8px 0 0">Every email carries your address + a 1-click unsubscribe. A reply or “STOP” auto-removes them within ~15 min.</p>`;
+}
+async function acPostNow(){
+  if(!confirm('Generate & publish today\'s content across every connected channel now?'))return;
+  const r=await post('/api/content-autopilot/run-now',{});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){alert('Posting now — connected channels will update within a minute. 📣');loadAutopilotCenter();}
+  else alert(j.detail||'Could not run — check that content autopilot is set up.');
+}
+
 // ==================== 💼 Sales Pipeline (deals + quotes) ====================
 let _pipeContacts=null, _qbItems=[], _qbDealId=null, _qbFee=0, _qbTax=0, _qbNotes='';
 const DEAL_STAGE_LABELS={new:'New',qualified:'Qualified',quote:'Quote sent',won:'Won',lost:'Lost'};

@@ -24,7 +24,7 @@ from .api.routes import (
     remediation, inventory, autopost, setup, ai, branding, practice, status, users,
     library, academy, website, patching, copilot, psa, vcio, autonomy, incidents,
     content_autopilot, browser, public_tools, onboarding, answers, coop, kart, memorial,
-    email_filter, deals,
+    email_filter, deals, automation_center,
 )
 
 _s = get_settings()
@@ -234,6 +234,7 @@ app.include_router(rmm.router)
 app.include_router(guardz.router)
 app.include_router(crm.router)
 app.include_router(deals.router)
+app.include_router(automation_center.router)
 app.include_router(prospecting.router)
 app.include_router(campaigns.router)
 app.include_router(remote.router)
