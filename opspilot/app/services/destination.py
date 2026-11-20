@@ -45,6 +45,12 @@ EXPLORE_PATH = "explore/index.html"
 LABS_PATH = "academy/lightning-labs/index.html"
 GAME_PATH = "graveyard-shift/index.html"
 
+# v1.99 Hand-built, DocuSign-grade tool pages authored by hand and committed to
+# the site repo. destination must NEVER regenerate (clobber) these from the simple
+# page generators — their index cards still render from the tool list, but the
+# page file itself is left exactly as committed.
+_HAND_BUILT = {"sign-pdf", "redact-pdf", "verify-signature"}
+
 
 def _pages() -> list[dict]:
     out = [
@@ -58,6 +64,8 @@ def _pages() -> list[dict]:
         pages_offer.review_offer(),   # /free-review/ — the lead-capture offer page
     ]
     for t in pages_tools.all_tools():
+        if t["slug"] in _HAND_BUILT:
+            continue            # hand-built page — never regenerate/clobber it
         page = {"path": f"tools/{t['slug']}/index.html",
                 "url": f"{SITE}/tools/{t['slug']}/", "title": t["title"],
                 "desc": t["desc"], "body": t["body"]}
