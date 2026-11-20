@@ -12,9 +12,13 @@ a fake client (no network / no key).
 """
 from __future__ import annotations
 
+import ipaddress
 import json
+import re
+import socket
 from urllib import parse
 from urllib import request as urlrequest
+from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
@@ -219,6 +223,110 @@ class OverpassClient:
         return self._by_id.get(place_id, {})
 
 
+# --------------------------------------------------------------------------- #
+# v1.98 Website email enrichment — most scraped businesses list a website but no
+# email, so the outreach engine can't reach them. We crawl the business's OWN
+# site (homepage + a couple of contact pages) and extract a real contact email.
+# SSRF-guarded: http(s) only, public hosts only (private/loopback/link-local/
+# metadata IPs rejected, re-checked after redirects), byte- and time-capped.
+# Pure + injectable (`fetch=`) so the ranking/extraction is unit-tested offline.
+# --------------------------------------------------------------------------- #
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+_JUNK_EMAIL = re.compile(
+    r"(sentry|wixpress|example\.|godaddy|\.png|\.jpg|\.jpeg|\.gif|\.webp|\.svg"
+    r"|@sentry|@2x|yourdomain|domain\.com|email@|name@|user@|test@|no-?reply)", re.I)
+_ROLE_PREFIXES = ("info", "contact", "hello", "office", "admin", "sales",
+                  "support", "team", "help", "reception", "frontdesk", "mail")
+_CONTACT_PATHS = ("", "/contact", "/contact-us")
+
+
+def _domain_of(url: str | None) -> str | None:
+    if not url:
+        return None
+    p = urlparse(url if "://" in url else "https://" + url)
+    h = (p.hostname or "").lower()
+    return h[4:] if h.startswith("www.") else (h or None)
+
+
+def _host_is_public(host: str) -> bool:
+    """True only if every resolved IP is a normal public address (SSRF guard)."""
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except Exception:  # noqa: BLE001
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        try:
+            addr = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if (addr.is_private or addr.is_loopback or addr.is_link_local
+                or addr.is_reserved or addr.is_multicast or addr.is_unspecified):
+            return False
+    return True
+
+
+def _fetch_text(url: str, timeout: int = 8, max_bytes: int = 350_000) -> str:
+    """SSRF-guarded GET of a public http(s) page; decoded text, size-capped."""
+    p = urlparse(url)
+    if p.scheme not in ("http", "https") or not p.hostname:
+        return ""
+    if not _host_is_public(p.hostname):
+        return ""
+    req = urlrequest.Request(url, headers={
+        "User-Agent": "BVTech-Pulse/1.0 (+https://bvtech.org)",
+        "Accept": "text/html,application/xhtml+xml"})
+    try:
+        with urlrequest.urlopen(req, timeout=timeout) as r:
+            fin = urlparse(r.geturl())          # re-check host after redirects
+            if fin.hostname and not _host_is_public(fin.hostname):
+                return ""
+            raw = r.read(max_bytes)
+    except Exception:  # noqa: BLE001
+        return ""
+    return raw.decode("utf-8", errors="replace")
+
+
+def _pick_email(candidates, domain: str | None = None) -> str | None:
+    """Best contact email: junk filtered, role-based + same-domain ranked first."""
+    clean = []
+    for e in candidates:
+        e = (e or "").strip().lower().rstrip(".")
+        if "@" not in e or len(e) > 120 or _JUNK_EMAIL.search(e):
+            continue
+        clean.append(e)
+    if not clean:
+        return None
+
+    def rank(e: str) -> tuple:
+        local, _, dom = e.partition("@")
+        return (any(local.startswith(p) for p in _ROLE_PREFIXES),
+                bool(domain) and domain in dom,
+                dom.endswith((".com", ".org", ".net", ".us")))
+    clean.sort(key=rank, reverse=True)
+    return clean[0]
+
+
+def enrich_email(website: str | None, fetch=_fetch_text) -> str | None:
+    """Find a real contact email on a business's own site. SSRF-guarded; returns
+    the best candidate or None. `fetch` is injectable for offline tests."""
+    dom = _domain_of(website)
+    if not dom:
+        return None
+    base = "https://" + dom
+    for path in _CONTACT_PATHS:
+        html = fetch(base + path)
+        if not html:
+            continue
+        found = _EMAIL_RE.findall(html)
+        found += re.findall(r"mailto:([^\"'>?\s]+)", html, re.I)
+        pick = _pick_email(found, dom)
+        if pick:
+            return pick
+    return None
+
+
 def score_prospect(place: dict, details: dict, boost: int = 0) -> int:
     """0-100 MSP-readiness score."""
     score = 30
@@ -256,7 +364,7 @@ def run(db: Session, client, market: str, industry_query: str, max_results: int 
     meta = _INDUSTRY_BY_QUERY.get(industry_query, {"industry": industry_query, "boost": 0})
     results = client.text_search(industry_query, mk["lat"], mk["lng"], mk["radius"])
 
-    created, skipped, samples = 0, 0, []
+    created, skipped, emailable, samples = 0, 0, 0, []
     for place in results[: max(1, min(max_results, 60))]:
         name = (place.get("name") or "").strip()
         if not name:
@@ -274,7 +382,26 @@ def run(db: Session, client, market: str, industry_query: str, max_results: int 
                 details = client.place_details(pid)
             except ProspectingError:
                 details = {}
+        site = details.get("website")
+        email = details.get("email") or None
+        # v1.98: enrich — if there's a site but no listed email, crawl it for a
+        # real contact address so the outreach engine can actually reach them.
+        if not email and site:
+            try:
+                email = enrich_email(site)
+            except Exception:  # noqa: BLE001
+                email = None
+        # Domain-level dedup: same business listed under a slightly different name.
+        dom = _domain_of(site)
+        if dom and (db.query(CrmContact)
+                    .filter(CrmContact.market == market,
+                            CrmContact.website.ilike(f"%{dom}%")).first()):
+            skipped += 1
+            continue
         score = score_prospect(place, details, meta["boost"])
+        if email:                       # emailable = actionable today
+            emailable += 1
+            score = min(100, score + 12)
         # v1.59: keep the human-relevant facts — the outreach personalizer turns
         # "Google rating 4.8 (212 reviews)" into a specific, warm first line.
         rating = place.get("rating") or details.get("rating")
@@ -283,11 +410,9 @@ def run(db: Session, client, market: str, industry_query: str, max_results: int 
                  if rating and reviews else (f"Google rating {rating}" if rating else None))
         contact = CrmContact(
             name=name, company=name,
-            # Free OSM source sometimes lists a public email directly -> instantly
-            # emailable, no website scrape needed. Places never sets this (stays None).
-            email=(details.get("email") or None),
+            email=email,
             phone=details.get("formatted_phone_number"),
-            website=details.get("website"),
+            website=site,
             address=details.get("formatted_address") or place.get("formatted_address"),
             source="scrape", status="new", score=score, market=market,
             tags=[meta["industry"]], notes=facts, owner_user_id=user_id,
@@ -298,4 +423,5 @@ def run(db: Session, client, market: str, industry_query: str, max_results: int 
             samples.append({"name": name, "score": score, "phone": contact.phone})
     db.commit()
     return {"market": market, "industry": meta["industry"], "found": len(results),
-            "created": created, "skipped_existing": skipped, "samples": samples}
+            "created": created, "emailable": emailable,
+            "skipped_existing": skipped, "samples": samples}

@@ -5335,6 +5335,22 @@ def main():
         assert ca_c.get("/api/prospecting/options").status_code == 403
         # scoring + dedup path is covered by an offline unit test (FakePlaces) in dev.
         print("Prospecting: options + masked key + run-gating + RBAC OK")
+        # --- v1.98 Prospecting email ENRICHMENT + SSRF guard (pure, offline) ---
+        from app.services import prospecting as _prosp98
+        assert _prosp98._domain_of("https://www.Foo.com/x") == "foo.com"
+        assert _prosp98._host_is_public("127.0.0.1") is False       # loopback
+        assert _prosp98._host_is_public("192.168.1.1") is False     # private
+        assert _prosp98._host_is_public("169.254.169.254") is False  # cloud metadata
+        assert _prosp98._host_is_public("8.8.8.8") is True          # public
+        assert _prosp98._pick_email(
+            ["bob@gmail.com", "info@foo.com", "sentry.x@sentry.io", "logo@2x.png"],
+            "foo.com") == "info@foo.com"            # role + same-domain, junk filtered
+        _h98 = '<a href="mailto:hello@foo.com">x</a> support@foo.com'
+        assert _prosp98.enrich_email(
+            "https://foo.com",
+            fetch=lambda u: _h98 if u.endswith("foo.com") else "") == "hello@foo.com"
+        assert _prosp98.enrich_email(None, fetch=lambda u: "") is None
+        print("Prospecting enrichment: domain parse + SSRF guard + email rank + crawl OK")
 
         # --- v0.45 Campaigns: compliance gating + dry-run + RBAC ---
         # seed a reachable + a do-not-contact + a non-opted-in contact
