@@ -1533,3 +1533,75 @@ class BrowserPolicy(Base):
     decisions: Mapped[dict] = mapped_column(JSON, default=dict)   # {identifier: approved|blocked}
     protect: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+# =========================================================================== #
+# v2.0 SALES ENGINE — Deals + Quotes (our native HubSpot/PSA close flow).
+#
+# A Deal is an opportunity attached to a CRM contact. A Quote is a priced
+# proposal on that deal; a signed public_token lets the prospect view + e-sign
+# accept online with no login, which flips the deal to "won", converts the
+# contact into a managed Client, and drafts a branded onboarding Invoice.
+# Stage/status are plain strings (migration-light, matches CrmContact.status).
+# =========================================================================== #
+DEAL_STAGES = ("new", "qualified", "quote", "won", "lost")
+QUOTE_STATUSES = ("draft", "sent", "accepted", "declined")
+
+
+class Deal(Base):
+    """A sales opportunity in the pipeline (kanban board)."""
+    __tablename__ = "deals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("crm_contacts.id"), index=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)  # set when won
+    value: Mapped[float] = mapped_column(Float, default=0.0)        # expected monthly/contract value
+    stage: Mapped[str] = mapped_column(String(20), default="new", index=True)  # DEAL_STAGES
+    probability: Mapped[int] = mapped_column(Integer, default=10)   # 0-100, for weighted pipeline
+    expected_close: Mapped[date | None] = mapped_column(Date)
+    source: Mapped[str | None] = mapped_column(String(40))          # prospecting|inbound|referral|manual
+    lost_reason: Mapped[str | None] = mapped_column(String(200))
+    notes: Mapped[str | None] = mapped_column(Text)
+    owner_user_id: Mapped[int | None] = mapped_column(Integer)
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+    won_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lost_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Quote(Base):
+    """A priced proposal on a Deal, signable online via a public token."""
+    __tablename__ = "quotes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    deal_id: Mapped[int] = mapped_column(ForeignKey("deals.id"), index=True, nullable=False)
+    number: Mapped[str | None] = mapped_column(String(40), index=True)   # e.g. QUO-00001
+    title: Mapped[str | None] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)  # QUOTE_STATUSES
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    # line_items: [{"description": str, "quantity": float, "unit_price": float, "amount": float,
+    #               "recurring": bool}]  — recurring=True items are the monthly MRR; one-offs
+    #   (setup/onboarding) are billed once.
+    line_items: Mapped[list] = mapped_column(JSON, default=list)
+    onboarding_fee: Mapped[float] = mapped_column(Float, default=0.0)  # editable per-deal one-time fee
+    subtotal: Mapped[float] = mapped_column(Float, default=0.0)
+    tax_rate: Mapped[float] = mapped_column(Float, default=0.0)      # percent
+    tax_amount: Mapped[float] = mapped_column(Float, default=0.0)
+    total: Mapped[float] = mapped_column(Float, default=0.0)
+    notes: Mapped[str | None] = mapped_column(Text)                  # terms / scope shown on the quote
+    valid_until: Mapped[date | None] = mapped_column(Date)
+    # Public acceptance (e-sign) — no login required.
+    public_token: Mapped[str | None] = mapped_column(String(64), index=True, unique=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    accepted_name: Mapped[str | None] = mapped_column(String(200))   # typed signature
+    accepted_title: Mapped[str | None] = mapped_column(String(160))
+    accepted_ip: Mapped[str | None] = mapped_column(String(64))      # audit stamp
+    declined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    onboarding_invoice_id: Mapped[int | None] = mapped_column(ForeignKey("invoices.id"))  # auto-drafted
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)

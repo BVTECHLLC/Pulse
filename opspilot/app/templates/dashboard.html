@@ -43,6 +43,7 @@
     <a data-tab="action" onclick="tab('action')">⚡ Action Center</a>
     <a data-tab="clients" onclick="tab('clients')">Clients</a>
     <a data-tab="crm" onclick="tab('crm')">🤝 CRM</a>
+    <a data-tab="pipeline" onclick="tab('pipeline')">💼 Pipeline</a>
     <a data-tab="outreach" onclick="tab('outreach')">📣 Outreach</a>
     <a data-tab="dialer" onclick="tab('dialer')">📞 Power Dialer</a>
     <a data-tab="devices" onclick="tab('devices')">Devices</a>
@@ -1155,6 +1156,44 @@
     </div>
   </section>
 
+  <section id="pipeline" class="hidden">
+    <style>
+      .pipe-board{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px}
+      .pipe-col{flex:0 0 240px;background:#0c1430;border:1px solid var(--line);border-radius:14px;padding:10px;min-height:120px}
+      .pipe-col h4{margin:2px 4px 8px;display:flex;justify-content:space-between;align-items:center;font-size:13px;text-transform:capitalize}
+      .pipe-col h4 .cnt{color:var(--muted,#8ea0c9);font-weight:500;font-size:12px}
+      .deal-card{background:#111a3a;border:1px solid var(--line);border-radius:11px;padding:10px 11px;margin-bottom:9px;cursor:pointer;transition:.12s}
+      .deal-card:hover{border-color:#4440DB;transform:translateY(-1px)}
+      .deal-card .dt{font-weight:600;font-size:13.5px;line-height:1.3}
+      .deal-card .dc{color:#8ea0c9;font-size:12px;margin-top:2px}
+      .deal-card .dv{margin-top:6px;font-weight:700;color:#7dd3fc;font-size:13px}
+      .deal-card .qp{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:999px;margin-top:6px}
+      .pm-ovl{position:fixed;inset:0;background:rgba(2,6,23,.66);backdrop-filter:blur(2px);z-index:70;display:none;align-items:flex-start;justify-content:center;overflow-y:auto;padding:28px 12px}
+      .pm-ovl.on{display:flex}
+      .pm{background:#0b1430;border:1px solid var(--line);border-radius:16px;max-width:720px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+      .pm h3{margin:0 0 2px}
+      .qb-row{display:grid;grid-template-columns:1fr 60px 86px 70px 28px;gap:7px;align-items:center;margin-bottom:6px}
+      .qb-row input[type=text],.qb-row input[type=number]{width:100%;padding:7px 8px;background:#0c1430;border:1px solid var(--line);border-radius:8px;color:var(--ink);font-size:13px}
+      .qb-row .rc{display:flex;align-items:center;justify-content:center}
+      .qb-x{background:none;border:0;color:#f87171;cursor:pointer;font-size:16px;padding:0}
+      .qb-tot{display:flex;justify-content:flex-end;gap:22px;margin-top:8px;font-size:13px;color:#8ea0c9}
+      .qb-tot b{color:var(--ink)}
+      .linkbox{display:flex;gap:6px;margin-top:8px}
+      .linkbox input{flex:1;padding:8px;background:#0c1430;border:1px solid var(--line);border-radius:8px;color:#7dd3fc;font-size:12px}
+    </style>
+    <div class="flex" style="justify-content:space-between;flex-wrap:wrap;margin-bottom:12px">
+      <div><h2 style="margin:0">💼 Sales Pipeline</h2>
+        <p class="muted" style="margin:3px 0 0;font-size:13px">Opportunities → quotes → signed online → auto-onboarded clients.</p></div>
+      <div class="flex"><button class="btn sm" onclick="dealNew()">+ New deal</button>
+        <button class="btn sm ghost" onclick="loadPipeline()">↻ Refresh</button></div>
+    </div>
+    <div id="pipe-kpis" class="grid cols-4" style="margin-bottom:14px"></div>
+    <div id="pipe-board" class="pipe-board"><p class="muted">Loading pipeline…</p></div>
+    <div class="pm-ovl" id="pipe-modal" onclick="if(event.target===this)pipeModalClose()">
+      <div class="pm" id="pipe-modal-body"></div>
+    </div>
+  </section>
+
   <section id="dialer" class="hidden">
     <div id="dial-stats" class="grid cols-4" style="margin-bottom:16px"></div>
     <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px">
@@ -1739,6 +1778,7 @@ function tab(name){
   if(name==='mailbox'){loadMailbox();}
   if(name==='docs'){loadDocs();}
   if(name==='crm'){loadCrm();}
+  if(name==='pipeline'){loadPipeline();}
   if(name==='dialer'){loadDialer();}
   if(name==='inventory'){loadInventory();}
   if(name==='content'){loadAutopost();loadCap();}
@@ -4440,6 +4480,125 @@ async function crmCreate(){
   if(r.ok){msg.textContent='Added ✓';['crm-name','crm-company','crm-email','crm-phone','crm-title','crm-market'].forEach(i=>document.getElementById(i).value='');loadCrm();}
   else msg.textContent=j.detail||'Save failed';
 }
+// ==================== 💼 Sales Pipeline (deals + quotes) ====================
+let _pipeContacts=null, _qbItems=[], _qbDealId=null, _qbFee=0, _qbTax=0, _qbNotes='';
+const DEAL_STAGE_LABELS={new:'New',qualified:'Qualified',quote:'Quote sent',won:'Won',lost:'Lost'};
+function fmt$(n){return '$'+(Number(n||0)).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2});}
+function pipeModalOpen(html){document.getElementById('pipe-modal-body').innerHTML=html;document.getElementById('pipe-modal').classList.add('on');}
+function pipeModalClose(){document.getElementById('pipe-modal').classList.remove('on');}
+async function pipeCopy(txt,btn){try{await navigator.clipboard.writeText(txt);const t=btn.textContent;btn.textContent='✓ Copied';setTimeout(()=>btn.textContent=t,1400);}catch(e){}}
+
+async function loadPipeline(){
+  const b=await api('/api/deals/board'); if(!b)return;
+  const t=b.totals||{};
+  document.getElementById('pipe-kpis').innerHTML=[
+    ['Open pipeline',fmt$(t.open_value)],['Weighted',fmt$(t.weighted_value)],
+    ['Won revenue',fmt$(t.won_value)],['Deals',t.total_deals||0]
+  ].map(([k,v])=>`<div class="card"><h3 style="font-size:12px">${k}</h3><div class="stat" style="font-size:22px">${v}</div></div>`).join('');
+  document.getElementById('pipe-board').innerHTML=(b.columns||[]).map(col=>`
+    <div class="pipe-col">
+      <h4>${DEAL_STAGE_LABELS[col.stage]||col.stage} <span class="cnt">${col.count} · ${fmt$(col.value)}</span></h4>
+      ${(col.deals||[]).map(dealCardHtml).join('')||'<p class="muted" style="font-size:12px;margin:4px">—</p>'}
+    </div>`).join('');
+}
+function dealCardHtml(d){
+  return `<div class="deal-card" onclick="dealOpen(${d.id})">
+    <div class="dt">${esc(d.title)}</div>
+    <div class="dc">${esc(d.contact_company||d.contact_name||'—')}</div>
+    <div class="dv">${fmt$(d.value)}${d.probability?` · ${d.probability}%`:''}</div></div>`;
+}
+async function dealNew(){
+  if(!_pipeContacts){const r=await api('/api/crm/contacts?limit=500');_pipeContacts=(r&&r.contacts)||[];}
+  const sel="style=\"background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:8px;color:var(--ink);width:100%\"";
+  const opts='<option value="">— no contact —</option>'+_pipeContacts.map(c=>`<option value="${c.id}">${esc(c.name)}${c.company?' · '+esc(c.company):''}</option>`).join('');
+  const stages=Object.keys(DEAL_STAGE_LABELS).filter(s=>s!=='won'&&s!=='lost').map(s=>`<option value="${s}">${DEAL_STAGE_LABELS[s]}</option>`).join('');
+  pipeModalOpen(`<div class="flex" style="justify-content:space-between"><h3>New deal</h3><button class="qb-x" style="font-size:20px" onclick="pipeModalClose()">×</button></div>
+    <label style="margin-top:6px">Title<input id="nd-title" type="text" placeholder="Acme Co — Managed IT"></label>
+    <label style="margin-top:8px">Contact<select id="nd-contact" ${sel}>${opts}</select></label>
+    <div class="grid2" style="margin-top:8px">
+      <label>Value (monthly or contract)<input id="nd-value" type="number" value="0"></label>
+      <label>Stage<select id="nd-stage" ${sel}>${stages}</select></label></div>
+    <div class="flex" style="margin-top:12px"><button class="btn" onclick="dealCreate()">Create deal</button>
+      <button class="btn ghost" onclick="pipeModalClose()">Cancel</button><span class="muted" id="nd-msg"></span></div>`);
+}
+async function dealCreate(){
+  const title=val('nd-title'); if(!title){document.getElementById('nd-msg').textContent='Title required';return;}
+  const body={title,contact_id:val('nd-contact')?Number(val('nd-contact')):null,value:Number(val('nd-value')||0),stage:val('nd-stage')||'new',source:'manual'};
+  const r=await post('/api/deals',body); const j=await r.json().catch(()=>({}));
+  if(r.ok){loadPipeline();dealOpen(j.id);} else document.getElementById('nd-msg').textContent=j.detail||'Failed';
+}
+async function dealOpen(id){
+  const d=await api('/api/deals/'+id); if(!d)return;
+  _qbDealId=id; qbReset();
+  const stageSel=Object.keys(DEAL_STAGE_LABELS).map(s=>`<option value="${s}" ${d.stage===s?'selected':''}>${DEAL_STAGE_LABELS[s]}</option>`).join('');
+  const sel="style=\"background:#0c1430;border:1px solid var(--line);border-radius:10px;padding:8px;color:var(--ink);width:100%\"";
+  const quotes=(d.quotes||[]).map(quoteRowHtml).join('')||'<p class="muted" style="font-size:12px">No quotes yet — build one below.</p>';
+  pipeModalOpen(`
+    <div class="flex" style="justify-content:space-between"><h3>${esc(d.title)}</h3><button class="qb-x" style="font-size:20px" onclick="pipeModalClose()">×</button></div>
+    <div class="muted" style="font-size:13px">${esc(d.contact_company||d.contact_name||'—')}${d.contact_email?' · '+esc(d.contact_email):''}</div>
+    <div class="grid2" style="margin-top:10px">
+      <label>Stage<select id="dd-stage" ${sel} onchange="dealStage(${id},this.value)">${stageSel}</select></label>
+      <label>Value<input id="dd-value" type="number" value="${d.value}" onchange="dealField(${id},'value',this.value)"></label></div>
+    <h4 style="margin:14px 0 6px">Quotes</h4><div id="dd-quotes">${quotes}</div>
+    <h4 style="margin:16px 0 6px">New quote</h4><div id="qb"></div>`);
+  qbRender();
+}
+async function dealStage(id,stage){const r=await put('/api/deals/'+id,{stage});if(r.ok){loadPipeline();}}
+async function dealField(id,field,value){const b={};b[field]=(field==='value')?Number(value||0):value;const r=await put('/api/deals/'+id,b);if(r.ok)loadPipeline();}
+function quoteRowHtml(q){
+  const link=q.public_token?(location.origin+'/q/'+q.public_token):'';
+  const bc={draft:'warn',sent:'',accepted:'ok',declined:'bad'}[q.status]||'';
+  return `<div style="border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-bottom:8px">
+    <div class="flex" style="justify-content:space-between"><b>${esc(q.number||'Quote')}</b><span class="badge ${bc}">${esc(q.status)}</span></div>
+    <div class="muted" style="font-size:12px">Due today ${fmt$(q.total)}${q.mrr>0?' · MRR '+fmt$(q.mrr):''}</div>
+    ${link&&q.status!=='declined'?`<div class="linkbox"><input readonly value="${link}" onclick="this.select()"><button class="btn sm" onclick="pipeCopy('${link}',this)">Copy link</button></div>`:''}
+    ${q.status==='sent'?`<div class="flex" style="margin-top:6px"><button class="btn sm ghost" onclick="quoteDecline(${q.id})">Mark declined</button><button class="btn sm" onclick="quoteAcceptStaff(${q.id})">Mark accepted</button></div>`:''}
+    ${q.status==='accepted'?`<div style="color:#34d399;font-size:12px;margin-top:4px">✓ Signed by ${esc(q.accepted_name||'client')}${q.onboarding_invoice_id?` · onboarding invoice #${q.onboarding_invoice_id} drafted`:''}</div>`:''}</div>`;
+}
+function qbReset(){_qbItems=[{description:'Managed IT — per seat',quantity:1,unit_price:99,recurring:true}];_qbFee=0;_qbTax=0;_qbNotes='';}
+function qbAdd(){_qbItems.push({description:'',quantity:1,unit_price:0,recurring:false});qbRender();}
+function qbDel(i){_qbItems.splice(i,1);if(!_qbItems.length)qbAdd();else qbRender();}
+function qbSet(i,f,v){if(!_qbItems[i])return;_qbItems[i][f]=(f==='recurring')?v:((f==='description')?v:v);qbTotals();}
+function qbTotals(){
+  let line=0,mrr=0;_qbItems.forEach(it=>{const a=(Number(it.quantity)||0)*(Number(it.unit_price)||0);line+=a;if(it.recurring)mrr+=a;});
+  const sub=line+Number(_qbFee||0), tax=sub*Number(_qbTax||0)/100, total=sub+tax;
+  const el=document.getElementById('qb-tot'); if(el)el.innerHTML=`<span>MRR <b>${fmt$(mrr)}</b></span><span>Due today <b>${fmt$(total)}</b></span>`;
+}
+function qbRender(){
+  const c=document.getElementById('qb'); if(!c)return;
+  const rows=_qbItems.map((it,i)=>`<div class="qb-row">
+    <input type="text" placeholder="Description" value="${esc(it.description)}" oninput="qbSet(${i},'description',this.value)">
+    <input type="number" value="${it.quantity}" oninput="qbSet(${i},'quantity',this.value)">
+    <input type="number" value="${it.unit_price}" oninput="qbSet(${i},'unit_price',this.value)">
+    <label class="rc" title="Bills monthly"><input type="checkbox" ${it.recurring?'checked':''} onchange="qbSet(${i},'recurring',this.checked)"></label>
+    <button class="qb-x" onclick="qbDel(${i})">×</button></div>`).join('');
+  c.innerHTML=`<div class="qb-row" style="color:#8ea0c9;font-size:11px"><span>Item</span><span>Qty</span><span>Price</span><span>Mo.</span><span></span></div>
+    ${rows}<button class="btn sm ghost" onclick="qbAdd()">+ Add line</button>
+    <div class="grid2" style="margin-top:10px">
+      <label>One-time onboarding fee<input type="number" value="${_qbFee}" oninput="_qbFee=this.value;qbTotals()"></label>
+      <label>Tax rate %<input type="number" value="${_qbTax}" oninput="_qbTax=this.value;qbTotals()"></label></div>
+    <label style="margin-top:8px">Terms / scope shown to client<textarea id="qb-notes" rows="2" style="width:100%;background:#0c1430;border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:8px;font:inherit" oninput="_qbNotes=this.value" placeholder="e.g. 12-month term, 30-day out clause. Covers 12 seats, 24/7 support.">${esc(_qbNotes)}</textarea></label>
+    <div class="qb-tot" id="qb-tot"></div>
+    <div class="flex" style="margin-top:10px"><button class="btn" onclick="quoteSave(false)">Save draft</button>
+      <button class="btn" onclick="quoteSave(true)">Save &amp; send →</button><span class="muted" id="qb-msg"></span></div>`;
+  qbTotals();
+}
+async function quoteSave(send){
+  const items=_qbItems.filter(it=>(it.description||'').trim()).map(it=>({description:it.description,quantity:Number(it.quantity)||0,unit_price:Number(it.unit_price)||0,recurring:!!it.recurring}));
+  const msg=document.getElementById('qb-msg'); msg.textContent='saving…';
+  const body={line_items:items,onboarding_fee:Number(_qbFee||0),tax_rate:Number(_qbTax||0),notes:_qbNotes||null};
+  const r=await post('/api/deals/'+_qbDealId+'/quotes',body); const j=await r.json().catch(()=>({}));
+  if(!r.ok){msg.textContent=j.detail||'Failed';return;}
+  if(send){const s=await post('/api/quotes/'+j.id+'/send'); if(!s.ok){msg.textContent='Send failed';return;}}
+  loadPipeline(); dealOpen(_qbDealId);
+}
+async function quoteDecline(qid){if(!confirm('Mark this quote declined?'))return;const r=await post('/api/quotes/'+qid+'/decline',{});if(r.ok){loadPipeline();dealOpen(_qbDealId);}}
+async function quoteAcceptStaff(qid){
+  const name=prompt('Record acceptance on the client\'s behalf — signer full name:'); if(!name)return;
+  const r=await post('/api/quotes/'+qid+'/accept',{name}); const j=await r.json().catch(()=>({}));
+  if(r.ok){loadPipeline();dealOpen(_qbDealId);} else alert(j.detail||'Could not accept');
+}
+
 // -------------------- Inventory & patch compliance --------------------
 async function loadInventory(){
   const q=(document.getElementById('inv-q').value||'').trim();

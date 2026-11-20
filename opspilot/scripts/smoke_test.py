@@ -8378,7 +8378,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.166.0"
+    assert _gs101().APP_VERSION == "1.167.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8829,7 +8829,7 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.166.0"
+    assert _gs101().APP_VERSION == "1.167.0"
     assert _sr100.REPAIR_EPOCH == "1.112.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
@@ -8865,7 +8865,7 @@ def main():
     assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
     # site nav points to the game home
     assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
-    assert _gs101().APP_VERSION == "1.166.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.167.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
           "Explore features it with a Halloween hero, republish forced OK")
 
@@ -8885,11 +8885,75 @@ def main():
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
     assert "xp-papel" in _xp3 and "Happy Thanksgiving" in _xp3, "seasonal Explore theme missing"
-    assert _gs101().APP_VERSION == "1.166.0" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.167.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
 
-    print("\n=== OpsPilot v1.166.0 SMOKE TEST PASSED ===")
+    # ==== v2.0: Sales engine — deals (pipeline) + signable quotes ====
+    # Service-level money math is exact and never trusted from the client.
+    from app.services import sales as _SALES
+    class _QStub:
+        line_items=[{"amount":1188.0,"recurring":True},{"amount":450.0,"recurring":False}]
+        onboarding_fee=750.0; tax_rate=8.25; subtotal=0.0; tax_amount=0.0; total=0.0
+    _qs=_QStub(); _SALES.recompute(_qs)
+    assert _qs.subtotal==2388.0 and _qs.total==2585.01, (_qs.subtotal,_qs.total)
+    assert _SALES.mrr(_qs)==1188.0
+    assert _SALES.clean_line_items([{"description":"x","quantity":2,"unit_price":5}])[0]["amount"]==10.0
+    assert _SALES.clean_line_items([{"description":"","unit_price":5}])==[]   # blank desc dropped
+    # End-to-end through the API: deal -> quote -> send -> public e-sign accept.
+    _t2ct = c.post("/api/crm/contacts", json={"name":"Quinn Sales","company":"Quinn LLC",
+                   "email":"quinn@quinn.test","market":"austin"})
+    assert _t2ct.status_code in (200,201), _t2ct.text
+    _t2cid=_t2ct.json()["id"]
+    _t2d = c.post("/api/deals", json={"title":"Quinn LLC — Managed IT","contact_id":_t2cid,
+                  "value":1200,"stage":"qualified","source":"prospecting"})
+    assert _t2d.status_code==200, _t2d.text
+    _t2did=_t2d.json()["id"]
+    _t2b = c.get("/api/deals/board"); assert _t2b.status_code==200
+    assert set(_t2b.json()["stages"])=={"new","qualified","quote","won","lost"}
+    assert any(col["stage"]=="qualified" and col["count"]>=1 for col in _t2b.json()["columns"])
+    _t2q = c.post(f"/api/deals/{_t2did}/quotes", json={"title":"Proposal",
+        "line_items":[{"description":"Managed IT per seat","quantity":12,"unit_price":99,"recurring":True},
+                      {"description":"Firewall","quantity":1,"unit_price":450,"recurring":False}],
+        "onboarding_fee":750,"tax_rate":8.25,"notes":"30-day out clause."})
+    assert _t2q.status_code==200, _t2q.text
+    _t2qj=_t2q.json(); _t2qid=_t2qj["id"]
+    assert _t2qj["number"].startswith("QUO-")
+    assert _t2qj["subtotal"]==2388.0 and _t2qj["total"]==2585.01 and _t2qj["mrr"]==1188.0, _t2qj
+    # editing before send recomputes
+    _t2u = c.put(f"/api/quotes/{_t2qid}", json={"title":"Proposal v2",
+        "line_items":[{"description":"Managed IT per seat","quantity":10,"unit_price":99,"recurring":True}],
+        "onboarding_fee":500,"tax_rate":0})
+    assert _t2u.status_code==200 and _t2u.json()["total"]==1490.0, _t2u.text  # 10*99 + 500
+    # send -> token + accept_url; deal advances to "quote"
+    _t2s = c.post(f"/api/quotes/{_t2qid}/send"); assert _t2s.status_code==200, _t2s.text
+    _t2tok=_t2s.json()["public_token"]; assert _t2tok and "/q/"+_t2tok in _t2s.json()["accept_url"]
+    assert c.get(f"/api/deals/{_t2did}").json()["stage"]=="quote"
+    # PUBLIC (no auth): view, accept page, e-sign accept
+    _t2anon = TestClient(app); _t2anon.cookies.clear()
+    _t2pv = _t2anon.get(f"/api/public/quote/{_t2tok}")
+    assert _t2pv.status_code==200 and _t2pv.json()["number"]==_t2qj["number"]
+    assert "public_token" not in _t2pv.json() and "notes" in _t2pv.json()  # token not leaked back
+    _t2pg = _t2anon.get(f"/q/{_t2tok}")
+    assert _t2pg.status_code==200 and "Accept" in _t2pg.text and _t2tok in _t2pg.text
+    assert _t2anon.get("/q/not-a-real-token").status_code==404   # bad link 404s
+    _t2ac = _t2anon.post(f"/api/public/quote/{_t2tok}/accept", json={"name":"Quinn Owner","title":"CEO"})
+    assert _t2ac.status_code==200, _t2ac.text
+    _t2o=_t2ac.json()
+    assert _t2o["deal_stage"]=="won" and _t2o["client_id"] and _t2o["onboarding_invoice_id"], _t2o
+    # empty signature rejected; second accept is idempotent (not a double-convert)
+    assert _t2anon.post(f"/api/public/quote/{_t2tok}/accept", json={"name":" "}).status_code in (400,409)
+    _t2ac2=_t2anon.post(f"/api/public/quote/{_t2tok}/accept", json={"name":"Quinn Owner"})
+    assert _t2ac2.status_code==200 and _t2ac2.json()["already_accepted"]
+    # onboarding invoice was drafted (fee 500, tax 0) and is a DRAFT
+    _t2inv=c.get(f"/api/invoices/{_t2o['onboarding_invoice_id']}")
+    assert _t2inv.status_code==200 and _t2inv.json()["total"]==500.0 and _t2inv.json()["status"]=="draft", _t2inv.text
+    # public accept route is unauthenticated-reachable but staff deal routes are not
+    assert _t2anon.get("/api/deals/board").status_code in (401,403)
+    print("v2.0: Sales engine — deal->quote->send->public e-sign accept converts to "
+          "Client + drafts onboarding invoice; money math exact; staff routes gated OK")
+
+    print("\n=== OpsPilot v1.167.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
