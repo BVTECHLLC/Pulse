@@ -7,8 +7,11 @@
 <link rel="stylesheet" href="/static/css/pulse.css?v={{ version }}">
 <style>
   .hero{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;
-    background:linear-gradient(135deg,rgba(59,130,246,.12),rgba(34,197,94,.06));
+    background:linear-gradient(135deg,color-mix(in srgb,var(--accent,#3b82f6) 15%,transparent),color-mix(in srgb,var(--accent2,var(--accent,#22c55e)) 8%,transparent));
     border:1px solid var(--line);border-radius:16px;padding:22px 24px;margin-bottom:16px}
+  .qa{display:flex;gap:8px;margin-top:13px;flex-wrap:wrap}
+  .qa a{text-decoration:none}
+  .qa .ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
   .hero h2{margin:0 0 4px;font-size:22px}
   .grade-ring{width:96px;height:96px;border-radius:50%;display:flex;align-items:center;justify-content:center;
     font-size:42px;font-weight:800;border:6px solid var(--line);flex:none}
@@ -41,6 +44,11 @@
     <div>
       <h2 id="greet">Welcome</h2>
       <p class="muted" style="margin:0" id="hero-sub">Your managed IT &amp; security at a glance.</p>
+      <div class="qa">
+        <a class="pill-btn" href="#sec-requests">+ New request</a>
+        <a class="pill-btn ghost" href="#sec-devices">Your devices</a>
+        <a class="pill-btn ghost" href="/academy" style="border-color:#6c5ce7">🎓 Training</a>
+      </div>
     </div>
     <div style="text-align:center">
       <div class="grade-ring" id="grade-ring">—</div>
@@ -73,21 +81,21 @@
     <thead><tr><th>Severity</th><th>Device</th><th>Issue</th><th>Detail</th><th>Since</th></tr></thead>
     <tbody id="t-alerts"></tbody></table></div>
 
-  <div class="card" style="margin-top:16px"><h3>Your Devices</h3><table>
+  <div class="card" style="margin-top:16px" id="sec-devices"><h3>Your Devices</h3><table>
     <thead><tr><th>Host</th><th>OS</th><th>Health</th><th>Last check-in</th></tr></thead>
     <tbody id="t-devices"></tbody></table></div>
 
   <div class="card" style="margin-top:16px;border-color:#6c5ce7">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
       <div><h3 style="margin:0">🎓 Security Awareness Training</h3>
-        <p class="muted" style="margin:6px 0 0;font-size:13px;max-width:52ch">Your team's human firewall. Managed by BVTech — phishing defense, passwords &amp; MFA, safe browsing, and 50+ hands-on labs. Track completion and turn every employee into a harder target.</p></div>
+        <p class="muted" style="margin:6px 0 0;font-size:13px;max-width:52ch">Your team's human firewall. Managed by <span data-brand="company">BVTech</span> — phishing defense, passwords &amp; MFA, safe browsing, and 50+ hands-on labs. Track completion and turn every employee into a harder target.</p></div>
       <div style="text-align:right"><div id="tr-pct" style="font-size:30px;font-weight:800;color:#6c5ce7">—</div><div class="muted" style="font-size:11px">TEAM TRAINED</div></div>
     </div>
     <div style="height:8px;background:var(--line);border-radius:6px;overflow:hidden;margin:12px 0"><div id="tr-bar" style="height:100%;width:0;background:#6c5ce7;transition:width .4s"></div></div>
     <a href="/academy" class="btn" style="text-decoration:none;display:inline-block">Open training portal →</a>
   </div>
 
-  <div class="card" style="margin-top:16px"><h3>Request Support</h3>
+  <div class="card" style="margin-top:16px" id="sec-requests"><h3>Request Support</h3>
     <label>Subject</label><input id="t-subject" placeholder="Brief summary">
     <label>Details</label><input id="t-body" placeholder="What's happening?">
     <label>Priority</label>
@@ -120,8 +128,15 @@
     <div id="lib-list"></div></div>
 </div>
 <div class="brand-footer">
-  <span>© BVTech LLC · Sugar Land, TX</span>
-  <span class="scripture">"Whatever you do, work heartily." — Col 3:23</span>
+  <span>© <span data-brand="year">2026</span> <span data-brand="company">BVTech</span><span data-brand-wrap> · <span data-brand="address">Sugar Land, TX</span></span></span>
+  <span class="flex" style="gap:16px;flex-wrap:wrap;align-items:center">
+    <a data-brand-wrap data-brand="support-email" href="mailto:help@bvtech.org">help@bvtech.org</a>
+    <a data-brand-wrap data-brand="support-phone" href="#"></a>
+    <a data-brand-wrap data-brand="website" href="#" target="_blank" rel="noopener"></a>
+  </span>
+  <span class="scripture" data-brand-flourish>"Whatever you do, work heartily." — Col 3:23</span>
+  <span data-brand-wrap data-brand="note" class="scripture"></span>
+  <span data-brand-wrap data-brand="powered" class="muted" style="font-size:11px"></span>
 </div>
 <script>
 async function api(p){const r=await fetch(p);if(r.status===401){location.href='/';return null;}if(!r.ok)return null;return r.json();}
@@ -221,7 +236,7 @@ async function loadPosture(){
   const ring=document.getElementById('grade-ring');
   ring.textContent=s.grade; ring.style.color=GRADE_COLOR[s.grade]; ring.style.borderColor=GRADE_COLOR[s.grade];
   document.getElementById('hero-sub').textContent=s.score!=null
-    ? `Overall security score ${s.score}/100 — managed &amp; monitored by BVTech.`
+    ? `Overall security score ${s.score}/100 — actively managed & monitored for you.`
     : 'Your managed IT & security at a glance.';
   const labels={endpoints:'🖥️ Endpoints',patching:'🩹 Patching',identity:'🔑 Microsoft 365',threats:'⚠️ Threats'};
   const desc={endpoints:'Devices online & protected',patching:'Updates applied',identity:'Identity hardening',threats:'Open security issues'};
