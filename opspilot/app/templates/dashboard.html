@@ -43,6 +43,7 @@
     <a data-tab="action" onclick="tab('action')">⚡ Action Center</a>
     <a data-tab="clients" onclick="tab('clients')">Clients</a>
     <a data-tab="crm" onclick="tab('crm')">🤝 CRM</a>
+    <a data-tab="outreach" onclick="tab('outreach')">📣 Outreach</a>
     <a data-tab="dialer" onclick="tab('dialer')">📞 Power Dialer</a>
     <a data-tab="devices" onclick="tab('devices')">Devices</a>
     <a data-tab="assets" onclick="tab('assets')">Assets</a>
@@ -1574,33 +1575,39 @@
         <span class="muted" id="set-gbp-msg" style="font-size:12px"></span></div>
     </div>
 
-    <div class="card" style="margin-bottom:16px">
-      <h3>🔎 Prospecting <span class="pill" id="set-gp-pill">free source active</span></h3>
-      <p class="muted" style="margin:4px 0 10px">Auto-finds &amp; scores real local businesses as CRM leads, then the outbound engine emails them. Runs <b>free</b> on OpenStreetMap with <b>no key required</b>. Optionally add a Google Places API key below for richer ratings/review data.</p>
-      <div class="grid2"><label>Google API key <span class="muted" style="font-weight:normal">(optional — leave blank to use the free source)</span><input id="set-gp-key" type="password" placeholder="(unchanged)"></label></div>
-      <div class="flex" style="margin-top:10px"><button class="btn sm" onclick="saveProspecting()">Save</button>
-        <span class="muted" id="set-gp-msg" style="font-size:12px"></span></div>
-    </div>
 
+    </div>
+  </section>
+
+  <section id="outreach" class="hidden">
+    <div class="card" style="margin-bottom:14px;border-left:3px solid #6c63ff">
+      <h2 style="margin:0 0 4px">📣 Client Outreach Engine</h2>
+      <p class="muted" style="margin:0">Find local businesses and email them on autopilot — all from here. <b>Prospecting</b> fills your lead tank; the <b>Outreach Engine</b> emails them compliantly on a safe warm-up ramp. Enable it, send yourself a test, then watch the numbers.</p>
+    </div>
     <div class="card" style="margin-bottom:16px">
-      <h3>🚀 Client Outreach Engine <span class="pill" id="ob-pill">loading…</span></h3>
-      <p class="muted" style="margin:4px 0 10px">Autonomous cold-email to the local businesses Prospecting finds — Groq-written openers, a 3-touch sequence, one-click unsubscribe, and a <b>warm-up ramp</b> (~20/day to start) that protects your domain. Set it up, send yourself a test, then flip it live.</p>
+      <h3>🚀 Outreach Engine <span class="pill" id="ob-pill">loading…</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Groq-written openers, a 3-touch sequence, one-click unsubscribe, and a <b>warm-up ramp</b> (~20/day to start) that protects your sending domain.</p>
       <div id="ob-status" class="muted" style="font-size:12px;margin-bottom:10px">—</div>
       <div class="grid2">
         <label>From address<input id="ob-sender" placeholder="help@bvtech.org"></label>
         <label>Daily target (ramp ceiling)<input id="ob-target" type="number" placeholder="50"></label>
       </div>
       <label style="display:block;margin-top:8px">Physical mailing address <span class="muted" style="font-weight:normal">(required — CAN-SPAM)</span><input id="ob-addr" placeholder="BVTech LLC, 1902 Kirby Rd, El Campo, TX 77437"></label>
-      <label style="display:block;margin-top:8px">Email signature (HTML) <span class="muted" style="font-weight:normal">— your GIF footer</span><textarea id="ob-sig" rows="4" placeholder="Paste signature HTML…" style="width:100%;font-family:ui-monospace,monospace;font-size:11px"></textarea></label>
+      <label style="display:block;margin-top:8px">Email signature (HTML) <span class="muted" style="font-weight:normal">— your GIF footer, saved &amp; reloaded here</span><textarea id="ob-sig" rows="5" placeholder="Paste signature HTML…" style="width:100%;font-family:ui-monospace,monospace;font-size:11px"></textarea></label>
       <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:600"><input type="checkbox" id="ob-enabled" style="width:auto"> Enable &amp; go live</label>
       <div class="flex" style="margin-top:10px;flex-wrap:wrap">
-        <button class="btn sm" onclick="saveOutbound()">Save</button>
-        <button class="btn sm ghost" onclick="testOutbound()">Send me a test</button>
-        <button class="btn sm ghost" onclick="previewOutbound()">Preview today</button>
+        <button class="btn sm" onclick="saveOutbound()">💾 Save</button>
+        <button class="btn sm ghost" onclick="testOutbound()">✉️ Send me a test</button>
+        <button class="btn sm ghost" onclick="previewOutbound()">👁 Preview today</button>
         <span class="muted" id="ob-msg" style="font-size:12px"></span>
       </div>
     </div>
-
+    <div class="card" style="margin-bottom:16px">
+      <h3>🔎 Prospecting <span class="pill" id="set-gp-pill">free source active</span></h3>
+      <p class="muted" style="margin:4px 0 10px">Auto-finds &amp; scores real local businesses as CRM leads for the engine to email. Runs <b>free</b> on OpenStreetMap — no key needed. Optionally add a Google Places API key for richer ratings/review data.</p>
+      <div class="grid2"><label>Google API key <span class="muted" style="font-weight:normal">(optional — leave blank to use the free source)</span><input id="set-gp-key" type="password" placeholder="(unchanged)"></label></div>
+      <div class="flex" style="margin-top:10px"><button class="btn sm" onclick="saveProspecting()">Save</button>
+        <span class="muted" id="set-gp-msg" style="font-size:12px"></span></div>
     </div>
   </section>
 
@@ -1740,7 +1747,8 @@ function tab(name){
   if(name==='library'){loadLibrary();}
   if(name==='automation'){loadAutopilot();}
   if(name==='security'){loadTraining();initBrowserGuard();}
-  if(name==='settings'){ if(!_tabLoaded.settings){_tabLoaded.settings=true;loadSettings();loadSuppression();} else {loadConnCenter();loadSuppression();} loadOutbound(); }
+  if(name==='settings'){ if(!_tabLoaded.settings){_tabLoaded.settings=true;loadSettings();loadSuppression();} else {loadConnCenter();loadSuppression();} }
+  if(name==='outreach'){ loadOutbound(); }
 }
 function badge(v,good,warn){if(v==null)return '<span class="badge">—</span>';
   const c=v>=good?'ok':(v>=warn?'warn':'bad');return `<span class="badge ${c}">${v}</span>`;}
@@ -4347,6 +4355,7 @@ async function loadOutbound(){
   document.getElementById('ob-sender').value=c.sender||'';
   document.getElementById('ob-target').value=c.target||50;
   document.getElementById('ob-addr').value=c.physical_address||'BVTech LLC, 1902 Kirby Rd, El Campo, TX 77437';
+  document.getElementById('ob-sig').value=c.signature_html||'';
   document.getElementById('ob-enabled').checked=!!c.enabled;
   const pill=document.getElementById('ob-pill'); pill.textContent=c.enabled?'LIVE':'off'; pill.style.background=c.enabled?'#1c7a4a':'';
   document.getElementById('ob-status').innerHTML='Transport: <b>'+(s.transport_ready?s.transport:'⚠ connect M365 mailbox')+'</b> · Leads w/ email: <b>'+(s.leads_with_email||0)+'</b> · Today: <b>'+(t.already_sent||0)+'</b>/<b>'+(t.cap||0)+'</b> sent · <b>'+(t.eligible||0)+'</b> eligible · ramp day '+(t.day_index||0);

@@ -151,9 +151,10 @@ def outbound_status(db: Session = Depends(get_db),
                                   force=True, dry_run=True)
     total = db.query(CrmContact).filter(CrmContact.email.isnot(None)).count()
     dnc = db.query(CrmContact).filter(CrmContact.do_not_contact.is_(True)).count()
-    return {"config": {k: cfg[k] for k in ("enabled", "target", "sender", "reply_to",
-                                           "physical_address", "started_on",
-                                           "test_sent_on")},
+    return {"config": {**{k: cfg[k] for k in ("enabled", "target", "sender", "reply_to",
+                                              "physical_address", "started_on",
+                                              "test_sent_on")},
+                       "signature_html": cfg.get("signature_html") or ""},
             "env_mode": outbound_svc._env_mode(),
             "transport": transport, "transport_ready": send_fn is not None,
             "leads_with_email": total, "do_not_contact": dnc,
