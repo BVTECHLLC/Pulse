@@ -96,8 +96,8 @@ for:
    plan: what needs to be done to fix them, roughly what it would cost, and how
    long it would take.
 
-2. A written opinion I can share with a court. I'm dealing with a legal matter
-   that could put me in custody. My current dentist wrote that I could be at
+2. A written opinion I can share with a court. I may soon be without reliable access to specialized dental
+   care for an extended period. My current dentist wrote that I could be at
    serious risk — even a risk to my life — if I go without proper dental care,
    but he doesn't do implants, which is why I need an implant specialist. I'd
    be grateful if you could explain what can happen to someone with my kind of
