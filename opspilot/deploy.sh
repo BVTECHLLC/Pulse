@@ -88,6 +88,23 @@ git checkout -f main 2>/dev/null || git checkout -B main origin/main 2>&1 | sed 
 git reset --hard origin/main 2>&1 | sed 's/^/  /' || log "WARN: git reset failed"
 REPO_VER=$(grep -oP 'APP_VERSION: str = "\K[^"]+' "$COMPOSE_DIR/app/core/config.py" 2>/dev/null)  # re-read AFTER reset
 cd "$COMPOSE_DIR"
+# v2.4 KEEP DISK HEALTHY — the real cause of the "10-minute cold rebuild + 502"
+# spiral. Each `docker compose build api` leaves the PREVIOUS api image dangling;
+# those pile up until the disk fills, Docker evicts the cached pip-install layer,
+# and the NEXT build re-installs every dependency from scratch (minutes + heavy
+# RAM) which starves the live container → Cloudflare 502. Pruning dangling images
+# every deploy keeps the cache warm so code-only builds stay a few seconds. The
+# Postgres volume is never touched. Deep-prune only as a last resort when disk is
+# already tight (a slow build beats a failed one).
+FREE_MB=$(( $(df -Pk "$REPO_DIR" | awk 'NR==2{print $4}') / 1024 ))
+log "disk free: ${FREE_MB} MB"
+docker image prune -f >/dev/null 2>&1 || true            # routine: drop old/dangling api images
+if [ "${FREE_MB:-9999}" -lt 2500 ]; then
+  log "LOW DISK (<2.5 GB) — deep-pruning unused images + stale build cache to recover"
+  docker image prune -af >/dev/null 2>&1 || true
+  docker builder prune -f >/dev/null 2>&1 || true
+  docker container prune -f >/dev/null 2>&1 || true
+fi
 log "building api image..."
 docker compose build api 2>&1 | tail -3 | sed 's/^/  /' || log "WARN: build failed"
 # v1.150 SMOKE GATE: run the FULL suite against the freshly-built image in a
