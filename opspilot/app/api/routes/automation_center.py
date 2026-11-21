@@ -49,7 +49,12 @@ def center(db: Session = Depends(get_db), user: User = Depends(require_roles(Rol
     leads = _safe(lambda: db.query(CrmContact).filter(CrmContact.email.isnot(None)).count(), 0)
     dnc = _safe(lambda: db.query(CrmContact).filter(CrmContact.do_not_contact.is_(True)).count(), 0)
     supp = _safe(lambda: suppression.count(db), 0)
-    ai_on = _safe(ai.enabled, False)
+    # The content engine runs on the FREE Groq LLM (vault "groq") — which is a
+    # different check from ai.enabled() (that one is the PAID Claude key). Either
+    # one means posts are AI-written.
+    ai_free = _safe(ai.free_llm_enabled, False)
+    ai_paid = _safe(ai.enabled, False)
+    ai_on = bool(ai_free or ai_paid)
 
     mbox = _safe(lambda: secure_config.get_platform(db, _MAILBOX_PROVIDER) is not None, False)
 
@@ -57,8 +62,8 @@ def center(db: Session = Depends(get_db), user: User = Depends(require_roles(Rol
         return {"key": key, "label": label, "done": bool(done), "how": how, "priority": prio}
 
     checklist = [
-        item("ai", "AI content brain (Groq) connected", ai_on,
-             "Settings → Integrations: paste your free Groq key so every post is AI-written and costs you $0 in Claude.", 1),
+        item("ai", "AI content brain connected (Groq free LLM)", ai_on,
+             "Settings → add your free Groq key to the vault so every post is AI-written and costs you $0 in Claude.", 1),
         item("content_on", "Daily content autopilot ON", content.get("enabled"),
              "Content Studio → Content Autopilot → turn it ON (it posts daily on a safe stagger).", 1),
         item("sites", "Website publishing connected (GitLab)", sites_connected,
@@ -81,6 +86,8 @@ def center(db: Session = Depends(get_db), user: User = Depends(require_roles(Rol
     return {
         "ready": ready, "total": len(checklist),
         "live": live, "ai_connected": ai_on,
+        "ai": {"connected": ai_on, "free_groq": ai_free, "paid_claude": ai_paid,
+               "provider": "Groq (free)" if ai_free else ("Claude" if ai_paid else "none")},
         "content": content,
         "outbound": {
             "mode": "live" if live else ("test" if env_mode == "test" else "off"),

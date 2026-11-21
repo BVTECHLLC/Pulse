@@ -1667,7 +1667,7 @@
       <div id="ac-checklist"><p class="muted">Loading…</p></div>
     </div>
     <div class="ac-cols">
-      <div class="card"><h3 style="margin-top:0">📣 Daily content channels</h3><div id="ac-content" class="ac-grid"></div></div>
+      <div class="card"><div class="flex" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px"><h3 style="margin:0">📣 Daily content channels</h3><span id="ac-aibrain"></span></div><div id="ac-content" class="ac-grid" style="margin-top:10px"></div></div>
       <div class="card"><h3 style="margin-top:0">📧 Outreach engine</h3><div id="ac-outbound"></div>
         <h3 style="margin:16px 0 6px">🛡️ Compliance &amp; safety</h3><div id="ac-compliance"></div></div>
     </div>
@@ -4575,10 +4575,18 @@ async function loadAutopilotCenter(){
     const ok=ch.connected&&ch.enabled;
     const label=ok?'live':(ch.connected?'off':'connect');
     const col=ok?['#064e3b','#34d399']:(ch.connected?['#3b2e14','#f0b429']:['#1e293b','#8ea0c9']);
+    let line;
+    if(ch.last_error){ line=`<span style="color:#f87171">⚠ ${esc(ch.last_error)}</span>`; }
+    else if(ch.last_success){ line='last post: '+ago(ch.last_success); }
+    else if(ch.connected){ line='ready — posts on schedule'; }
+    else { line=esc(ch.setup_hint||''); }
     return `<div class="ac-ch"><div class="flex" style="justify-content:space-between;align-items:center;gap:6px">
       <b style="font-size:13px">${esc(ch.name)}</b>
       <span class="ac-chip" style="background:${col[0]};color:${col[1]}">${label}</span></div>
-      <div class="muted" style="font-size:11px;margin-top:4px">${ch.last_success?('last post: '+ago(ch.last_success)):(ch.connected?'ready — posts on schedule':esc(ch.setup_hint||''))}</div></div>`;}).join('');
+      <div class="muted" style="font-size:11px;margin-top:4px;line-height:1.35">${line}</div></div>`;}).join('');
+  const aip=(j.ai||{});
+  const ab=document.getElementById('ac-aibrain');
+  if(ab)ab.innerHTML=`<span class="ac-chip" style="background:${aip.connected?'#064e3b':'#3b1e24'};color:${aip.connected?'#34d399':'#f87171'}">AI brain: ${aip.connected?esc(aip.provider||'on'):'not connected'}</span>`;
   const o=j.outbound||{};
   document.getElementById('ac-outbound').innerHTML=
     `<div class="flex" style="gap:18px;flex-wrap:wrap">
