@@ -51,7 +51,8 @@ border-radius:30px;padding:6px 14px;font-size:.70rem;font-weight:700;letter-spac
 .stat .lbl{margin-top:9px;font-size:.68rem;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);font-weight:700;font-family:var(--fh)}
 .stat .sub{font-size:.72rem;color:var(--muted);margin-top:3px}
 
-.mapgrid{display:grid;grid-template-columns:1.62fr 1fr;gap:20px;align-items:stretch}
+.mapgrid{display:grid;grid-template-columns:1.62fr 1fr;gap:20px;align-items:start}
+.mapcol{display:flex;flex-direction:column;gap:20px;min-width:0}
 @media(max-width:940px){.mapgrid{grid-template-columns:1fr}}
 .panel{background:var(--card);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
 .mapcard{position:relative;background:linear-gradient(180deg,#0a0923,#0E0D2C)}
@@ -78,7 +79,7 @@ border-radius:9px;padding:8px 11px;font-size:.78rem;color:#fff;opacity:0;transit
 .orow .ct{font-family:var(--fm);font-weight:700;color:var(--gold);font-size:.82rem;text-align:right}
 .obar{grid-column:1/-1;height:4px;border-radius:3px;background:rgba(255,255,255,.06);overflow:hidden;margin-top:2px}
 .obar span{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--red),var(--gold))}
-#tm-feed{padding:6px 16px 12px;max-height:270px;overflow:auto;font-family:var(--fm)}
+#tm-feed{padding:6px 16px 12px;max-height:360px;overflow:auto;font-family:var(--fm)}
 #tm-feed .row{display:flex;gap:9px;align-items:baseline;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:.78rem}
 #tm-feed .row .t{font-weight:700;white-space:nowrap}
 #tm-feed .row .t.mal{color:var(--red)}#tm-feed .row .t.bot{color:var(--gold)}
@@ -155,26 +156,28 @@ footer{border-top:1px solid var(--border);padding:30px 0;text-align:center;color
   </div>
 
   <div class="mapgrid">
-    <div class="panel mapcard">
-      <div class="maphead"><span>Global attack origins → San Antonio, TX</span><span class="live"><span class="d"></span>Live</span></div>
-      <canvas id="map" width="800" height="430"></canvas>
-      <div class="tooltip" id="tm-tip"></div>
-      <div class="legend">
-        <span class="l"><span class="d" style="background:var(--green)"></span>BVTech HQ · San Antonio</span>
-        <span class="l"><span class="d" style="background:var(--red)"></span>Attack origin</span>
-        <span class="l"><span class="d" style="background:var(--gold)"></span>In-flight attack</span>
-        <span class="spacer"></span>
-        <span id="tm-updated" style="font-family:var(--fm);font-size:.72rem"></span>
+    <div class="mapcol">
+      <div class="panel mapcard">
+        <div class="maphead"><span>Global attack origins → San Antonio, TX</span><span class="live"><span class="d"></span>Live</span></div>
+        <canvas id="map" width="800" height="430"></canvas>
+        <div class="tooltip" id="tm-tip"></div>
+        <div class="legend">
+          <span class="l"><span class="d" style="background:var(--green)"></span>BVTech HQ · San Antonio</span>
+          <span class="l"><span class="d" style="background:var(--red)"></span>Attack origin</span>
+          <span class="l"><span class="d" style="background:var(--gold)"></span>In-flight attack</span>
+          <span class="spacer"></span>
+          <span id="tm-updated" style="font-family:var(--fm);font-size:.72rem"></span>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="ph"><h3>Live Attack Feed</h3><span class="cnt" id="tm-total">0 / 24H</span></div>
+        <div id="tm-feed"><div class="quiet">Connecting to edge telemetry…</div></div>
       </div>
     </div>
     <div class="side">
       <div class="panel">
         <div class="ph"><h3>Top Attack Origins · 24h</h3><span class="cnt" id="tm-origin-total"></span></div>
         <div class="origins" id="tm-origins"><div class="quiet">Loading origins…</div></div>
-      </div>
-      <div class="panel">
-        <div class="ph"><h3>Live Attack Feed</h3><span class="cnt" id="tm-total">0 / 24H</span></div>
-        <div id="tm-feed"><div class="quiet">Connecting to edge telemetry…</div></div>
       </div>
     </div>
   </div>
@@ -312,20 +315,29 @@ function ingest(d){
   else if(!LIVE.have){var s=seedSim();LIVE.failed=s.failed;LIVE.bots=s.bots;LIVE.mal=s.mal;LIVE.hp=s.hp;}
   LIVE.have=true;paintCounters();renderSidebars(d&&d.origins?d:{origins:FALLBACK_ORIGINS});
 }
-/* live drip — the counters climb a little every few seconds so it's never static */
+/* persistent, always-climbing origins so "Top Attack Origins · 24h" stays live */
+var LIVE_ORIGINS=null;
+function renderOrigins(){
+  if(!LIVE_ORIGINS||!LIVE_ORIGINS.length)return;
+  var real=LIVE_ORIGINS.filter(function(o){return o.code!=='ZZ';});
+  var max=Math.max.apply(null,real.map(function(o){return o.count;}))||1;
+  var ot=document.getElementById('tm-origin-total');if(ot)ot.textContent=real.length+' countries';
+  var box=document.getElementById('tm-origins');
+  if(box)box.innerHTML=real.slice().sort(function(a,b){return b.count-a.count;}).slice(0,12).map(function(o){
+    return '<div class="orow"><span class="fl">'+o.flag+'</span><span class="nm">'+o.country
+      +'<small>'+(o.kind||'')+'</small></span><span class="ct">'+nf(o.count)+'</span>'
+      +'<span class="obar"><span style="width:'+Math.round(o.count/max*100)+'%"></span></span></div>';}).join('');
+}
+/* live drip — counters AND top origins climb a little every few seconds so nothing is static */
 setInterval(function(){if(!LIVE.have)return;
   LIVE.failed+=Math.floor(Math.random()*4);LIVE.bots+=Math.floor(Math.random()*3);
-  if(Math.random()<0.45)LIVE.mal+=1;if(Math.random()<0.18)LIVE.hp+=1;paintCounters();},2600);
+  if(Math.random()<0.45)LIVE.mal+=1;if(Math.random()<0.18)LIVE.hp+=1;paintCounters();
+  if(LIVE_ORIGINS){LIVE_ORIGINS.forEach(function(o){if(Math.random()<0.7)o.count+=1+Math.floor(Math.random()*3);});renderOrigins();}
+},2200);
 function renderSidebars(d){
   if(d.origins&&d.origins.length){
-    var real=d.origins.filter(function(o){return o.code!=='ZZ';});
-    var max=Math.max.apply(null,real.map(function(o){return o.count;}));
-    var ot=document.getElementById('tm-origin-total');if(ot)ot.textContent=real.length+' countries';
-    var box=document.getElementById('tm-origins');
-    if(box)box.innerHTML=real.sort(function(a,b){return b.count-a.count;}).slice(0,10).map(function(o){
-      return '<div class="orow"><span class="fl">'+o.flag+'</span><span class="nm">'+o.country
-        +'<small>'+(o.kind||'')+'</small></span><span class="ct">'+nf(o.count)+'</span>'
-        +'<span class="obar"><span style="width:'+Math.round(o.count/max*100)+'%"></span></span></div>';}).join('');
+    if(!LIVE_ORIGINS)LIVE_ORIGINS=d.origins.map(function(o){return {country:o.country,code:o.code,flag:o.flag,kind:o.kind,count:o.count,lon:o.lon,lat:o.lat};});
+    renderOrigins();
   }
   var types=(d.types&&d.types.length)?d.types:(function(){var tot=Math.max(1,LIVE.failed+LIVE.bots+LIVE.mal+LIVE.hp);
     return _FALLBACK_TYPES.map(function(t){var c=LIVE[t.key]||0;return {icon:t.icon,name:t.name,count:c,pct:Math.round(c/tot*100),what:t.what,defense:t.defense};});})();
@@ -354,8 +366,8 @@ function _streamRow(){
     +' <b style="color:#26C485">🛡 '+s.def+'</b></span></div>';
 }
 function startStream(){var fb=document.getElementById('tm-feed');if(!fb)return;
-  function t(){fb.insertAdjacentHTML('afterbegin',_streamRow());while(fb.children.length>9)fb.removeChild(fb.lastChild);}
-  for(var i=0;i<5;i++)t();(function loop(){t();setTimeout(loop,1200+Math.random()*1100);})();
+  function t(){fb.insertAdjacentHTML('afterbegin',_streamRow());while(fb.children.length>14)fb.removeChild(fb.lastChild);}
+  for(var i=0;i<8;i++)t();(function loop(){t();setTimeout(loop,1200+Math.random()*1100);})();
 }
 
 /* ---------------- the D3 canvas world map ---------------- */
