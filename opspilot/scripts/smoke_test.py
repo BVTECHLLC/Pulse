@@ -9032,7 +9032,8 @@ def main():
     try:
         _sc171.upsert_platform(_db171, "pub_linkedin", "LinkedIn Publisher", "Marketing",
                                {"li_client_id": "863d4n8qzw695v",
-                                "li_client_secret": "WPL_AP1.portalSaved.xx=="})
+                                "li_client_secret": "WPL_AP1.portalSaved.xx==",
+                                "person_urn": ""})          # empty -> env may fill it
         _sc171.upsert_platform(_db171, "gbp", "GBP", "Marketing",
                                {"client_id": "# paste your id", "refresh_token": "# your token"})
         _os171.environ["LINKEDIN_CLIENT_SECRET"] = "WPL_AP1.staleEnv.yy==   # your secret"
