@@ -9086,10 +9086,14 @@ def main():
     assert not _js171._is_post_commit("homepage: refresh LIVE CISA KEV ticker (via Pulse)")
     _o_env = _os171.environ.get("PULSE_SITE_DAILY_CAP")
     _o171 = (_js171.get_config, _js171._HTTP, _js171._fetch_file)
-    _now171 = _dt171(2026, 11, 22, 15, 0, tzinfo=_tz171.utc)        # 9am Central
+    _now171 = _dt171(2030, 1, 15, 15, 0, tzinfo=_tz171.utc)         # 9am Central, isolated day
     _db171 = _SL171()
     try:
         _os171.environ["PULSE_SITE_DAILY_CAP"] = "1"
+        _led171 = _sc171.get_platform(_db171, _js171.DAILY_GUARD_PROVIDER)
+        if _led171 is not None:                    # earlier tests published fake posts today
+            _led171.config = {}
+            _db171.commit()
         _js171.get_config = lambda db, site="jp": {"configured": True, "forge": "gitlab",
                                                    "base": "https://gl", "project": "p",
                                                    "branch": "main", "token": "t",
@@ -9108,7 +9112,7 @@ def main():
         assert _cap["ok"] is False and _cap.get("capped") and _cap["error"].startswith("DAILY CAP"), _cap
         # tomorrow (Central) the slot is free again
         assert _js171.site_posted_today(_db171, "bvtech",
-                                        _dt171(2026, 11, 23, 15, 0, tzinfo=_tz171.utc)) is None
+                                        _dt171(2030, 1, 16, 15, 0, tzinfo=_tz171.utc)) is None
         # repo check: a post commit made by ANY process today counts
         _js171._HTTP = lambda *a, **k: [{"title": "blog: Another Bots Post (via Pulse)"}]
         _g2 = _js171.site_posted_today(_db171, "txplants", _now171)
