@@ -76,7 +76,9 @@ SITES = {
                "content_classes": None,
                "render": "chrome", "chrome_page": "blog/index.html",
                "index_paths": ("blog/index.html", "index.html"),
-               "preview_caps": {"index.html": 6}},
+               # v1.171: homepage shows the 3 newest DAYS (one card per day) -
+               # a clean preview; the full archive lives on /blog/.
+               "preview_caps": {"index.html": 3}},
     # bvtech.org's SEPARATE news section ("This Week in Cybersecurity" KEV
     # briefings live at /news/, not /blog/). Same repo/token, own folder+index.
     # The /news/ page is a LISTING whose cards link to /blog/ files (the
@@ -95,7 +97,7 @@ SITES = {
                     "author_url": "https://bvtech.org", "content_classes": None,
                     "render": "chrome", "chrome_page": "blog/index.html",
                     "index_paths": ("news/index.html", "blog/index.html", "index.html"),
-                    "preview_caps": {"index.html": 6}},
+                    "preview_caps": {"index.html": 3}},
     # tx-plants.com — the plants/homesteading/survival blog. The v8 site source
     # lives at bvtechllc-group/tx-plants-site (pushed 2026-07-28) with a Pulse-
     # compatible /blog/ Field Notes section, so that repo is the default. The
@@ -734,6 +736,78 @@ def redate_listings(db: Session, site: str, paths: tuple | None = None) -> dict:
         return {"ok": False, "error": str(e)[:300]}
 
 
+_SECONDARY_SLUG_PREFIXES = ("bvtech-news-", "bvtech-dispatch-")
+
+
+def _one_per_day(newest: list) -> list:
+    """[(date, slug)] newest-first -> one entry per date, preferring the day's
+    main article over a news briefing / dispatch."""
+    ranked = sorted(newest, key=lambda e: (e[0], not e[1].startswith(_SECONDARY_SLUG_PREFIXES)),
+                    reverse=True)
+    out, seen = [], set()
+    for d, sl in ranked:
+        if d in seen:
+            continue
+        seen.add(d)
+        out.append((d, sl))
+    return out
+
+
+def _outside_intel(h: str, spans: list) -> list:
+    """Drop card spans that sit inside the homepage "This Week in Cybersecurity"
+    intel-grid. v1.171: with the blog strip capped at 3, the intel block (featured
+    + 3 briefings = 4 cards) became the BIGGEST cluster, and 'trim the biggest
+    cluster' would have eaten it. Excluding it explicitly makes that impossible."""
+    if 'class="intel-grid"' not in h:
+        return spans
+    try:
+        from . import content_studio
+        reg = content_studio.element_inner_span(h, cls="intel-grid")
+    except Exception:  # noqa: BLE001
+        reg = None
+    if not reg:
+        return spans
+    return [sp for sp in spans if not (reg[0] <= sp[0] < reg[1])]
+
+
+def _preview_cluster(h: str, style: str, fdir: str) -> list:
+    """Card spans of the biggest card cluster (the homepage blog strip) - the
+    same section-aware rule _trim_listing uses, so the intel block is never hit."""
+    spans = _outside_intel(h, _all_card_spans(h, _link_pat_for(style, fdir)))
+    if not spans:
+        return []
+    clusters: list[list[tuple[int, int]]] = [[spans[0]]]
+    for sp in spans[1:]:
+        if sp[0] - clusters[-1][-1][1] < 2500:
+            clusters[-1].append(sp)
+        else:
+            clusters.append([sp])
+    return max(clusters, key=len)
+
+
+def _card_slug(card: str, style: str, fdir: str) -> str:
+    lm = re.search(_link_pat_for(style, fdir), card)
+    return _slug_of(lm.group(0)[6:-1]) if lm else ""
+
+
+def _count_extra(h: str, style: str, fdir: str, keep: set) -> int:
+    return sum(1 for s, e in _preview_cluster(h, style, fdir)
+               if _card_slug(h[s:e], style, fdir) not in keep)
+
+
+def _keep_only_slugs(h: str, style: str, fdir: str, keep: set) -> tuple[str, int]:
+    """Drop preview-strip cards whose post isn't in `keep` (v1.171)."""
+    big = _preview_cluster(h, style, fdir)
+    if not keep or len(big) <= 1:
+        return h, 0
+    n = 0
+    for s, e in reversed(big):
+        if _card_slug(h[s:e], style, fdir) not in keep:
+            h = h[:s] + h[e:]
+            n += 1
+    return h, n
+
+
 def refresh_preview(db: Session, site: str) -> dict:
     """v1.98: make each CAPPED homepage preview show the site's newest posts.
     Backfill deliberately skips capped pages, so when a day's injection failed
@@ -765,14 +839,20 @@ def refresh_preview(db: Session, site: str) -> dict:
             if d:
                 newest.append((d, slug))
         newest = sorted(set(newest), reverse=True)
+        # v1.171 ONE CARD PER DAY: three same-day posts stacked on the homepage
+        # read as a content farm. Keep the day's MAIN article (news briefings /
+        # dispatches are secondary) and show the newest `cap` DAYS.
+        newest = _one_per_day(newest)
         ops = _repo_ops(cfg)
         refreshed = []
         for lp, cap in caps.items():
             h = _fetch_file(cfg, lp)
             if not h:
                 continue
+            target = {sl for _d, sl in newest[:cap]}
             want = [(d, sl) for d, sl in newest[:cap] if not _slug_listed(h, sl)]
-            if not want:
+            extra = _count_extra(h, style, fdir, target)
+            if not want and not extra:
                 continue
             new_h = h
             for d, sl in reversed(want):          # oldest first -> newest on top
@@ -785,6 +865,12 @@ def refresh_preview(db: Session, site: str) -> dict:
                     date_str=f"{_MONTH_NAMES[d.month - 1]} {d.day}, {d.year}",
                     style=style, file_dir=fdir)
             new_h, _ = _redate_html(new_h, cfg, style, fdir, lp_pat, cache)
+            # Only drop the extras once EVERY target card is really on the page -
+            # a failed card clone must never leave the strip short or empty.
+            present = {_card_slug(new_h[s:e], style, fdir)
+                       for s, e in _preview_cluster(new_h, style, fdir)}
+            if target <= present:
+                new_h, _ = _keep_only_slugs(new_h, style, fdir, target)
             new_h, _ = _trim_listing(new_h, style, cap, fdir)
             if new_h != h:
                 ops["commit"](lp, new_h, f"blog: refresh {lp} preview with the newest "
@@ -1228,6 +1314,101 @@ def _newest_skeleton(cfg: dict, style: str) -> str | None:
     return None
 
 
+# --------------------------------------------------------------------------- #
+# v1.171 ONE NEW POST PER SITE PER DAY — the hard failsafe.
+# Several bots publish to the same domains (bvtech.org got the 9:00 SMB article,
+# the 9:30 KEV briefing AND the Tech Dispatch — three posts a day, which reads
+# as an automated content farm to Google). Every website bot funnels through
+# publish(), so the cap lives HERE, keyed by DOMAIN (bvtech + bvtech_news share
+# bvtech.org) and by the CENTRAL-time calendar day. Two independent checks:
+#   1. a ledger written on every successful new post, and
+#   2. the live repo itself — any 'blog: <title> (via Pulse)' post commit since
+#      Central midnight — so a post made by ANY process still counts.
+# Re-publishing an existing slug (repair / retry) is never blocked. Only an
+# explicit operator override (post["allow_second_today"]) bypasses the cap.
+# --------------------------------------------------------------------------- #
+DAILY_GUARD_PROVIDER = "site_daily_guard"
+DAILY_CAP_PREFIX = "DAILY CAP:"
+_MAINT_COMMIT_PREFIXES = ("blog: sync listings", "blog: remove ", "blog: refresh ",
+                          "blog: rebuild ", "blog: re-render ", "blog: re-date",
+                          "blog: bvtech news", "blog: trim")
+
+
+def daily_cap_enabled() -> bool:
+    """ON in production. Only the offline test suite turns it off (it publishes
+    many fake posts to the same fake site in one run)."""
+    import os as _os
+    return str(_os.environ.get("PULSE_SITE_DAILY_CAP", "1")).strip().lower() not in (
+        "0", "false", "off", "no")
+
+
+def _domain_of(site: str) -> str:
+    return SITES[site]["site"].split("//", 1)[-1].strip("/").lower()
+
+
+def _is_post_commit(title: str) -> bool:
+    t = (title or "").strip()
+    return (t.startswith("blog: ") and t.endswith("(via Pulse)")
+            and not any(t.startswith(p) for p in _MAINT_COMMIT_PREFIXES))
+
+
+def site_posted_today(db: Session, site: str, now: datetime | None = None, *,
+                      check_repo: bool = True) -> dict | None:
+    """Has this site's DOMAIN already received a NEW post today (Central time)?
+    Returns {"slug", "title", "source"} or None. Fails OPEN on API errors (the
+    ledger still guards Pulse's own publishers) so a GitLab blip never freezes
+    posting."""
+    if not daily_cap_enabled():
+        return None
+    biz = biz_now(now)
+    today = biz.date().isoformat()
+    dom = _domain_of(site)
+    conn = secure_config.get_platform(db, DAILY_GUARD_PROVIDER)
+    led = (((conn.config if conn else None) or {}).get(dom)) or {}
+    if isinstance(led, dict) and led.get("date") == today:
+        return {"slug": led.get("slug"), "title": led.get("title"), "source": "ledger"}
+    if not check_repo:
+        return None
+    try:
+        cfg = get_config(db, site)
+        if not cfg["configured"] or cfg.get("forge") == "github":
+            return None
+        since = biz.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+        commits = _HTTP("GET", f"{_proj_url(cfg)}/repository/commits?ref_name="
+                        f"{urllib.parse.quote_plus(cfg['branch'])}&per_page=50&since="
+                        f"{urllib.parse.quote_plus(since.isoformat())}", cfg["token"])
+        for c in commits or []:
+            t = (c.get("title") or "").strip()
+            if _is_post_commit(t):
+                return {"slug": None, "title": t[len("blog: "):-len("(via Pulse)")].strip(),
+                        "source": "repo"}
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
+def _record_daily_post(db: Session, site: str, slug: str, title: str,
+                       now: datetime | None = None) -> None:
+    try:
+        conn = secure_config.get_platform(db, DAILY_GUARD_PROVIDER)
+        raw = dict((conn.config if conn else None) or {})
+        raw[_domain_of(site)] = {"date": biz_now(now).date().isoformat(), "slug": slug,
+                                 "title": (title or slug)[:140], "site": site,
+                                 "at": datetime.now(timezone.utc).isoformat()}
+        secure_config.upsert_platform(db, DAILY_GUARD_PROVIDER, "Site daily post guard",
+                                      "Publishing", raw)
+    except Exception:  # noqa: BLE001 — the repo check still guards
+        db.rollback()
+
+
+def _daily_cap_result(site: str, g: dict) -> dict:
+    what = g.get("title") or g.get("slug") or "a post"
+    return {"ok": False, "capped": True,
+            "error": (f"{DAILY_CAP_PREFIX} {SITES[site]['site']} already got today's post "
+                      f"(“{what[:90]}”). One new post per site per day keeps Google "
+                      "happy - the next one ships tomorrow.")}
+
+
 def publish(db: Session, post: dict, site: str = "jp") -> dict:
     """Commit the rendered post to the site repo. Returns {ok, sha, url, slug}."""
     meta = SITES[site]
@@ -1240,6 +1421,13 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
                  else f"{slug}/index.html")
     public_url = (f"{meta['site']}/{fdir}/{slug}.html" if cfg["style"] == "blog-file"
                   else f"{meta['site']}/{slug}/")
+    if not post.get("allow_second_today"):
+        try:
+            g = site_posted_today(db, site)
+            if g and g.get("slug") != slug and _fetch_file(cfg, file_path) is None:
+                return _daily_cap_result(site, g)
+        except Exception as e:  # noqa: BLE001 — a GitLab outage fails this publish too
+            return {"ok": False, "error": f"daily-cap check failed ({str(e)[:160]}); retry later"}
     try:
         from . import content_studio
         # Adaptive: a generated site (Astro/Next/Hugo/...) only ships what its
@@ -1259,6 +1447,8 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
             sha = ops["commit"](md_path, _markdown_for(post, slug, sample, excerpt_md),
                                 f"blog: {post.get('title', slug)[:80]} (via Pulse)",
                                 exists_md)
+            if not exists_md:
+                _record_daily_post(db, site, slug, post.get("title") or slug)
             conn = secure_config.get_platform(db, meta["provider"])
             raw = dict((conn.config if conn else None) or {})
             # GitLab pipelines report the Cloudflare build (verify+auto-revert);
@@ -1338,6 +1528,8 @@ def publish(db: Session, post: dict, site: str = "jp") -> dict:
             "actions": actions,
         })
         sha = commit.get("id")
+        if not exists:
+            _record_daily_post(db, site, slug, post.get("title") or slug)
         conn = secure_config.get_platform(db, meta["provider"])
         raw = dict((conn.config if conn else None) or {})
         pending = list(raw.get("pending") or [])
@@ -1927,9 +2119,10 @@ def _news_editions(cfg: dict, listings: dict, n: int = 4) -> list[dict]:
     return uniq[:n]
 
 
-def _featured_card(*, url, title, excerpt, tag, date_lbl, tags, cta="") -> str:
+def _featured_card(*, url, title, excerpt, tag, date_lbl, tags, cta="", full=False) -> str:
     import html as _h
-    return ('<a href="' + url + '" class="intel-featured">\n'
+    return ('<a href="' + url + '" class="intel-featured"'
+            + (' style="grid-column:1/-1"' if full else '') + '>\n'
             '<div class="intel-featured-tag">' + _h.escape(tag) + '</div>\n'
             '<div class="intel-featured-date">' + _h.escape(date_lbl) + '</div>\n'
             '<h3>' + _h.escape(title) + '</h3>\n'
@@ -1941,28 +2134,39 @@ def _featured_card(*, url, title, excerpt, tag, date_lbl, tags, cta="") -> str:
             + '</a>')
 
 
-def build_intel_block(pin: dict | None, editions: list[dict]) -> str | None:
-    """Inner HTML of the homepage intel-grid: featured card + 3 dated cards."""
+INTEL_FRESH_DAYS = 21
+
+
+def build_intel_block(pin: dict | None, editions: list[dict], today=None) -> str | None:
+    """Inner HTML of the homepage intel-grid: featured card + 3 dated cards.
+    v1.171: only FRESH briefings (<= INTEL_FRESH_DAYS old) are shown. With fewer
+    than 3 fresh ones the block is the featured card alone, full width. The old
+    rule needed 3 cards or left the block untouched, so the homepage sat on
+    month-old October briefings."""
     from datetime import date as _date
+    today = today or biz_now().date()
+    fresh = [e for e in editions if (today - e["date"]).days <= INTEL_FRESH_DAYS]
     if pin:
         d = _date.fromisoformat(pin["date"])
-        feat = _featured_card(url=pin["url"], title=pin["title"], excerpt=pin["excerpt"],
-                              tag="\u2b50 " + pin.get("badge", "FEATURED"),
-                              date_lbl=f"{_long_date(d)} \u00b7 {pin.get('read', '')}".strip(" \u00b7"),
-                              tags=pin.get("tags") or [], cta=pin.get("cta", ""))
-        trio = editions[:3]
-    elif editions:
-        e = editions[0]
-        feat = _featured_card(url=e["url"], title=e["title"], excerpt=e["excerpt"],
-                              tag="\U0001f534 KEV ALERT \u00b7 DAILY BRIEFING",
-                              date_lbl=_long_date(e["date"]),
-                              tags=["CISA KEV", "Daily briefing"],
-                              cta="Read today's briefing \u2192")
-        trio = editions[1:4]
+        fa = dict(url=pin["url"], title=pin["title"], excerpt=pin["excerpt"],
+                  tag="\u2b50 " + pin.get("badge", "FEATURED"),
+                  date_lbl=f"{_long_date(d)} \u00b7 {pin.get('read', '')}".strip(" \u00b7"),
+                  tags=pin.get("tags") or [], cta=pin.get("cta", ""))
+        trio = fresh[:3]
+    elif fresh:
+        e = fresh[0]
+        fa = dict(url=e["url"], title=e["title"], excerpt=e["excerpt"],
+                  tag="\U0001f534 KEV ALERT \u00b7 DAILY BRIEFING",
+                  date_lbl=_long_date(e["date"]),
+                  tags=["CISA KEV", "Daily briefing"],
+                  cta="Read today's briefing \u2192")
+        trio = fresh[1:4]
     else:
         return None
     if len(trio) < 3:
-        return None
+        return ("\n<!-- pulse:intel (rebuilt by Pulse; featured only - no fresh briefings) -->\n"
+                + _featured_card(**fa, full=True) + "\n")
+    feat = _featured_card(**fa)
     cards = "\n".join(_intel_mini_card(e["url"], _long_date(e["date"]), e["title"], e["excerpt"])
                       for e in trio)
     return ("\n<!-- pulse:intel (rebuilt by Pulse; featured + 3 newest briefings) -->\n"
@@ -2377,7 +2581,7 @@ def _trim_listing(h: str, style: str, keep: int, file_dir: str = "blog") -> tupl
     """v1.43: PREVIEW listings (the homepage blog section) keep only the newest
     `keep` cards — the full archive lives on /blog/. Cards are newest-first, so
     everything after the first `keep` is removed. Returns (html, n_removed)."""
-    spans = _all_card_spans(h, _link_pat_for(style, file_dir))
+    spans = _outside_intel(h, _all_card_spans(h, _link_pat_for(style, file_dir)))
     if len(spans) <= keep:
         return h, 0
     # v1.47.4: SECTION-AWARE - the homepage has multiple card sections (a small

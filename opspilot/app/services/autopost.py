@@ -131,6 +131,66 @@ def _derive_linkedin_urn(db: Session, access_token: str) -> str | None:
     return urn
 
 
+_URN_RE = __import__("re").compile(r"urn:li:(?:person|member|organization):[A-Za-z0-9_-]+")
+
+
+def _clean_urn(urn) -> str | None:
+    """The well-formed LinkedIn author URN inside `urn`, or None."""
+    if not urn:
+        return None
+    m = _URN_RE.search(str(urn))
+    if m:
+        return m.group(0)
+    s = str(urn).strip()
+    # bare member id (the old Settings field accepted just the id)
+    return f"urn:li:person:{s}" if __import__("re").fullmatch(r"[A-Za-z0-9_-]{6,}", s) else None
+
+
+def _oauth_refresh_for(db: Session, vault_key: str) -> str | None:
+    """v1.171: the refresh token from the newest Google Connect for this listing.
+    The OAuth callback copies it into the vault, but a vault overwrite (the old
+    .env-wins boot loader replaced it with placeholder text on every deploy)
+    used to lose it — the OAuthToken row is the durable copy."""
+    prov = {"gbp": "google_gbp", "gbp_personal": "google_gbp_personal"}.get(vault_key)
+    if not prov:
+        return None
+    try:
+        from ..models import OAuthToken
+        from . import crypto
+        row = (db.query(OAuthToken).filter(OAuthToken.provider == prov,
+                                           OAuthToken.refresh_token_enc.isnot(None))
+               .order_by(OAuthToken.id.desc()).first())
+        return crypto.decrypt(row.refresh_token_enc) if row else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _usable(v) -> str | None:
+    from .env_credentials import clean_value
+    return clean_value(v)
+
+
+def linkedin_connection_status(db: Session, now: datetime | None = None) -> dict:
+    """v1.171: is LinkedIn able to post RIGHT NOW? LinkedIn member tokens last 60
+    days and (for non-partner apps) come with NO refresh token, so the only fix
+    for an expired one is one click on Connect. Before this, the daily runner
+    happily queued a post every day against a token that died Sept 30, and the
+    daily receipt read 'LinkedIn OK' — nothing had actually posted since Aug 1."""
+    now = now or datetime.now(timezone.utc)
+    from ..models import OAuthToken
+    row = (db.query(OAuthToken).filter(OAuthToken.provider == "linkedin")
+           .order_by(OAuthToken.id.desc()).first())
+    if not row:
+        return {"connected": False, "expired": False, "expires_at": None, "days_left": None}
+    exp = _aware(row.expires_at)
+    days = None if exp is None else int((exp - now).total_seconds() // 86400)
+    has_refresh = bool(row.refresh_token_enc)
+    expired = bool(exp is not None and exp <= now and not has_refresh)
+    return {"connected": True, "expired": expired,
+            "expires_at": exp.isoformat() if exp else None,
+            "days_left": days, "has_refresh": has_refresh}
+
+
 def _linkedin_poster(db: Session):
     """LinkedIn poster: callable(text, url, image) -> ref, or None if unconfigured.
     Prefers the one-click OAuth token (self-refreshing) and only falls back to a
@@ -147,6 +207,10 @@ def _linkedin_poster(db: Session):
         oauth_token = None
     token = oauth_token or secure_config.get_secret(cfg, "access_token")
     urn = secure_config.get_secret(cfg, "person_urn") or cfg.get("person_urn")
+    # v1.171: a MALFORMED urn (e.g. one carrying a pasted ' # comment') used to
+    # count as "present", so the self-heal below never re-derived it and every
+    # post was rejected. Only a well-formed author URN counts.
+    urn = _clean_urn(urn)
     # v1.159 SELF-HEAL: a working OAuth token but NO author URN is the #1 reason a
     # "connected" LinkedIn never actually posts — delivery needs the author URN,
     # but it only gets stored if the OAuth callback's userinfo returned `sub`
@@ -169,14 +233,13 @@ def _gbp_poster_from(db: Session, vault_key: str):
     from . import gbp
     conn = secure_config.get_platform(db, vault_key)
     cfg = (conn.config if conn else None) or {}
-    req = ("client_id", "client_secret", "refresh_token", "account_name", "location_name")
-    if not secure_config.configured(cfg, req):
+    cid = _usable(secure_config.get_secret(cfg, "client_id") or cfg.get("client_id"))
+    csec = _usable(secure_config.get_secret(cfg, "client_secret"))
+    rt = _usable(secure_config.get_secret(cfg, "refresh_token")) or _oauth_refresh_for(db, vault_key)
+    acct, locn = _usable(cfg.get("account_name")), _usable(cfg.get("location_name"))
+    if not (cid and csec and rt and acct and locn):
         return None
-    client = gbp.GBPClient(
-        str(secure_config.get_secret(cfg, "client_id") or cfg.get("client_id")),
-        str(secure_config.get_secret(cfg, "client_secret")),
-        str(secure_config.get_secret(cfg, "refresh_token")),
-        str(cfg.get("account_name")), str(cfg.get("location_name")))
+    client = gbp.GBPClient(str(cid), str(csec), str(rt), str(acct), str(locn))
 
     def _post(text, url, image=None):
         res = client.create_post(text, url or None, image_url=(image or None))
@@ -203,11 +266,11 @@ def gbp_autoconfig(db: Session, vault_key: str = "gbp") -> tuple[str, str] | Non
     from . import gbp as _gbp
     conn = secure_config.get_platform(db, vault_key)
     cfg = (conn.config if conn else None) or {}
-    if cfg.get("account_name") and cfg.get("location_name"):
+    if _usable(cfg.get("account_name")) and _usable(cfg.get("location_name")):
         return (str(cfg["account_name"]), str(cfg["location_name"]))
-    cid = secure_config.get_secret(cfg, "client_id") or cfg.get("client_id")
-    csec = secure_config.get_secret(cfg, "client_secret")
-    rt = secure_config.get_secret(cfg, "refresh_token")
+    cid = _usable(secure_config.get_secret(cfg, "client_id") or cfg.get("client_id"))
+    csec = _usable(secure_config.get_secret(cfg, "client_secret"))
+    rt = _usable(secure_config.get_secret(cfg, "refresh_token")) or _oauth_refresh_for(db, vault_key)
     if not (cid and csec and rt):
         return None
     try:
@@ -376,10 +439,19 @@ def _channel_gap_hours(cfg: dict, channel: str) -> int:
 def _due_channels(db: Session, cfg: dict, now: datetime) -> list[str]:
     """Channels whose cadence gap has elapsed, so a post may go there now.
     LinkedIn (and any non-Google channel) = daily; Google Business = weekly."""
+    from .jp_site import biz_now
     due = []
     for ch in CHANNELS:
         last = _last_posted_channel(db, ch)
-        if last is None or (now - last) >= timedelta(hours=_channel_gap_hours(cfg, ch)):
+        if last is None:
+            due.append(ch)
+            continue
+        # v1.171 HARD RULE: never two posts on one channel in the same Central
+        # calendar day, whatever the gap setting says (the live gap was 20h,
+        # which allowed an edge-case second same-day post).
+        if biz_now(last).date() == biz_now(now).date():
+            continue
+        if (now - last) >= timedelta(hours=_channel_gap_hours(cfg, ch)):
             due.append(ch)
     return due
 

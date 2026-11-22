@@ -954,6 +954,32 @@ def _run_linkedin(db: Session, now: datetime) -> tuple[bool, str]:
     except ai.AIError:
         text = _linkedin_deterministic(theme, metro)   # themed zero-token floor
     _enqueue_social(db, text.strip(), "linkedin")
+    # v1.171 NEVER-SILENT: "queued" is not "posted". If the member connection is
+    # expired (LinkedIn: 60 days, no refresh token) say so loudly once a day,
+    # and warn a week ahead — this channel read OK daily while nothing had
+    # posted since Aug 1.
+    try:
+        from . import autopost as _ap
+        st = _ap.linkedin_connection_status(db, now)
+        msg = None
+        if st["connected"] and st["expired"]:
+            msg = ("🔗 LinkedIn is NOT posting — its connection expired "
+                   f"{(st['expires_at'] or '')[:10]}. Today's post is queued and goes out "
+                   "the moment you click “Connect LinkedIn” (Settings → Connection Center). "
+                   "LinkedIn requires this every 60 days.")
+        elif st["connected"] and st["days_left"] is not None and st["days_left"] <= 7:
+            msg = (f"🔗 LinkedIn's connection expires in {max(st['days_left'], 0)} day(s). "
+                   "Click “Connect LinkedIn” (Settings → Connection Center) to renew for "
+                   "another 60 days — posting stops when it lapses.")
+        if msg:
+            db.add(Notification(client_id=None, target_user_id=None, kind="content",
+                                severity="warning", message=msg[:1000]))
+            db.commit()
+            if st["expired"]:
+                return True, ("queued — but NOT delivered: LinkedIn connection expired; "
+                              "click Connect LinkedIn")
+    except Exception:  # noqa: BLE001 — the warning must never break the run
+        db.rollback()
     return True, f"queued to LinkedIn ({theme['key']}: {theme['link']})"
 
 
@@ -975,6 +1001,8 @@ def _run_gbp(db: Session, now: datetime) -> tuple[bool, str]:
 
 _RUNNERS = {"bvtech": _run_bvtech, "news": _run_news, "jp": _run_jp,
             "txplants": _run_txplants, "linkedin": _run_linkedin, "gbp": _run_gbp}
+# website channels -> jp_site site key (the 1-post-per-site-per-day guard)
+_SITE_OF = {"bvtech": "bvtech", "news": "bvtech_news", "jp": "jp", "txplants": "txplants"}
 
 
 # --------------------------------------------------------------------------- #
@@ -1020,6 +1048,8 @@ def publish_custom(db: Session, channel: str, *, title: str | None = None,
                 "description": excerpt or "", "slug": slug or "",
                 "keywords": keywords or "", "kind": kind or "blog"}
         post = {k: v for k, v in post.items() if v}
+        if override:
+            post["allow_second_today"] = True    # deliberate operator override only
         out = jp_site.publish(db, post, site=channel)
         if not out.get("ok"):
             return {"ok": False, "channel": channel, "detail": out.get("error") or "publish failed"}
@@ -1091,11 +1121,32 @@ def run_daily(db: Session, now: datetime | None = None, *, force: bool = False) 
                                "detail": "already posted today - the 1-post-per-day guard "
                                          "protects your SEO; the next post ships tomorrow"}
             continue
+        # v1.171 ONE POST PER SITE PER DAY: bvtech + news share bvtech.org. If the
+        # domain already got today's post (from ANY bot), skip BEFORE composing —
+        # no AI tokens spent, no failure, no retry storm, no notification spam.
+        site_key = _SITE_OF.get(ch)
+        if site_key:
+            try:
+                from . import jp_site as _js
+                g = (_js.site_posted_today(db, site_key, now)
+                     if _js.configured(db, site_key) else None)
+            except Exception:  # noqa: BLE001
+                db.rollback()
+                g = None
+            if g:
+                _mark(db, ch, ok=True, now=now)
+                results[ch] = {"ok": True, "skipped_daily_cap": True,
+                               "detail": f"skipped - {_js.SITES[site_key]['site']} already has "
+                                         f"today's post ({(g.get('title') or g.get('slug') or '')[:70]}); "
+                                         "1 post per site per day"}
+                continue
         try:
             ok, detail = _RUNNERS[ch](db, now)
         except Exception as e:  # noqa: BLE001
             ok, detail = False, str(e)[:300]
             db.rollback()
+        if not ok and str(detail).startswith("DAILY CAP"):
+            ok = True                      # capped is a deliberate skip, not a failure
         _mark(db, ch, ok=ok, error=None if ok else detail, now=now)
         if not ok:
             _notify_fail(db, ch, detail)

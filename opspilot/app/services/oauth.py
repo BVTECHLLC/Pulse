@@ -377,16 +377,61 @@ def get_valid_token(db, provider: str) -> str | None:
     return tok["access_token"]
 
 
+LINKEDIN_INTROSPECT_URL = "https://www.linkedin.com/oauth/v2/introspectToken"
+
+
+def verify_linkedin_app(client_id: str | None, client_secret: str | None) -> dict:
+    """v1.171: ask LinkedIn whether this Client ID + Client Secret PAIR is valid,
+    with no user login involved. Token introspection authenticates the app first:
+      * wrong secret    -> 401 invalid_client
+      * wrong client id -> 400 invalid_client_id
+      * valid pair      -> 400 invalid_access_token (our probe token is a dummy)
+                           or 200 (a real token)
+    Returns {"ok": True/False/None, "detail": str}. None = couldn't tell (network)."""
+    cid, sec = (client_id or "").strip(), (client_secret or "").strip()
+    if not cid or not sec:
+        return {"ok": False, "detail": "Need BOTH the LinkedIn Client ID and Client Secret."}
+    import urllib.error
+    from urllib.parse import urlencode as _ue
+    body = _ue({"client_id": cid, "client_secret": sec, "token": "pulse-app-check"}).encode()
+    req = urlreq.Request(LINKEDIN_INTROSPECT_URL, data=body,
+                         headers={"Content-Type": "application/x-www-form-urlencoded"})
+    try:
+        with urlreq.urlopen(req, timeout=20) as r:
+            return {"ok": True, "detail": f"LinkedIn accepted Client ID {cid} + secret."}
+    except urllib.error.HTTPError as e:
+        try:
+            err = json.loads(e.read() or b"{}").get("error", "")
+        except Exception:  # noqa: BLE001
+            err = ""
+        if e.code == 401 or err == "invalid_client":
+            return {"ok": False, "detail": "LinkedIn REJECTED the Client Secret for Client ID "
+                    f"{cid}. Copy the 'Primary Client Secret' again from linkedin.com/developers "
+                    "→ your app → Auth tab (the eye icon), and paste only that value."}
+        if err == "invalid_client_id":
+            return {"ok": False, "detail": f"LinkedIn doesn't recognize Client ID '{cid}'. Copy "
+                    "it from linkedin.com/developers → your app → Auth tab."}
+        if err in ("invalid_access_token", "invalid_request"):
+            return {"ok": True, "detail": f"LinkedIn accepted Client ID {cid} + secret."}
+        return {"ok": None, "detail": f"LinkedIn answered HTTP {e.code} ({err or 'no detail'})."}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": None, "detail": f"Couldn't reach LinkedIn to check: {str(e)[:120]}"}
+
+
 def sync_connect_providers(db) -> None:
     """Register OAuth *connect* providers (LinkedIn / Google / QuickBooks) using
     each integration's app credentials from the vault, so one-click Connect works."""
     from . import secure_config
 
+    from .env_credentials import clean_value
+
     def creds(prov, id_key="client_id", secret_key="client_secret"):
         c = secure_config.get_platform(db, prov)
         cfg = (c.config if c else None) or {}
-        return (secure_config.get_secret(cfg, id_key) or cfg.get(id_key),
-                secure_config.get_secret(cfg, secret_key), cfg)
+        # v1.171: normalize (strip stray whitespace / a pasted ' # comment') so a
+        # sloppy paste can't silently keep the Connect button from registering.
+        return (clean_value(secure_config.get_secret(cfg, id_key) or cfg.get(id_key)),
+                clean_value(secure_config.get_secret(cfg, secret_key)), cfg)
 
     li_id, li_secret, _ = creds("pub_linkedin", "li_client_id", "li_client_secret")
     # GUARD: only register a one-click Connect button when the stored app

@@ -73,7 +73,11 @@ class LinkedInIn(BaseModel):
 @router.put("/linkedin")
 def save_linkedin(body: LinkedInIn, request: Request, db: Session = Depends(get_db),
                   user: User = Depends(require_roles(Role.OWNER))):
-    payload = {k: v for k, v in body.model_dump().items() if v is not None}
+    from ...services.env_credentials import clean_value
+    # v1.171: normalize pastes (quotes / trailing ' # comment' / placeholders)
+    # so a sloppy paste can never be stored as a "configured" credential.
+    payload = {k: clean_value(v) for k, v in body.model_dump().items() if v is not None}
+    payload = {k: v for k, v in payload.items() if v is not None}
     conn = secure_config.upsert_platform(db, LINKEDIN, "LinkedIn Publisher", "Marketing", payload)
     from ...services import autopost as _ap
     _ap.clear_reauth(db, LINKEDIN)   # fresh creds lift the delivery pause
