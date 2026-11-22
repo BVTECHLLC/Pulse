@@ -9138,9 +9138,9 @@ def main():
                 + '</div>')
     _k171, _n171 = _js171._keep_only_slugs(_home171, "blog-file", "blog", {"a1", "a3"})
     assert _n171 == 2 and "a2.html" not in _k171 and "a4.html" not in _k171, _n171
-    assert _k171.count("bvtech-news-") == 4, "intel block must never be trimmed"
+    assert _k171.count('href="/blog/bvtech-news-') == 4, "intel block must never be trimmed"
     _t171, _ = _js171._trim_listing(_home171, "blog-file", 3)
-    assert _t171.count("bvtech-news-") == 4 and "a4.html" not in _t171
+    assert _t171.count('href="/blog/bvtech-news-') == 4 and "a4.html" not in _t171
     # (f) intel block never shows stale briefings: none fresh -> nothing; few -> featured only
     _old = [{"url": f"/blog/bvtech-news-o{i}.html", "date": _d171(2026, 10, 20 - i),
              "title": f"Old {i}", "excerpt": "x"} for i in range(4)]
