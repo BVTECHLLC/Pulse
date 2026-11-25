@@ -433,8 +433,25 @@ def save_connection(key: str, body: SaveCredIn, db: Session = Depends(get_db),
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "This connector is configured elsewhere (see its hint).")
     allowed = {f["key"] for f in spec["fields"]}
-    payload = {k: str(v).strip() for k, v in (body.values or {}).items()
-               if k in allowed and str(v).strip()}
+    from ...services.env_credentials import clean_value
+    raw_in = {k: str(v).strip() for k, v in (body.values or {}).items()
+              if k in allowed and str(v).strip() and not str(v).strip().startswith("••••")}
+    # v1.171: normalize every paste (wrapping quotes, a trailing ' # comment')
+    # and refuse placeholder/instruction text outright — saving "# paste here"
+    # used to report "Saved." while silently breaking the integration.
+    payload, rejected = {}, []
+    for k, v in raw_in.items():
+        cv = clean_value(v)
+        if cv is None:
+            rejected.append(k)
+        else:
+            payload[k] = cv
+    if rejected and not payload:
+        labels = {f["key"]: f["label"] for f in spec["fields"]}
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "That looks like placeholder/instruction text, not a real value: "
+                            + ", ".join(labels.get(k, k) for k in rejected)
+                            + ". Paste the actual value from the provider's console.")
     if not payload:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Nothing to save - fill in a field.")
 
@@ -523,6 +540,27 @@ def save_connection(key: str, body: SaveCredIn, db: Session = Depends(get_db),
     msg = "Saved."
     if spec.get("needs_connect"):
         msg = "Saved — now click “Connect with Google/LinkedIn” below to finish."
+    if prov == "pub_linkedin":
+        # v1.171: prove the pair works the moment it's saved (no login needed),
+        # and say EXACTLY what's next — "Saved." on a dead secret was the loop.
+        from ...services import autopost as _ap, oauth as _oa
+        conn = secure_config.get_platform(db, "pub_linkedin")
+        cfg = (conn.config if conn else None) or {}
+        v = _oa.verify_linkedin_app(clean_value(cfg.get("li_client_id")),
+                                    clean_value(secure_config.get_secret(cfg, "li_client_secret")))
+        st = _ap.linkedin_connection_status(db)
+        if v.get("ok") is False:
+            return {"key": key, "connected": False, "verified": False,
+                    "needs_connect": True, "detail": "Saved, but " + v["detail"]}
+        nxt = ("LinkedIn is connected and posting." if st["connected"] and not st["expired"]
+               and (st["days_left"] is None or st["days_left"] > 7) else
+               "LAST STEP: click “Connect LinkedIn” on the LinkedIn tile and approve once "
+               "(LinkedIn requires this every 60 days).")
+        return {"key": key, "connected": True, "verified": v.get("ok"),
+                "needs_connect": True,
+                "redirect_uri": f"{_s.PUBLIC_BASE_URL.rstrip('/')}/api/oauth/linkedin/callback",
+                "detail": (f"Saved & verified — {v['detail']} " if v.get("ok")
+                           else f"Saved ({v['detail']}) ") + nxt}
     return {"key": key, "connected": True,
             "needs_connect": spec.get("needs_connect", False), "detail": msg}
 
@@ -535,6 +573,27 @@ def _verify_connector(db: Session, key: str) -> dict:
     from ...services import ai as ai_svc, cloudflare, jp_site
     if key == "gitlab_sites":
         return jp_site.verify_token(db)
+    if key == "pub_linkedin":
+        # v1.171: app creds checked live with LinkedIn + the member connection's
+        # real state (LinkedIn tokens die after 60 days with no refresh token).
+        from ...services import autopost as _ap, oauth as _oa
+        from ...services.env_credentials import clean_value
+        conn = secure_config.get_platform(db, "pub_linkedin")
+        cfg = (conn.config if conn else None) or {}
+        v = _oa.verify_linkedin_app(clean_value(cfg.get("li_client_id")),
+                                    clean_value(secure_config.get_secret(cfg, "li_client_secret")))
+        if v.get("ok") is False:
+            return v
+        st = _ap.linkedin_connection_status(db)
+        if not st["connected"]:
+            return {"ok": False, "detail": v["detail"] + " Not connected yet — click "
+                    "“Connect LinkedIn” and approve once."}
+        if st["expired"]:
+            return {"ok": False, "detail": v["detail"] + " BUT the LinkedIn connection EXPIRED "
+                    f"({(st['expires_at'] or '')[:10]}) — click “Connect LinkedIn” to renew "
+                    "(LinkedIn requires this every 60 days)."}
+        return {"ok": True, "detail": v["detail"] + f" Connected — {st['days_left']} day(s) "
+                "left before LinkedIn asks for a re-connect."}
     if key == "cloudflare":
         return cloudflare.verify(db)
     if key == "bvtech_github":

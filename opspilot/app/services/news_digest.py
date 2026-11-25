@@ -152,6 +152,9 @@ def compose(db, now: datetime, items: list[dict]) -> dict | None:
     from . import ai
     if not items:
         return None
+    if now.tzinfo is not None:      # v1.171: Central-time dateline/slug (aware UTC in prod)
+        from .jp_site import biz_now
+        now = biz_now(now)
     briefing = "\n".join(f"- {it['title']} ({it['source']}): {it['summary'][:160]}"
                          for it in items)
     user = (f"Today is {now:%B %-d, %Y}. Here are today's headlines to react to. Pick the "
@@ -182,12 +185,29 @@ def compose(db, now: datetime, items: list[dict]) -> dict | None:
 def maybe_run_daily(db, now: datetime | None = None) -> dict:
     """Heartbeat hook: publish today's dispatch at most once per day."""
     from . import secure_config
+    from .jp_site import biz_now
     now = now or datetime.utcnow()
-    today = now.date().isoformat()
+    # v1.171: track the day in CENTRAL time. On the UTC date it fired at 00:13
+    # UTC = 6:13pm Central and stamped TOMORROW's date on the post.
+    today = biz_now(now).date().isoformat()
     conn = secure_config.get_platform(db, "dispatch_meta")
     raw = dict((conn.config if conn else None) or {})
     if raw.get("on") == today:
         return {"ran": False, "reason": "already_today"}
+    # v1.171: ONE switch stops all site posting - the dispatch obeys the Content
+    # Autopilot master switch and its bvtech.org channel toggle.
+    try:
+        from . import content_autopilot as _ca
+        _cfg = _ca.get_config(db)
+        if not _cfg["enabled"] or not _cfg["channels"].get("bvtech", True):
+            return {"ran": False, "reason": "content_autopilot_off"}
+        # v1.171: bvtech.org gets ONE post a day and the main SEO article (at
+        # hour_utc) owns it. Wait 2h past that slot so the dispatch only fills a
+        # day whose main article failed - never pre-empts it at midnight.
+        if now.hour < min(23, int(_cfg["hour_utc"]) + 2):
+            return {"ran": False, "reason": "waiting_for_main_article_slot"}
+    except Exception:  # noqa: BLE001
+        pass
     ok, detail = run_dispatch(db, now)
     secure_config.upsert_platform(db, "dispatch_meta", "Tech Dispatch", "Publishing",
                                   {"on": today, "last": detail[:200]})
@@ -201,15 +221,24 @@ def run_dispatch(db, now: datetime | None = None) -> tuple[bool, str]:
     now = now or datetime.utcnow()
     if not jp_site.configured(db, "bvtech"):
         return False, "bvtech.org not connected"
+    # v1.171 ONE POST PER SITE PER DAY: bvtech.org's daily article usually owns
+    # the slot; the dispatch only fills a day that has no post yet. Checked
+    # BEFORE composing so no AI tokens are spent on a post that can't ship.
+    g = jp_site.site_posted_today(db, "bvtech", now)
+    if g:
+        return True, "SKIPPED: bvtech.org already has today's post (1 post per site per day)"
     items = gather()
     if len(items) < 3:
         return True, "SKIPPED: not enough fresh headlines"
-    article = compose(db, now, items)
+    from datetime import timezone as _tz
+    article = compose(db, now if now.tzinfo else now.replace(tzinfo=_tz.utc), items)
     if not article:
         return True, "SKIPPED: AI unavailable (no filler for the dispatch)"
     if jp_site.post_exists(db, "bvtech", article["title"]):
         return True, "SKIPPED: already posted today"
     out = jp_site.publish(db, article, site="bvtech")
+    if out.get("capped"):
+        return True, "SKIPPED: " + (out.get("error") or "daily cap")
     if not out.get("ok"):
         return False, out.get("error") or "publish failed"
     return True, out.get("url") or article["title"]

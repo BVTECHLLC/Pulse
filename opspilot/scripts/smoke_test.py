@@ -12,6 +12,7 @@ import sys, os
 sys.path.insert(0, os.getcwd())
 os.environ["PULSE_DISABLE_KEV_TICKER"] = "1"
 os.environ["PULSE_DISABLE_SITE_REPAIR"] = "1"   # v1.99: no background repair in tests
+os.environ["PULSE_SITE_DAILY_CAP"] = "0"   # v1.171: suite publishes many fake posts/day; cap has its own test
 # v1.158: the autopilot scheduler waits FIRST_DELAY_SEC(=90) before its first
 # tick so FAST test runs finish undisturbed. On a slow/constrained box (e.g. the
 # python3.12 deploy container) this full suite can exceed 90s, at which point the
@@ -3817,7 +3818,7 @@ def main():
 
         # ==== v1.43: homepage PREVIEW cap + Monday weekly-recap edition ====
         assert _jp40.SITES["jp"]["preview_caps"] == {"index.html": 6}
-        assert _jp40.SITES["bvtech"]["preview_caps"] == {"index.html": 6}
+        assert _jp40.SITES["bvtech"]["preview_caps"] == {"index.html": 3}   # v1.171: 3 newest days
         _mk43 = lambda i: (f'<article class="pc"><h2><a href="/blog/post-{i}.html">P{i}</a>'
                            f'</h2><p class="excerpt">e{i}</p></article>')
         _home43 = ('<nav><a href="/blog/index.html">All</a><a href="/blog/services-overview.html">Sv</a></nav>'
@@ -5785,12 +5786,17 @@ def main():
         _os.environ["QUICKBOOKS_SANDBOX"] = "false"   # falsy -> must NOT enable sandbox
         _os.environ["QUICKBOOKS_CLIENT_ID"] = "qbid"; _os.environ["QUICKBOOKS_CLIENT_SECRET"] = "qbsec"
         _os.environ["QUICKBOOKS_REFRESH_TOKEN"] = "qbrt"
+        # v1.171: portal-saved values now WIN over .env (these providers were saved
+        # through the portal earlier in this run), so exercise the env names with
+        # the explicit override. Fill-only behavior has its own v1.171 test.
+        _os.environ["PULSE_ENV_CREDS_OVERRIDE"] = "1"
         _edb = _ESL()
         try:
             applied = _envc.load(_edb)
             assert "stripe" in applied and "dialpad" in applied and "quickbooks" in applied, applied
             assert "sandbox" not in applied["quickbooks"], "falsy sandbox must be ignored"
         finally:
+            _os.environ.pop("PULSE_ENV_CREDS_OVERRIDE", None)
             _edb.close()
         # the integrations now read as configured, and the secret is never echoed back
         assert c.get("/api/payments/settings").json()["configured"] is True
@@ -6599,10 +6605,14 @@ def main():
         _os.environ["wp_url"] = "https://bvtech.org"; _os.environ["wp_user"] = "jordan"
         _os.environ["wp_app_password"] = "qqqq wwww eeee rrrr"
         _edb2 = _ESL()
+        # v1.171: portal values now WIN over .env (wp_site was just saved via the
+        # portal above), so prove the alias names with the explicit override.
+        _os.environ["PULSE_ENV_CREDS_OVERRIDE"] = "1"
         try:
             applied2 = _envc.load(_edb2)
             assert "wp_site" in applied2 and set(applied2["wp_site"]) == {"app_password", "base_url", "username"}, applied2
         finally:
+            _os.environ.pop("PULSE_ENV_CREDS_OVERRIDE", None)
             _edb2.close()
         for _k in ("wp_url", "wp_user", "wp_app_password"):
             _os.environ.pop(_k, None)
@@ -8113,7 +8123,7 @@ def main():
     # (7) news backfill config: news-only prefix, capped homepage, not swept.
     _nm = _j98.SITES["bvtech_news"]
     assert _nm["backfill"] and _nm["backfill_prefix"] == "bvtech-news-"
-    assert _nm["sweep"] is False and _nm["preview_caps"] == {"index.html": 6}
+    assert _nm["sweep"] is False and _nm["preview_caps"] == {"index.html": 3}
     print("v1.98: GitLab 429 retried + never read as 'missing'; tree pagination past 100; "
           "retired AI model auto-switch + <think> stripped; AI failures recorded/alerted "
           "once/day; stale homepage preview refreshed newest-first + trimmed; news "
@@ -8284,10 +8294,11 @@ def main():
         _j101.featured_pin(None, _d101(2027, 3, 1)) is None
     _eds = [{"url": f"/blog/bvtech-news-e{i}.html", "date": _d101(2026, 10, 22 - i),
              "title": f"10 New KEV Entries {i}", "excerpt": "CISA added ten."} for i in range(4)]
-    _blk = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
+    _blk = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds,
+                                   today=_d101(2026, 10, 23))
     assert _blk.count('class="intel-featured"') == 1 and _blk.count('class="intel-mini"') == 3
     assert "October 22, 2026 · KEV briefing" in _blk and "latest" not in _blk.lower()
-    _blk2 = _j101.build_intel_block(None, _eds)               # no pin -> newest edition featured
+    _blk2 = _j101.build_intel_block(None, _eds, today=_d101(2026, 10, 23))   # no pin -> newest featured
     assert 'href="/blog/bvtech-news-e0.html" class="intel-featured"' in _blk2
     # (3) card scanners skip the curated intel block + the special card
     _home101 = ('<div class="intel-grid">' + _blk + '</div><div class="wall">'
@@ -8391,7 +8402,8 @@ def main():
         assert _j101.ensure_feature_published(None)["present"] and _rep == [1]
     finally:
         _j101.get_config, _j101._fetch_file, _fa101.publish_php2shell = _o102
-    _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
+    _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds,
+                                  today=_d101(2026, 10, 23))
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
     assert _gs101().APP_VERSION == "1.171.0"
@@ -9031,6 +9043,149 @@ def main():
     assert "/api/guest/me" in c.get("/helper").text
     assert 'as=helper' in c.get("/").text and 'data-tab="helpers"' in c.get("/dashboard").text
     print("v2.5: Partner/Helper portal — invite + scoped read-only + allow-list enforcement OK")
+
+    # ==== v1.171: portal-authoritative creds + 1 post/site/day + LinkedIn truth ====
+    import os as _os171
+    from datetime import date as _d171, datetime as _dt171, timezone as _tz171
+    from app.core.db import SessionLocal as _SL171
+    from app.services import env_credentials as _ec171, secure_config as _sc171
+    from app.services import jp_site as _js171, autopost as _ap171, oauth as _oa171
+    # (a) clean_value: inline comment cut, quotes stripped, placeholders refused,
+    #     real values with inner spaces (WP app passwords) kept.
+    _cv = _ec171.clean_value
+    assert _cv('863d4n8qzw695v       # your "linkedin_client_id"') == "863d4n8qzw695v"
+    assert _cv('"abc #notacomment"') == "abc #notacomment"
+    assert _cv("# paste GOOGLE_CLIENT_ID value again") is None and _cv("   ") is None
+    assert _cv("<your-secret>") is None and _cv("your_client_id_here") is None
+    assert _cv("qqqq wwww eeee rrrr") == "qqqq wwww eeee rrrr"
+    assert _cv("todo") is None and _cv("sk_live_todoAbc123") == "sk_live_todoAbc123"
+    # (b) env FILLS gaps but never overwrites a portal-saved value; placeholder
+    #     env text is ignored; placeholder junk already in the vault is scrubbed.
+    _db171 = _SL171()
+    try:
+        _sc171.upsert_platform(_db171, "pub_linkedin", "LinkedIn Publisher", "Marketing",
+                               {"li_client_id": "863d4n8qzw695v",
+                                "li_client_secret": "WPL_AP1.portalSaved.xx==",
+                                "person_urn": ""})          # empty -> env may fill it
+        _sc171.upsert_platform(_db171, "gbp", "GBP", "Marketing",
+                               {"client_id": "# paste your id", "refresh_token": "# your token"})
+        _os171.environ["LINKEDIN_CLIENT_SECRET"] = "WPL_AP1.staleEnv.yy==   # your secret"
+        _os171.environ["LINKEDIN_PERSON_URN"] = "urn:li:person:AbC123xyz   # your urn"
+        _os171.environ["GBP_CLIENT_ID"] = "# paste GBP id here"
+        _ec171.load(_db171)
+        _li = _sc171.get_platform(_db171, "pub_linkedin").config
+        assert _sc171.get_secret(_li, "li_client_secret") == "WPL_AP1.portalSaved.xx==", "portal must win"
+        _urn171 = _sc171.get_secret(_li, "person_urn") or _li.get("person_urn")
+        assert _urn171 == "urn:li:person:AbC123xyz", _urn171   # gap filled, comment cut
+        _g = _sc171.get_platform(_db171, "gbp").config
+        assert "client_id" not in _g and "refresh_token" not in _g, _g   # junk scrubbed, env junk ignored
+        _os171.environ["PULSE_ENV_CREDS_OVERRIDE"] = "1"                 # explicit escape hatch
+        _ec171.load(_db171)
+        assert _sc171.get_secret(_sc171.get_platform(_db171, "pub_linkedin").config,
+                                 "li_client_secret") == "WPL_AP1.staleEnv.yy=="
+    finally:
+        for _k in ("LINKEDIN_CLIENT_SECRET", "LINKEDIN_PERSON_URN", "GBP_CLIENT_ID",
+                   "PULSE_ENV_CREDS_OVERRIDE"):
+            _os171.environ.pop(_k, None)
+        _db171.close()
+    # (c) LinkedIn author URN sanity + app-credential check (offline, stubbed)
+    assert _ap171._clean_urn("urn:li:person:AbC123xyz   # junk") == "urn:li:person:AbC123xyz"
+    assert _ap171._clean_urn("AbC123xyz") == "urn:li:person:AbC123xyz"
+    assert _ap171._clean_urn("# your urn") is None and _ap171._clean_urn(None) is None
+    import io as _io171, urllib.error as _ue171
+    _o_open = _oa171.urlreq.urlopen
+
+    def _fake_open(code, body):
+        def _f(req, timeout=0):
+            raise _ue171.HTTPError(_oa171.LINKEDIN_INTROSPECT_URL, code, "x", {},
+                                   _io171.BytesIO(body))
+        return _f
+    try:
+        _oa171.urlreq.urlopen = _fake_open(401, b'{"error":"invalid_client"}')
+        assert _oa171.verify_linkedin_app("863d4n8qzw695v", "bad")["ok"] is False
+        _oa171.urlreq.urlopen = _fake_open(400, b'{"error":"invalid_client_id"}')
+        assert _oa171.verify_linkedin_app("nope", "x")["ok"] is False
+        _oa171.urlreq.urlopen = _fake_open(400, b'{"error":"invalid_access_token"}')
+        assert _oa171.verify_linkedin_app("863d4n8qzw695v", "good")["ok"] is True
+        assert _oa171.verify_linkedin_app("", "x")["ok"] is False
+    finally:
+        _oa171.urlreq.urlopen = _o_open
+    # (d) ONE NEW POST PER SITE PER DAY - ledger keyed by DOMAIN, Central day;
+    #     bvtech + bvtech_news share bvtech.org; same-slug republish allowed;
+    #     explicit override only; repo check sees post commits, not maintenance.
+    assert _js171._is_post_commit("blog: Outsource IT or Hire In-House? (via Pulse)")
+    assert not _js171._is_post_commit("blog: sync listings - add 0 missing, repair 2 stale card(s) (via Pulse)")
+    assert not _js171._is_post_commit("blog: refresh index.html preview with the newest 3 posts (via Pulse)")
+    assert not _js171._is_post_commit("homepage: refresh LIVE CISA KEV ticker (via Pulse)")
+    _o_env = _os171.environ.get("PULSE_SITE_DAILY_CAP")
+    _o171 = (_js171.get_config, _js171._HTTP, _js171._fetch_file)
+    _now171 = _dt171(2030, 1, 15, 15, 0, tzinfo=_tz171.utc)         # 9am Central, isolated day
+    _db171 = _SL171()
+    try:
+        _os171.environ["PULSE_SITE_DAILY_CAP"] = "1"
+        _led171 = _sc171.get_platform(_db171, _js171.DAILY_GUARD_PROVIDER)
+        if _led171 is not None:                    # earlier tests published fake posts today
+            _led171.config = {}
+            _db171.commit()
+        _js171.get_config = lambda db, site="jp": {"configured": True, "forge": "gitlab",
+                                                   "base": "https://gl", "project": "p",
+                                                   "branch": "main", "token": "t",
+                                                   "style": "blog-file", "file_dir": "blog"}
+        _js171._HTTP = lambda *a, **k: []                     # repo: no post commits today
+        _js171._fetch_file = lambda cfg, p: None
+        assert _js171.site_posted_today(_db171, "bvtech", _now171) is None
+        _js171._record_daily_post(_db171, "bvtech", "sugar-land-guide", "Sugar Land Guide", _now171)
+        _g171 = _js171.site_posted_today(_db171, "bvtech_news", _now171)   # same domain
+        assert _g171 and _g171["slug"] == "sugar-land-guide", _g171
+        assert _js171.site_posted_today(_db171, "jp", _now171) is None     # other domain free
+        # publish() checks against the REAL clock; record for today's Central date too
+        _js171._record_daily_post(_db171, "bvtech", "sugar-land-guide", "Sugar Land Guide")
+        _cap = _js171.publish(_db171, {"title": "KEV briefing", "slug": "bvtech-news-x",
+                                       "html": "<p>x</p>"}, site="bvtech_news")
+        assert _cap["ok"] is False and _cap.get("capped") and _cap["error"].startswith("DAILY CAP"), _cap
+        # tomorrow (Central) the slot is free again
+        assert _js171.site_posted_today(_db171, "bvtech",
+                                        _dt171(2030, 1, 16, 15, 0, tzinfo=_tz171.utc)) is None
+        # repo check: a post commit made by ANY process today counts
+        _js171._HTTP = lambda *a, **k: [{"title": "blog: Another Bots Post (via Pulse)"}]
+        _g2 = _js171.site_posted_today(_db171, "txplants", _now171)
+        assert _g2 and _g2["source"] == "repo" and "Another Bots Post" in _g2["title"], _g2
+    finally:
+        _js171.get_config, _js171._HTTP, _js171._fetch_file = _o171
+        if _o_env is None:
+            _os171.environ.pop("PULSE_SITE_DAILY_CAP", None)
+        else:
+            _os171.environ["PULSE_SITE_DAILY_CAP"] = _o_env
+        _db171.close()
+    # (e) homepage preview: one card per day, main article beats briefing/dispatch
+    _opd = _js171._one_per_day([(_d171(2026, 11, 22), "bvtech-news-kev-nov-22"),
+                                (_d171(2026, 11, 22), "sugar-land-guide"),
+                                (_d171(2026, 11, 22), "bvtech-dispatch-2026-11-22"),
+                                (_d171(2026, 11, 21), "mfa-quick-win")])
+    assert _opd == [(_d171(2026, 11, 22), "sugar-land-guide"),
+                    (_d171(2026, 11, 21), "mfa-quick-win")], _opd
+    _mk = lambda sl: f'<a href="/blog/{sl}.html" class="sc"><h3>{sl}</h3><p>excerpt text ok</p></a>'
+    _home171 = ('<div class="sg">' + "".join(_mk(x) for x in ("a1", "a2", "a3", "a4")) + '</div>'
+                + "<p>" + "x" * 3000 + "</p>"
+                + '<div class="intel-grid">' + "".join(_mk(f"bvtech-news-{i}") for i in range(4))
+                + '</div>')
+    _k171, _n171 = _js171._keep_only_slugs(_home171, "blog-file", "blog", {"a1", "a3"})
+    assert _n171 == 2 and "a2.html" not in _k171 and "a4.html" not in _k171, _n171
+    assert _k171.count('href="/blog/bvtech-news-') == 4, "intel block must never be trimmed"
+    _t171, _ = _js171._trim_listing(_home171, "blog-file", 3)
+    assert _t171.count('href="/blog/bvtech-news-') == 4 and "a4.html" not in _t171
+    # (f) intel block never shows stale briefings: none fresh -> nothing; few -> featured only
+    _old = [{"url": f"/blog/bvtech-news-o{i}.html", "date": _d171(2026, 10, 20 - i),
+             "title": f"Old {i}", "excerpt": "x"} for i in range(4)]
+    assert _js171.build_intel_block(None, _old, today=_d171(2026, 11, 22)) is None
+    _fresh = [{"url": f"/blog/bvtech-news-f{i}.html", "date": _d171(2026, 11, 22 - i),
+               "title": f"Fresh {i}", "excerpt": "x"} for i in range(2)] + _old
+    _ff = _js171.build_intel_block(None, _fresh, today=_d171(2026, 11, 22))
+    assert _ff.count('class="intel-featured"') == 1 and "intel-mini" not in _ff
+    assert 'grid-column:1/-1' in _ff
+    print("v1.171: portal-authoritative creds (fill-only, placeholder scrub, comment strip) "
+          "+ LinkedIn URN/app checks + 1 post/site/day (ledger+repo, shared domain) + "
+          "one-card-per-day preview + intel shielded + no stale briefings OK")
 
     print("\n=== OpsPilot v1.171.0 SMOKE TEST PASSED ===")
 

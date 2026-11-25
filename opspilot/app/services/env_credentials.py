@@ -6,15 +6,26 @@ environment variables: on every boot we copy any recognized env var into the
 right vault provider/field, so putting keys in `.env` "just works" without
 clicking through Settings.
 
-Rules:
-  * Env is authoritative — a present, non-empty env var overwrites the stored
-    value each boot.
-  * Absent env vars are left alone, so anything you set in the UI is preserved.
+Rules (v1.171 — the portal is authoritative):
+  * Env only FILLS GAPS. A value saved in the portal (Settings / Connection
+    Center) is never overwritten by .env. Before v1.171 env won on every boot,
+    so every deploy silently reverted what the operator had just saved — the
+    "I keep plugging in LinkedIn and it never takes" loop (a rotated LinkedIn
+    secret reverted to the stale .env one; Google Business / SSO creds were
+    replaced with .env PLACEHOLDER text like "# paste ... here").
+  * Placeholder / comment text is never stored: values starting with "#",
+    "<...>" templates and "paste/your_..." instructions are ignored, and an
+    unquoted inline " # comment" is stripped. Placeholder junk already sitting
+    in the vault for a mapped field is scrubbed so the tile honestly reads
+    "needs credentials" instead of "configured but broken".
+  * Escape hatch: PULSE_ENV_CREDS_OVERRIDE=1 restores the old "env wins" rule
+    for one boot (e.g. a deliberate key rotation done only in .env).
   * Secret-looking fields are encrypted at rest by the vault automatically.
 """
 from __future__ import annotations
 
 import os
+import re
 
 from sqlalchemy.orm import Session
 
@@ -119,26 +130,72 @@ _META = {
 _TRUTHY = {"1", "true", "yes", "on", "y", "t"}
 
 
+# Instruction / template text that must never be stored as a credential.
+_PLACEHOLDER_MARKERS = ("paste ", "paste_", "paste-", "<", ">", "your_", "your-", "your ",
+                        "replace me", "replace_me", "changeme", "change_me", "value again")
+_PLACEHOLDER_WORDS = {"todo", "tbd", "none", "null", "changeme", "xxx", "placeholder"}
+
+
+def clean_value(v) -> str | None:
+    """Normalize one env/vault value: strip whitespace and wrapping quotes, cut
+    an unquoted inline ' # comment', and return None for empty or placeholder
+    text. Real values may contain inner spaces (WordPress app passwords do)."""
+    if v is None:
+        return None
+    s = str(v).strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in ("'", '"'):
+        s = s[1:-1].strip()
+    else:
+        s = re.split(r"\s+#", s, maxsplit=1)[0].strip()
+    if not s or s.startswith("#"):
+        return None
+    low = s.lower()
+    if low in _PLACEHOLDER_WORDS or any(m in low for m in _PLACEHOLDER_MARKERS):
+        return None
+    return s
+
+
+def _stored(cfg: dict, field: str) -> str | None:
+    try:
+        return secure_config.get_secret(cfg, field) or cfg.get(field)
+    except Exception:  # noqa: BLE001 — undecryptable == unusable
+        return None
+
+
 def load(db: Session) -> dict:
-    """Copy recognized env vars into the vault. Returns {provider: [fields set]}."""
+    """Fill EMPTY vault fields from recognized env vars (never overwrite a value
+    saved in the portal). Returns {provider: [fields set]}."""
     # Case-insensitive index so a mis-cased key (M356_OAuth_ID, google_api_key)
     # still resolves. Exact matches always win over the folded fallback.
     env_ci = {k.lower(): v for k, v in os.environ.items()}
+    override = str(os.environ.get("PULSE_ENV_CREDS_OVERRIDE", "")).lower() in _TRUTHY
 
     def _resolve(names: list[str]) -> str | None:
         for name in names:
             v = os.environ.get(name)
             if v is None:
                 v = env_ci.get(name.lower())
-            if v is not None and str(v).strip() != "":
-                return str(v).strip()
+            v = clean_value(v)
+            if v is not None:
+                return v
         return None
 
     applied: dict[str, list[str]] = {}
     for provider, fields in _MAP.items():
+        conn = secure_config.get_platform(db, provider)
+        cur = dict((conn.config if conn else None) or {})
         payload: dict[str, str] = {}
+        scrub: list[str] = []
         for vault_field, env_names in fields.items():
+            raw = _stored(cur, vault_field)
+            have = clean_value(raw)
+            if have is None and cur.get(vault_field) not in (None, ""):
+                scrub.append(vault_field)          # placeholder junk in the vault
             val = _resolve(env_names)
+            if have is not None and not (override and val is not None):
+                if vault_field != "sandbox" and have != str(raw):
+                    payload[vault_field] = have    # strip a pasted inline comment
+                continue                           # portal value wins
             if val is None:
                 continue
             if vault_field == "sandbox":       # bool-ish: only store when truthy
@@ -146,6 +203,15 @@ def load(db: Session) -> dict:
                     payload[vault_field] = "true"
                 continue
             payload[vault_field] = val
+        scrub = [f for f in scrub if f not in payload]
+        if scrub and conn is not None:
+            try:
+                conn.config = {k: v for k, v in cur.items() if k not in scrub}
+                db.commit()
+                print(f"[env-creds] {provider}: cleared placeholder text from {sorted(scrub)}")
+            except Exception as e:  # noqa: BLE001
+                db.rollback()
+                print(f"[env-creds] {provider} scrub skipped: {e}")
         if payload:
             name, cat = _META.get(provider, (provider, "Integration"))
             try:

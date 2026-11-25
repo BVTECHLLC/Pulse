@@ -1,5 +1,34 @@
 # BVTech OpsPilot — Changelog
 
+## v1.171.0 — One post per site per day + "saves that actually stick" (Nov 2026)
+- **One NEW post per website per Central day — hard failsafe.** bvtech.org was
+  getting up to three posts a day (9:00 SMB article + 9:30 KEV briefing + the
+  Tech Dispatch). The cap now lives in `jp_site.publish()` — the single gate every
+  website bot uses — keyed by DOMAIN (bvtech + bvtech_news share bvtech.org) and
+  checked two ways: a `site_daily_guard` ledger and the live GitLab repo (any
+  `blog: … (via Pulse)` commit since Central midnight). Capped bots skip BEFORE
+  writing (no AI tokens, no failure, no retry storm, no notification). Same-slug
+  republish is allowed; only an explicit operator override posts a second.
+- **Social: never two posts on one channel in one Central day**, whatever the
+  gap setting (live LinkedIn gap was 20h). Google Business stays weekly.
+- **Tech Dispatch** uses Central dates (it fired at 00:13 UTC = 6:13pm CT and
+  stamped tomorrow's date) and obeys the Content Autopilot master switch.
+- **Credentials you save in the portal now stick.** The boot-time .env loader
+  overwrote portal values on EVERY deploy — a rotated LinkedIn secret reverted to
+  the stale .env one, and Google Business / SSO / TacticalRMM / Places creds were
+  replaced with .env placeholder text ("# paste … here"). It is now FILL-ONLY,
+  ignores placeholders, strips inline `# comments`, and scrubs placeholder junk
+  from the vault. `PULSE_ENV_CREDS_OVERRIDE=1` restores env-wins for one boot.
+- **LinkedIn deep fix:** Save + Test verify the Client ID/Secret pair live with
+  LinkedIn (introspection — no login needed) and say exactly what's next;
+  malformed author URNs self-repair; the daily job warns when the 60-day
+  connection is expired / within 7 days (it reported "OK" while nothing had
+  posted since Aug 1). Google Business reuses the stored Connect refresh token.
+- **Homepage hygiene:** bvtech.org's blog preview shows the 3 newest DAYS, one
+  card per day (main article beats briefings/dispatches); the "This Week in
+  Cybersecurity" block only shows briefings < 21 days old (featured-only
+  otherwise); preview trims can never touch the intel block.
+
 ## v1.105.0 — BVTech: Breach Protocol — a Rust → WebAssembly 3D game (Oct 2026)
 - A brand-new, original **3D survivors game built in Rust and compiled to
   WebAssembly** — the same class of tech as the reference site that inspired it
