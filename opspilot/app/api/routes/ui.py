@@ -107,6 +107,14 @@ def portal(request: Request):
     return _page("portal.html", request)
 
 
+@router.get("/helper", response_class=HTMLResponse)
+def helper_page(request: Request):
+    """Partner / Helper portal — a scoped, read-only mailbox window for external
+    collaborators (Fiverr / LinkedIn / referral partners). Public shell; every
+    /api/guest call requires an active GUEST session and is allow-list enforced."""
+    return _page("helper.html", request)
+
+
 @router.get("/academy", response_class=HTMLResponse)
 def academy_page(request: Request):
     """Pulse Cyber Academy (v1.2) — mobile-first gamified security training for

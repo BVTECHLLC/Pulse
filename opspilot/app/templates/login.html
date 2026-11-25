@@ -47,7 +47,8 @@ const AS=new URLSearchParams(location.search).get('as')||'';
   const doors={
     staff:{t:'BVTech Team sign in',s:'MSP command center'},
     client:{t:'Client Portal sign in',s:'Your security, devices &amp; support'},
-    academy:{t:'Academy sign in',s:'Learn to hack &amp; defend — welcome back'}
+    academy:{t:'Academy sign in',s:'Learn to hack &amp; defend — welcome back'},
+    helper:{t:'Partner / Helper sign in',s:'Your scoped, read-only lead view'}
   };
   if(doors[AS]){document.getElementById('title').innerHTML=doors[AS].t;document.getElementById('subtitle').innerHTML=doors[AS].s;}
   // "New here?" differs: the Academy is open self-signup; the rest request access.

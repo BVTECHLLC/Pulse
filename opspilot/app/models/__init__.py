@@ -27,10 +27,17 @@ class Role(str, enum.Enum):
     TECH = "tech"             # BVTech technician — operational, no destructive config
     CLIENT_ADMIN = "client_admin"   # client's admin — their org only
     CLIENT_VIEWER = "client_viewer"  # client read-only
+    # External collaborator (Fiverr/LinkedIn/referral partner). The LOWEST
+    # privilege in the system: no client, no devices, no settings — only a
+    # strictly allow-listed, read-only window into the shared mailbox
+    # (see GuestScope + app.api.routes.guest_portal). Rejected by every other
+    # route by construction, since none of them list GUEST.
+    GUEST = "guest"
 
 
 STAFF_ROLES = {Role.OWNER, Role.TECH}
 CLIENT_ROLES = {Role.CLIENT_ADMIN, Role.CLIENT_VIEWER}
+GUEST_ROLES = {Role.GUEST}
 
 
 class Client(Base):
@@ -90,6 +97,45 @@ class AuthSession(Base):
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
 
     user: Mapped["User"] = relationship(back_populates="sessions")
+
+
+class GuestScope(Base):
+    """What a GUEST (external helper/contractor) is permitted to see. One row per
+    guest user. The ONLY source of truth for a guest's allow-list — the guest can
+    never widen it, and every guest API reads the list from here server-side.
+
+    `allowed_emails` is a JSON array of lowercased email addresses. A guest may
+    read mail where any of from/to/cc is in this list, and NOTHING else. Deleting
+    this row (or active=False) instantly cuts the guest off."""
+    __tablename__ = "guest_scopes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True, nullable=False)
+    label: Mapped[str | None] = mapped_column(String(200))        # "Jahid Hasan — referral partner"
+    allowed_emails: Mapped[str] = mapped_column(Text, default="[]")  # JSON array of addresses
+    # Friendly names for the allow-listed addresses, so the guest UI can show
+    # "Grand Oaks Dentistry" instead of a raw address. JSON {address: label}.
+    labels: Mapped[str | None] = mapped_column(Text, default="{}")
+    mailbox: Mapped[str | None] = mapped_column(String(200))      # null = platform default
+    can_view_body: Mapped[bool] = mapped_column(Boolean, default=True)  # full body vs. metadata only
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    user: Mapped["User"] = relationship(foreign_keys=[user_id])
+
+    def emails(self) -> list[str]:
+        import json
+        try:
+            return [str(e).strip().lower() for e in json.loads(self.allowed_emails or "[]") if str(e).strip()]
+        except Exception:  # noqa: BLE001
+            return []
+
+    def label_map(self) -> dict:
+        import json
+        try:
+            return {str(k).lower(): str(v) for k, v in json.loads(self.labels or "{}").items()}
+        except Exception:  # noqa: BLE001
+            return {}
 
 
 class Device(Base):

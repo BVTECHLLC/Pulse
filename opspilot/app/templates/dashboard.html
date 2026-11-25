@@ -66,6 +66,7 @@
     <a data-tab="content" onclick="tab('content')">✍️ Content Studio</a>
     <a data-tab="rmm" onclick="tab('rmm')">🖥️ RMM</a>
     <a data-tab="mailbox" onclick="tab('mailbox')">📬 Mailbox</a>
+    <a data-tab="helpers" onclick="tab('helpers')">🤝 Helpers</a>
     <a data-tab="licenses" onclick="tab('licenses')">Licenses</a>
     <a data-tab="integrations" onclick="tab('integrations')">Integrations</a>
     <a data-tab="users" onclick="tab('users')">👥 Users &amp; Access</a>
@@ -1310,6 +1311,47 @@
     </div>
   </section>
 
+  <section id="helpers" class="hidden">
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="margin:0 0 4px">🤝 Partners &amp; Helpers</h3>
+      <p class="muted" style="margin:0 0 10px">Give a contractor, Fiverr/LinkedIn helper, or referral partner a
+        <b>read-only</b> window into <b>only</b> the emails to &amp; from the leads you assign them. They can't see any
+        other mail, can't change anything, and every view is audited. Send them the link + password below.</p>
+      <div class="flex" style="gap:8px;flex-wrap:wrap">
+        <button class="btn sm" onclick="hpShowNew()">➕ New helper</button>
+        <button class="btn sm ghost" onclick="loadHelpers()">↻ Refresh</button>
+        <span class="muted" style="font-size:12px">Share link: <code>/login?as=helper</code></span>
+      </div>
+    </div>
+
+    <div id="hp-new" class="card hidden" style="margin-bottom:16px">
+      <h4 style="margin:0 0 8px">New / re-invite helper</h4>
+      <div class="flex" style="gap:10px;flex-wrap:wrap">
+        <label style="flex:1;min-width:220px">Their email<br><input id="hp-email" placeholder="name@example.com" style="width:100%"></label>
+        <label style="flex:1;min-width:220px">Label (who they are)<br><input id="hp-label" placeholder="Jahid Hasan — referral partner" style="width:100%"></label>
+      </div>
+      <label style="display:block;margin-top:10px">Leads they may see — one per line, as <code>Business Name | email</code> (or just an email)<br>
+        <textarea id="hp-leads" rows="6" style="width:100%;font-family:ui-monospace,monospace;font-size:12px" placeholder="Grand Oaks Dentistry | contact@grandoaksdentistry.com&#10;Efficient AC | gdrazic@efficienttexas.com"></textarea></label>
+      <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="hp-body" checked style="width:auto"> Let them read full email bodies (uncheck for subjects/preview only)</label>
+      <div class="flex" style="margin-top:10px;gap:8px">
+        <button class="btn sm" onclick="hpInvite()">Create &amp; get login link</button>
+        <button class="btn sm ghost" onclick="document.getElementById('hp-new').classList.add('hidden')">Cancel</button>
+      </div>
+    </div>
+
+    <div id="hp-cred" class="card hidden" style="margin-bottom:16px;border-color:#22c55e">
+      <h4 style="margin:0 0 6px">✅ Ready — send these to your helper</h4>
+      <div class="muted" style="font-size:13px;margin-bottom:8px">Shown once. They sign in at the link, then can change their password.</div>
+      <div id="hp-cred-body" style="font-family:ui-monospace,monospace;font-size:13px;line-height:1.7"></div>
+      <button class="btn sm ghost" style="margin-top:8px" onclick="hpCopy()">📋 Copy</button>
+    </div>
+
+    <div class="card">
+      <table><thead><tr><th>Helper</th><th>Leads</th><th>Body</th><th>Status</th><th></th></tr></thead>
+        <tbody id="t-helpers"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody></table>
+    </div>
+  </section>
+
   <section id="mailbox" class="hidden">
     <div id="mb-unconfigured" class="card hidden" style="margin-bottom:16px">
       <b>Mailbox not connected.</b> <span class="muted">Add your Microsoft 365 tenant & app credentials in
@@ -1824,6 +1866,72 @@ async function api(p){
 async function post(p,b){return _resp(await _req(p,{method:'POST',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}));}
 async function patch(p,b){return _resp(await _req(p,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}));}
 async function put(p,b){return _resp(await _req(p,{method:'PUT',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}));}
+// ---- Partners / Helpers (owner management) ----
+let _hpCredText='';
+function hpShowNew(){document.getElementById('hp-new').classList.remove('hidden');document.getElementById('hp-email').focus();}
+function _hpParseLeads(txt){
+  const emails=[], labels={};
+  (txt||'').split(/\n+/).forEach(line=>{
+    line=line.trim(); if(!line)return;
+    let name='', rest=line;
+    if(line.includes('|')){const p=line.split('|');name=p[0].trim();rest=p.slice(1).join('|').trim();}
+    const m=rest.match(/[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+/);
+    if(m){const e=m[0].toLowerCase();if(!emails.includes(e))emails.push(e);if(name)labels[e]=name;}
+  });
+  return {emails, labels};
+}
+async function loadHelpers(){
+  const d=await api('/api/guest/admin/list'); const tb=document.getElementById('t-helpers');
+  if(!d){tb.innerHTML='<tr><td colspan="5" class="muted">Could not load.</td></tr>';return;}
+  const hs=d.helpers||[];
+  if(!hs.length){tb.innerHTML='<tr><td colspan="5" class="muted">No helpers yet — click “New helper”.</td></tr>';return;}
+  tb.innerHTML=hs.map(h=>{
+    const leadsStr=esc((h.leads||[]).join('\n')).replace(/'/g,"\\'").replace(/\n/g,'\\n');
+    return '<tr><td><b>'+esc(h.name||h.email.split("@")[0])+'</b><br><span class="muted" style="font-size:12px">'+esc(h.email)+'</span>'
+      +(h.label?('<br><span class="muted" style="font-size:11px">'+esc(h.label)+'</span>'):'')+'</td>'
+      +'<td title="'+esc((h.leads||[]).join(', '))+'">'+h.lead_count+'</td>'
+      +'<td>'+(h.can_view_body?'full':'preview')+'</td>'
+      +'<td>'+(h.active?'<span class="pill" style="color:#22c55e">active</span>':'<span class="pill">disabled</span>')+'</td>'
+      +'<td><div class="flex" style="gap:6px;flex-wrap:wrap">'
+        +'<button class="btn sm ghost" onclick="hpReset('+h.user_id+')">🔗 Login link</button>'
+        +'<button class="btn sm ghost" onclick="hpEditLeads('+h.user_id+',\''+leadsStr+'\')">✏️ Leads</button>'
+        +'<button class="btn sm ghost" onclick="hpToggle('+h.user_id+','+(h.active?'false':'true')+')">'+(h.active?'⏸ Disable':'▶ Enable')+'</button>'
+      +'</div></td></tr>';
+  }).join('');
+}
+function _hpShowCred(email,pw){
+  const base=location.origin+'/login?as=helper';
+  _hpCredText='Partner portal: '+base+'\nEmail: '+email+'\nTemp password: '+pw+'\n(You can change your password after signing in.)';
+  document.getElementById('hp-cred-body').innerHTML=
+    'Link: <b>'+esc(base)+'</b><br>Email: <b>'+esc(email)+'</b><br>Temp password: <b>'+esc(pw)+'</b>';
+  document.getElementById('hp-cred').classList.remove('hidden');
+}
+async function hpInvite(){
+  const email=val('hp-email'); if(!email){alert('Enter their email');return;}
+  const {emails,labels}=_hpParseLeads(document.getElementById('hp-leads').value);
+  const r=await post('/api/guest/admin/invite',{email:email,label:val('hp-label'),allowed_emails:emails,labels:labels,can_view_body:document.getElementById('hp-body').checked});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){alert(j.detail||'Could not create helper');return;}
+  document.getElementById('hp-new').classList.add('hidden');
+  _hpShowCred(j.email,j.temp_password); loadHelpers();
+}
+async function hpReset(id){
+  const r=await post('/api/guest/admin/'+id+'/reset'); const j=await r.json().catch(()=>({}));
+  if(!r.ok){alert(j.detail||'Failed');return;} _hpShowCred(j.email,j.temp_password);
+}
+async function hpToggle(id,active){
+  const r=await post('/api/guest/admin/'+id+'/active',{active:active}); const j=await r.json().catch(()=>({}));
+  if(!r.ok){alert(j.detail||'Failed');return;} loadHelpers();
+}
+async function hpEditLeads(id,current){
+  const txt=prompt('Leads this helper may see — one per line (Business Name | email, or just email):',(current||'').replace(/\\n/g,'\n'));
+  if(txt==null)return;
+  const {emails,labels}=_hpParseLeads(txt);
+  const r=await post('/api/guest/admin/'+id+'/scope',{allowed_emails:emails,labels:labels}); const j=await r.json().catch(()=>({}));
+  if(!r.ok){alert(j.detail||'Failed');return;} loadHelpers();
+}
+function hpCopy(){if(navigator.clipboard)navigator.clipboard.writeText(_hpCredText);}
+
 const _tabLoaded={};
 function tab(name){
   document.querySelectorAll('.wrap section').forEach(s=>s.classList.add('hidden'));
@@ -1831,6 +1939,7 @@ function tab(name){
   document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('active',a.dataset.tab===name));
   // Lazy-load tabs that hit external services so we don't call them on every page load.
   if(name==='mailbox'){loadMailbox();}
+  if(name==='helpers'){loadHelpers();}
   if(name==='docs'){loadDocs();}
   if(name==='crm'){loadCrm();}
   if(name==='pipeline'){loadPipeline();}

@@ -24,7 +24,7 @@ from .api.routes import (
     remediation, inventory, autopost, setup, ai, branding, practice, status, users,
     library, academy, website, patching, copilot, psa, vcio, autonomy, incidents,
     content_autopilot, browser, public_tools, onboarding, answers, coop, kart, memorial,
-    email_filter, deals, automation_center,
+    email_filter, deals, automation_center, guest_portal,
 )
 
 _s = get_settings()
@@ -228,6 +228,7 @@ app.include_router(content.router)
 app.include_router(maintenance.router)
 app.include_router(analytics.router)
 app.include_router(mailbox.router)
+app.include_router(guest_portal.router)
 app.include_router(publishers.router)
 app.include_router(comms.router)
 app.include_router(rmm.router)
@@ -334,6 +335,33 @@ def _reconcile_schema():
         Base.metadata.create_all(bind=engine)   # missing tables only
     except Exception as e:  # noqa: BLE001
         print(f"[schema] create_all warning: {e}")
+
+    # Postgres native-enum values can't be added by create_all. Idempotently add
+    # any Role value the DB's enum type lacks (e.g. 'guest') so a newly-added role
+    # never 500s login. Postgres-only; SQLite (dev/CI) rebuilds the enum from the
+    # model. Values come from our own Role enum (never user input) and are
+    # re-validated to [a-z_] before interpolation.
+    try:
+        if engine.dialect.name == "postgresql":
+            import re as _re
+            from .models import Role as _Role
+            want = {r.value for r in _Role}
+            with engine.connect() as conn:
+                conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+                row = conn.execute(text(
+                    "SELECT t.typname FROM pg_type t JOIN pg_enum e ON e.enumtypid=t.oid "
+                    "WHERE e.enumlabel='owner' LIMIT 1")).first()
+                if row:
+                    typ = row[0]
+                    have = {r[0] for r in conn.execute(text(
+                        "SELECT e.enumlabel FROM pg_enum e JOIN pg_type t ON e.enumtypid=t.oid "
+                        "WHERE t.typname = :t"), {"t": typ})}
+                    for v in sorted(want - have):
+                        if _re.fullmatch(r"[a-z_]+", v):
+                            conn.execute(text(f"ALTER TYPE \"{typ}\" ADD VALUE IF NOT EXISTS '{v}'"))
+                            print(f"[schema] added enum value {typ}.{v}")
+    except Exception as e:  # noqa: BLE001
+        print(f"[schema] enum reconcile warning: {e}")
 
     # Auto-heal COLUMN drift: for every mapped table that already exists, add any
     # column the model declares but the DB lacks. This is generated from the model

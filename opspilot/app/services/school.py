@@ -55,6 +55,8 @@ def home_for(db: Session, user: User) -> str:
     both password login and the SSO callback."""
     if user.role in (Role.OWNER, Role.TECH):
         return "/dashboard"
+    if user.role == Role.GUEST:
+        return "/helper"
     if is_academy_user(db, user):
         return "/academy"
     return "/portal"

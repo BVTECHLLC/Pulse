@@ -65,6 +65,21 @@ def _msg_summary(m: dict) -> dict:
     }
 
 
+def _participants(m: dict) -> set[str]:
+    """Every address a message touches: sender + to + cc, lowercased. Used to
+    enforce a guest's allow-list in code (defense-in-depth on top of $search)."""
+    out: set[str] = set()
+    f = ((m.get("from") or {}).get("emailAddress") or {}).get("address")
+    if f:
+        out.add(f.lower())
+    for key in ("toRecipients", "ccRecipients"):
+        for r in m.get(key) or []:
+            a = (r.get("emailAddress") or {}).get("address")
+            if a:
+                out.add(a.lower())
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # Real Graph client (stdlib HTTP; no extra runtime deps)
 # --------------------------------------------------------------------------- #
@@ -257,6 +272,58 @@ class GraphClient:
         body = m.get("body") or {}
         out["body_content"] = body.get("content")
         out["body_type"] = body.get("contentType")  # html|text
+        out["cc"] = [_addr(r) for r in m.get("ccRecipients", [])]
+        return out
+
+    # ----------------------------------------------------------------------- #
+    # Allow-list-scoped reads for GUEST (external helper) accounts. These NEVER
+    # return a message that doesn't involve an allow-listed address, enforced in
+    # two independent layers: (1) a Graph `participants:` $search that only asks
+    # for matching mail, and (2) a hard in-code intersection check on every row.
+    # The `allowed` set comes from the server-side GuestScope, never the request.
+    # ----------------------------------------------------------------------- #
+    def list_scoped_messages(self, mailbox: str, allowed: set[str], top: int = 40) -> list[dict]:
+        allowed = {a.lower() for a in (allowed or set()) if a}
+        if not allowed:
+            return []
+        mb = parse.quote(mailbox)
+        select = ("id,subject,from,toRecipients,ccRecipients,receivedDateTime,"
+                  "isRead,hasAttachments,bodyPreview,webLink")
+        # KQL across ALL folders (so sent mail counts too). participants: matches
+        # from/to/cc. Cap the OR-set so the query stays well under Graph limits.
+        terms = " OR ".join(f'participants:{a}' for a in sorted(allowed)[:40])
+        q = (f"/users/{mb}/messages?$search={parse.quote(terms)}"
+             f"&$top={int(top)}&$select={select}")
+        data = self._get(q)
+        out = []
+        for m in data.get("value", []):
+            if _participants(m) & allowed:          # defense-in-depth: never leak
+                s = _msg_summary(m)
+                s["cc"] = [_addr(r) for r in m.get("ccRecipients", [])]
+                out.append(s)
+        out.sort(key=lambda s: s.get("received") or "", reverse=True)
+        return out
+
+    def get_message_if_allowed(self, mailbox: str, message_id: str,
+                               allowed: set[str], include_body: bool = True) -> dict | None:
+        """Full message, but ONLY if it involves an allow-listed address; else
+        None (the route turns that into a 404, so a guest can't even confirm an
+        out-of-scope message id exists)."""
+        allowed = {a.lower() for a in (allowed or set()) if a}
+        if not allowed:
+            return None
+        mb = parse.quote(mailbox)
+        mid = parse.quote(message_id, safe="")
+        sel = ("id,subject,from,toRecipients,ccRecipients,receivedDateTime,"
+               "isRead,hasAttachments,webLink" + (",body" if include_body else ""))
+        m = self._get(f"/users/{mb}/messages/{mid}?$select={sel}")
+        if not (_participants(m) & allowed):
+            return None
+        out = _msg_summary(m)
+        if include_body:
+            body = m.get("body") or {}
+            out["body_content"] = body.get("content")
+            out["body_type"] = body.get("contentType")
         out["cc"] = [_addr(r) for r in m.get("ccRecipients", [])]
         return out
 

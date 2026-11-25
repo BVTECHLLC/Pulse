@@ -8394,7 +8394,7 @@ def main():
     _fb = _j101.build_intel_block(_j101.featured_pin(None, _d101(2026, 10, 23)), _eds)
     assert "Read the breakdown" in _fb
     from app.core.config import get_settings as _gs101
-    assert _gs101().APP_VERSION == "1.170.2"
+    assert _gs101().APP_VERSION == "1.171.0"
     print("v1.101: PHP2Shell feature (native, FAQ schema), pinned homepage/news feature, "
           "dated briefings, curated cards shielded, ItemList + sitemap kept true, "
           "no recycled posts, multi-provider AI OK")
@@ -8845,7 +8845,7 @@ def main():
     # the game uses real shaded meshes now (lit 3D, not flat primitives)
     _rssrc = (_P106(__file__).resolve().parent.parent / "games" / "arena-rs" / "src" / "main.rs").read_text()
     assert "struct Boxer" in _rssrc and "fn shade(" in _rssrc, "arena shaded renderer missing"
-    assert _gs101().APP_VERSION == "1.170.2"
+    assert _gs101().APP_VERSION == "1.171.0"
     assert _sr100.REPAIR_EPOCH == "1.112.0"   # forces Explore republish to bvtech.org
     print("v1.106: Explore clears the fixed header (greeting + weather no longer cut off), "
           "republish forced; arena boots (register_plugin declared) with lit shaded 3D OK")
@@ -8881,7 +8881,7 @@ def main():
     assert "xp-feature" in _xp2 and "Featured Game" in _xp2 and 'href="/graveyard-shift/"' in _xp2
     # site nav points to the game home
     assert any("/graveyard-shift/" in _m[0] for _m in _DEa.NAV_EDITS)
-    assert _gs101().APP_VERSION == "1.170.2" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.171.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.109: Graveyard Shift home page at /graveyard-shift/ (published + nav), "
           "Explore features it with a Halloween hero, republish forced OK")
 
@@ -8901,7 +8901,7 @@ def main():
     # Explore carries the festive papel-picado theme
     _xp3 = _PEa.body()
     assert "xp-papel" in _xp3 and "Happy Thanksgiving" in _xp3, "seasonal Explore theme missing"
-    assert _gs101().APP_VERSION == "1.170.2" and _sr100.REPAIR_EPOCH == "1.112.0"
+    assert _gs101().APP_VERSION == "1.171.0" and _sr100.REPAIR_EPOCH == "1.112.0"
     print("v1.110: Graveyard Shift v2 (bigger map, leap/dodge + grace, scythe/spear/smite/"
           "moonbeam, chests, calaveras, win-at-dawn) + festive papel-picado Explore OK")
 
@@ -8998,7 +8998,41 @@ def main():
     assert "FALLBACK_ORIGINS" in _tm and "startStream" in _tm and "seedSim" in _tm, "threat-map failsafe missing"
     print("v2.4: Threat Map — blended always-alive feed + self-healing page (sim/stream) OK")
 
-    print("\n=== OpsPilot v1.170.2 SMOKE TEST PASSED ===")
+    # ==== v2.5: Partner/Helper portal — scoped, read-only, allow-list enforced ====
+    assert c.get("/api/guest/admin/list").status_code == 200   # owner can list helpers (OWNER-gated)
+    _inv = c.post("/api/guest/admin/invite", json={"email": "smoke.helper@test.co",
+        "label": "Smoke Helper", "allowed_emails": ["lead1@acme.co", "LEAD1@acme.co", "lead2@acme.co"],
+        "labels": {"lead1@acme.co": "Acme"}, "can_view_body": True})
+    assert _inv.status_code == 200 and _inv.json()["lead_count"] == 2, _inv.text
+    _tmp = _inv.json()["temp_password"]
+    _g = TestClient(app); _g.cookies.clear()
+    assert _g.post("/api/auth/login", json={"email": "smoke.helper@test.co", "password": _tmp}
+                   ).json().get("home") == "/helper"
+    _gme = _g.get("/api/guest/me").json()
+    assert _gme["lead_count"] == 2 and {l["email"] for l in _gme["leads"]} == {"lead1@acme.co", "lead2@acme.co"}, _gme
+    # a guest is the lowest privilege: locked out of admin, staff mailbox, and can't widen scope
+    assert _g.get("/api/guest/admin/list").status_code == 403         # no owner admin
+    assert _g.get("/api/mailbox/messages").status_code == 403          # no staff mailbox
+    assert _g.get("/api/guest/messages?lead=evil@z.com").status_code == 403  # allow-list can't be widened
+    assert c.get("/api/guest/me").status_code == 403                  # owner is not a guest
+    # allow-list filtering never leaks an out-of-scope message
+    from app.services import m365 as _m365
+    _gc = _m365.GraphClient("t", "c", "s")
+    _fake = {"value": [
+        {"id": "a", "from": {"emailAddress": {"address": "x@q.co"}},
+         "toRecipients": [{"emailAddress": {"address": "lead1@acme.co"}}], "receivedDateTime": "2026-01-01T00:00:00Z"},
+        {"id": "b", "from": {"emailAddress": {"address": "x@q.co"}},
+         "toRecipients": [{"emailAddress": {"address": "nope@q.co"}}], "receivedDateTime": "2026-01-02T00:00:00Z"}]}
+    _gc._get = lambda path: _fake
+    assert {m["id"] for m in _gc.list_scoped_messages("mb", {"lead1@acme.co"})} == {"a"}, "allow-list leak!"
+    _gc._get = lambda path: _fake["value"][1]
+    assert _gc.get_message_if_allowed("mb", "b", {"lead1@acme.co"}) is None, "out-of-scope message leaked!"
+    # the guest page + chooser door exist
+    assert "/api/guest/me" in c.get("/helper").text
+    assert 'as=helper' in c.get("/").text and 'data-tab="helpers"' in c.get("/dashboard").text
+    print("v2.5: Partner/Helper portal — invite + scoped read-only + allow-list enforcement OK")
+
+    print("\n=== OpsPilot v1.171.0 SMOKE TEST PASSED ===")
 
 if __name__ == "__main__":
     main()
