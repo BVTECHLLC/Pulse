@@ -207,7 +207,13 @@ def admin_invite(body: InviteIn, request: Request, db: Session = Depends(get_db)
     scope.can_view_body = bool(body.can_view_body)
     scope.mailbox = (body.mailbox or "").strip() or None
     scope.active = True
-    db.commit()
+    try:
+        db.commit()
+    except Exception as e:  # noqa: BLE001 — surface a real reason, never a bare 500
+        db.rollback()
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            f"Could not save helper (database): {type(e).__name__}. "
+                            "If this persists, the server may need a restart to finish a schema update.")
     audit.record(db, action="guest.invited", actor_user_id=owner.id, actor_email=owner.email,
                  actor_role=owner.role.value, ip=_ip(request),
                  target_type="guest", target_id=str(user.id),

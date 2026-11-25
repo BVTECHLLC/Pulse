@@ -344,20 +344,27 @@ def _reconcile_schema():
     try:
         if engine.dialect.name == "postgresql":
             import re as _re
+            from sqlalchemy import Enum as _SAEnum
             from .models import Role as _Role
-            want = {r.value for r in _Role}
+            # The EXACT labels SQLAlchemy persists for this enum (member NAMES by
+            # default, e.g. 'OWNER'..'GUEST'). Using this as the source of truth
+            # means we never have to guess names-vs-values (the bug that kept
+            # 'GUEST' out of the DB enum and broke helper creation).
+            want = set(_SAEnum(_Role).enums)
             with engine.connect() as conn:
                 conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+                # Enum type backing users.role — resolved from the column itself,
+                # so the type's actual name never matters.
                 row = conn.execute(text(
-                    "SELECT t.typname FROM pg_type t JOIN pg_enum e ON e.enumtypid=t.oid "
-                    "WHERE e.enumlabel='owner' LIMIT 1")).first()
-                if row:
+                    "SELECT udt_name FROM information_schema.columns "
+                    "WHERE table_name='users' AND column_name='role'")).first()
+                if row and row[0]:
                     typ = row[0]
                     have = {r[0] for r in conn.execute(text(
                         "SELECT e.enumlabel FROM pg_enum e JOIN pg_type t ON e.enumtypid=t.oid "
                         "WHERE t.typname = :t"), {"t": typ})}
                     for v in sorted(want - have):
-                        if _re.fullmatch(r"[a-z_]+", v):
+                        if _re.fullmatch(r"[A-Za-z_]+", v):
                             conn.execute(text(f"ALTER TYPE \"{typ}\" ADD VALUE IF NOT EXISTS '{v}'"))
                             print(f"[schema] added enum value {typ}.{v}")
     except Exception as e:  # noqa: BLE001

@@ -41,7 +41,8 @@ def upgrade():
     if bind.dialect.name == "postgresql":
         try:
             conn = bind.engine.connect().execution_options(isolation_level="AUTOCOMMIT")
-            conn.exec_driver_sql("ALTER TYPE role ADD VALUE IF NOT EXISTS 'guest'")
+            # SQLAlchemy persists Role members by NAME, so the label is 'GUEST'.
+            conn.exec_driver_sql("ALTER TYPE role ADD VALUE IF NOT EXISTS 'GUEST'")
             conn.close()
         except Exception:
             pass
